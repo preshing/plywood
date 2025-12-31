@@ -1,0 +1,13 @@
+ColumnLimit: 120
+IndentWidth: 4
+UseTab: Never
+AccessModifierOffset: -4
+NamespaceIndentation: None
+DerivePointerAlignment: false
+PointerAlignment: Left
+SpaceAfterCStyleCast: true
+AllowShortFunctionsOnASingleLine: None
+AlwaysBreakTemplateDeclarations: true
+AlignEscapedNewlines: DontAlign
+SortIncludes: false
+IndentCaseLabels: true

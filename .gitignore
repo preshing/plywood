@@ -1,0 +1,8 @@
+*~
+.*
+!.clang-format
+!.git*
+*.user
+build*/
+xcuserdata/
+/Apple_Developer_ID.cmake

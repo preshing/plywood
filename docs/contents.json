@@ -1,0 +1,35 @@
+[
+    {"title": "Introduction", "path": "intro"},
+    {"title": "Getting Started", "path": "getting-started"},
+    {"title": "Project Overview", "path": "overview"},
+    {"title": "Configuration Options", "path": "configuration"},
+    {"title": "The Base Library — <ply-base.h>", "path": "base", "children": [
+        {"title": "Preprocessor Macros", "path": "base/macros"}
+        {"title": "Integer Types", "path": "base/integers"},
+        {"title": "Numeric Functions", "path": "base/numeric-functions"},
+        {"title": "Time and Date", "path": "base/time-date"},
+        {"title": "Random Numbers", "path": "base/random"},
+        {"title": "Memory", "path": "base/memory"},
+        {"title": "Strings", "path": "base/strings"},
+        {"title": "Arrays", "path": "base/arrays"},
+        {"title": "Hash Maps", "path": "base/hash-maps"},
+        {"title": "Object Ownership", "path": "base/ownership"},
+        {"title": "Functors", "path": "base/functors"},
+        {"title": "Variant Types", "path": "base/variants"},
+        {"title": "Generic Algorithms", "path": "base/algorithms"},
+        {"title": "Input and Output", "path": "base/input-output"},
+        {"title": "Manipulating Text", "path": "base/text"},
+        {"title": "The Filesystem", "path": "base/filesystem"},
+        {"title": "Threads", "path": "base/threads"},
+        {"title": "Processes", "path": "base/processes"}
+    ]},
+    {"title": "B-Trees — <ply-btree.h>", "path": "btrees"},
+    {"title": "TCP/IP Networking — <ply-network.h>", "path": "network"},
+    {"title": "2D and 3D Math — <ply-math.h>", "path": "math"},
+    {"title": "Text Parsers", "path": "parsers", "children": [
+        {"title": "Tokenizer — <ply-tokenizer.h>", "path": "parsers/tokenizer"},
+        {"title": "JSON Parser — <ply-json.h>", "path": "parsers/json"},
+        {"title": "Markdown Parser — <ply-markdown.h>", "path": "parsers/markdown"},
+        {"title": "C++ Parser — <ply-cpp.h>", "path": "parsers/cpp"}
+    ]}
+]

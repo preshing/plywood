@@ -1,0 +1,114 @@
+﻿>> basic macros
+#define A a
+A
+--
+a
+
+
+>> nested macros
+#define A B
+#define B hello
+A
+--
+hello
+
+
+>> collapse whitespace between tokens in macro expansion
+#define A   x         y            z
+A
+--
+x y z
+
+
+>> macro with arguments
+#define A(x, y) x + y
+A(a, b)
+--
+a + b
+
+
+>> nested macros with arguments
+#define A(x) B(x, bar)
+#define B(a, b) C(a/b, b/a)
+#define C(x, y) x --> y
+A(foo)
+--
+foo/bar --> bar/foo
+
+
+>> stringify
+#define A(x) abc #x def
+A(123)
+--
+abc "123" def
+
+
+>> token paste
+#define A(x, y) aa ## x y ## bb
+A(c, d)
+--
+aac dbb
+
+
+>> file and line directives
+#define A __FILE__
+A
+#define B __LINE__
+B
+--
+<test file>
+4
+
+
+>> unique variable
+#define CAT2(a, b) a##b
+#define CAT(a, b) CAT2(a, b)
+#define UNIQUE_VAR(prefix) CAT(prefix, __LINE__)
+UNIQUE_VAR(foo)
+#define BAD(prefix) CAT2(prefix, __LINE__)
+BAD(foo)
+--
+foo4
+foo__LINE__
+
+
+>> escape line ending in preprocessor directive
+#de\
+fine A a
+--
+A
+
+
+>> escape line ending in identifier
+foo\
+bar
+--
+foobar
+
+
+>> escape line ending in macro definition
+#define A the\
+se are some \
+escaped lines!
+A
+--
+these are some escapes lines!
+
+
+>> escape line ending in string
+"escaped line \
+ending in a string"
+--
+"escaped line \
+ending in a string"
+
+
+>> escape line ending in comment
+foo // escaped line ending \
+in a comment
+bar
+--
+foo 
+bar
+
+

@@ -1,0 +1,2 @@
+# Don't let Git convert line endings of any .txt file in this folder
+*.txt -text

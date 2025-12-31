@@ -1,0 +1,447 @@
+﻿>> Unclosed function body
+void foo() {
+--
+(2, 1): error: expected '}'
+(1, 12): note: to match this '{'
+
+
+>> Missing ',' in enum
+enum Foo { A B };
+--
+(1, 14): error: missing ',' between enumerators
+
+
+>> Bad token in enum
+enum Foo { % };
+--
+(1, 12): error: expected enumerator or '}' before '%'
+
+
+>> Multiple bad tokens in enum
+enum Foo { % % };
+--
+(1, 12): error: expected enumerator or '}' before '%'
+
+
+>> Nested bad token in enum
+enum Foo { { };
+--
+(1, 12): error: expected enumerator or '}' before '{'
+
+
+>> Nested bad tokens in enum
+enum Foo { ( % };
+--
+(1, 12): error: expected enumerator or '}' before '('
+
+
+>> Unexpected '}'
+}
+--
+(1, 1): error: expected declaration before '}'
+
+
+>> Bad qualifier placement in param
+void foo(int& const x);
+--
+(1, 15): error: 'const' qualifier not allowed here
+
+
+>> Bad qualifier placement in conversion func
+struct Foo {
+    operator int& const();
+};
+--
+(2, 19): error: 'const' qualifier not allowed here
+
+
+>> Too many type specifiers in conversion func
+struct Foo {
+    operator int int();
+};
+--
+(2, 18): error: too many type specifiers
+
+
+>> Unexpected EOF in decltype
+using Foo = decltype(
+--
+(2, 1): error: expected ')'
+(1, 21): note: to match this '('
+
+
+>> Missing ')' in decltype
+using Foo = decltype;
+--
+(1, 21): error: expected '(' before ';'
+
+
+>> Missing destructor name
+struct Foo {
+    ~();
+};
+--
+(2, 6): error: expected destructor name before '('
+
+
+>> Missing ')' in operator overload
+struct Foo {
+    void operator(();
+};
+--
+(2, 19): error: expected ')' before '('
+
+
+>> Missing ']' in operator overload
+struct Foo {
+    int operator[(int);
+};
+--
+(2, 18): error: expected ']' before '('
+
+
+>> Missing operator token
+struct Foo {
+    void operator int();
+};
+--
+(2, 19): error: expected operator token before 'int'
+(2, 19): error: declaration does not declare anything
+
+
+>> Missing member initializer in constructor
+struct Foo {
+    Foo() : {
+    }
+};
+--
+(2, 13): error: expected class member or base class name before '{'
+
+
+>> Missing trailing return type
+auto foo() -> {
+    return 0;
+}
+--
+(1, 15): error: expected type specifier before '{'
+
+
+>> Missing qualified-id in enum base
+enum Foo : {
+};
+--
+(1, 12): error: expected qualified-id before '{'
+
+
+>> Missing '(' in conversion func
+struct Foo {
+    operator int;
+};
+--
+(2, 17): error: expected '(' before ';'
+
+
+>> Missing parameter type
+void foo(int,*);
+--
+(1, 14): error: expected parameter type before '*'
+
+
+>> Missing parameter type
+void foo(int,);
+--
+(1, 14): error: expected parameter type before ')'
+
+
+>> Bad token in param
+void foo(%);
+--
+(1, 10): error: expected parameter type before '%'
+
+
+>> Can't use nested name prefix on paren
+int Foo::(x);
+--
+(1, 10): error: '(' cannot have a nested name prefix
+
+
+>> Missing ')' in declaration
+int (x;
+--
+(1, 7): error: expected ')' before ';'
+
+
+>> Can't use nested name prefix on reference
+void foo(Foo Foo::& x);
+--
+(1, 19): error: '&' cannot have a nested name prefix
+
+
+>> Can't use nested name prefix on ellipsis
+struct Foo;
+template <typename... T>
+void foo(T Foo::... x);
+--
+(3, 17): error: '...' cannot have a nested name prefix
+
+
+>> Missing identifier in template param
+int x;
+template <typename decltype(x)>
+struct Foo;
+--
+(2, 20): error: expected identifier
+
+
+>> Parse A::B as type specifier of non-type template parameter
+template <typename A>
+struct Foo {
+    template <typename A::B>
+    void bar();
+};
+--
+
+
+>> Missing ']' in param
+void foo(int x[);
+--
+(1, 16): error: expected ']' before ')'
+
+
+>> Missing '{' or '(' in member initializer
+struct Foo {
+    int x;
+    Foo() : x % {
+    }
+};
+--
+(3, 15): error: expected '{' or '(' before '%'
+
+
+>> Missing constructor body
+struct Foo {
+    int x;
+    Foo() : x{0};
+};
+--
+(3, 17): error: expected function body after member initializer list
+
+
+>> Can't mix function definitions
+int x, foo() {
+    return 0;
+}
+--
+(1, 11): error: can't mix function definitions with other declarations
+
+
+>> Can't mix function definitions
+int foo() {
+    return 0;
+}, x;
+--
+(3, 2): error: expected declaration before ','
+(3, 4): error: declaration does not declare anything
+
+
+>> Missing nested name prefix ?????????????
+typename int x;
+--
+(1, 10): error: expected nested name prefix before 'int'
+
+
+>> Missing member initializer name
+struct Foo : {
+};
+--
+(1, 14): error: expected qualified-id before '{'
+
+
+>> Incomplete member initializer name
+struct Base {
+};
+struct Foo : Base:: {
+};
+--
+(3, 21): error: expected qualified-id before '{'
+
+
+>> Missing '(' in alignas
+alignas int x;
+--
+(1, 9): error: expected '(' before 'int'
+
+
+>> Missing ')' in alignas
+alignas(int int x;
+--
+(1, 13): error: type-id cannot have a name
+
+
+>> Too many type specifiers in declaration
+struct Foo {} struct Bar {};
+--
+(1, 15): error: too many type specifiers
+
+
+>> Missing declarator
+int;
+--
+(1, 1): error: declaration does not declare anything
+
+
+>> Missing ';' after declaration
+int x
+int y;
+--
+(2, 1): error: expected ';' before 'int'
+
+
+>> Missing ':' after access specifier
+struct Foo {
+    public
+};
+--
+(3, 1): error: expected ':' before '}'
+
+
+>> Missing '(' after static_assert
+static_assert
+--
+(2, 1): error: expected '(' before 'end-of-file'
+
+
+>> Missing '{' after unnamed namespace
+namespace;
+--
+(1, 10): error: expected '{' before ';'
+
+
+>> Missing '{' after namespace
+namespace Foo;
+--
+(1, 14): error: expected '{' before ';'
+
+
+>> Missing qualified-id in using directive
+using namespace;
+--
+(1, 16): error: expected qualified-id before ';'
+
+
+>> Missing ';' after using directive
+using namespace Foo
+--
+(2, 1): error: expected ';' before 'end-of-file'
+
+
+>> Missing '=' in type alias
+using Foo;
+--
+(1, 10): error: expected '=' before ';'
+
+
+>> Missing type specifier in type alias
+using Foo = ;
+--
+(1, 13): error: expected type specifier before ';'
+
+
+>> Missing type specifier in type aloas
+using Foo = *;
+--
+(1, 13): error: expected type specifier before '*'
+
+
+>> Type specifier can't have a name in type alias
+using Foo = int x;
+--
+(1, 17): error: type-id cannot have a name
+
+
+>> Missing ';' after type alias
+using Foo = int
+--
+(2, 1): error: expected ';' before 'end-of-file'
+
+
+>> Bad qualified-id
+int x = Foo::;
+--
+(1, 14): error: expected identifier before ';'
+
+
+>> Bad token in capture list
+auto x = [%](){};
+--
+(1, 11): error: expected ']' before '%'
+
+
+>> Bad token in argument
+int x = foo(0~);
+--
+(1, 14): error: expected ',' or ')' before '~'
+
+
+>> Bad token in braced initializer
+int x = Foo{0~};
+--
+(1, 14): error: expected ',' or '}' before '~'
+
+
+>> Bad token in initializer list
+int x = {0~};
+--
+(1, 11): error: expected ',' or '}' before '~'
+
+
+>> Missing '(' in lambda expression
+auto x = []{};
+--
+(1, 12): error: expected '(' before '{'
+
+
+>> Missing '{' in lambda expression
+auto x = []();
+--
+(1, 14): error: expected '{' before ';'
+
+
+>> Missing '{' in lambda expression
+auto x = []() -> int;
+--
+(1, 21): error: expected '{' before ';'
+
+
+>> Missing ':' in ternary
+int x = true ? 1 0;
+--
+(1, 18): error: expected ':' before '0'
+
+
+>> Bad token in template parameter
+template <%> struct Foo;
+--
+(1, 11): error: expected template parameter before '%'
+
+
+>> Bad token in template parameter
+template <typename %> struct Foo;
+--
+(1, 20): error: expected ',' or '>' before '%'
+
+
+>> Ambiguous function or constructor
+struct Foo {
+    Foo((Baz()));       // A function "Baz" returning Foo
+};
+--
+
+
+>> Missing ',' in base class list
+struct Foo : Bar % {
+};
+--
+(1, 18): error: expected ',' or '{' before '%'
+
+

@@ -1,0 +1,101 @@
+﻿
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Plywood C++ Base Library</title>
+<link rel="stylesheet" href="/static/style.css">
+<script>
+  // Apply saved theme immediately to prevent flash
+  (function() {
+    var theme = localStorage.getItem('theme');
+    if (theme === 'dark' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+      document.documentElement.setAttribute('data-theme', 'dark');
+    }
+  })();
+</script>
+</head>
+<body>
+  <div class="front-banner">
+    <div class="inner">
+        <span class="right">
+          <span><a href="/docs/intro">DOCS</a></span>
+          <span><a href="https://github.com/preshing/plywood">GITHUB</a></span>
+            <button class="theme-toggle" id="theme-toggle" aria-label="Toggle dark mode" title="Toggle dark/light mode">
+                <svg class="moon-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                </svg>
+                <svg class="sun-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="12" cy="12" r="5"/>
+                    <line x1="12" y1="1" x2="12" y2="3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    <line x1="12" y1="21" x2="12" y2="23" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    <line x1="1" y1="12" x2="3" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    <line x1="21" y1="12" x2="23" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                </svg>
+            </button>
+            <span id="three-lines" class="button"><span></span></span>
+        </span>
+        <img class="logo" src="/static/plywood-house.png" srcset="/static/plywood-house.png 1x, /static/plywood-house@2x.png 2x" alt="Plywood logo" style="position: absolute; left: 20px; top: 8px;">
+        <span style="color: #ffffff; font-size: 44px; position: absolute; left: 135px; top: 12px;">Plywood</span>
+        <span style="font-size: 16.4px; color: #e7e79a; position: absolute; left: 200px; top: 55px;">C++ BASE LIBRARY</span>
+    </div>
+  </div>
+  <div class="inner-body content front-contents">
+  <p class="tagline center-text">An <span class="highlight">easy-to-use</span> alternative<br>to the C++ Standard Library</p>
+  <p class="include-base center-text"><code>#include <span class="type">&lt;ply-base.h&gt;</span></code></p>
+  <p class="base-summary center-text">A complete runtime API in one compact header file.<br>
+  Easy to integrate. Fast to compile.</p>
+  <div class="base-features">
+    <div>
+      <ul>
+        <li>Time and date</li>
+        <li>Random numbers</li>
+        <li>Memory management</li>
+        <li>Containers</li>
+        <li>I/O</li>
+      </ul>
+    </div>
+    <div>
+      <ul>
+        <li>Unicode</li>
+        <li>Filesystem access</li>
+        <li>Multithreading</li>
+        <li>Process creation</li>
+      </ul>
+      ... and more
+    </div>
+  </div>
+  <p class="center-text also-included">Also included</p>
+  <table class="grid">
+    <tbody><tr><td><code class="type">&lt;ply-network.h&gt;</code></td><td>TCP/IP networking</td></tr>
+    <tr><td><code class="type">&lt;ply-math.h&gt;</code></td><td>2D and 3D math</td></tr>
+    <tr><td><code class="type">&lt;ply-cpp.h&gt;</code></td><td>C++ parser</td></tr>
+    <tr><td><code class="type">&lt;ply-json.h&gt;</code></td><td>JSON parser</td></tr>
+    <tr><td><code class="type">&lt;ply-markdown.h&gt;</code></td><td>Markdown parser</td></tr>
+    </tbody></table>
+  <p class="center-text runs-on">Runs on all popular platforms</p>
+  <p class="center-text platforms"><img src="/static/platforms.png" srcset="/static/platforms.png 1x, /static/platforms@2x.png 2x" alt="Platforms"></p>
+  <p class="center-text"><span class="button"><a href="/docs/intro">VIEW THE DOCUMENTATION</a></span></p>
+  <p class="center-text"><span class="button"><a href="https://github.com/preshing/plywood">GET THE SOURCE CODE</a></span></p>
+</div>
+  <script>
+    (function() {
+      var toggle = document.getElementById('theme-toggle');
+      toggle.addEventListener('click', function() {
+        var currentTheme = document.documentElement.getAttribute('data-theme');
+        var newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+        if (newTheme === 'light') {
+          document.documentElement.removeAttribute('data-theme');
+        } else {
+          document.documentElement.setAttribute('data-theme', 'dark');
+        }
+        localStorage.setItem('theme', newTheme);
+      });
+    })();
+  </script>
+</body>
+</html>
