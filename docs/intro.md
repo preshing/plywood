@@ -1,7 +1,5 @@
 # Introduction
 
-Welcome to Plywood!
-
 Plywood is a lightweight, easy-to-use, general-purpose, cross-platform C++ library with minimal dependencies. All you need is a C++14 compiler and a supported platform SDK.
 
 It's a complete alternative to the C and C++ Standard Libraries that packs a lot of features into a small code size, helping you build software that's easier to understand, distribute and maintain.

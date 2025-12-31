@@ -125,7 +125,6 @@ em {
     
     --text-banner: #e0e0e0;
     --text-primary: #181818;
-    --text-highlight: #59b7c7;
     --text-secondary: #404040;
     --text-muted: #909090;
     --text-code: #7d7d7d;
@@ -160,7 +159,6 @@ em {
     --bg-api-table: #171725;
     
     --text-primary: #e4e4e4;
-    --text-highlight: #f3f3a0;
     --text-secondary: #b0b0b0;
     --text-muted: #808080;
     --text-code: #a8a8a8;
@@ -239,10 +237,6 @@ html {
     font-size: 32px;
     line-height: 1.2;
     margin-bottom: 34px;
-}
-
-.front-contents .tagline .highlight {
-    color: var(--text-highlight)
 }
 
 .front-contents .include-base {
@@ -335,15 +329,6 @@ html {
     max-width: 1100px;
     margin: 0 auto;
     position: relative;
-}
-
-.banner .title .logo {
-    height: 33px;
-    width: auto;
-    position: relative;
-    top: 3px;
-    left: 19px;
-    margin-right: 7px;
 }
 
 .banner .title #title {

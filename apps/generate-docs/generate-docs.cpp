@@ -348,8 +348,8 @@ void convert_page(const json::Node* item) {
   <div class="banner">
     <div class="title">
         <a href="/">
-            <img class="logo" src="/static/plywood-house-small.png" srcset="/static/plywood-house-small.png 1x, /static/plywood-house-small@2x.png 2x" alt="Plywood logo">
-            <span id="title">Plywood C++ Base Library</span>
+            <img class="logo" src="/static/plywood-house-small.png" srcset="/static/plywood-house-small.png 1x, /static/plywood-house-small@2x.png 2x" alt="Plywood logo" style="position: absolute; left: 19px; top: 3px;">
+            <span style="color: #e8e8e8; font-size: 24px; position: absolute; left: 78px; top: 8px;">Plywood</span>
         </a>
         <span class="right">
             <button class="theme-toggle" id="theme-toggle" aria-label="Toggle dark mode" title="Toggle dark/light mode">
