@@ -134,7 +134,7 @@ em {
     --type-color: #28b6b6;
     --symbol-color: #269eff;
     --var-color: #404040;
-    --button-background: #bbd6e7;
+    --button-background: #dfebf3;
 
     --border-primary: #181818;
     --border-secondary: #d4d4d4;
@@ -168,7 +168,7 @@ em {
     --type-color: #48d1cc;
     --symbol-color: #5dade2;
     --var-color: #c0c0c0;
-    --button-background: #2e4a55;
+    --button-background: #263339;
     
     --border-primary: #707070;
     --border-secondary: #3a3a5a;
@@ -225,7 +225,7 @@ html {
 }
 
 .front-contents {
-    padding: 34px 20px;
+    padding: 34px 14px;
 }
 
 .center-text {
@@ -234,19 +234,20 @@ html {
 
 .front-contents .tagline {
     font-family: "robotobold", "Helvetica Neue", Arial, sans-serif;
-    font-size: 32px;
+    font-size: 28px;
     line-height: 1.2;
-    margin-bottom: 34px;
+    margin-bottom: 32px;
 }
 
 .front-contents .include-base {
-    margin-bottom: 10px;
+    margin-bottom: 8px;
 }
 
 .front-contents .include-base code {
+    display: inline-block;
     background-color: var(--bg-code-block);
-    font-size: 21px;
-    padding: 8px 20px;
+    font-size: 19px;
+    padding: 4px 20px;
     color: var(--text-code);
 }
 
@@ -256,15 +257,11 @@ html {
 
 .front-contents .base-features {
     display: flex;
-    flex-wrap: wrap;
     width: fit-content;
+    gap: 26px;
     margin: 0 auto 34px auto;
     color: var(--text-secondary);
     font-size: 14px;
-}
-
-.front-contents .base-features div {
-    padding: 0 20px;
 }
 
 .front-contents .base-features ul {
@@ -290,7 +287,7 @@ html {
 
 .front-contents .button {
     font-family: "robotobold", "Helvetica Neue", Arial, sans-serif;
-    font-size: 18px;
+    font-size: 15px;
     background-color: var(--button-background);
     padding: 2px 20px;
     border-radius: 8px;
