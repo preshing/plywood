@@ -454,6 +454,21 @@ Array<StringView> StringView::split_byte(char sep) const {
     return result;
 }
 
+String StringView::replace(StringView old_substr, StringView new_substr) const {
+    PLY_ASSERT(old_substr.num_bytes > 0);
+    MemStream out;
+    u32 limit = this->num_bytes - old_substr.num_bytes;
+    for (u32 i = 0; i < limit; i++) {
+        if (memcmp(this->bytes + i, old_substr.bytes, old_substr.num_bytes) == 0) {
+            out.write(new_substr);
+            i += old_substr.num_bytes - 1;
+        } else {
+            out.write(this->bytes[i]);
+        }
+    }
+    return out.move_to_string();
+}
+
 String StringView::upper_asc() const {
     String result = String::allocate(this->num_bytes);
     for (u32 i = 0; i < this->num_bytes; i++) {

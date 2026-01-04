@@ -2,7 +2,7 @@
        ____
       ╱   ╱╲    Plywood C++ Base Library
      ╱___╱╭╮╲   https://plywood.dev/
-      └──┴┴┴┘   
+      └──┴┴┴┘
 ========================================================*/
 
 #include <ply-json.h>
@@ -16,6 +16,7 @@ String source_folder = join_path(PLYWOOD_ROOT_DIR, "apps/generate-docs/data");
 String docs_folder = join_path(PLYWOOD_ROOT_DIR, "docs");
 String out_folder = join_path(PLYWOOD_ROOT_DIR, "docs/build");
 Owned<json::Node> contents;
+u32 publish_key = Random{}.generate_u32(); // Prevent browsers from caching old stylesheets
 
 void print_decl_as_api_title(Stream& out, const Parser* parser, const Declaration& decl) {
     Array<TokenSpan> spans = parser->syntax_highlight(decl);
@@ -326,14 +327,13 @@ void convert_page(const json::Node* item) {
     parse_markdown(mem, in);
     MemStream table_of_contents;
     generate_table_of_contents_html(table_of_contents, contents);
-    String full_html =
-        String::format(R"(
+    String full_html = String::format(R"(
 <html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{&} :: Plywood C++ Base Library</title>
-<link rel="stylesheet" href="/static/style.css">
+<link rel="stylesheet" href="/static/style.css?key={}">
 <script>
   // Apply saved theme immediately to prevent flash
   (function() {{
@@ -402,7 +402,8 @@ void convert_page(const json::Node* item) {
 </div></body>
 </html>
 )",
-                       item->get("title")->text(), table_of_contents.move_to_string(), mem.move_to_string());
+                                      item->get("title")->text(), publish_key, table_of_contents.move_to_string(),
+                                      mem.move_to_string());
 
     String out_path = join_path(out_folder, "content/docs", rel_name + ".html");
     Filesystem::make_dirs(split_path(out_path).directory);
@@ -425,12 +426,15 @@ void generate_whole_site() {
     Filesystem::make_dirs(join_path(out_folder, "static"));
 
     // Copy front page to content/index.html.
-    Filesystem::copy_file(join_path(source_folder, "index.html"), join_path(out_folder, "content/index.html"));
+    String front_page = Filesystem::load_text(join_path(source_folder, "index.html"));
+    front_page = front_page.replace("/static/style.css", String::format("/static/style.css?key={}", publish_key));
+    Filesystem::save_text(join_path(out_folder, "content/index.html"), front_page);
 
     // Copy static files to static/.
     for (const DirectoryEntry& entry : Filesystem::list_dir(join_path(source_folder, "static"))) {
         if (entry.is_file()) {
-            Filesystem::copy_file(join_path(source_folder, "static", entry.name), join_path(out_folder, "static", entry.name));
+            Filesystem::copy_file(join_path(source_folder, "static", entry.name),
+                                  join_path(out_folder, "static", entry.name));
         }
     }
 

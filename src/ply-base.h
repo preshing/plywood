@@ -1524,10 +1524,12 @@ struct StringView {
     StringView trim_right(bool (*match_func)(char) = is_whitespace) const {
         return this->trim(match_func, false, true);
     }
-    String join(ArrayView<const StringView> comps) const;
-    Array<StringView> split_byte(char sep) const;
-    String upper_asc() const;
-    String lower_asc() const;
+
+    PLY_NO_DISCARD String replace(StringView old_substr, StringView new_substr) const;
+    PLY_NO_DISCARD String join(ArrayView<const StringView> comps) const;
+    PLY_NO_DISCARD Array<StringView> split_byte(char sep) const;
+    PLY_NO_DISCARD String upper_asc() const;
+    PLY_NO_DISCARD String lower_asc() const;
     template <typename... Args>
     bool match(StringView pattern, Args*... args) const;
 };
@@ -1750,22 +1752,20 @@ struct String {
     }
 
     //----------------------------------------------------
-    // Capitalization
+    // Creating new strings
     //----------------------------------------------------
 
-    String upper_asc() const {
+    PLY_NO_DISCARD String replace(StringView old_substr, StringView new_substr) const {
+        return ((StringView) * this).replace(old_substr, new_substr);
+    }
+    PLY_NO_DISCARD String upper_asc() const {
         return ((StringView) * this).upper_asc();
     }
-    String lower_asc() const {
+    PLY_NO_DISCARD String lower_asc() const {
         return ((StringView) * this).lower_asc();
     }
-
-    //----------------------------------------------------
-    // Splitting and joining
-    //----------------------------------------------------
-
-    Array<StringView> split_byte(char sep) const;
-    String join(ArrayView<const StringView> comps) const;
+    PLY_NO_DISCARD Array<StringView> split_byte(char sep) const;
+    PLY_NO_DISCARD String join(ArrayView<const StringView> comps) const;
 
     //----------------------------------------------------
     // Modifying the string
