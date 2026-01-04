@@ -54,7 +54,12 @@ void send_generic_response(Response& response, Response::Code response_code);
 //-------------------------------------
 
 void serve_plywood_docs(const Request& request, Response& response) {
-    Array<StringView> parts = request.uri.split_byte('/');
+    String url_path = request.uri;
+    s32 query_pos = url_path.find('?');
+    if (query_pos >= 0) {
+        url_path = url_path.left(query_pos);
+    }
+    Array<StringView> parts = url_path.split_byte('/');
     if (parts.num_items() > 5) {
         parts = parts.subview(0, 5);
     }
@@ -73,14 +78,14 @@ void serve_plywood_docs(const Request& request, Response& response) {
             }
 
             bool is_text_file = false;
-            if (request.uri.ends_with(".css")) {
+            if (local_path.ends_with(".css")) {
                 *response.headers.insert("Content-type").value = "text/css";
                 is_text_file = true;
-            } else if (request.uri.ends_with(".woff")) {
+            } else if (local_path.ends_with(".woff")) {
                 *response.headers.insert("Content-type").value = "font/woff";
-            } else if (request.uri.ends_with(".woff2")) {
+            } else if (local_path.ends_with(".woff2")) {
                 *response.headers.insert("Content-type").value = "font/woff2";
-            } else if (request.uri.ends_with(".png")) {
+            } else if (local_path.ends_with(".png")) {
                 *response.headers.insert("Content-type").value = "image/png";
             } else {
                 PLY_ASSERT(0);
