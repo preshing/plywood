@@ -16,7 +16,7 @@ String source_folder = join_path(PLYWOOD_ROOT_DIR, "apps/generate-docs/data");
 String docs_folder = join_path(PLYWOOD_ROOT_DIR, "docs");
 String out_folder = join_path(PLYWOOD_ROOT_DIR, "docs/build");
 Owned<json::Node> contents;
-u32 publish_key = Random{}.generate_u32(); // Prevent browsers from caching old stylesheets
+u32 publish_key = 0; // Prevent browsers from caching old stylesheets
 
 void print_decl_as_api_title(Stream& out, const Parser* parser, const Declaration& decl) {
     Array<TokenSpan> spans = parser->syntax_highlight(decl);
@@ -422,6 +422,8 @@ Owned<json::Node> parse_json(StringView path) {
 }
 
 void generate_whole_site() {
+    publish_key = Random{}.generate_u32(); // Prevent browsers from caching old stylesheets
+
     Filesystem::make_dirs(join_path(out_folder, "content"));
     Filesystem::make_dirs(join_path(out_folder, "static"));
 

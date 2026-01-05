@@ -115,7 +115,7 @@ em {
 
 :root {
     --bg-page: #ffffff;
-    --bg-banner: #5a88b1;
+    --bg-banner: #326d97;
     --bg-sidebar: #ffffff;
     --bg-sidebar-hover: #eeeeee;
     --bg-sidebar-selected: #e3e8f1;
@@ -126,6 +126,7 @@ em {
     --text-banner: #e0e0e0;
     --text-primary: #181818;
     --text-secondary: #404040;
+    --text-wip: #d73030;
     --text-muted: #909090;
     --text-code: #7d7d7d;
     --text-code-inline: #909090;
@@ -150,7 +151,7 @@ em {
 
 [data-theme="dark"] {
     --bg-page: #202020;
-    --bg-banner: #212F45;
+    --bg-banner: #1c4e72;
     --bg-sidebar: #1a1a2e;
     --bg-sidebar-hover: #2a2a4a;
     --bg-sidebar-selected: #3a3a5a;
@@ -160,6 +161,7 @@ em {
     
     --text-primary: #e4e4e4;
     --text-secondary: #b0b0b0;
+    --text-wip: #ff7777;
     --text-muted: #808080;
     --text-code: #a8a8a8;
     --text-code-inline: #a0a0a0;
@@ -230,6 +232,8 @@ html {
 
 .center-text {
     text-align: center;
+    margin-left: auto;
+    margin-right: auto;
 }
 
 .front-contents .tagline {
@@ -270,9 +274,18 @@ html {
     line-height: 1.25;
 }
 
-.front-contents .also-included {
+.front-contents .wip {
+    font-size: 20px;
+    color: var(--text-wip);
+    border: 2px solid var(--text-wip);
+    padding: 4px 10px;
+    max-width: 600px;
+    margin-bottom: 32px;
+}
+
+.front-contents .modules-included {
     font-family: "robotobold", "Helvetica Neue", Arial, sans-serif;
-    font-size: 24px;
+    font-size: 22px;
     margin-bottom: 4px;
 }
 
@@ -313,7 +326,6 @@ html {
     height: 40px;
     z-index: 2;
     background: var(--bg-banner);
-    background: linear-gradient(180deg, #0c4872, #326d97);
     color: var(--text-banner);
     font-family: "robotobold", "Helvetica Neue", Arial, sans-serif;
 }

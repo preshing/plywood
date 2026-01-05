@@ -1,4 +1,4 @@
-﻿# `<ply-base.h>` — The Base Library
+﻿{title text="OS and Common Routines" include="ply-base.h" namespace="ply"}
 
 Most of the base library is exposed through the single header file `<ply-base.h>`. This is where you'll find cross-platform operating system support, container types and commonly-used convenience functions.
 

@@ -3,7 +3,7 @@
     {"title": "Getting Started", "path": "getting-started"},
     {"title": "Project Overview", "path": "overview"},
     {"title": "Configuration Options", "path": "configuration"},
-    {"title": "The Base Library — <ply-base.h>", "path": "base", "children": [
+    {"title": "OS and Common Routines — <ply-base.h>", "path": "base", "children": [
         {"title": "Preprocessor Macros", "path": "base/macros"}
         {"title": "Integer Types", "path": "base/integers"},
         {"title": "Numeric Functions", "path": "base/numeric-functions"},
@@ -23,13 +23,13 @@
         {"title": "Threads", "path": "base/threads"},
         {"title": "Processes", "path": "base/processes"}
     ]},
-    {"title": "B-Trees — <ply-btree.h>", "path": "btrees"},
-    {"title": "TCP/IP Networking — <ply-network.h>", "path": "network"},
     {"title": "2D and 3D Math — <ply-math.h>", "path": "math"},
+    {"title": "TCP/IP Networking — <ply-network.h>", "path": "network"},
+    {"title": "B-Trees — <ply-btree.h>", "path": "btrees"},
     {"title": "Text Parsers", "path": "parsers", "children": [
         {"title": "Tokenizer — <ply-tokenizer.h>", "path": "parsers/tokenizer"},
-        {"title": "JSON Parser — <ply-json.h>", "path": "parsers/json"},
-        {"title": "Markdown Parser — <ply-markdown.h>", "path": "parsers/markdown"},
+        {"title": "JSON — <ply-json.h>", "path": "parsers/json"},
+        {"title": "Markdown — <ply-markdown.h>", "path": "parsers/markdown"},
         {"title": "C++ Parser — <ply-cpp.h>", "path": "parsers/cpp"}
     ]}
 ]
