@@ -399,6 +399,7 @@ void convert_page(const json::Node* item) {
       }});
     }})();
   </script>
+  <script src="/static/doc-viewer.js"></script>
 </div></body>
 </html>
 )",

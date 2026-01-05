@@ -81,6 +81,9 @@ void serve_plywood_docs(const Request& request, Response& response) {
             if (local_path.ends_with(".css")) {
                 *response.headers.insert("Content-type").value = "text/css";
                 is_text_file = true;
+            } else if (local_path.ends_with(".js")) {
+                *response.headers.insert("Content-type").value = "application/javascript";
+                is_text_file = true;
             } else if (local_path.ends_with(".woff")) {
                 *response.headers.insert("Content-type").value = "font/woff";
             } else if (local_path.ends_with(".woff2")) {
