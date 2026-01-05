@@ -302,12 +302,17 @@ void parse_markdown(Stream& out, ViewStream& in) {
 
 void generate_table_of_contents_html(Stream& out, const json::Node* items) {
     for (const json::Node* item : items->array_view()) {
-        out.format("<li><a href=\"/docs/{}\">{&}</a></li>", item->get("path")->text(), item->get("title")->text());
         const json::Node* children = item->get("children");
         if (children->is_valid()) {
-            out.write("<ul>");
+            // Item with children: collapsible, no link (click expands)
+            // Start expanded (caret-down) by default
+            out.format("<li class=\"caret caret-down selectable\"><span>{&}</span></li>", item->get("title")->text());
+            out.write("<ul class=\"nested active\">");
             generate_table_of_contents_html(out, children);
             out.write("</ul>");
+        } else {
+            // Leaf item: navigable link
+            out.format("<li class=\"selectable\"><a href=\"/docs/{}\">{&}</a></li>", item->get("path")->text(), item->get("title")->text());
         }
     }
 }

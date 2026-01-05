@@ -1,6 +1,7 @@
-// doc2.js - Mobile dropdown menu for documentation table of contents
-// This script makes the hamburger button (#three-lines) show the sidebar (.directory)
-// as a popup menu when on narrow screens (mobile).
+// doc-viewer.js - Interactive features for documentation pages
+// Features:
+//   1. Mobile hamburger menu (#three-lines) shows sidebar as popup
+//   2. Collapsible sidebar table of contents
 
 var directory = null;
 var menuShown = null; // { button, menu, clickHandler }
@@ -67,10 +68,48 @@ function togglePopupMenu(button, menu) {
     return mustShow;
 }
 
+// Cleanup handler after CSS height transition ends
+function onEndTransition(evt) {
+    this.removeEventListener('transitionend', onEndTransition);
+    this.style.removeProperty('display');
+    this.style.removeProperty('transition');
+    this.style.removeProperty('height');
+}
+
 // Initialize when DOM is ready
 document.addEventListener('DOMContentLoaded', function() {
     injectKeyframeAnimation();
     directory = document.querySelector('.directory');
+
+    // Set up collapsible sidebar TOC
+    var carets = document.getElementsByClassName('caret');
+    for (var i = 0; i < carets.length; i++) {
+        carets[i].addEventListener('click', function() {
+            var childList = this.nextElementSibling;
+            if (this.classList.contains('caret-down')) {
+                // Collapse
+                this.classList.remove('caret-down');
+                childList.style.display = 'block';
+                childList.style.height = childList.scrollHeight + 'px';
+                childList.classList.remove('active');
+                requestAnimationFrame(function() {
+                    childList.style.transition = 'height 0.15s ease-out';
+                    requestAnimationFrame(function() {
+                        childList.style.height = '0px';
+                        childList.addEventListener('transitionend', onEndTransition);
+                    });
+                });
+            } else {
+                // Expand
+                this.classList.add('caret-down');
+                childList.style.display = 'block';
+                childList.style.transition = 'height 0.15s ease-out';
+                childList.style.height = childList.scrollHeight + 'px';
+                childList.classList.add('active');
+                childList.addEventListener('transitionend', onEndTransition);
+            }
+        });
+    }
 
     var threeLines = document.getElementById('three-lines');
     if (threeLines && directory) {
