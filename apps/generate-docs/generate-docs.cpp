@@ -304,9 +304,10 @@ void generate_table_of_contents_html(Stream& out, const json::Node* items) {
     for (const json::Node* item : items->array_view()) {
         const json::Node* children = item->get("children");
         if (children->is_valid()) {
-            // Item with children: collapsible, no link (click expands)
+            // Item with children: collapsible AND navigable
             // Start expanded (caret-down) by default
-            out.format("<li class=\"caret caret-down selectable\"><span>{&}</span></li>", item->get("title")->text());
+            out.format("<a href=\"/docs/{}\"><li class=\"caret caret-down selectable\"><span>{&}</span></li></a>",
+                       item->get("path")->text(), item->get("title")->text());
             out.write("<ul class=\"nested active\">");
             generate_table_of_contents_html(out, children);
             out.write("</ul>");
@@ -330,6 +331,16 @@ void convert_page(const json::Node* item) {
     ViewStream in{markdown};
     MemStream mem;
     parse_markdown(mem, in);
+    String article_content = mem.move_to_string();
+    String page_title = item->get("title")->text();
+
+    // Write content-only file for AJAX loading (format: "Title\n<content>")
+    String ajax_content = String::format("{} :: Plywood C++ Base Library\n{}", page_title, article_content);
+    String ajax_path = join_path(out_folder, "content/docs", rel_name + ".ajax.html");
+    Filesystem::make_dirs(split_path(ajax_path).directory);
+    Filesystem::save_text(ajax_path, ajax_content);
+
+    // Write full HTML page
     MemStream table_of_contents;
     generate_table_of_contents_html(table_of_contents, contents);
     String full_html = String::format(R"(
@@ -408,8 +419,8 @@ void convert_page(const json::Node* item) {
 </div></body>
 </html>
 )",
-                                      item->get("title")->text(), publish_key, table_of_contents.move_to_string(),
-                                      mem.move_to_string());
+                                      page_title, publish_key, table_of_contents.move_to_string(),
+                                      article_content);
 
     String out_path = join_path(out_folder, "content/docs", rel_name + ".html");
     Filesystem::make_dirs(split_path(out_path).directory);

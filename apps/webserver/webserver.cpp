@@ -119,6 +119,14 @@ void serve_plywood_docs(const Request& request, Response& response) {
             String local_path = join_path(docs_folder, "content/docs", StringView{'/'}.join(parts.subview(1)));
             if (Filesystem::is_dir(local_path)) {
                 local_path = join_path(local_path, "index.html");
+            } else if (local_path.ends_with(".ajax")) {
+                // AJAX content-only request (e.g. /docs/intro.ajax or /docs/parsers.ajax)
+                String path_without_ajax = local_path.left(local_path.num_bytes - 5); // Remove ".ajax"
+                if (Filesystem::is_dir(path_without_ajax)) {
+                    local_path = join_path(path_without_ajax, "index.ajax.html");
+                } else {
+                    local_path += ".html";
+                }
             } else {
                 local_path += ".html";
             }
