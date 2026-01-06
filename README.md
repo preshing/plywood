@@ -1,6 +1,6 @@
 # The Plywood C++ Base Library
 
-Plywood is a low-level C++ library for building cross-platform native software. It provides a thin, portable interface over OS features and includes built-in support for Markdown and JSON. Its compact size and lack of dependencies make it easy to integrate and fast to compile.
+Plywood is a low-level C++ library for building cross-platform native software. It provides a thin, portable interface over OS features and includes native support for Markdown and JSON. Its compact size and lack of dependencies make it easy to integrate and fast to compile.
 
 Plywood's features are divided into `.cpp`/`.h` pairs located in the `src/` folder. Integrating a feature into your project is a matter of including the necessary header file and compiling/linking with the associated source file.
 
@@ -13,4 +13,4 @@ Plywood's features are divided into `.cpp`/`.h` pairs located in the `src/` fold
 * `<ply-markdown.h>` (132 lines): Markdown parser with HTML output.
 * `<ply-cpp.h>` (439 lines): Experimental C++ parser (mainly used for documentation generation).
 
-There are several sample applications in the `apps/` folder that demonstrate how to use the library. CMake is required to build them. Detailed instructions are available in the [Getting Started](http://plywood.dev/docs/getting-started) guide.
+There are several sample applications in the `apps/` folder that demonstrate how to use the library. CMake is required to build them. Detailed instructions are available in the [Getting Started](https://plywood.dev/docs/getting-started) guide.
