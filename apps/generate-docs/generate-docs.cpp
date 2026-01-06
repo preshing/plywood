@@ -370,10 +370,8 @@ void convert_page(const json::Node* item) {
             <span style="color: #e8e8e8; font-size: 22px; position: absolute; left: 73px; top: 10px;">Plywood</span>
         </a>
         <span class="right">
-          <div id="nav-links">
-          <span><a href="/docs/intro">DOCS</a></span>
-          <span><a href="https://github.com/preshing/plywood">GITHUB</a></span>
-            <button class="theme-toggle" id="theme-toggle" aria-label="Toggle dark mode" title="Toggle dark/light mode">
+          <div id="nav-links"><a href="/docs/intro"><span class="nav-link">DOCS</span></a><a href="https://github.com/preshing/plywood"><span class="nav-link">GITHUB</span></a>
+            <span class="theme-toggle-parent"><button class="theme-toggle" id="theme-toggle" aria-label="Toggle dark mode" title="Toggle dark/light mode">
                 <svg class="moon-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                     <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
                 </svg>
@@ -388,7 +386,7 @@ void convert_page(const json::Node* item) {
                     <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
                     <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
                 </svg>
-            </button>
+            </button></span>
           </div>
             <span id="hamburger" class="button"></span>
         </span>
