@@ -3,7 +3,7 @@
     {"title": "Getting Started", "path": "getting-started"},
     {"title": "Project Overview", "path": "overview"},
     {"title": "Configuration Options", "path": "configuration"},
-    {"title": "OS and Common Routines — <ply-base.h>", "path": "base", "children": [
+    {"title": "OS and Common Primitives — <ply-base.h>", "path": "base", "children": [
         {"title": "Preprocessor Macros", "path": "base/macros"}
         {"title": "Integer Types", "path": "base/integers"},
         {"title": "Numeric Functions", "path": "base/numeric-functions"},

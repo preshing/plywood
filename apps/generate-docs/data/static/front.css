@@ -11,23 +11,29 @@
     font-family: "robotobold", "Helvetica Neue", Arial, sans-serif;
 }
 
-.front-banner .inner .right {
-    height: 100%;
-    float: right;
-    display: flex;
-    align-items: center;    
-    gap: 30px;
-    font-size: 18px;
-}
-
-.front-banner .inner a {
-    color: #e8e8e8;
-}
-
 .front-banner .inner {
     max-width: 1100px;
     margin: 0 auto;
     position: relative;    
+    height: 100%;
+}
+
+.front-banner .inner .right {
+    position: absolute;
+    right: 0px;
+    bottom: 0px;
+}
+
+#nav-links {
+    font-size: 18px;
+    margin-right: 10px;
+}
+#nav-links span {
+    margin-right: 25px;
+}
+
+.front-banner .inner a {
+    color: #e8e8e8;
 }
 
 .front-contents {
@@ -116,5 +122,21 @@
 
 .front-contents .button a:hover {
     text-decoration: none;
+}
+
+/*------------------------------------------------
+   Media queries for different screen sizes
+------------------------------------------------*/
+
+@media only screen and (min-width: 600px) {
+}
+
+@media only screen and (max-width: 599px) {
+    #nav-links {
+        display: none;
+    }
+    #hamburger {
+        display: inline-block;
+    }
 }
 

@@ -1,6 +1,6 @@
 // doc-viewer.js - Interactive features for documentation pages
 // Features:
-//   1. Mobile hamburger menu (#three-lines) shows sidebar as popup
+//   1. Mobile hamburger menu (#hamburger) shows sidebar as popup
 //   2. Collapsible sidebar table of contents
 //   3. AJAX page loading with caching and history management
 
@@ -269,16 +269,16 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // Set up mobile hamburger menu
-    var threeLines = document.getElementById('three-lines');
+    var threeLines = document.getElementById('hamburger');
     if (threeLines && directory) {
         threeLines.addEventListener('click', function() {
             togglePopupMenu(threeLines, directory);
         });
         threeLines.addEventListener('mouseover', function() {
-            this.firstElementChild.classList.add('highlight');
+            this.classList.add('highlight');
         });
         threeLines.addEventListener('mouseout', function() {
-            this.firstElementChild.classList.remove('highlight');
+            this.classList.remove('highlight');
         });
     }
 

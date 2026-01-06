@@ -19,7 +19,8 @@
 <body>
   <div class="front-banner">
     <div class="inner">
-        <span class="right">
+        <div class="right">
+          <div id="nav-links">
           <span><a href="/docs/intro">DOCS</a></span>
           <span><a href="https://github.com/preshing/plywood">GITHUB</a></span>
             <button class="theme-toggle" id="theme-toggle" aria-label="Toggle dark mode" title="Toggle dark/light mode">
@@ -38,8 +39,9 @@
                     <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
                 </svg>
             </button>
-            <span id="three-lines" class="button"><span></span></span>
-        </span>
+          </div>
+            <span id="hamburger" class="button"></span>
+          </div>
         <img class="logo" src="/static/plywood-house.png" srcset="/static/plywood-house.png 1x, /static/plywood-house@2x.png 2x" alt="Plywood logo" style="position: absolute; left: 20px; top: 12px; height: 66px;">
         <span style="color: #ffffff; font-size: 36px; position: absolute; left: 122px; top: 16px;">Plywood</span>
         <span style="font-size: 15px; color: #e7e79a; position: absolute; left: 178px; top: 53px;">C++ BASE LIBRARY</span>
@@ -50,7 +52,7 @@
   <p class="center-text wip">This project is a work in progress and not ready for wide release. Feel free to look around or check back later for updates.</p>
   <p class="center-text modules-included">Modules Included</p>
   <table class="grid"><tbody>
-    <tr><td><code class="type">&lt;ply-base.h&gt;</code></td><td>OS and Common Routines</td></tr>
+    <tr><td><code class="type">&lt;ply-base.h&gt;</code></td><td>OS and Common Primitives</td></tr>
     <tr><td><code class="type">&lt;ply-math.h&gt;</code></td><td>2D and 3D Math</td></tr>
     <tr><td><code class="type">&lt;ply-network.h&gt;</code></td><td>TCP/IP Networking</td></tr>
     <tr><td><code class="type">&lt;ply-btree.h&gt;</code></td><td>B-Trees</td></tr>
