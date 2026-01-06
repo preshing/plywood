@@ -1,0 +1,120 @@
+﻿/*------------------------------------------------
+   Front page
+------------------------------------------------*/
+
+.front-banner {
+    position: relative;
+    width: 100%;
+    height: 88px;
+    background: var(--bg-banner);
+    background: linear-gradient(180deg, #0c4872, #326d97);
+    font-family: "robotobold", "Helvetica Neue", Arial, sans-serif;
+}
+
+.front-banner .inner .right {
+    height: 100%;
+    float: right;
+    display: flex;
+    align-items: center;    
+    gap: 30px;
+    font-size: 18px;
+}
+
+.front-banner .inner a {
+    color: #e8e8e8;
+}
+
+.front-banner .inner {
+    max-width: 1100px;
+    margin: 0 auto;
+    position: relative;    
+}
+
+.front-contents {
+    padding: 34px 14px;
+}
+
+.center-text {
+    text-align: center;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.front-contents .tagline {
+    font-family: "robotobold", "Helvetica Neue", Arial, sans-serif;
+    font-size: 28px;
+    line-height: 1.2;
+    margin-bottom: 32px;
+}
+
+.front-contents .include-base {
+    margin-bottom: 8px;
+}
+
+.front-contents .include-base code {
+    display: inline-block;
+    background-color: var(--bg-code-block);
+    font-size: 19px;
+    padding: 4px 20px;
+    color: var(--text-code);
+}
+
+.front-contents .base-summary {
+    margin-bottom: 10px;
+}
+
+.front-contents .base-features {
+    display: flex;
+    width: fit-content;
+    gap: 26px;
+    margin: 0 auto 34px auto;
+    color: var(--text-secondary);
+    font-size: 14px;
+}
+
+.front-contents .base-features ul {
+    margin-left: 18px;
+    margin-bottom: 0px;
+    line-height: 1.25;
+}
+
+.front-contents .wip {
+    font-size: 20px;
+    color: var(--text-wip);
+    border: 2px solid var(--text-wip);
+    padding: 4px 10px;
+    max-width: 600px;
+    margin-bottom: 32px;
+}
+
+.front-contents .modules-included {
+    font-family: "robotobold", "Helvetica Neue", Arial, sans-serif;
+    font-size: 22px;
+    margin-bottom: 4px;
+}
+
+.front-contents .runs-on {
+    margin-top: 36px;
+    margin-bottom: 5px;
+}
+
+.front-contents .platforms {
+    margin-bottom: 36px;
+}
+
+.front-contents .button {
+    font-family: "robotobold", "Helvetica Neue", Arial, sans-serif;
+    font-size: 15px;
+    background-color: var(--button-background);
+    padding: 2px 20px;
+    border-radius: 8px;
+}
+
+.front-contents .button a {
+    color: var(--text-primary);
+}
+
+.front-contents .button a:hover {
+    text-decoration: none;
+}
+

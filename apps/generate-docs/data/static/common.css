@@ -195,345 +195,58 @@ html {
 }
 
 /*------------------------------------------------
-   Front page
+   Theme toggle button
 ------------------------------------------------*/
 
-.front-banner {
-    position: relative;
-    width: 100%;
-    height: 88px;
-    background: var(--bg-banner);
-    background: linear-gradient(180deg, #0c4872, #326d97);
-    font-family: "robotobold", "Helvetica Neue", Arial, sans-serif;
-}
-
-.front-banner .inner .right {
-    height: 100%;
-    float: right;
-    display: flex;
-    align-items: center;    
-    gap: 30px;
-    font-size: 18px;
-}
-
-.front-banner .inner a {
-    color: #e8e8e8;
-}
-
-.front-banner .inner {
-    max-width: 1100px;
-    margin: 0 auto;
-    position: relative;    
-}
-
-.front-contents {
-    padding: 34px 14px;
-}
-
-.center-text {
-    text-align: center;
-    margin-left: auto;
-    margin-right: auto;
-}
-
-.front-contents .tagline {
-    font-family: "robotobold", "Helvetica Neue", Arial, sans-serif;
-    font-size: 28px;
-    line-height: 1.2;
-    margin-bottom: 32px;
-}
-
-.front-contents .include-base {
-    margin-bottom: 8px;
-}
-
-.front-contents .include-base code {
-    display: inline-block;
-    background-color: var(--bg-code-block);
-    font-size: 19px;
-    padding: 4px 20px;
-    color: var(--text-code);
-}
-
-.front-contents .base-summary {
-    margin-bottom: 10px;
-}
-
-.front-contents .base-features {
-    display: flex;
-    width: fit-content;
-    gap: 26px;
-    margin: 0 auto 34px auto;
-    color: var(--text-secondary);
-    font-size: 14px;
-}
-
-.front-contents .base-features ul {
-    margin-left: 18px;
-    margin-bottom: 0px;
-    line-height: 1.25;
-}
-
-.front-contents .wip {
-    font-size: 20px;
-    color: var(--text-wip);
-    border: 2px solid var(--text-wip);
-    padding: 4px 10px;
-    max-width: 600px;
-    margin-bottom: 32px;
-}
-
-.front-contents .modules-included {
-    font-family: "robotobold", "Helvetica Neue", Arial, sans-serif;
-    font-size: 22px;
-    margin-bottom: 4px;
-}
-
-.front-contents .runs-on {
-    margin-top: 36px;
-    margin-bottom: 5px;
-}
-
-.front-contents .platforms {
-    margin-bottom: 36px;
-}
-
-.front-contents .button {
-    font-family: "robotobold", "Helvetica Neue", Arial, sans-serif;
-    font-size: 15px;
-    background-color: var(--button-background);
-    padding: 2px 20px;
-    border-radius: 8px;
-}
-
-.front-contents .button a {
-    color: var(--text-primary);
-}
-
-.front-contents .button a:hover {
-    text-decoration: none;
-}
-
-/*------------------------------------------------
-   Documentation banner
-------------------------------------------------*/
-
-.banner {
-    position: fixed;
-    left: 0px;
-    right: 0px;
-    top: 0px;
-    height: 40px;
-    z-index: 2;
-    background: var(--bg-banner);
-    color: var(--text-banner);
-    font-family: "robotobold", "Helvetica Neue", Arial, sans-serif;
-}
-
-.banner a {
-    color: var(--text-banner);
-}
-
-.banner .title {
-    max-width: 1100px;
-    margin: 0 auto;
-    position: relative;
-}
-
-.banner .title #title {
-    font-size: 20px;
-    position: relative;
-    top: -7px;
-    left: 17px;
-}
-
-.banner .right {
-    display: inline-block;
-    position: absolute;        
-    right: 0px;
-    height: 100%;
-}
-
-.banner .right .button {
-    display: inline-block;
-    height: 100%;
+.theme-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
     cursor: pointer;
-    vertical-align: top;
+    border: none;
+    background: transparent;
+    padding: 0;
+    border-radius: 6px;
+    transition: background-color 0.2s ease;
 }
 
-.banner .right #three-lines {
-    padding: 0 8px;
+.theme-toggle:hover {
+    background: rgba(255, 255, 255, 0.15);
 }
 
-.banner .right #three-lines span {
-    display: inline-block;
-    position: relative;
-    width: 30px;
-    height: 30px;
-    top: 5px;
-    background-image: url(data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzAiIGhlaWdodD0iMzAiIHZlcnNpb249IjEuMSIgdmlld0JveD0iMCAwIDcuOTM3NSA3LjkzNzUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgeG1sbnM6eGxpbms9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkveGxpbmsiPgogPHJlY3QgaWQ9InJlY3QxNDAyIiB4PSIxLjA1ODMiIHk9IjMuNDM5NiIgd2lkdGg9IjUuODIwOCIgaGVpZ2h0PSIxLjA1ODMiIHJ5PSIuNTI5MTciIGZpbGw9IiNiM2IzYjMiLz4KIDx1c2UgaWQ9InVzZTE0MDQiIHRyYW5zZm9ybT0idHJhbnNsYXRlKDAgLTIuMTE2NykiIHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIHhsaW5rOmhyZWY9IiNyZWN0MTQwMiIvPgogPHVzZSB0cmFuc2Zvcm09InRyYW5zbGF0ZSgwIDQuMjMzMykiIHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIHhsaW5rOmhyZWY9IiN1c2UxNDA0Ii8+Cjwvc3ZnPgo=);
+.theme-toggle svg {
+    width: 22px;
+    height: 22px;
+    fill: var(--text-banner);
+    transition: fill 0.2s ease, transform 0.3s ease;
 }
 
-.banner .right #three-lines span.highlight {
-    background-image: url(data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzAiIGhlaWdodD0iMzAiIHZlcnNpb249IjEuMSIgdmlld0JveD0iMCAwIDcuOTM3NSA3LjkzNzUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgeG1sbnM6eGxpbms9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkveGxpbmsiPgogPHJlY3Qgd2lkdGg9IjcuOTM3NSIgaGVpZ2h0PSI3LjkzNzUiIHJ5PSIxLjkxODIiIGZpbGw9IiNlNmU2ZTYiLz4KIDxyZWN0IGlkPSJyIiB4PSIxLjA1ODMiIHk9IjMuNDM5NiIgd2lkdGg9IjUuODIwOCIgaGVpZ2h0PSIxLjA1ODMiIHJ5PSIuNTI5MTciIGZpbGw9IiNiM2IzYjMiLz4KIDx1c2UgdHJhbnNmb3JtPSJ0cmFuc2xhdGUoMCAtMi4xMTY3KSIgeGxpbms6aHJlZj0iI3IiLz4KIDx1c2UgdHJhbnNmb3JtPSJ0cmFuc2xhdGUoMCAyLjExNjcpIiB4bGluazpocmVmPSIjciIvPgo8L3N2Zz4K);
+.theme-toggle:hover svg {
+    transform: rotate(15deg);
 }
 
-/*------------------------------------------------
-   Sidebar directory navigation
-------------------------------------------------*/
-
-.directory {
+/* Sun icon (shown in dark mode) */
+.theme-toggle .sun-icon {
     display: none;
-    color: var(--text-secondary);
-    position: fixed;
-    width: 280px;
-    top: 42px;
-    bottom: 0px;
-    z-index: 1;
-    overflow: hidden;
-    -ms-overflow-style: -ms-autohiding-scrollbar;
-    font-size: 85%;
-    transform-origin: top right;
-    font-family: "source_sans_3", "Helvetica Neue", Arial, sans-serif;
 }
-    
-.directory ul {
-    line-height: 1.55;
-    overflow: hidden;
-}
-.directory li.caret-down span::before {
-    -ms-transform: rotate(90deg);
-    -webkit-transform: rotate(90deg);
-    transform: rotate(90deg);  
-}
-.directory .nested {
-    display: none;
-    height: 0px;
-}
-.directory .active {
+
+/* Moon icon (shown in light mode) */
+.theme-toggle .moon-icon {
     display: block;
-    height: auto;
-}
-.directory li.caret {
-    cursor: pointer;
-    -webkit-user-select: none; /* Safari 3.1+ */
-    -moz-user-select: none; /* Firefox 2+ */
-    -ms-user-select: none; /* IE 10+ */
-    user-select: none;
-}
-.directory li.caret span {
-    position: relative;
 }
 
-.directory li.caret span::before {
-    content: var(--caret-icon);
-    position: absolute;
-    left: -16px;
-    top: 0.3em;
-    transform-origin: 55% 50%;
-    transition: transform 0.1s linear;  
-}
-.directory li {
-    padding-left: 1.7em;
-    padding-right: 0.5em;
-}
-.directory ul ul li {
-    padding-left: 2.9em;
-}
-.directory ul ul ul li {
-    padding-left: 4.1em;
-}
-.directory ul ul ul ul li {
-    padding-left: 5.3em;
-}
-.directory ul ul ul ul ul li {
-    padding-left: 6.5em;
-}
-.directory ul ul ul ul ul ul li {
-    padding-left: 7.7em;
-}
-.directory li.selectable:hover {
-    background: var(--bg-sidebar-hover);
-}
-.directory li.selected, .directory li.selected:hover {
-    background: var(--bg-sidebar-selected);
-}
-.directory a {
-    color: inherit;
+[data-theme="dark"] .theme-toggle .sun-icon {
+    display: block;
 }
 
-.scroller {
-    overflow-x: hidden;
-    overflow-y: auto;
-    width: 100%;
-    height: 100%;
-    transform-origin: top right;
-}
-
-.scroller .inner {
-    margin: 12px 0px;
-}
-.scroller ul {
-    margin-bottom: 0px;
-}
-
-.scroller::-webkit-scrollbar, scrollbar {
-    width: 8px;
-}
-
-.scroller::-webkit-scrollbar-thumb, scrollbar-thumb {
-    background: var(--scrollbar-thumb);
-    border-radius: 4px;
+[data-theme="dark"] .theme-toggle .moon-icon {
+    display: none;
 }
 
 /*------------------------------------------------
-   Media queries for different screen sizes
-------------------------------------------------*/
-
-@media only screen and (min-width: 700px) {
-    .directory {
-        display: block;
-        top: 42px;
-        bottom: 0px;
-    }
-    .content-parent {
-        margin-left: 280px;
-        padding: 15px 35px;
-    }
-    #get-involved {
-        margin-right: 10px;
-    }
-    .banner #three-lines {
-        display: none;
-    }
-}
-
-@media only screen and (max-width: 699px) {
-    .directory {
-        right: 0px;
-        top: 35px;
-        bottom: 25px;
-        max-height: 600px;
-        z-index: 3;
-        background: var(--bg-sidebar);
-        border: 1px solid var(--border-sidebar);
-        @include box-shadow(0 2px 14px 0 rgba(0, 0, 0, 0.25));
-    }
-    .directory.expanded {
-        display: block;
-        animation-name: menuAnimation;
-        animation-duration: 0.15s;
-        animation-timing-function: linear;
-    }
-    .directory .expanded-content {
-        animation-name: menuContentsAnimation;
-        animation-duration: 0.15s;
-        animation-timing-function: linear;
-    }
-}
-
-/*------------------------------------------------
-   Page content
+   Content styles
 ------------------------------------------------*/
 
 .content a {
@@ -725,55 +438,4 @@ html {
 .content table.grid td {
   border: 1px solid var(--border-secondary);
   padding: 0px 8px;
-}
-
-/*------------------------------------------------
-   Theme toggle button
-------------------------------------------------*/
-
-.theme-toggle {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 36px;
-    height: 36px;
-    cursor: pointer;
-    border: none;
-    background: transparent;
-    padding: 0;
-    border-radius: 6px;
-    transition: background-color 0.2s ease;
-}
-
-.theme-toggle:hover {
-    background: rgba(255, 255, 255, 0.15);
-}
-
-.theme-toggle svg {
-    width: 22px;
-    height: 22px;
-    fill: var(--text-banner);
-    transition: fill 0.2s ease, transform 0.3s ease;
-}
-
-.theme-toggle:hover svg {
-    transform: rotate(15deg);
-}
-
-/* Sun icon (shown in dark mode) */
-.theme-toggle .sun-icon {
-    display: none;
-}
-
-/* Moon icon (shown in light mode) */
-.theme-toggle .moon-icon {
-    display: block;
-}
-
-[data-theme="dark"] .theme-toggle .sun-icon {
-    display: block;
-}
-
-[data-theme="dark"] .theme-toggle .moon-icon {
-    display: none;
 }

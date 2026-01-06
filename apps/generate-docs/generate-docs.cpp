@@ -313,7 +313,8 @@ void generate_table_of_contents_html(Stream& out, const json::Node* items) {
             out.write("</ul>");
         } else {
             // Leaf item: navigable link
-            out.format("<li class=\"selectable\"><a href=\"/docs/{}\">{&}</a></li>", item->get("path")->text(), item->get("title")->text());
+            out.format("<li class=\"selectable\"><a href=\"/docs/{}\">{&}</a></li>", item->get("path")->text(),
+                       item->get("title")->text());
         }
     }
 }
@@ -343,13 +344,14 @@ void convert_page(const json::Node* item) {
     // Write full HTML page
     MemStream table_of_contents;
     generate_table_of_contents_html(table_of_contents, contents);
-    String full_html = String::format(R"(
+    StringView format_str = R"(
 <html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{&} :: Plywood C++ Base Library</title>
-<link rel="stylesheet" href="/static/style.css?key={}">
+<link rel="stylesheet" href="/static/common.css?key={}">
+<link rel="stylesheet" href="/static/docs.css?key={}">
 <script>
   // Apply saved theme immediately to prevent flash
   (function() {{
@@ -360,7 +362,7 @@ void convert_page(const json::Node* item) {
   }})();
 </script>
 </head>
-<body><div class="inner-body">  
+<body>
   <div class="banner">
     <div class="title">
         <a href="/">
@@ -388,6 +390,7 @@ void convert_page(const json::Node* item) {
         </span>
     </div>
   </div>
+  <div class="inner-body">  
   <div class="directory">
     <div class="scroller">
       <div class="inner">
@@ -418,9 +421,9 @@ void convert_page(const json::Node* item) {
   <script src="/static/doc-viewer.js"></script>
 </div></body>
 </html>
-)",
-                                      page_title, publish_key, table_of_contents.move_to_string(),
-                                      article_content);
+)";
+    String full_html = String::format(format_str, page_title, publish_key, publish_key,
+                                      table_of_contents.move_to_string(), article_content);
 
     String out_path = join_path(out_folder, "content/docs", rel_name + ".html");
     Filesystem::make_dirs(split_path(out_path).directory);
