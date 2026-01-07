@@ -14,7 +14,7 @@
     <Expand>
       <ArrayItems>
         <Size>num_items_</Size>
-        <ValuePointer>items</ValuePointer>
+        <ValuePointer>items_</ValuePointer>
       </ArrayItems>
     </Expand>
   </Type>
@@ -26,7 +26,7 @@
     <Expand>
       <ArrayItems>
         <Size>num_items_</Size>
-        <ValuePointer>items</ValuePointer>
+        <ValuePointer>items_</ValuePointer>
       </ArrayItems>
     </Expand>
   </Type>
@@ -35,7 +35,7 @@
     <DisplayString Condition="$T2 == 1">{items[0]}</DisplayString>
     <DisplayString Condition="$T2 > 1">{items[0]}, ...</DisplayString>
     <Expand>
-      <ExpandedItem>items</ExpandedItem>
+      <ExpandedItem>items_</ExpandedItem>
     </Expand>
   </Type>
 

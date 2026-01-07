@@ -1908,91 +1908,97 @@ inline u32 hash(u64 item) {
 template <typename Item>
 class ArrayView {
 private:
-    Item* items = nullptr;
+    Item* items_ = nullptr;
     u32 num_items_ = 0;
 
 public:
     // Constructors
     ArrayView() = default;
-    ArrayView(Item* items, u32 num_items) : items{items}, num_items_{num_items} {
+    ArrayView(Item* items, u32 num_items) : items_{items}, num_items_{num_items} {
     }
     template <typename U = Item, std::enable_if_t<std::is_const<U>::value, int> = 0>
     ArrayView(std::initializer_list<Item> init_list)
-        : items{init_list.begin()}, num_items_{numeric_cast<u32>(init_list.size())} {
+        : items_{init_list.begin()}, num_items_{numeric_cast<u32>(init_list.size())} {
         PLY_ASSERT((uptr) init_list.end() - (uptr) init_list.begin() == sizeof(Item) * init_list.size());
     }
     template <u32 N>
-    ArrayView(Item (&s)[N]) : items{s}, num_items_{N} {
+    ArrayView(Item (&s)[N]) : items_{s}, num_items_{N} {
     }
 
     Item& operator[](u32 index) & {
-        PLY_ASSERT(index < num_items_);
-        return items[index];
+        PLY_ASSERT(index < this->num_items_);
+        return this->items_[index];
     }
     Item&& operator[](u32 index) && {
-        PLY_ASSERT(index < num_items_);
-        return std::move(items[index]);
+        PLY_ASSERT(index < this->num_items_);
+        return std::move(this->items_[index]);
     }
     const Item& operator[](u32 index) const& {
-        PLY_ASSERT(index < num_items_);
-        return items[index];
+        PLY_ASSERT(index < this->num_items_);
+        return this->items_[index];
     }
     Item& back(s32 offset = -1) & {
-        PLY_ASSERT(u32(num_items_ + offset) < num_items_);
-        return items[num_items_ + offset];
+        PLY_ASSERT(u32(this->num_items_ + offset) < this->num_items_);
+        return this->items_[this->num_items_ + offset];
     }
     Item&& back(s32 offset = -1) && {
-        PLY_ASSERT(u32(num_items_ + offset) < num_items_);
-        return std::move(items[num_items_ + offset]);
+        PLY_ASSERT(u32(this->num_items_ + offset) < this->num_items_);
+        return std::move(this->items_[this->num_items_ + offset]);
     }
     const Item& back(s32 offset = -1) const& {
-        PLY_ASSERT(u32(num_items_ + offset) < num_items_);
-        return items[num_items_ + offset];
+        PLY_ASSERT(u32(this->num_items_ + offset) < this->num_items_);
+        return this->items_[this->num_items_ + offset];
     }
-    explicit operator bool() const {
-        return this->num_items_ > 0;
+    Item* items() {
+        return this->items_;
     }
-    bool is_empty() const {
-        return num_items_ == 0;
+    const Item* items() const {
+        return this->items_;
     }
     u32 num_items() const {
         return num_items_;
     }
+    bool is_empty() const {
+        return this->num_items_ == 0;
+    }
+    explicit operator bool() const {
+        return this->num_items_ > 0;
+    }
     operator ArrayView<const Item>() const {
-        return {this->items, this->num_items_};
+        return {this->items_, this->num_items_};
     }
     static ArrayView<const Item> from(StringView view) {
         u32 num_items = view.num_bytes / sizeof(Item); // Divide by constant is fast
         return {(const Item*) view.bytes, num_items};
     }
     StringView string_view() const {
-        return {(const char*) this->items, numeric_cast<u32>(this->num_items_ * sizeof(Item))};
+        return {(const char*) this->items_, numeric_cast<u32>(this->num_items_ * sizeof(Item))};
     }
     static ArrayView<Item> from(MutStringView view) {
         u32 num_items = view.num_bytes / sizeof(Item); // Divide by constant is fast
         return {(Item*) view.bytes, num_items};
     }
     MutStringView mut_string_view() {
-        return {(char*) this->items, numeric_cast<u32>(this->num_items_ * sizeof(Item))};
+        return {(char*) this->items_, numeric_cast<u32>(this->num_items_ * sizeof(Item))};
     }
     ArrayView subview(u32 start) const {
         PLY_ASSERT(start <= num_items_);
-        return {items + start, num_items_ - start};
+        return {this->items_ + start, num_items_ - start};
     }
     ArrayView subview(u32 start, u32 num_items) const {
         PLY_ASSERT(start <= this->num_items_); // FIXME: Support different end parameters
         PLY_ASSERT(start + num_items <= this->num_items_);
-        return {items + start, num_items};
+        return {this->items_ + start, num_items};
     }
     ArrayView shortened_by(u32 num_items) const {
         PLY_ASSERT(num_items <= this->num_items_);
-        return {this->items, this->num_items_ - num_items};
+        return {this->items_, this->num_items_ - num_items};
     }
     Item* begin() const {
-        return this->items;
+        return this->items_;
     }
     Item* end() const {
-        return this->items + this->num_items_;
+        return this->items_ + this->num_items_;
     }
 };
 
@@ -2035,7 +2041,7 @@ bool operator==(const Arr0& a, const Arr1& b) {
 template <typename Item>
 class Array {
 private:
-    Item* items = nullptr;
+    Item* items_ = nullptr;
     u32 num_items_ = 0;
     u32 allocated = 0;
 
@@ -2044,9 +2050,9 @@ private:
     friend class Array;
 
     void alloc(u32 num_items) {
-        PLY_ASSERT(!this->items);
+        PLY_ASSERT(!this->items_);
         this->allocated = round_up_to_nearest_to_power_of_2(num_items);
-        this->items = (Item*) Heap::alloc(uptr(this->allocated) * sizeof(Item));
+        this->items_ = (Item*) Heap::alloc(uptr(this->allocated) * sizeof(Item));
         this->num_items_ = num_items;
     }
 
@@ -2060,12 +2066,12 @@ public:
     Array(const Array<Item>& other_array) {
         this->alloc(other_array.num_items_);
         for (u32 i = 0; i < other_array.num_items_; i++) {
-            new (&this->items[i]) Item{other_array.items[i]};
+            new (&this->items_[i]) Item{other_array.items_[i]};
         }
     }
     // Move constructor.
     Array(Array<Item>&& other_array)
-        : items{other_array.items}, num_items_{other_array.num_items_}, allocated{other_array.allocated} {
+        : items_{other_array.items_}, num_items_{other_array.num_items_}, allocated{other_array.allocated} {
         new (&other_array) Array<Item>;
     }
     // Construct from any compatible array.
@@ -2074,7 +2080,7 @@ public:
         u32 num_other_items = ArrayView<const Item>{other_array}.num_items();
         this->alloc(num_other_items);
         for (u32 i = 0; i < num_other_items; i++) {
-            new ((Item*) this->items + i) Item{std::forward<T>(other_array)[i]};
+            new ((Item*) this->items_ + i) Item{std::forward<T>(other_array)[i]};
         }
     }
     // Construct from initializer list.
@@ -2083,15 +2089,15 @@ public:
         this->alloc(init_size);
         const Item* src = init_list.begin();
         for (u32 i = 0; i < init_size; i++) {
-            new ((Item*) this->items + i) Item{src[i]};
+            new ((Item*) this->items_ + i) Item{src[i]};
         }
     }
     // Destructor.
     ~Array() {
         for (u32 i = 0; i < this->num_items_; i++) {
-            ((Item*) this->items)[i].~Item();
+            ((Item*) this->items_)[i].~Item();
         }
-        Heap::free(this->items);
+        Heap::free(this->items_);
     }
     // Adopt an array from a raw pointer.
     static Array<Item> adopt(Item* items, u32 num_items) {
@@ -2128,13 +2134,13 @@ public:
     // Assign from initializer list.
     Array& operator=(std::initializer_list<Item> init_list) {
         for (u32 i = 0; i < this->num_items_; i++) {
-            ((Item*) this->items)[i].~Item();
+            ((Item*) this->items_)[i].~Item();
         }
         u32 init_size = numeric_cast<u32>(init_list.size());
         this->alloc(init_size);
         const Item* src = init_list.begin();
         for (u32 i = 0; i < init_size; i++) {
-            new (&this->items[i]) Item{src[i]};
+            new (&this->items_[i]) Item{src[i]};
         }
         return *this;
     }
@@ -2143,7 +2149,7 @@ public:
         u32 num_other_items = ArrayView<const Item>{other_array}.num_items();
         this->reserve(this->num_items_ + num_other_items);
         for (u32 i = 0; i < num_other_items; i++) {
-            new ((Item*) this->items + (this->num_items_ + i)) Item{std::move(other_array[i])};
+            new ((Item*) this->items_ + (this->num_items_ + i)) Item{std::move(other_array[i])};
         }
         this->num_items_ += num_other_items;
         return *this;
@@ -2154,7 +2160,7 @@ public:
         u32 num_other_items = ArrayView<const Item>{other}.num_items();
         this->reserve(this->num_items_ + num_other_items);
         for (u32 i = 0; i < num_other_items; i++) {
-            new ((Item*) this->items + (this->num_items_ + i)) Item{std::forward<Other>(other)[i]};
+            new ((Item*) this->items_ + (this->num_items_ + i)) Item{std::forward<Other>(other)[i]};
         }
         this->num_items_ += num_other_items;
         return *this;
@@ -2165,7 +2171,7 @@ public:
         const Item* src = init_list.begin();
         this->reserve(this->num_items_ + init_size);
         for (u32 i = 0; i < init_size; i++) {
-            new ((Item*) this->items + (this->num_items_ + i)) Item{src[i]};
+            new ((Item*) this->items_ + (this->num_items_ + i)) Item{src[i]};
         }
         this->num_items_ += init_size;
         return *this;
@@ -2178,28 +2184,35 @@ public:
     // Subscript operators.
     Item& operator[](u32 index) & {
         PLY_ASSERT(index < this->num_items_);
-        return ((Item*) this->items)[index];
+        return ((Item*) this->items_)[index];
     }
     Item&& operator[](u32 index) && {
         PLY_ASSERT(index < this->num_items_);
-        return std::move(((Item*) this->items)[index]);
+        return std::move(((Item*) this->items_)[index]);
     }
     const Item& operator[](u32 index) const& {
         PLY_ASSERT(index < this->num_items_);
-        return ((Item*) this->items)[index];
+        return ((Item*) this->items_)[index];
     }
     // Access items relative to the back of the array.
     Item& back(s32 offset = -1) & {
         PLY_ASSERT(offset < 0 && u32(-offset) <= this->num_items_);
-        return ((Item*) this->items)[this->num_items_ + offset];
+        return ((Item*) this->items_)[this->num_items_ + offset];
     }
     Item&& back(s32 offset = -1) && {
         PLY_ASSERT(offset < 0 && u32(-offset) <= this->num_items_);
-        return std::move(((Item*) this->items)[this->num_items_ + offset]);
+        return std::move(((Item*) this->items_)[this->num_items_ + offset]);
     }
     const Item& back(s32 offset = -1) const& {
         PLY_ASSERT(offset < 0 && u32(-offset) <= this->num_items_);
-        return ((Item*) this->items)[this->num_items_ + offset];
+        return ((Item*) this->items_)[this->num_items_ + offset];
+    }
+    // Return a pointer to the items in the array.
+    Item* items() {
+        return this->items_;
+    }
+    const Item* items() const {
+        return this->items_;
     }
     // Return the number of item in the array. The number of allocated items may be greater.
     u32 num_items() const {
@@ -2228,16 +2241,16 @@ public:
     }
     // Return pointers suitable for iteration using range-for.
     Item* begin() {
-        return (Item*) this->items;
+        return (Item*) this->items_;
     }
     const Item* begin() const {
-        return (Item*) this->items;
+        return (Item*) this->items_;
     }
     Item* end() {
-        return ((Item*) this->items) + this->num_items_;
+        return ((Item*) this->items_) + this->num_items_;
     }
     const Item* end() const {
-        return ((Item*) this->items) + this->num_items_;
+        return ((Item*) this->items_) + this->num_items_;
     }
 
     //----------------------------------------------------
@@ -2247,41 +2260,41 @@ public:
     // Resize the array to a given number of items.
     void resize(u32 num_items) {
         for (u32 i = num_items; i < this->num_items_; i++) {
-            ((Item*) this->items)[i].~Item();
+            ((Item*) this->items_)[i].~Item();
         }
         this->reserve(num_items);
         for (u32 i = this->num_items_; i < num_items; i++) {
-            new ((Item*) this->items + i) Item;
+            new ((Item*) this->items_ + i) Item;
         }
         this->num_items_ = num_items;
     }
     // Clear the array.
     void clear() {
         for (u32 i = 0; i < this->num_items_; i++) {
-            ((Item*) this->items)[i].~Item();
+            ((Item*) this->items_)[i].~Item();
         }
-        Heap::free(this->items);
+        Heap::free(this->items_);
         new (this) Array<Item>;
     }
     // Append an item to the array with copy semantics.
     Item& append(const Item& item) {
         // The argument must not be a reference to an existing item in the array:
-        PLY_ASSERT((&item < (Item*) this->items) || (&item >= (Item*) this->items + this->num_items_));
+        PLY_ASSERT((&item < (Item*) this->items_) || (&item >= (Item*) this->items_ + this->num_items_));
         if (this->num_items_ >= this->allocated) {
             this->reserve(this->num_items_ + 1);
         }
-        Item* result = new ((Item*) this->items + this->num_items_) Item{item};
+        Item* result = new ((Item*) this->items_ + this->num_items_) Item{item};
         this->num_items_++;
         return *result;
     }
     // Append an item to the array with move semantics.
     Item& append(Item&& item) {
         // The argument must not be a reference to an existing item in the array:
-        PLY_ASSERT((&item < (Item*) this->items) || (&item >= (Item*) this->items + this->num_items_));
+        PLY_ASSERT((&item < (Item*) this->items_) || (&item >= (Item*) this->items_ + this->num_items_));
         if (this->num_items_ >= this->allocated) {
             this->reserve(this->num_items_ + 1);
         }
-        Item* result = new ((Item*) this->items + this->num_items_) Item{std::move(item)};
+        Item* result = new ((Item*) this->items_ + this->num_items_) Item{std::move(item)};
         this->num_items_++;
         return *result;
     }
@@ -2291,7 +2304,7 @@ public:
         if (this->num_items_ >= this->allocated) {
             this->reserve(this->num_items_ + 1);
         }
-        Item* result = new ((Item*) this->items + this->num_items_) Item{std::forward<Args>(args)...};
+        Item* result = new ((Item*) this->items_ + this->num_items_) Item{std::forward<Args>(args)...};
         this->num_items_++;
         return *result;
     }
@@ -2299,22 +2312,22 @@ public:
     Item& insert(u32 pos, u32 count = 1) {
         PLY_ASSERT(pos <= this->num_items_);
         this->reserve(this->num_items_ + count);
-        memmove(static_cast<void*>((Item*) this->items + pos + count),
-                static_cast<const void*>((Item*) this->items + pos), (this->num_items_ - pos) * sizeof(Item));
+        memmove(static_cast<void*>((Item*) this->items_ + pos + count),
+                static_cast<const void*>((Item*) this->items_ + pos), (this->num_items_ - pos) * sizeof(Item));
         for (u32 i = pos; i < pos + count; i++) {
-            new ((Item*) this->items + i) Item;
+            new ((Item*) this->items_ + i) Item;
         }
         this->num_items_ += count;
-        return ((Item*) this->items)[pos];
+        return ((Item*) this->items_)[pos];
     }
     // Erase items and shift the items after the erased position(s) to the left.
     void erase(u32 pos, u32 count = 1) {
         PLY_ASSERT(pos + count <= this->num_items_);
         for (u32 i = pos; i < pos + count; i++) {
-            ((Item*) this->items)[i].~Item();
+            ((Item*) this->items_)[i].~Item();
         }
-        memmove(static_cast<void*>((Item*) this->items + pos),
-                static_cast<const void*>((Item*) this->items + pos + count),
+        memmove(static_cast<void*>((Item*) this->items_ + pos),
+                static_cast<const void*>((Item*) this->items_ + pos + count),
                 (this->num_items_ - (pos + count)) * sizeof(Item));
         this->num_items_ -= count;
     }
@@ -2322,10 +2335,10 @@ public:
     void erase_quick(u32 pos, u32 count = 1) {
         PLY_ASSERT(pos + count <= this->num_items_);
         for (u32 i = pos; i < pos + count; i++) {
-            ((Item*) this->items)[i].~Item();
+            ((Item*) this->items_)[i].~Item();
         }
-        memmove(static_cast<void*>((Item*) this->items + pos),
-                static_cast<const void*>((Item*) this->items + this->num_items_ - count), count * sizeof(Item));
+        memmove(static_cast<void*>((Item*) this->items_ + pos),
+                static_cast<const void*>((Item*) this->items_ + this->num_items_ - count), count * sizeof(Item));
         this->num_items_ -= count;
     }
     // Remove the last item(s) from the array.
@@ -2338,13 +2351,13 @@ public:
         if (num_items > this->allocated) {
             this->allocated =
                 round_up_to_nearest_to_power_of_2(num_items); // FIXME: Generalize to other resize strategies?
-            this->items = (Item*) Heap::realloc(this->items, uptr(this->allocated) * sizeof(Item));
+            this->items_ = (Item*) Heap::realloc(this->items_, uptr(this->allocated) * sizeof(Item));
         }
     }
     // Compact the array by compacting the heap memory to exactly fit the number of items.
     void compact() {
         this->allocated = this->num_items_;
-        this->items = (Item*) Heap::realloc(this->items, uptr(this->allocated) * sizeof(Item));
+        this->items_ = (Item*) Heap::realloc(this->items_, uptr(this->allocated) * sizeof(Item));
     }
 
     //----------------------------------------------------
@@ -2353,33 +2366,33 @@ public:
 
     // Release the array and return the items. The array is reset to an empty state.
     Item* release() {
-        Item* items = (Item*) this->items;
+        Item* items = (Item*) this->items_;
         new (this) Array<Item>; // Reset the array to an empty state.
         return items;
     }
     // Convert to an `ArrayView`.
     ArrayView<Item> view() {
-        return {(Item*) this->items, this->num_items_};
+        return {(Item*) this->items_, this->num_items_};
     }
     // Convert to a const `ArrayView`.
     ArrayView<const Item> view() const {
-        return {(Item*) this->items, this->num_items_};
+        return {(Item*) this->items_, this->num_items_};
     }
     // Convert to an `ArrayView`.
     operator ArrayView<Item>() {
-        return {(Item*) this->items, this->num_items_};
+        return {(Item*) this->items_, this->num_items_};
     }
     // Convert to a const `ArrayView`.
     operator ArrayView<const Item>() const {
-        return {(Item*) this->items, this->num_items_};
+        return {(Item*) this->items_, this->num_items_};
     }
     // Convert to a `StringView`.
     StringView string_view() const {
-        return {(const char*) this->items, numeric_cast<u32>(this->num_items_ * sizeof(Item))};
+        return {(const char*) this->items_, numeric_cast<u32>(this->num_items_ * sizeof(Item))};
     }
     // Convert to a `MutStringView`.
     MutStringView mut_string_view() const {
-        return {(char*) this->items, numeric_cast<u32>(this->num_items_ * sizeof(Item))};
+        return {(char*) this->items_, numeric_cast<u32>(this->num_items_ * sizeof(Item))};
     }
 };
 
@@ -2416,72 +2429,80 @@ struct InitItems {
 
 template <typename Item, u32 NumItems>
 struct FixedArray {
+private:
 #if PLY_COMPILER_MSVC
 #pragma warning(push)
 #pragma warning(disable : 4200) // nonstandard extension used: zero-sized array in struct/union
 #endif
-    Item items[NumItems];
+    Item items_[NumItems];
 #if PLY_COMPILER_MSVC
 #pragma warning(pop)
 #endif
 
+public:
     FixedArray() = default;
     FixedArray(std::initializer_list<Item> args) {
         PLY_ASSERT(NumItems == args.size());
         const Item* src = args.begin();
         for (u32 i = 0; i < NumItems; i++) {
-            new (this->items + i) Item{src[i]};
+            new (this->items_ + i) Item{src[i]};
         }
     }
     template <typename... Args>
     FixedArray(Args&&... args) {
         PLY_STATIC_ASSERT(NumItems == sizeof...(Args));
-        InitItems<Item>::init(this->items, std::forward<Args>(args)...);
+        InitItems<Item>::init(this->items_, std::forward<Args>(args)...);
     }
     constexpr u32 num_items() const {
         return NumItems;
     }
+    Item* items() {
+        return this->items_;
+    }
+    const Item* items() const {
+        return this->items_;
+    }
     Item& operator[](u32 i) & {
         PLY_ASSERT(i < NumItems);
-        return this->items[i];
+        return this->items_[i];
     }
     const Item& operator[](u32 i) const& {
         PLY_ASSERT(i < NumItems);
-        return this->items[i];
+        return this->items_[i];
     }
     Item&& operator[](u32 i) && {
         PLY_ASSERT(i < NumItems);
-        return std::move(this->items[i]);
+        return std::move(this->items_[i]);
     }
     ArrayView<Item> view() {
-        return {this->items, NumItems};
+        return {this->items_, NumItems};
     }
     ArrayView<const Item> view() const {
-        return {this->items, NumItems};
+        return {this->items_, NumItems};
     }
     operator ArrayView<Item>() {
-        return {this->items, NumItems};
+        return {this->items_, NumItems};
     }
     operator ArrayView<const Item>() const {
-        return {(const Item*) this->items, NumItems};
+        return {(const Item*) this->items_, NumItems};
     }
     MutStringView mut_string_view() {
-        return {reinterpret_cast<char*>(this->items), numeric_cast<u32>(NumItems * sizeof(Item))};
+        return {reinterpret_cast<char*>(this->items_), numeric_cast<u32>(NumItems * sizeof(Item))};
     }
     StringView string_view() const {
-        return {reinterpret_cast<const char*>(this->items), numeric_cast<u32>(NumItems * sizeof(Item))};
+        return {reinterpret_cast<const char*>(this->items_), numeric_cast<u32>(NumItems * sizeof(Item))};
     }
     Item* begin() {
-        return this->items;
+        return this->items_;
     }
     Item* end() {
-        return this->items + NumItems;
+        return this->items_ + NumItems;
     }
     const Item* begin() const {
-        return this->items;
+        return this->items_;
     }
     const Item* end() const {
-        return this->items + NumItems;
+        return this->items_ + NumItems;
     }
 };
 

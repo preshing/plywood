@@ -20,15 +20,15 @@ The following member functions are implemented for all array classes:
 
 {api_summary class="Array"}
 -- Accessing Items
-    Item* items()
-    const Item* items() const
-    u32 num_items() const
     Item& operator[](u32 index) &
     Item&& operator[](u32 index) &&
     const Item& operator[](u32 index) const&
     Item& back(s32 offset = -1) &
     Item&& back(s32 offset = -1) &&
     const Item& back(s32 offset = -1) const&
+    Item* items()
+    const Item* items() const
+    u32 num_items() const
     bool is_empty() const
     explicit operator bool() const
     ArrayView<Item> subview(u32 start)
@@ -50,17 +50,6 @@ The following member functions are implemented for all array classes:
 ### Accessing Items
 
 {api_descriptions class=Array}
-Item* items()
-const Item* items() const
---
-Returns a raw pointer to the first item in the array, or `nullptr` if the array is empty. Avoid calling this function since it bypasses the bounds checking normally performed by other methods. Mainly used to pass array contents to legacy functions that expect a raw pointer.
-
->>
-u32 num_items() const
---
-Returns the number of items in the array.
-
->>
 Item& operator[](u32 index) &
 Item&& operator[](u32 index) &&
 const Item& operator[](u32 index) const&
@@ -82,6 +71,17 @@ Returns a reference to the last item if no argument is provided; otherwise retur
     array.back();     // Returns 6
     array.back(-2);   // Returns 5
     array.back(-10);  // Asserts
+
+>>
+Item* items()
+const Item* items() const
+--
+Returns a raw pointer to the first item in the array, or `nullptr` if the array is empty. Avoid calling this function since it bypasses the bounds checking normally performed by other methods. Mainly used to pass array contents to legacy functions that expect a raw pointer.
+
+>>
+u32 num_items() const
+--
+Returns the number of items in the array.
 
 >>
 bool is_empty() const

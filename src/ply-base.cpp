@@ -2613,7 +2613,7 @@ u32 InPipeConvertUnicode::read(MutStringView dst_buf) {
             ViewStream s{this->shim_storage.mut_string_view()};
             encode_unicode(s, UTF8, codepoint);
             this->shim_used =
-                StringView{this->shim_storage.items, numeric_cast<u32>(s.cur_byte - this->shim_storage.items)};
+                StringView{this->shim_storage.items(), numeric_cast<u32>(s.cur_byte - this->shim_storage.items())};
             if (copy_from_shim(dst_out, this->shim_used))
                 break; // Destination buffer is full.
         }
