@@ -7,15 +7,17 @@ Hash maps are collections of items that support fast key lookup. Plywood provide
 
 These collections aren't thread-safe. Functions that read from the same collection can be called concurrently from separate threads, but functions that modify the same collection must not be called concurrently.
 
-Before jumping into the details, it's important to understand the role of hashing when using these collections.
-
 ## Hashable Types
 
 In the `Set` and `Map` class templates, [hashing](https://en.wikipedia.org/wiki/Hash_function) is used to speed up key lookups. Any hashable type can be used as a lookup key. In Plywood, the following types are hashable by default:
 
 {table caption="Built-in hashable types"}
+`s8`
+`s16`
 `s32`
 `s64`
+`u8`
+`u16`
 `u32`
 `u64`
 `float`
@@ -24,25 +26,25 @@ In the `Set` and `Map` class templates, [hashing](https://en.wikipedia.org/wiki/
 `StringView`
 {/table}
 
-* When hashing a pointer, only the address is used, not the contents of the pointed-to object.
+* When hashing a pointer, only the address is used, not the contents of the pointed-to object. [TBD: Change this.]
 * You can hash a `String` by implicitly converting it to a `StringView`.
 
 ### Making Custom Types Hashable
 
-To make additional types hashable, overload the `calculate_hash` function for the desired type, as demonstrated below.
+To make additional types hashable, overload the `add_to_hash` function for the desired type, as demonstrated below.
 
     struct CustomType {
         u32 x;
         String str;
     };
 
-    // User-defined calculate_hash overload.
-    void calculate_hash(HashBuilder& builder, const CustomType& item) {
+    // User-defined add_to_hash overload.
+    void add_to_hash(HashBuilder& builder, const CustomType& item) {
         add_to_hash(builder, item.x);
         add_to_hash(builder, item.str);
     }
 
-`calculate_hash` is called internally by `Set` and `Map`. It's called using [argument-dependent lookup](https://en.cppreference.com/w/cpp/language/adl.html), so you can define it in the same namespace as the type itself.
+`add_to_hash` is called internally by `Set` and `Map`. It's called using [argument-dependent lookup](https://en.cppreference.com/w/cpp/language/adl.html), so you can define it in the same namespace as the type itself.
 
 ## `Set`
 
@@ -138,6 +140,8 @@ InsertResult insert(const Key& key)
 Inserts a new item in the set using the given key if it doesn't already exist. The `Item` type must be constructible from `Key`. Returns an `InsertResult` with the following members:
 
 [TBD]
+
+This function is actually a function template that uses SFINAE to delete itself if the `Key` type is not constructible from the `Item` type. In particular, this means you can't call this function on a `Set<Owned<T>>`; you can only call `insert_item` on such sets.
 
 >>
 InsertResult insert_item(Item&& item)

@@ -225,13 +225,13 @@ template <>
 struct enable_if_bool<true> {
     using type = int;
 };
-#define PLY_ENABLE_IF(x) typename enable_if_bool<(x)>::type = 0
+#define PLY_ENABLE_IF(x) typename ::ply::enable_if_bool<(x)>::type = 0
 
 template <typename>
 struct enable_if_type {
     using type = int;
 };
-#define PLY_ENABLE_IF_WELL_FORMED(x) typename enable_if_type<decltype(x)>::type = 0
+#define PLY_ENABLE_IF_WELL_FORMED(x) typename ::ply::enable_if_type<decltype(x)>::type = 0
 
 // Why doesn't this work reliably without void_t<...>?
 // In particular, has_get_lookup_key_member stops working, seemingly because the member function returns non-void.
@@ -1796,7 +1796,7 @@ struct String {
     bool match(StringView pattern, Args*... args) const;
 };
 
-inline StringView get_lookup_key(const String& str) {
+inline StringView get_any_lookup_key(const String& str) {
     return str;
 }
 
@@ -1847,55 +1847,70 @@ inline u64 unshuffle_bits(u64 h) {
 }
 
 //----------------------------------------------------
-// Hash_Calculator is a helper class used to calculate hash values for aggregate data types.
+// HashBuilder is a helper class used to calculate hash values for aggregate data types.
 // It uses MurmurHash3's hashing algorithm.
-// Overload operator<< to support hashing other types.
 
-class HashCalculator {
-private:
+struct HashBuilder {
     u32 accumulator = 0;
 
-public:
-    HashCalculator& operator<<(u32 value);
-    HashCalculator& operator<<(u64 value) {
-        *this << (u32) value;
-        *this << (u32) (value >> 32);
-        return *this;
+    u32 get_result() const {
+        return shuffle_bits(this->accumulator);
     }
-    HashCalculator& operator<<(float value) {
-        PLY_PUN_GUARD;
-        *this << *(u32*) &value;
-        return *this;
-    }
-    HashCalculator& operator<<(double value) {
-        PLY_PUN_GUARD;
-        *this << *(u64*) &value;
-        return *this;
-    }
-    HashCalculator& operator<<(StringView str);
-    u32 get_result() const;
 };
 
+void add_to_hash(HashBuilder& builder, u32 value);
+inline void add_to_hash(HashBuilder& builder, u8 value) {
+    add_to_hash(builder, (u32) value);
+}
+inline void add_to_hash(HashBuilder& builder, u16 value) {
+    add_to_hash(builder, (u32) value);
+}
+inline void add_to_hash(HashBuilder& builder, u64 value) {
+    add_to_hash(builder, (u32) value);
+    add_to_hash(builder, (u32) (value >> 32));
+}
+inline void add_to_hash(HashBuilder& builder, s8 value) {
+    add_to_hash(builder, (u32) value);
+}
+inline void add_to_hash(HashBuilder& builder, s16 value) {
+    add_to_hash(builder, (u32) value);
+}
+inline void add_to_hash(HashBuilder& builder, s32 value) {
+    add_to_hash(builder, (u32) value);
+}
+inline void add_to_hash(HashBuilder& builder, s64 value) {
+    add_to_hash(builder, (u64) value);
+}
+inline void add_to_hash(HashBuilder& builder, float value) {
+    PLY_PUN_GUARD;
+    add_to_hash(builder, *(u32*) &value);
+}
+inline void add_to_hash(HashBuilder& builder, double value) {
+    PLY_PUN_GUARD;
+    add_to_hash(builder, *(u64*) &value);
+}
+void add_to_hash(HashBuilder& builder, StringView str);
+
 //----------------------------------------------------
-// hash() is a wrapper around Hash_Calculator that's used internally by Map and Set.
+// calculate_hash() is a wrapper around HashBuilder that's used internally by Map and Set.
 
 template <typename T>
-u32 hash(const T& item) {
-    HashCalculator visitor;
-    visitor << item;
+u32 calculate_hash(const T& item) {
+    HashBuilder visitor;
+    add_to_hash(visitor, item);
     return visitor.get_result();
 }
 
-// Specialize hash() for pointers, u32 and u64.
+// Specialize calculate_hash() for pointers, u32 and u64.
 // These specializations don't use Hash_Calculator; they just call shuffle_bits directly.
 template <typename T>
-inline u32 hash(T* item) {
+inline u32 calculate_hash(T* item) {
     return (u32) shuffle_bits((uptr) item);
 }
-inline u32 hash(u32 item) {
+inline u32 calculate_hash(u32 item) {
     return shuffle_bits(item);
 }
-inline u32 hash(u64 item) {
+inline u32 calculate_hash(u64 item) {
     return (u32) shuffle_bits(item);
 }
 
@@ -2517,7 +2532,7 @@ struct ArrayTraits<FixedArray<Item_, NumItems>> {
 //  ██  ██ ▀█▄▄██  ▄▄▄█▀ ██  ██ ██▄▄▄ ▀█▄▄█▀ ▀█▄▄█▀ ██ ▀█▄ ▀█▄▄██ ██▄▄█▀
 //                                                                ██
 
-// First, we introduce an overloaded function get_lookup_key to map arbitrary items to lookup keys.
+// First, we introduce an overloaded function get_any_lookup_key to map arbitrary items to lookup keys.
 // It's basically a small set of function templates, each taking a single argument, that are selectively enabled
 // at compile time using SFINAE.
 
@@ -2526,16 +2541,16 @@ struct ArrayTraits<FixedArray<Item_, NumItems>> {
 PLY_CHECK_WELL_FORMED(has_get_lookup_key_member, declval<const T>().get_lookup_key())
 
 template <typename Item, PLY_ENABLE_IF(has_get_lookup_key_member<Item>)>
-static auto get_lookup_key(const Item& item) {
+static auto get_any_lookup_key(const Item& item) {
     return item.get_lookup_key();
 }
 // Otherwise, for primitive data types like u32 and float, this overload will simply return the item itself.
 template <typename Item, PLY_ENABLE_IF(!has_get_lookup_key_member<Item>)>
-static const Item& get_lookup_key(const Item& item) {
+static const Item& get_any_lookup_key(const Item& item) {
     return item;
 }
 template <typename Item>
-using LookupKey = std::decay_t<decltype(get_lookup_key(declval<Item>()))>;
+using LookupKey = std::decay_t<decltype(get_any_lookup_key(declval<Item>()))>;
 
 u32 get_best_num_hash_indices(u32 num_items);
 
@@ -2591,7 +2606,7 @@ private:
         for (u32 old_idx = 0; old_idx < this->num_allocated_indices; old_idx++) {
             s32 item_index = this->indices[old_idx];
             if (item_index >= 0) {
-                for (u32 new_idx = hash(static_cast<Subclass*>(this)->get_key(item_index));; new_idx++) {
+                for (u32 new_idx = calculate_hash(static_cast<Subclass*>(this)->get_key(item_index));; new_idx++) {
                     if (new_indices[new_idx & mask] < 0) {
                         new_indices[new_idx & mask] = item_index;
                         break;
@@ -2611,7 +2626,7 @@ public:
             return -1;
         PLY_ASSERT(is_power_of_2(this->num_allocated_indices));
         u32 mask = this->num_allocated_indices - 1;
-        for (u32 idx = hash(key);; idx++) {
+        for (u32 idx = calculate_hash(key);; idx++) {
             s32 item_index = this->indices[idx & mask];
             if (item_index < 0)
                 return -1;
@@ -2632,7 +2647,7 @@ public:
         }
         PLY_ASSERT(is_power_of_2(this->num_allocated_indices));
         u32 mask = this->num_allocated_indices - 1;
-        for (u32 idx = hash(key);; idx++) {
+        for (u32 idx = calculate_hash(key);; idx++) {
             s32 item_index = this->indices[idx & mask];
             if (item_index < 0) {
                 u32 new_index = static_cast<Subclass*>(this)->add_item(key);
@@ -2653,6 +2668,9 @@ public:
 //  ▀█▄▄█▀ ▀█▄▄▄   ▀█▄▄
 //
 
+
+PLY_CHECK_WELL_FORMED(is_constructible_from_key, T{declval<const LookupKey<T>&>()})
+
 template <typename Item>
 struct Set : HashLookup<LookupKey<Item>, Set<Item>> {
     using Key = LookupKey<Item>;
@@ -2663,12 +2681,19 @@ private:
     friend struct HashLookup<Key, Set<Item>>;
 
     auto get_key(u32 index) const {
-        return get_lookup_key(this->items[index]);
+        return get_any_lookup_key(this->items[index]);
     }
 
+    template <typename U = Item, PLY_ENABLE_IF(is_constructible_from_key<U>)>
     u32 add_item(const Key& key) {
         u32 index = this->items.num_items();
         this->items.append(key);
+        return index;
+    }
+    template <typename U = Item, PLY_ENABLE_IF(!is_constructible_from_key<U>)>
+    u32 add_item(const Key&) {
+        u32 index = this->items.num_items();
+        this->items.append();
         return index;
     }
 
@@ -2689,15 +2714,17 @@ public:
         bool was_found;
     };
 
-    InsertResult insert(const Key& key) {
+    template <typename K = Key, PLY_ENABLE_IF(is_constructible_from_key<K>)>
+    InsertResult insert(const K& key) {
         auto result = this->insert_index(key);
         return {&this->items[numeric_cast<u32>(result.index)], result.was_found};
     }
 
     InsertResult insert_item(Item&& item) {
-        InsertResult result = this->insert(get_lookup_key(item));
-        *result.item = std::move(item);
-        return result;
+        auto result = this->insert_index(get_any_lookup_key(item));
+        Item* dst_item = &this->items[numeric_cast<u32>(result.index)];
+        *dst_item = std::move(item);
+        return {dst_item, result.was_found};
     }
 
     PLY_NO_INLINE bool erase(const Key& key) {
@@ -2705,17 +2732,17 @@ public:
             return false;
         PLY_ASSERT(is_power_of_2(this->num_allocated_indices));
         u32 mask = this->num_allocated_indices - 1;
-        for (u32 idx = hash(key);; idx++) {
+        for (u32 idx = calculate_hash(key);; idx++) {
             s32 item_index = this->indices[idx & mask];
             if (item_index < 0)
                 return false;
 
-            if (key == get_lookup_key(this->items[item_index])) {
+            if (key == get_any_lookup_key(this->items[item_index])) {
                 // Found the item to erase.
                 u32 last_index = this->items.num_items() - 1;
                 if ((u32) item_index < last_index) {
                     // Move the last item to the erased item's index.
-                    for (u32 j = hash(get_lookup_key(this->items[last_index]));; j++) {
+                    for (u32 j = calculate_hash(get_any_lookup_key(this->items[last_index]));; j++) {
                         PLY_ASSERT(this->indices[j & mask] >= 0);
                         if ((u32) this->indices[j & mask] == last_index) {
                             this->indices[j & mask] = item_index;
@@ -2737,7 +2764,7 @@ public:
                         // No more trailing indices.
                         break;
                     }
-                    u32 trailing_item_hash = hash(get_lookup_key(this->items[trailing_item_index]));
+                    u32 trailing_item_hash = calculate_hash(get_any_lookup_key(this->items[trailing_item_index]));
                     if (((trailing_idx - trailing_item_hash) & mask) >= ((trailing_idx - idx) & mask)) {
                         // Move this index.
                         this->indices[idx & mask] = trailing_item_index;
@@ -2907,7 +2934,7 @@ public:
         this->ptr = nullptr;
     }
     auto get_lookup_key() const {
-        return this->ptr->get_lookup_key();
+        return get_any_lookup_key(*this->ptr);
     }
 };
 
@@ -3436,7 +3463,7 @@ u32 binary_search(ArrayView<Item> arr, const LookupKey<Item>& desired_key, FindT
     while (lo < hi) {
         u32 mid = (lo + hi) / 2; // Middle index that sits roughly halfway between lo and hi.
         PLY_ASSERT((mid >= lo) && (mid < hi));
-        auto mid_key = get_lookup_key(arr[mid]);
+        auto mid_key = get_any_lookup_key(arr[mid]);
         if (meets_condition(mid_key, desired_key, find_type)) {
             // The middle key meets the search condition. Make it the new end of the search range.
             hi = mid;

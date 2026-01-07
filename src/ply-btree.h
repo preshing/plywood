@@ -54,11 +54,11 @@ struct BTree {
 
         auto get_min_key() const {
             PLY_ASSERT(this->num_items > 0 && this->num_items <= MaxItemsPerNode);
-            return get_lookup_key(this->items[0]);
+            return get_any_lookup_key(this->items[0]);
         }
         auto get_internal_max_key() const {
             PLY_ASSERT(this->num_items > 0 && this->num_items <= MaxItemsPerNode);
-            return get_lookup_key(this->items[this->num_items - 1]);
+            return get_any_lookup_key(this->items[this->num_items - 1]);
         }
     };
 
@@ -206,7 +206,7 @@ private:
             new_root->is_leaf = false;
             new_root->num_children = 1;
             if (existing_node->is_leaf) {
-                new (&new_root->child_keys[0]) Key{get_lookup_key(static_cast<LeafNode*>(existing_node)->items[0])};
+                new (&new_root->child_keys[0]) Key{get_any_lookup_key(static_cast<LeafNode*>(existing_node)->items[0])};
             } else {
                 new (&new_root->child_keys[0]) Key{static_cast<InnerNode*>(existing_node)->child_keys[0]};
             }
@@ -384,23 +384,23 @@ private:
 #if defined(PLY_WITH_ASSERTS)
         // Validate non-decreasing order to the left of the insert position.
         if (insert_pos->item_index > 0) {
-            PLY_ASSERT(get_lookup_key(leaf_node->items[insert_pos->item_index - 1]) <=
-                       get_lookup_key(leaf_node->items[insert_pos->item_index]));
+            PLY_ASSERT(get_any_lookup_key(leaf_node->items[insert_pos->item_index - 1]) <=
+                       get_any_lookup_key(leaf_node->items[insert_pos->item_index]));
         } else if (leaf_node->left_sibling) {
             LeafNode* left_sibling = static_cast<LeafNode*>(leaf_node->left_sibling);
             PLY_ASSERT(left_sibling->is_leaf);
-            PLY_ASSERT(get_lookup_key(left_sibling->items[left_sibling->num_items - 1]) <=
-                       get_lookup_key(leaf_node->items[0]));
+            PLY_ASSERT(get_any_lookup_key(left_sibling->items[left_sibling->num_items - 1]) <=
+                       get_any_lookup_key(leaf_node->items[0]));
         }
         // Validate non-decreasing order to the right of the insert position.
         if (insert_pos->item_index + 1 < leaf_node->num_items) {
-            PLY_ASSERT(get_lookup_key(leaf_node->items[insert_pos->item_index]) <=
-                       get_lookup_key(leaf_node->items[insert_pos->item_index + 1]));
+            PLY_ASSERT(get_any_lookup_key(leaf_node->items[insert_pos->item_index]) <=
+                       get_any_lookup_key(leaf_node->items[insert_pos->item_index + 1]));
         } else if (leaf_node->right_sibling) {
             LeafNode* right_sibling = static_cast<LeafNode*>(leaf_node->right_sibling);
             PLY_ASSERT(right_sibling->is_leaf);
-            PLY_ASSERT(get_lookup_key(leaf_node->items[insert_pos->item_index]) >=
-                       get_lookup_key(right_sibling->items[0]));
+            PLY_ASSERT(get_any_lookup_key(leaf_node->items[insert_pos->item_index]) >=
+                       get_any_lookup_key(right_sibling->items[0]));
         }
 #endif
     }
@@ -624,7 +624,7 @@ public:
         u32 found_item = binary_search(ArrayView<Item>{leaf_node->items, leaf_node->num_items}, desired_key, find_type);
         // Item must have been found, because this->root->max_key promised it would be.
         PLY_ASSERT(found_item < leaf_node->num_items);
-        PLY_ASSERT(meets_condition(get_lookup_key(leaf_node->items[found_item]), desired_key, find_type));
+        PLY_ASSERT(meets_condition(get_any_lookup_key(leaf_node->items[found_item]), desired_key, find_type));
         return {this, leaf_node, found_item};
     }
 
@@ -634,17 +634,17 @@ public:
 
     bool find(const Key& desired_key) const {
         ConstIterator iter = this->find_earliest(desired_key, FindGreaterThanOrEqual);
-        return (iter && get_lookup_key(*iter) == desired_key);
+        return (iter && get_any_lookup_key(*iter) == desired_key);
     }
 
     //------------------------------------------------
     void insert(const Item& item_to_insert) {
-        Iterator insert_pos = this->find_earliest(get_lookup_key(item_to_insert), FindGreaterThan);
+        Iterator insert_pos = this->find_earliest(get_any_lookup_key(item_to_insert), FindGreaterThan);
         this->insert_internal(&insert_pos, const_cast<Item&>(item_to_insert), false);
     }
 
     void insert(Item&& item_to_insert) {
-        Iterator insert_pos = this->find_earliest(get_lookup_key(item_to_insert), FindGreaterThan);
+        Iterator insert_pos = this->find_earliest(get_any_lookup_key(item_to_insert), FindGreaterThan);
         this->insert_internal(&insert_pos, item_to_insert, true);
     }
 
@@ -750,7 +750,7 @@ public:
 
     bool erase(const Key& key_to_erase) {
         Iterator iter = this->find_earliest(key_to_erase, FindGreaterThanOrEqual);
-        if (get_lookup_key(*iter) == key_to_erase) {
+        if (get_any_lookup_key(*iter) == key_to_erase) {
             this->erase(iter);
             return true;
         }
@@ -871,19 +871,19 @@ public:
             for (u32 i = 0; i < leaf_node->num_items; i++) {
                 // Validate that the items are in non-decreasing order.
                 if (i > 0) {
-                    PLY_ASSERT(get_lookup_key(leaf_node->items[i]) >= get_lookup_key(leaf_node->items[i - 1]));
+                    PLY_ASSERT(get_any_lookup_key(leaf_node->items[i]) >= get_any_lookup_key(leaf_node->items[i - 1]));
                 } else {
                     if (leaf_node->left_sibling) {
                         LeafNode* left_sibling = static_cast<LeafNode*>(leaf_node->left_sibling);
                         PLY_ASSERT(left_sibling->is_leaf);
-                        PLY_ASSERT(get_lookup_key(leaf_node->items[i]) >=
-                                   get_lookup_key(left_sibling->items[left_sibling->num_items - 1]));
+                        PLY_ASSERT(get_any_lookup_key(leaf_node->items[i]) >=
+                                   get_any_lookup_key(left_sibling->items[left_sibling->num_items - 1]));
                     }
                 }
             }
 
             // Validate the leaf node's max key.
-            PLY_ASSERT(leaf_node->max_key >= get_lookup_key(leaf_node->items[leaf_node->num_items - 1]));
+            PLY_ASSERT(leaf_node->max_key >= get_any_lookup_key(leaf_node->items[leaf_node->num_items - 1]));
 
             leaf_node = static_cast<LeafNode*>(leaf_node->right_sibling);
         }

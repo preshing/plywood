@@ -877,24 +877,19 @@ void String::resize(u32 num_bytes) {
 //  ██  ██ ▀█▄▄██  ▄▄▄█▀ ██  ██ ██ ██  ██ ▀█▄▄██
 //                                         ▄▄▄█▀
 
-u32 HashCalculator::get_result() const {
-    return shuffle_bits(this->accumulator);
-}
-
-HashCalculator& HashCalculator::operator<<(u32 value) {
+void add_to_hash(HashBuilder& builder, u32 value) {
     value *= 0xcc9e2d51u;
     value = (value << 15) | (value >> 17);
     value *= 0x1b873593u;
-    this->accumulator ^= value;
-    this->accumulator = (this->accumulator << 13) | (this->accumulator >> 19);
-    this->accumulator = this->accumulator * 5 + 0xe6546b64u;
-    return *this;
+    builder.accumulator ^= value;
+    builder.accumulator = (builder.accumulator << 13) | (builder.accumulator >> 19);
+    builder.accumulator = builder.accumulator * 5 + 0xe6546b64u;
 }
 
-HashCalculator& HashCalculator::operator<<(StringView str) {
+void add_to_hash(HashBuilder& builder, StringView str) {
     // FIXME: More work is needed for platforms that don't support unaligned reads
     while (str.num_bytes >= 4) {
-        *this << *(const u32*) str.bytes; // May be unaligned
+        add_to_hash(builder, *(const u32*) str.bytes); // May be unaligned
         str.bytes += 4;
         str.num_bytes -= 4;
     }
@@ -906,9 +901,8 @@ HashCalculator& HashCalculator::operator<<(StringView str) {
             str.bytes++;
             str.num_bytes--;
         }
-        *this << v;
+        add_to_hash(builder, v);
     }
-    return *this;
 }
 
 //  ▄▄  ▄▄               ▄▄     ▄▄                  ▄▄
