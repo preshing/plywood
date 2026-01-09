@@ -205,44 +205,41 @@ function replaceLinks(root) {
         if (href && href.substr(0, 6) === '/docs/') {
             a.onclick = function(evt) {
                 // Check if this link contains a caret (collapsible TOC entry)
-                var caretLi = this.querySelector('li.caret');
-                if (caretLi) {
-                    var caretSpan = caretLi.querySelector('span');
-                    if (caretSpan) {
-                        // Check if click was on the caret arrow area
-                        var spanRect = caretSpan.getBoundingClientRect();
-                        var inflate = 8;
-                        // The caret ::before is positioned at left: -19px, and is about 11px wide
-                        var caretRect = {
-                            left: spanRect.left - 19 - inflate,
-                            top: spanRect.top - inflate,
-                            right: spanRect.left - 8 + inflate,
-                            bottom: spanRect.bottom + inflate
-                        };
-                        if (rectContains(caretRect, evt.clientX, evt.clientY)) {
-                            // Click was on caret - toggle expand/collapse only
-                            var childList = this.nextElementSibling;
-                            if (childList && childList.tagName === 'UL') {
-                                if (caretLi.classList.contains('caret-down')) {
-                                    // Collapse
-                                    caretLi.classList.remove('caret-down');
-                                    childList.classList.remove('active');
-                                } else {
-                                    // Expand
-                                    caretLi.classList.add('caret-down');
-                                    childList.classList.add('active');
-                                }
+                var caretSpan = this.querySelector('span.caret');
+                if (caretSpan) {
+                    // Check if click was on the caret arrow area
+                    var spanRect = caretSpan.getBoundingClientRect();
+                    var inflate = 8;
+                    // The caret ::before is positioned at left: -19px, and is about 11px wide
+                    var caretRect = {
+                        left: spanRect.left - 19 - inflate,
+                        top: spanRect.top - inflate,
+                        right: spanRect.left - 8 + inflate,
+                        bottom: spanRect.bottom + inflate
+                    };
+                    if (rectContains(caretRect, evt.clientX, evt.clientY)) {
+                        // Click was on caret - toggle expand/collapse only
+                        var childList = this.nextElementSibling;
+                        if (childList && childList.tagName === 'UL') {
+                            if (caretSpan.classList.contains('caret-down')) {
+                                // Collapse
+                                caretSpan.classList.remove('caret-down');
+                                childList.classList.remove('active');
+                            } else {
+                                // Expand
+                                caretSpan.classList.add('caret-down');
+                                childList.classList.add('active');
                             }
-                            return false; // Don't navigate
                         }
+                        return false; // Don't navigate
                     }
-                    // Click was on text - expand if not already expanded, then navigate
-                    var childList = this.nextElementSibling;
-                    if (childList && childList.tagName === 'UL') {
-                        if (!caretLi.classList.contains('caret-down')) {
-                            caretLi.classList.add('caret-down');
-                            childList.classList.add('active');
-                        }
+                }
+                // Click was on text - expand if not already expanded, then navigate
+                var childList = this.nextElementSibling;
+                if (childList && childList.tagName === 'UL') {
+                    if (!caretSpan.classList.contains('caret-down')) {
+                        caretSpan.classList.add('caret-down');
+                        childList.classList.add('active');
                     }
                 }
                 savePageState();

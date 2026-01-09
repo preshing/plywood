@@ -3,8 +3,8 @@
     {"title": "Getting Started", "path": "getting-started"},
     {"title": "Project Overview", "path": "overview"},
     {"title": "Configuration Options", "path": "configuration"},
-    {"title": "OS and Common Primitives — <ply-base.h>", "path": "base", "children": [
-        {"title": "Preprocessor Macros", "path": "base/macros"}
+    {"title": "OS and Common Primitives", "header-file": "ply-base.h", "path": "base", "children": [
+        {"title": "Preprocessor Macros", "path": "base/macros"},
         {"title": "Integer Types", "path": "base/integers"},
         {"title": "Numeric Functions", "path": "base/numeric-functions"},
         {"title": "Time and Date", "path": "base/time-date"},
@@ -23,13 +23,13 @@
         {"title": "Threads", "path": "base/threads"},
         {"title": "Processes", "path": "base/processes"}
     ]},
-    {"title": "2D and 3D Math — <ply-math.h>", "path": "math"},
-    {"title": "TCP/IP Networking — <ply-network.h>", "path": "network"},
-    {"title": "B-Trees — <ply-btree.h>", "path": "btrees"},
+    {"title": "2D and 3D Math", "header-file": "ply-math.h", "path": "math"},
+    {"title": "TCP/IP Networking", "header-file": "ply-network.h", "path": "network"},
+    {"title": "B-Trees", "header-file": "ply-btree.h", "path": "btrees"},
     {"title": "Text Parsers", "path": "parsers", "children": [
-        {"title": "Tokenizer — <ply-tokenizer.h>", "path": "parsers/tokenizer"},
-        {"title": "JSON — <ply-json.h>", "path": "parsers/json"},
-        {"title": "Markdown — <ply-markdown.h>", "path": "parsers/markdown"},
-        {"title": "C++ Parser — <ply-cpp.h>", "path": "parsers/cpp"}
+        {"title": "Tokenizer", "header-file": "ply-tokenizer.h", "path": "parsers/tokenizer"},
+        {"title": "JSON", "header-file": "ply-json.h", "path": "parsers/json"},
+        {"title": "Markdown", "header-file": "ply-markdown.h", "path": "parsers/markdown"},
+        {"title": "C++ Parser", "header-file": "ply-cpp.h", "path": "parsers/cpp"}
     ]}
 ]

@@ -303,18 +303,20 @@ void parse_markdown(Stream& out, ViewStream& in) {
 void generate_table_of_contents_html(Stream& out, const json::Node* items) {
     for (const json::Node* item : items->array_view()) {
         const json::Node* children = item->get("children");
+        StringView span_class;
         if (children->is_valid()) {
-            // Item with children: collapsible AND navigable
-            // Start expanded (caret-down) by default
-            out.format("<a href=\"/docs/{}\"><li class=\"caret caret-down selectable\"><span>{&}</span></li></a>",
-                       item->get("path")->text(), item->get("title")->text());
+            span_class = " class=\"caret caret-down\"";
+        }
+        String header_file;
+        if (item->get("header-file")->is_valid()) {
+            header_file = String::format(" <span class=\"toc-header\">&lt;{&}&gt;</span>", item->get("header-file")->text());
+        }
+        out.format("<a href=\"/docs/{}\"><li class=\"selectable\"><span{}>{&}</span>{}</li></a>",
+                   item->get("path")->text(), span_class, item->get("title")->text(), header_file);
+        if (children->is_valid()) {
             out.write("<ul class=\"nested active\">");
             generate_table_of_contents_html(out, children);
             out.write("</ul>");
-        } else {
-            // Leaf item: navigable link
-            out.format("<a href=\"/docs/{}\"><li class=\"selectable\">{&}</li></a>", item->get("path")->text(),
-                       item->get("title")->text());
         }
     }
 }

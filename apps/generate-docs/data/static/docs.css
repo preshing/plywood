@@ -94,7 +94,7 @@
     line-height: 1.55;
     overflow: hidden;
 }
-.directory li.caret-down span::before {
+.directory span.caret-down::before {
     -ms-transform: rotate(90deg);
     -webkit-transform: rotate(90deg);
     transform: rotate(90deg);  
@@ -107,18 +107,17 @@
     display: block;
     height: auto;
 }
-.directory li.caret {
-    cursor: pointer;
+.directory span.caret {
     -webkit-user-select: none; /* Safari 3.1+ */
     -moz-user-select: none; /* Firefox 2+ */
     -ms-user-select: none; /* IE 10+ */
     user-select: none;
 }
-.directory li.caret span {
+.directory span.caret {
     position: relative;
 }
 
-.directory li.caret span::before {
+.directory span.caret::before {
     content: var(--caret-icon);
     position: absolute;
     left: -16px;
@@ -153,6 +152,10 @@
 }
 .directory a {
     color: inherit;
+}
+.directory .toc-header {
+    margin-left: 5px;
+    color: var(--text-muted);
 }
 
 .scroller {
