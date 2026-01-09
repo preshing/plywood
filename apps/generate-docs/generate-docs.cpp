@@ -372,7 +372,7 @@ void convert_page(const json::Node* item) {
             <span style="color: #e8e8e8; font-size: 22px; position: absolute; left: 73px; top: 10px;">Plywood</span>
         </a>
         <span class="right">
-          <div id="nav-links"><a href="/docs/intro"><span class="nav-link">DOCS</span></a><a href="https://github.com/preshing/plywood"><span class="nav-link">GITHUB</span></a>
+          <div id="nav-links"><a href="/docs/intro"><span class="nav-link">DOCS</span></a><a href="https://github.com/preshing/plywood" target="_blank"><span class="nav-link">GITHUB</span></a>
             <span class="theme-toggle-parent"><button class="theme-toggle" id="theme-toggle" aria-label="Toggle dark mode" title="Toggle dark/light mode"></button></span>
           </div>
             <span id="hamburger" class="button"></span>
