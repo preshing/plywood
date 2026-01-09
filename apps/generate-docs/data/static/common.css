@@ -44,6 +44,9 @@ strong {
 em {
     font-style: italic;
 }
+html {
+    user-select: none;
+}
 
 /*------------------------------------------------
    Fonts
@@ -276,6 +279,7 @@ html {
     color: var(--text-primary);
     font-size: 17px;
     line-height: 1.32;
+    user-select: text;
 }
 .content h1 {
     font-family: "robotobold", "Helvetica Neue", Arial, sans-serif;
