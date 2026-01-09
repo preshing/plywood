@@ -110,6 +110,9 @@ function navigateTo(dstPath, forward, pageYOffset) {
         history.pushState(null, null, dstPath);
     }
 
+    // Highlight current page in sidebar
+    updateSelectedItem(dstPath);
+
     // Extract anchor from path (e.g., /docs/intro#section -> anchor = "section")
     var anchorPos = dstPath.indexOf('#');
     var anchor = (anchorPos >= 0) ? dstPath.substr(anchorPos + 1) : '';
@@ -167,6 +170,7 @@ function navigateTo(dstPath, forward, pageYOffset) {
             }
         }
     };
+    
     // Request the .ajax version of the page
     currentRequest.open('GET', pathWithoutAnchor + '.ajax', true);
     currentRequest.send();
@@ -194,6 +198,39 @@ function navigateTo(dstPath, forward, pageYOffset) {
 // Check if a point is inside a rectangle
 function rectContains(rect, x, y) {
     return rect.left <= x && x < rect.right && rect.top <= y && y < rect.bottom;
+}
+
+// Highlight the current page in the sidebar
+function updateSelectedItem(path) {
+    if (!directory) return;
+
+    // Remove existing selection
+    var selected = directory.querySelector('li.selected');
+    if (selected) {
+        selected.classList.remove('selected');
+    }
+
+    // Normalize path: strip anchor and trailing slash
+    var anchorPos = path.indexOf('#');
+    if (anchorPos >= 0) {
+        path = path.substr(0, anchorPos);
+    }
+    if (path.length > 1 && path.charAt(path.length - 1) === '/') {
+        path = path.substr(0, path.length - 1);
+    }
+
+    // Find matching link in sidebar and select its <li>
+    var links = directory.getElementsByTagName('a');
+    for (var i = 0; i < links.length; i++) {
+        var href = links[i].getAttribute('href');
+        if (href === path) {
+            var li = links[i].querySelector('li');
+            if (li) {
+                li.classList.add('selected');
+            }
+            break;
+        }
+    }
 }
 
 // Intercept clicks on internal links to use AJAX loading
@@ -282,6 +319,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Set up AJAX links in sidebar and article
     if (directory) {
         replaceLinks(directory);
+        updateSelectedItem(location.pathname);
     }
     if (article) {
         replaceLinks(article);

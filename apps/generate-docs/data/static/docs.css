@@ -79,7 +79,7 @@
     display: none;
     color: var(--text-secondary);
     position: fixed;
-    width: 280px;
+    width: 290px;
     top: 42px;
     bottom: 0px;
     z-index: 1;
@@ -144,11 +144,11 @@
 .directory ul ul ul ul ul ul li {
     padding-left: 7.7em;
 }
-.directory li.selectable:hover {
-    background: var(--bg-sidebar-hover);
-}
 .directory li.selected, .directory li.selected:hover {
     background: var(--bg-sidebar-selected);
+}
+.directory li.selectable:hover {
+    background: var(--bg-sidebar-hover);
 }
 .directory a {
     color: inherit;
@@ -167,7 +167,8 @@
 }
 
 .scroller .inner {
-    margin: 12px 0px;
+    margin: 8px 0px;
+    white-space: nowrap;
 }
 .scroller ul {
     margin-bottom: 0px;
@@ -186,19 +187,20 @@
    Media queries for different screen sizes
 ------------------------------------------------*/
 
-@media only screen and (min-width: 700px) {
+@media only screen and (min-width: 730px) {
     .directory {
+        padding-left: 8px;
         display: block;
         top: 42px;
         bottom: 0px;
     }
     .content-parent {
-        margin-left: 280px;
-        padding: 15px 35px;
+        margin-left: 290px;
+        padding: 15px 30px;
     }
 }
 
-@media only screen and (max-width: 699px) {
+@media only screen and (max-width: 729px) {
     .directory {
         right: 0px;
         top: 35px;

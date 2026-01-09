@@ -120,8 +120,8 @@ html {
     --bg-page: #ffffff;
     --bg-banner: #326d97;
     --bg-sidebar: #ffffff;
-    --bg-sidebar-hover: #eeeeee;
-    --bg-sidebar-selected: #e3e8f1;
+    --bg-sidebar-hover: #dfebf3;
+    --bg-sidebar-selected: #eeeeee;
     --bg-code-block: #f4f4f4;
     --bg-highlight: #ffffd0;
     --bg-api-table: #fffffc;
@@ -157,7 +157,7 @@ html {
     --bg-banner: #1c4e72;
     --bg-sidebar: #1a1a2e;
     --bg-sidebar-hover: #2a2a4a;
-    --bg-sidebar-selected: #3a3a5a;
+    --bg-sidebar-selected: #263339;
     --bg-code-block: #0f0f0f;
     --bg-highlight: #3a3a20;
     --bg-api-table: #171725;
