@@ -1,0 +1,63 @@
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{%title%}</title>
+<link rel="stylesheet" href="/static/common.css">
+<link rel="stylesheet" href="/static/docs.css">
+<script>
+  // Apply saved theme immediately to prevent flash
+  (function() {
+    var theme = localStorage.getItem('theme');
+    if (theme === 'dark' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+      document.documentElement.setAttribute('data-theme', 'dark');
+    }
+  })();
+</script>
+</head>
+<body>
+  <div class="banner">
+    <div class="title">
+        <a href="/">
+            <img class="logo" src="/static/plywood-house-small.png" srcset="/static/plywood-house-small.png 1x, /static/plywood-house-small@2x.png 2x" alt="Plywood logo" style="position: absolute; left: 19px; top: 5px;">
+            <span style="color: #e8e8e8; font-size: 22px; position: absolute; left: 73px; top: 10px;">Plywood</span>
+        </a>
+        <span class="right">
+          <div id="nav-links"><a href="/docs/intro"><span class="nav-link">DOCS</span></a><a href="https://github.com/preshing/plywood" target="_blank"><span class="nav-link">GITHUB</span></a>
+            <span class="theme-toggle-parent"><button class="theme-toggle" id="theme-toggle" aria-label="Toggle dark mode" title="Toggle dark/light mode"></button></span>
+          </div>
+            <span id="hamburger" class="button"></span>
+        </span>
+    </div>
+  </div>
+  <div class="inner-body">  
+  <div class="directory">
+    <div class="scroller">
+      <div class="inner">
+        <ul>
+{%toc%}
+        </ul>
+      </div>
+    </div>
+  </div>
+  <div class="content-parent"><article class="content" id="article">
+{%content%}
+  </article></div>
+  <script>
+    (function() {
+      var toggle = document.getElementById('theme-toggle');
+      toggle.addEventListener('click', function() {
+        var currentTheme = document.documentElement.getAttribute('data-theme');
+        var newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+        if (newTheme === 'light') {
+          document.documentElement.removeAttribute('data-theme');
+        } else {
+          document.documentElement.setAttribute('data-theme', 'dark');
+        }
+        localStorage.setItem('theme', newTheme);
+      });
+    })();
+  </script>
+  <script src="/static/doc-viewer.js"></script>
+</div></body>
+</html>

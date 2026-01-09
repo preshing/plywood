@@ -15,6 +15,7 @@ using namespace ply::cpp;
 String source_folder = join_path(PLYWOOD_ROOT_DIR, "apps/generate-docs/data");
 String docs_folder = join_path(PLYWOOD_ROOT_DIR, "docs");
 String out_folder = join_path(PLYWOOD_ROOT_DIR, "docs/build");
+TextFormat server_text_format = {UTF8, TextFormat::LF, false};
 Owned<json::Node> contents;
 u32 publish_key = 0; // Prevent browsers from caching old stylesheets
 
@@ -318,7 +319,8 @@ void generate_table_of_contents_html(Stream& out, const json::Node* items) {
         }
         String header_file;
         if (item->get("header-file")->is_valid()) {
-            header_file = String::format(" <span class=\"toc-header\">&lt;{&}&gt;</span>", item->get("header-file")->text());
+            header_file =
+                String::format(" <span class=\"toc-header\">&lt;{&}&gt;</span>", item->get("header-file")->text());
         }
         out.format("<a href=\"/docs/{}\"><li class=\"selectable\"><span{}>{&}</span>{}</li></a>",
                    item->get("path")->text(), span_class, item->get("title")->text(), header_file);
@@ -358,86 +360,11 @@ void convert_page(const json::Node* item, const json::Node* prev_page, const jso
     }
     String nav_html = String::format("<div class=\"page-nav\">{}{}</div>", prev_link, next_link);
 
-    // Write content-only file for AJAX loading (format: "Title\n<content>")
+    // Write content-only file for AJAX loading
     String ajax_content = String::format("{} :: Plywood C++ Base Library\n{}{}", page_title, article_content, nav_html);
-    String ajax_path = join_path(out_folder, "content/docs", rel_name + ".ajax.html");
+    String ajax_path = join_path(out_folder, "content/docs", rel_name + ".html");
     Filesystem::make_dirs(split_path(ajax_path).directory);
-    Filesystem::save_text(ajax_path, ajax_content);
-
-    // Write full HTML page
-    MemStream table_of_contents;
-    generate_table_of_contents_html(table_of_contents, contents);
-    StringView format_str = R"(
-<html>
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{&} :: Plywood C++ Base Library</title>
-<link rel="stylesheet" href="/static/common.css?key={}">
-<link rel="stylesheet" href="/static/docs.css?key={}">
-<script>
-  // Apply saved theme immediately to prevent flash
-  (function() {{
-    var theme = localStorage.getItem('theme');
-    if (theme === 'dark' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {{
-      document.documentElement.setAttribute('data-theme', 'dark');
-    }}
-  }})();
-</script>
-</head>
-<body>
-  <div class="banner">
-    <div class="title">
-        <a href="/">
-            <img class="logo" src="/static/plywood-house-small.png" srcset="/static/plywood-house-small.png 1x, /static/plywood-house-small@2x.png 2x" alt="Plywood logo" style="position: absolute; left: 19px; top: 5px;">
-            <span style="color: #e8e8e8; font-size: 22px; position: absolute; left: 73px; top: 10px;">Plywood</span>
-        </a>
-        <span class="right">
-          <div id="nav-links"><a href="/docs/intro"><span class="nav-link">DOCS</span></a><a href="https://github.com/preshing/plywood" target="_blank"><span class="nav-link">GITHUB</span></a>
-            <span class="theme-toggle-parent"><button class="theme-toggle" id="theme-toggle" aria-label="Toggle dark mode" title="Toggle dark/light mode"></button></span>
-          </div>
-            <span id="hamburger" class="button"></span>
-        </span>
-    </div>
-  </div>
-  <div class="inner-body">  
-  <div class="directory">
-    <div class="scroller">
-      <div class="inner">
-        <ul>
-{}
-        </ul>
-      </div>
-    </div>
-  </div>
-  <div class="content-parent"><article class="content" id="article">
-{}{}
-  </article></div>
-  <script>
-    (function() {{
-      var toggle = document.getElementById('theme-toggle');
-      toggle.addEventListener('click', function() {{
-        var currentTheme = document.documentElement.getAttribute('data-theme');
-        var newTheme = currentTheme === 'dark' ? 'light' : 'dark';
-        if (newTheme === 'light') {{
-          document.documentElement.removeAttribute('data-theme');
-        }} else {{
-          document.documentElement.setAttribute('data-theme', 'dark');
-        }}
-        localStorage.setItem('theme', newTheme);
-      }});
-    }})();
-  </script>
-  <script src="/static/doc-viewer.js"></script>
-</div></body>
-</html>
-)";
-    String full_html = String::format(format_str, page_title, publish_key, publish_key,
-                                      table_of_contents.move_to_string(), article_content, nav_html);
-
-    String out_path = join_path(out_folder, "content/docs", rel_name + ".html");
-    Filesystem::make_dirs(split_path(out_path).directory);
-    Filesystem::save_text(out_path, full_html);
+    Filesystem::save_text(ajax_path, ajax_content, server_text_format);
 }
 
 Owned<json::Node> parse_json(StringView path) {
@@ -454,18 +381,34 @@ void generate_whole_site() {
     // Copy front page to content/index.html.
     String front_page = Filesystem::load_text(join_path(source_folder, "index.html"));
     front_page = front_page.replace("/static/style.css", String::format("/static/style.css?key={}", publish_key));
-    Filesystem::save_text(join_path(out_folder, "content/index.html"), front_page);
+    Filesystem::save_text(join_path(out_folder, "content/index.html"), front_page, server_text_format);
 
     // Copy static files to static/.
     for (const DirectoryEntry& entry : Filesystem::list_dir(join_path(source_folder, "static"))) {
         if (entry.is_file()) {
-            Filesystem::copy_file(join_path(source_folder, "static", entry.name),
-                                  join_path(out_folder, "static", entry.name));
+            String src_path = join_path(source_folder, "static", entry.name);
+            String dst_path = join_path(out_folder, "static", entry.name);
+            if (entry.name.ends_with(".css") || entry.name.ends_with(".js") || entry.name.ends_with(".html")) {
+                String text = Filesystem::load_text_autodetect(src_path);
+                Filesystem::save_text(dst_path, text, server_text_format);
+            } else {
+                Filesystem::copy_file(src_path, dst_path);
+            }
         }
     }
 
-    // Traverse contents.json and generate pages in content/docs/.
+    // Copy docs template to content/.
+    String template_text = Filesystem::load_text_autodetect(join_path(source_folder, "docs-template.html"));
+    Filesystem::save_text(join_path(out_folder, "content/docs-template.html"), template_text, server_text_format);
+
+    // Parse contents.json and generate table of contents HTML.
     contents = parse_json(join_path(docs_folder, "contents.json"));
+    MemStream toc_stream;
+    generate_table_of_contents_html(toc_stream, contents);
+    Filesystem::make_dirs(join_path(out_folder, "content/docs"));
+    Filesystem::save_text(join_path(out_folder, "content/toc.html"), toc_stream.move_to_string(), server_text_format);
+
+    // Traverse contents.json and generate pages in content/docs/.
     Array<const json::Node*> pages;
     flatten_pages(pages, contents);
     for (u32 i = 0; i < pages.num_items(); i++) {

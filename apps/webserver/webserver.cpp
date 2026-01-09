@@ -2,7 +2,7 @@
        ____
       ╱   ╱╲    Plywood C++ Base Library
      ╱___╱╭╮╲   https://plywood.dev/
-      └──┴┴┴┘   
+      └──┴┴┴┘
 ========================================================*/
 
 #include <ply-network.h>
@@ -117,16 +117,13 @@ void serve_plywood_docs(const Request& request, Response& response) {
             }
 
             String local_path = join_path(docs_folder, "content/docs", StringView{'/'}.join(parts.subview(1)));
+            bool is_ajax_request = local_path.ends_with(".ajax");
+            if (is_ajax_request) {
+                local_path = local_path.left(local_path.num_bytes - 5); // Remove ".ajax"
+            }
+
             if (Filesystem::is_dir(local_path)) {
                 local_path = join_path(local_path, "index.html");
-            } else if (local_path.ends_with(".ajax")) {
-                // AJAX content-only request (e.g. /docs/intro.ajax or /docs/parsers.ajax)
-                String path_without_ajax = local_path.left(local_path.num_bytes - 5); // Remove ".ajax"
-                if (Filesystem::is_dir(path_without_ajax)) {
-                    local_path = join_path(path_without_ajax, "index.ajax.html");
-                } else {
-                    local_path += ".html";
-                }
             } else {
                 local_path += ".html";
             }
@@ -138,7 +135,27 @@ void serve_plywood_docs(const Request& request, Response& response) {
 
             *response.headers.insert("Content-type").value = "text/html";
             Stream* out = response.begin(Response::OK);
-            out->write(Filesystem::load_text(local_path));
+
+            if (is_ajax_request) {
+                // Serve AJAX content directly
+                out->write(Filesystem::load_text(local_path));
+            } else {
+                // Assemble full page from template + TOC + AJAX content
+                String templ = Filesystem::load_text(join_path(docs_folder, "content/docs-template.html"));
+                String toc = Filesystem::load_text(join_path(docs_folder, "content/toc.html"));
+                String ajax_content = Filesystem::load_text(local_path);
+
+                // Parse title from first line of AJAX content
+                s32 newline_pos = ajax_content.find('\n');
+                String title = ajax_content.left(newline_pos);
+                String content = ajax_content.substr(newline_pos + 1);
+
+                // Replace placeholders
+                String full_html = templ.replace("{%title%}", title);
+                full_html = full_html.replace("{%toc%}", toc);
+                full_html = full_html.replace("{%content%}", content);
+                out->write(full_html);
+            }
             return;
         }
     }
@@ -218,7 +235,8 @@ void send_generic_response(Response& response, Response::Code response_code) {
 <hr>
 </body>
 </html>
-)", response_code, message, response_code, message);
+)",
+                response_code, message, response_code, message);
 }
 
 void handle_http_request(TCPConnection* tcp_conn, const RequestHandler& req_handler) {
@@ -275,7 +293,8 @@ void run_http_server(u16 port, const RequestHandler& req_handler) {
         Owned<TCPConnection> tcp_conn = listener.accept();
         if (!tcp_conn)
             break;
-        spawn_thread([tcp_conn = std::move(tcp_conn), &req_handler] { handle_http_request(tcp_conn.get(), req_handler); });
+        spawn_thread(
+            [tcp_conn = std::move(tcp_conn), &req_handler] { handle_http_request(tcp_conn.get(), req_handler); });
     }
 }
 
@@ -289,7 +308,7 @@ int main(int argc, const char* argv[]) {
 #endif
 
     Network::initialize(IPV4);
-//    run_http_server(8080, serve_echo_page);
+    // run_http_server(8080, serve_echo_page);
     run_http_server(8080, serve_plywood_docs);
     Network::shutdown();
     return 0;
