@@ -313,7 +313,7 @@ void generate_table_of_contents_html(Stream& out, const json::Node* items) {
             out.write("</ul>");
         } else {
             // Leaf item: navigable link
-            out.format("<li class=\"selectable\"><a href=\"/docs/{}\">{&}</a></li>", item->get("path")->text(),
+            out.format("<a href=\"/docs/{}\"><li class=\"selectable\">{&}</li></a>", item->get("path")->text(),
                        item->get("title")->text());
         }
     }
