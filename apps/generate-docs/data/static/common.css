@@ -227,34 +227,29 @@ html {
     background: rgba(255, 255, 255, 0.15);
 }
 
-.theme-toggle svg {
+/* Icon via CSS mask - color comes from background-color */
+.theme-toggle::before {
+    content: '';
     width: 22px;
     height: 22px;
-    fill: var(--text-banner);
-    stroke: var(--text-banner);
-    transition: fill 0.2s ease, transform 0.3s ease;
+    background-color: var(--text-banner);
+    -webkit-mask-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z' fill='white'/%3E%3C/svg%3E");
+    mask-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z' fill='white'/%3E%3C/svg%3E");
+    -webkit-mask-size: contain;
+    mask-size: contain;
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
+    transition: background-color 0.2s ease, transform 0.3s ease;
 }
 
-.theme-toggle:hover svg {
+.theme-toggle:hover::before {
     transform: rotate(15deg);
 }
 
 /* Sun icon (shown in dark mode) */
-.theme-toggle .sun-icon {
-    display: none;
-}
-
-/* Moon icon (shown in light mode) */
-.theme-toggle .moon-icon {
-    display: block;
-}
-
-[data-theme="dark"] .theme-toggle .sun-icon {
-    display: block;
-}
-
-[data-theme="dark"] .theme-toggle .moon-icon {
-    display: none;
+[data-theme="dark"] .theme-toggle::before {
+    -webkit-mask-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Ccircle cx='12' cy='12' r='5' fill='white'/%3E%3Cpath d='M12 1L12 3M12 21L12 23M4.22 4.22L5.64 5.64M18.36 18.36L19.78 19.78M1 12L3 12M21 12L23 12M4.22 19.78L5.64 18.36M18.36 5.64L19.78 4.22' stroke='white' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E");
+    mask-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Ccircle cx='12' cy='12' r='5' fill='white'/%3E%3Cpath d='M12 1L12 3M12 21L12 23M4.22 4.22L5.64 5.64M18.36 18.36L19.78 19.78M1 12L3 12M21 12L23 12M4.22 19.78L5.64 18.36M18.36 5.64L19.78 4.22' stroke='white' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E");
 }
 
 /*------------------------------------------------
