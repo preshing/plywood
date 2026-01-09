@@ -458,13 +458,17 @@ String StringView::replace(StringView old_substr, StringView new_substr) const {
     PLY_ASSERT(old_substr.num_bytes > 0);
     MemStream out;
     u32 limit = this->num_bytes - old_substr.num_bytes;
-    for (u32 i = 0; i < limit; i++) {
+    u32 i = 0;
+    for (; i < limit; i++) {
         if (memcmp(this->bytes + i, old_substr.bytes, old_substr.num_bytes) == 0) {
             out.write(new_substr);
             i += old_substr.num_bytes - 1;
         } else {
             out.write(this->bytes[i]);
         }
+    }
+    if (i < this->num_bytes) {
+        out.write({this->bytes + i, this->bytes + num_bytes});
     }
     return out.move_to_string();
 }
