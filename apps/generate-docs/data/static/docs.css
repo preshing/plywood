@@ -228,3 +228,36 @@
     }
 }
 
+/*------------------------------------------------
+   Page navigation (prev/next)
+------------------------------------------------*/
+
+.page-nav {
+    margin-top: 36px;
+    margin-bottom: 6px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border-secondary);
+    user-select: none;
+}
+
+.page-nav a {
+    color: var(--text-secondary);
+    font-family: "source_sans_3", "Helvetica Neue", Arial, sans-serif;
+    font-size: 85%;
+}
+
+.page-nav a:hover {
+    text-decoration: none;
+}
+
+.page-nav .nav-button {
+    background-color: var(--button-background);
+    padding: 2px 12px;
+    border-radius: 8px;
+    display: inline-block;
+}
+
+.page-nav .nav-button.right {
+    float: right;
+}
+

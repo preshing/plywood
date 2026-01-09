@@ -300,6 +300,15 @@ void parse_markdown(Stream& out, ViewStream& in) {
     }
 }
 
+void flatten_pages(Array<const json::Node*>& pages, const json::Node* items) {
+    for (const json::Node* item : items->array_view()) {
+        pages.append(item);
+        if (item->get("children")->is_valid()) {
+            flatten_pages(pages, item->get("children"));
+        }
+    }
+}
+
 void generate_table_of_contents_html(Stream& out, const json::Node* items) {
     for (const json::Node* item : items->array_view()) {
         const json::Node* children = item->get("children");
@@ -321,7 +330,7 @@ void generate_table_of_contents_html(Stream& out, const json::Node* items) {
     }
 }
 
-void convert_page(const json::Node* item) {
+void convert_page(const json::Node* item, const json::Node* prev_page, const json::Node* next_page) {
     String rel_name = item->get("path")->text();
     String markdown_path = join_path(docs_folder, rel_name);
     if (Filesystem::is_dir(markdown_path)) {
@@ -337,8 +346,20 @@ void convert_page(const json::Node* item) {
     String article_content = mem.move_to_string();
     String page_title = item->get("title")->text();
 
+    // Generate prev/next navigation
+    String prev_link, next_link;
+    if (prev_page) {
+        prev_link = String::format("<a href=\"/docs/{}\"><span class=\"nav-button\">&#9664;&nbsp; {&}</span></a>",
+                                   prev_page->get("path")->text(), prev_page->get("title")->text());
+    }
+    if (next_page) {
+        next_link = String::format("<a href=\"/docs/{}\"><span class=\"nav-button right\">{&}&nbsp; &#9654;</span></a>",
+                                   next_page->get("path")->text(), next_page->get("title")->text());
+    }
+    String nav_html = String::format("<div class=\"page-nav\">{}{}</div>", prev_link, next_link);
+
     // Write content-only file for AJAX loading (format: "Title\n<content>")
-    String ajax_content = String::format("{} :: Plywood C++ Base Library\n{}", page_title, article_content);
+    String ajax_content = String::format("{} :: Plywood C++ Base Library\n{}{}", page_title, article_content, nav_html);
     String ajax_path = join_path(out_folder, "content/docs", rel_name + ".ajax.html");
     Filesystem::make_dirs(split_path(ajax_path).directory);
     Filesystem::save_text(ajax_path, ajax_content);
@@ -390,7 +411,7 @@ void convert_page(const json::Node* item) {
     </div>
   </div>
   <div class="content-parent"><article class="content" id="article">
-{}
+{}{}
   </article></div>
   <script>
     (function() {{
@@ -412,17 +433,11 @@ void convert_page(const json::Node* item) {
 </html>
 )";
     String full_html = String::format(format_str, page_title, publish_key, publish_key,
-                                      table_of_contents.move_to_string(), article_content);
+                                      table_of_contents.move_to_string(), article_content, nav_html);
 
     String out_path = join_path(out_folder, "content/docs", rel_name + ".html");
     Filesystem::make_dirs(split_path(out_path).directory);
     Filesystem::save_text(out_path, full_html);
-
-    if (item->get("children")->is_valid()) {
-        for (const json::Node* child : item->get("children")->array_view()) {
-            convert_page(child);
-        }
-    }
 }
 
 Owned<json::Node> parse_json(StringView path) {
@@ -451,8 +466,12 @@ void generate_whole_site() {
 
     // Traverse contents.json and generate pages in content/docs/.
     contents = parse_json(join_path(docs_folder, "contents.json"));
-    for (const json::Node* item : contents->array_view()) {
-        convert_page(item);
+    Array<const json::Node*> pages;
+    flatten_pages(pages, contents);
+    for (u32 i = 0; i < pages.num_items(); i++) {
+        const json::Node* prev_page = (i > 0) ? pages[i - 1] : nullptr;
+        const json::Node* next_page = (i + 1 < pages.num_items()) ? pages[i + 1] : nullptr;
+        convert_page(pages[i], prev_page, next_page);
     }
 }
 
