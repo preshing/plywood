@@ -231,6 +231,7 @@ html {
     width: 22px;
     height: 22px;
     fill: var(--text-banner);
+    stroke: var(--text-banner);
     transition: fill 0.2s ease, transform 0.3s ease;
 }
 
