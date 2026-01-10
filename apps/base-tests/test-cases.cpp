@@ -696,6 +696,129 @@ TEST_CASE("Set stress test u32") {
     }
 }
 
+//  ▄▄   ▄▄
+//  ███▄███  ▄▄▄▄  ▄▄▄▄▄
+//  ██▀█▀██  ▄▄▄██ ██  ██
+//  ██   ██ ▀█▄▄██ ██▄▄█▀
+//                 ██
+
+#undef TEST_CASE_PREFIX
+#define TEST_CASE_PREFIX Map_
+
+TEST_CASE("Map with String keys") {
+    Map<String, u32> map;
+    
+    auto result1 = map.insert("apple");
+    check(!result1.was_found);
+    *result1.value = 1;
+    
+    auto result2 = map.insert("banana");
+    check(!result2.was_found);
+    *result2.value = 2;
+    
+    auto result3 = map.insert("cherry");
+    check(!result3.was_found);
+    *result3.value = 3;
+    
+    // Find by string
+    check(map.find("apple") != nullptr);
+    check(*map.find("apple") == 1);
+    check(map.find("banana") != nullptr);
+    check(*map.find("banana") == 2);
+    check(map.find("cherry") != nullptr);
+    check(*map.find("cherry") == 3);
+    
+    // Find non-existing
+    check(map.find("durian") == nullptr);
+}
+
+TEST_CASE("Map stress test") {
+    // Metrics collection.
+    Array<TestHistogramBucket> histogram = {
+        {0, 0},
+        {1, 0},
+        {2, 0},
+        {4, 0},
+        {8, 0},
+        {16, 0},
+        {32, 0},
+        {64, 0},
+        {128, 0},
+        {256, 0},
+    };
+    u32 sum_of_all_populations = 0;
+    u32 num_inserts_were_found = 0;
+    u32 num_absent_finds = 0;
+
+    // Test setup.
+    Map<u32, String> map;
+    Array<u32> arr;
+    Random r{0};
+
+    // Main test loop.
+    for (u32 iters = 0; iters < 500; iters++) {
+        // Ensure the map and mirror array have the same number of items.
+        PLY_ASSERT(map.item_set.items.num_items() == arr.num_items());
+
+        // Decide what population size the map should have next.
+        // We'll generate a random number using a Poisson distribution.
+        float exp = 1.f - r.generate_float();
+        PLY_ASSERT(exp > 0); // Guaranteed because generate_float returns numbers < 1.
+        float random_population = -logf(exp) * 40; // A Poisson distribution yielding an average value of 40.
+        // Convert to integer and skew the distribution downwards so that the zero population occurs more often.
+        u32 desired_population = (u32) clamp(random_population - 4.f, 0.f, 512.f);
+
+        // Add items to the map if needed.
+        while (desired_population > map.item_set.items.num_items()) {
+            u32 key_to_insert = r.generate_u32() % 1000;
+            auto result = map.insert(key_to_insert);
+            if (result.was_found) {
+                num_inserts_were_found++;
+                check(find(arr, key_to_insert) >= 0);
+            } else {
+                *result.value = String::format("{}", key_to_insert);
+                arr.append(key_to_insert);
+            }
+        }
+
+        // Remove items from the map if needed.
+        while (desired_population < arr.num_items()) {
+            u32 index_to_remove = r.generate_u32() % arr.num_items();
+            u32 key_to_remove = arr[index_to_remove];
+            map.erase(key_to_remove);
+            arr.erase_quick(index_to_remove);
+        }
+
+        // Check its population.
+        check(desired_population == map.item_set.items.num_items());
+        check(desired_population == arr.num_items());
+        for (s32 i = histogram.num_items() - 1; i >= 0; i--) {
+            if (desired_population >= histogram[i].population) {
+                histogram[i].num_times_occurred++;
+                break;
+            }
+        }
+        sum_of_all_populations += desired_population;
+
+        // Test find.
+        sort(arr);
+        for (u32 i = 0; i < arr.num_items(); i++) {
+            String* found = map.find(arr[i]);
+            check(found);
+            check(*found == String::format("{}", arr[i]));
+            if (i > 0) {
+                check(arr[i] > arr[i - 1]); // No duplicates.
+                u32 delta = arr[i] - arr[i - 1];
+                if (delta > 1) {
+                    u32 absent_key = arr[i - 1] + 1 + (r.generate_u32() % (delta - 1));
+                    check(!map.find(absent_key));
+                    num_absent_finds++;
+                }
+            }
+        }
+    }
+}
+
 //  ▄▄▄▄▄  ▄▄▄▄▄▄
 //  ██  ██   ██   ▄▄▄▄▄   ▄▄▄▄   ▄▄▄▄
 //  ██▀▀█▄   ██   ██  ▀▀ ██▄▄██ ██▄▄██
