@@ -274,7 +274,7 @@ Owned<TCPConnection> Network::connect_tcp(const IPAddress& address, u16 port) {
 
     int rc = ::connect(connect_socket, (sockaddr*) &remote_addr, remote_addr_len);
     if (rc == 0) {
-        TCPConnection* tcp_conn = new TCPConnection;
+        TCPConnection* tcp_conn = Heap::create<TCPConnection>();
         tcp_conn->remote_addr_ = address;
         tcp_conn->remote_port_ = port;
         tcp_conn->in_pipe = Heap::create<PipeWinsock>(connect_socket, Pipe::HAS_READ_PERMISSION);
@@ -408,7 +408,7 @@ Owned<TCPConnection> TCPListener::accept() {
 
     PLY_ASSERT(passed_addr_len >= remote_addr_len);
     PLY_UNUSED(passed_addr_len);
-    TCPConnection* tcp_conn = new TCPConnection;
+    TCPConnection* tcp_conn = Heap::create<TCPConnection>();
 #if PLY_WITH_IPV6
     if (Network::HasIPv6 && remote_addr_len == sizeof(sockaddr_in6)) {
         PLY_ASSERT(remote_addr.sin6_family == AF_INET6);
@@ -567,7 +567,7 @@ Owned<TCPConnection> Network::connect_tcp(const IPAddress& address, u16 port) {
 
     int rc = ::connect(connect_socket, (sockaddr*) &remote_addr, remote_addr_len);
     if (rc == 0) {
-        TCPConnection* tcp_conn = new TCPConnection;
+        TCPConnection* tcp_conn = Heap::create<TCPConnection>();
         tcp_conn->remote_addr_ = address;
         tcp_conn->remote_port_ = port;
         tcp_conn->in_pipe.fd = connect_socket;

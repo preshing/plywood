@@ -649,7 +649,7 @@ public:
     template <typename Callable>
     void run(Callable&& callable) {
         PLY_ASSERT(!this->attached);
-        auto functor = new Functor<void()>{std::forward<Callable>(callable)};
+        auto functor = Heap::create<Functor<void()>>(std::forward<Callable>(callable));
         pthread_create(&this->handle, NULL, thread_entry, functor);
         this->attached = true;
     }
@@ -2563,7 +2563,7 @@ struct HashLookup {
 
     HashLookup() = default;
     HashLookup(const HashLookup& other)
-        : indices{new s32[other.num_allocated_indices]}, num_indices{other.num_indices},
+        : indices{(s32*) Heap::alloc(sizeof(s32) * other.num_allocated_indices)}, num_indices{other.num_indices},
           num_allocated_indices{other.num_allocated_indices} {
         for (u32 i = 0; i < this->num_allocated_indices; i++) {
             this->indices[i] = other.indices[i];
@@ -2574,7 +2574,7 @@ struct HashLookup {
         new (&other) HashLookup;
     }
     ~HashLookup() {
-        delete[] this->indices;
+        Heap::free(this->indices);
     }
     HashLookup& operator=(const HashLookup& other) {
         if (this != &other) {
@@ -2597,7 +2597,7 @@ private:
         u32 mask = num_allocated_indices - 1;
 
         // Allocate new indices.
-        s32* new_indices = new s32[num_allocated_indices];
+        s32* new_indices = (s32*) Heap::alloc(sizeof(s32) * num_allocated_indices);
         for (u32 i = 0; i < num_allocated_indices; i++) {
             new_indices[i] = -1;
         }
@@ -2615,7 +2615,7 @@ private:
             }
         }
 
-        delete[] this->indices;
+        Heap::free(this->indices);
         this->indices = new_indices;
         this->num_allocated_indices = num_allocated_indices;
     }

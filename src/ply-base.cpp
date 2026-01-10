@@ -347,6 +347,10 @@ Heap_Stats get_heap_stats() {
 }
 */
 
+#if !defined(PLY_OVERRIDE_NEW)
+#define PLY_OVERRIDE_NEW 1
+#endif
+
 #if PLY_OVERRIDE_NEW
 
 } // namespace ply
@@ -371,7 +375,6 @@ void operator delete[](void* ptr) noexcept {
     ply::Heap::free(ptr);
 }
 
-#if PLY_WITH_EXCEPTIONS
 void* operator new(std::size_t size, std::nothrow_t const&) noexcept {
     return ply::Heap::alloc(size);
 }
@@ -387,7 +390,6 @@ void operator delete(void* ptr, std::nothrow_t const&) noexcept {
 void operator delete[](void* ptr, std::nothrow_t const&) noexcept {
     ply::Heap::free(ptr);
 }
-#endif // PLY_WITH_EXCEPTIONS
 
 namespace ply {
 
