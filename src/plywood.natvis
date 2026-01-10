@@ -1,16 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <AutoVisualizer xmlns="http://schemas.microsoft.com/vstudio/debugger/natvis/2010">
   <Type Name="ply::Atomic&lt;*&gt;">
-    <DisplayString>{($T1) m_value.nonatomic}</DisplayString>
+    <DisplayString>{($T1) value}</DisplayString>
     <Expand>
-      <Item Name="value">($T1) m_value.nonatomic</Item>
+      <Item Name="value">($T1) value</Item>
     </Expand>
   </Type>
 
   <Type Name="ply::Array&lt;*&gt;">
     <DisplayString Condition="num_items_ == 0">num_items=0</DisplayString>
-    <DisplayString Condition="num_items_ == 1">num_items=1 {{{items[0]}}}</DisplayString>
-    <DisplayString Condition="num_items_ &gt; 1">num_items={num_items_} {{{items[0]}, ...}}</DisplayString>
+    <DisplayString Condition="num_items_ == 1">num_items=1 {{{items_[0]}}}</DisplayString>
+    <DisplayString Condition="num_items_ &gt; 1">num_items={num_items_} {{{items_[0]}, ...}}</DisplayString>
     <Expand>
       <ArrayItems>
         <Size>num_items_</Size>
@@ -21,8 +21,8 @@
 
   <Type Name="ply::ArrayView&lt;*&gt;">
     <DisplayString Condition="num_items_ == 0">num_items=0</DisplayString>
-    <DisplayString Condition="num_items_ == 1">num_items=1 {{{items[0]}}}</DisplayString>
-    <DisplayString Condition="num_items_ &gt; 1">num_items={num_items} {{{items[0]}, ...}}</DisplayString>
+    <DisplayString Condition="num_items_ == 1">num_items=1 {{{items_[0]}}}</DisplayString>
+    <DisplayString Condition="num_items_ &gt; 1">num_items={num_items_} {{{items_[0]}, ...}}</DisplayString>
     <Expand>
       <ArrayItems>
         <Size>num_items_</Size>
@@ -32,27 +32,24 @@
   </Type>
 
   <Type Name="ply::FixedArray&lt;*,*&gt;">
-    <DisplayString Condition="$T2 == 1">{items[0]}</DisplayString>
-    <DisplayString Condition="$T2 > 1">{items[0]}, ...</DisplayString>
+    <DisplayString Condition="$T2 == 1">{items_[0]}</DisplayString>
+    <DisplayString Condition="$T2 > 1">{items_[0]}, ...</DisplayString>
     <Expand>
       <ExpandedItem>items_</ExpandedItem>
     </Expand>
   </Type>
 
-  <Type Name="ply::Map&lt;*&gt;">
-    <DisplayString>size={m_population}</DisplayString>
+  <Type Name="ply::Set&lt;*&gt;">
+    <DisplayString>size={items.num_items_}</DisplayString>
     <Expand>
-      <CustomListItems MaxItemsPerView="1000">
-        <Variable Name="i" InitialValue="0" />
-        <Size>m_population</Size>
-        <Loop>
-          <Break Condition="i &gt; m_sizeMask"/>
-          <If Condition="m_cellGroups[i &gt;&gt; 2].next_delta[i &amp; 3] != 255">
-            <Item>m_cellGroups[i &gt;&gt; 2].items[i &amp; 3]</Item>
-          </If>
-          <Exec>i += 1</Exec>
-        </Loop>
-      </CustomListItems>
+      <ExpandedItem>items</ExpandedItem>
+    </Expand>
+  </Type>
+
+  <Type Name="ply::Map&lt;*,*&gt;">
+    <DisplayString>size={item_set.items.num_items_}</DisplayString>
+    <Expand>
+      <ExpandedItem>item_set.items</ExpandedItem>
     </Expand>
   </Type>
 
@@ -66,122 +63,115 @@
     <StringView>bytes,[num_bytes]s</StringView>
   </Type>
 
-  <Type Name="ply::BTree&lt;*&gt;::Node">
+  <Type Name="ply::Variant&lt;*&gt;">
     <Expand>
-      <ExpandedItem Condition="is_leaf">((ply::BTree&lt;$T1&gt;::LeafNode*) this),!</ExpandedItem>
-      <ExpandedItem Condition="!is_leaf">((ply::BTree&lt;$T1&gt;::InnerNode*) this),!</ExpandedItem>
+      <Item Name="[subobject]" Condition="subtype == 1">*($T1*) storage</Item>
     </Expand>
   </Type>
 
-  <Type Name="ply::Variant&lt;*&gt;">
-	  <Expand>
-		  <Item Name="[subobject]" Condition="subtype == 1">*($T1*) storage</Item>
-	  </Expand>
-  </Type>
-
   <Type Name="ply::Variant&lt;*,*&gt;">
-	  <Expand>
-		  <Item Name="[subobject]" Condition="subtype == 1">*($T1*) storage</Item>
-		  <Item Name="[subobject]" Condition="subtype == 2">*($T2*) storage</Item>
-	  </Expand>
+    <Expand>
+      <Item Name="[subobject]" Condition="subtype == 1">*($T1*) storage</Item>
+      <Item Name="[subobject]" Condition="subtype == 2">*($T2*) storage</Item>
+    </Expand>
   </Type>
 
   <Type Name="ply::Variant&lt;*,*,*&gt;">
-	  <Expand>
-		  <Item Name="[subobject]" Condition="subtype == 1">*($T1*) storage</Item>
-		  <Item Name="[subobject]" Condition="subtype == 2">*($T2*) storage</Item>
-		  <Item Name="[subobject]" Condition="subtype == 3">*($T3*) storage</Item>
-	  </Expand>
+    <Expand>
+      <Item Name="[subobject]" Condition="subtype == 1">*($T1*) storage</Item>
+      <Item Name="[subobject]" Condition="subtype == 2">*($T2*) storage</Item>
+      <Item Name="[subobject]" Condition="subtype == 3">*($T3*) storage</Item>
+    </Expand>
   </Type>
 
   <Type Name="ply::Variant&lt;*,*,*,*&gt;">
-	  <Expand>
-		  <Item Name="[subobject]" Condition="subtype == 1">*($T1*) storage</Item>
-		  <Item Name="[subobject]" Condition="subtype == 2">*($T2*) storage</Item>
-		  <Item Name="[subobject]" Condition="subtype == 3">*($T3*) storage</Item>
-		  <Item Name="[subobject]" Condition="subtype == 4">*($T4*) storage</Item>
-	  </Expand>
+    <Expand>
+      <Item Name="[subobject]" Condition="subtype == 1">*($T1*) storage</Item>
+      <Item Name="[subobject]" Condition="subtype == 2">*($T2*) storage</Item>
+      <Item Name="[subobject]" Condition="subtype == 3">*($T3*) storage</Item>
+      <Item Name="[subobject]" Condition="subtype == 4">*($T4*) storage</Item>
+    </Expand>
   </Type>
 
   <Type Name="ply::Variant&lt;*,*,*,*,*&gt;">
-	  <Expand>
-		  <Item Name="[subobject]" Condition="subtype == 1">*($T1*) storage</Item>
-		  <Item Name="[subobject]" Condition="subtype == 2">*($T2*) storage</Item>
-		  <Item Name="[subobject]" Condition="subtype == 3">*($T3*) storage</Item>
-		  <Item Name="[subobject]" Condition="subtype == 4">*($T4*) storage</Item>
-		  <Item Name="[subobject]" Condition="subtype == 5">*($T5*) storage</Item>
-	  </Expand>
+    <Expand>
+      <Item Name="[subobject]" Condition="subtype == 1">*($T1*) storage</Item>
+      <Item Name="[subobject]" Condition="subtype == 2">*($T2*) storage</Item>
+      <Item Name="[subobject]" Condition="subtype == 3">*($T3*) storage</Item>
+      <Item Name="[subobject]" Condition="subtype == 4">*($T4*) storage</Item>
+      <Item Name="[subobject]" Condition="subtype == 5">*($T5*) storage</Item>
+    </Expand>
   </Type>
 
   <Type Name="ply::Variant&lt;*,*,*,*,*,*&gt;">
-	  <Expand>
-		  <Item Name="[subobject]" Condition="subtype == 1">*($T1*) storage</Item>
-		  <Item Name="[subobject]" Condition="subtype == 2">*($T2*) storage</Item>
-		  <Item Name="[subobject]" Condition="subtype == 3">*($T3*) storage</Item>
-		  <Item Name="[subobject]" Condition="subtype == 4">*($T4*) storage</Item>
-		  <Item Name="[subobject]" Condition="subtype == 5">*($T5*) storage</Item>
-		  <Item Name="[subobject]" Condition="subtype == 6">*($T6*) storage</Item>
-	  </Expand>
+    <Expand>
+      <Item Name="[subobject]" Condition="subtype == 1">*($T1*) storage</Item>
+      <Item Name="[subobject]" Condition="subtype == 2">*($T2*) storage</Item>
+      <Item Name="[subobject]" Condition="subtype == 3">*($T3*) storage</Item>
+      <Item Name="[subobject]" Condition="subtype == 4">*($T4*) storage</Item>
+      <Item Name="[subobject]" Condition="subtype == 5">*($T5*) storage</Item>
+      <Item Name="[subobject]" Condition="subtype == 6">*($T6*) storage</Item>
+    </Expand>
   </Type>
 
   <Type Name="ply::Variant&lt;*,*,*,*,*,*,*&gt;">
-	  <Expand>
-		  <Item Name="[subobject]" Condition="subtype == 1">*($T1*) storage</Item>
-		  <Item Name="[subobject]" Condition="subtype == 2">*($T2*) storage</Item>
-		  <Item Name="[subobject]" Condition="subtype == 3">*($T3*) storage</Item>
-		  <Item Name="[subobject]" Condition="subtype == 4">*($T4*) storage</Item>
-		  <Item Name="[subobject]" Condition="subtype == 5">*($T5*) storage</Item>
-		  <Item Name="[subobject]" Condition="subtype == 6">*($T6*) storage</Item>
-		  <Item Name="[subobject]" Condition="subtype == 7">*($T7*) storage</Item>
-	  </Expand>
+    <Expand>
+      <Item Name="[subobject]" Condition="subtype == 1">*($T1*) storage</Item>
+      <Item Name="[subobject]" Condition="subtype == 2">*($T2*) storage</Item>
+      <Item Name="[subobject]" Condition="subtype == 3">*($T3*) storage</Item>
+      <Item Name="[subobject]" Condition="subtype == 4">*($T4*) storage</Item>
+      <Item Name="[subobject]" Condition="subtype == 5">*($T5*) storage</Item>
+      <Item Name="[subobject]" Condition="subtype == 6">*($T6*) storage</Item>
+      <Item Name="[subobject]" Condition="subtype == 7">*($T7*) storage</Item>
+    </Expand>
   </Type>
 
   <Type Name="ply::Variant&lt;*,*,*,*,*,*,*,*&gt;">
-	  <Expand>
-		  <Item Name="[subobject]" Condition="subtype == 1">*($T1*) storage</Item>
-		  <Item Name="[subobject]" Condition="subtype == 2">*($T2*) storage</Item>
-		  <Item Name="[subobject]" Condition="subtype == 3">*($T3*) storage</Item>
-		  <Item Name="[subobject]" Condition="subtype == 4">*($T4*) storage</Item>
-		  <Item Name="[subobject]" Condition="subtype == 5">*($T5*) storage</Item>
-		  <Item Name="[subobject]" Condition="subtype == 6">*($T6*) storage</Item>
-		  <Item Name="[subobject]" Condition="subtype == 7">*($T7*) storage</Item>
-		  <Item Name="[subobject]" Condition="subtype == 8">*($T8*) storage</Item>
-	  </Expand>
+    <Expand>
+      <Item Name="[subobject]" Condition="subtype == 1">*($T1*) storage</Item>
+      <Item Name="[subobject]" Condition="subtype == 2">*($T2*) storage</Item>
+      <Item Name="[subobject]" Condition="subtype == 3">*($T3*) storage</Item>
+      <Item Name="[subobject]" Condition="subtype == 4">*($T4*) storage</Item>
+      <Item Name="[subobject]" Condition="subtype == 5">*($T5*) storage</Item>
+      <Item Name="[subobject]" Condition="subtype == 6">*($T6*) storage</Item>
+      <Item Name="[subobject]" Condition="subtype == 7">*($T7*) storage</Item>
+      <Item Name="[subobject]" Condition="subtype == 8">*($T8*) storage</Item>
+    </Expand>
   </Type>
 
   <Type Name="ply::Variant&lt;*,*,*,*,*,*,*,*,*&gt;">
-	  <Expand>
-		  <Item Name="[subobject]" Condition="subtype == 1">*($T1*) storage</Item>
-		  <Item Name="[subobject]" Condition="subtype == 2">*($T2*) storage</Item>
-		  <Item Name="[subobject]" Condition="subtype == 3">*($T3*) storage</Item>
-		  <Item Name="[subobject]" Condition="subtype == 4">*($T4*) storage</Item>
-		  <Item Name="[subobject]" Condition="subtype == 5">*($T5*) storage</Item>
-		  <Item Name="[subobject]" Condition="subtype == 6">*($T6*) storage</Item>
-		  <Item Name="[subobject]" Condition="subtype == 7">*($T7*) storage</Item>
-		  <Item Name="[subobject]" Condition="subtype == 8">*($T8*) storage</Item>
-		  <Item Name="[subobject]" Condition="subtype == 9">*($T9*) storage</Item>
-	  </Expand>
+    <Expand>
+      <Item Name="[subobject]" Condition="subtype == 1">*($T1*) storage</Item>
+      <Item Name="[subobject]" Condition="subtype == 2">*($T2*) storage</Item>
+      <Item Name="[subobject]" Condition="subtype == 3">*($T3*) storage</Item>
+      <Item Name="[subobject]" Condition="subtype == 4">*($T4*) storage</Item>
+      <Item Name="[subobject]" Condition="subtype == 5">*($T5*) storage</Item>
+      <Item Name="[subobject]" Condition="subtype == 6">*($T6*) storage</Item>
+      <Item Name="[subobject]" Condition="subtype == 7">*($T7*) storage</Item>
+      <Item Name="[subobject]" Condition="subtype == 8">*($T8*) storage</Item>
+      <Item Name="[subobject]" Condition="subtype == 9">*($T9*) storage</Item>
+    </Expand>
   </Type>
 
   <Type Name="ply::Variant&lt;*,*,*,*,*,*,*,*,*,*&gt;">
-	  <Expand>
-		  <Item Name="[subobject]" Condition="subtype == 1">*($T1*) storage</Item>
-		  <Item Name="[subobject]" Condition="subtype == 2">*($T2*) storage</Item>
-		  <Item Name="[subobject]" Condition="subtype == 3">*($T3*) storage</Item>
-		  <Item Name="[subobject]" Condition="subtype == 4">*($T4*) storage</Item>
-		  <Item Name="[subobject]" Condition="subtype == 5">*($T5*) storage</Item>
-		  <Item Name="[subobject]" Condition="subtype == 6">*($T6*) storage</Item>
-		  <Item Name="[subobject]" Condition="subtype == 7">*($T7*) storage</Item>
-		  <Item Name="[subobject]" Condition="subtype == 8">*($T8*) storage</Item>
-		  <Item Name="[subobject]" Condition="subtype == 9">*($T9*) storage</Item>
-		  <Item Name="[subobject]" Condition="subtype == 10">*($T10*) storage</Item>
-	  </Expand>
+    <Expand>
+      <Item Name="[subobject]" Condition="subtype == 1">*($T1*) storage</Item>
+      <Item Name="[subobject]" Condition="subtype == 2">*($T2*) storage</Item>
+      <Item Name="[subobject]" Condition="subtype == 3">*($T3*) storage</Item>
+      <Item Name="[subobject]" Condition="subtype == 4">*($T4*) storage</Item>
+      <Item Name="[subobject]" Condition="subtype == 5">*($T5*) storage</Item>
+      <Item Name="[subobject]" Condition="subtype == 6">*($T6*) storage</Item>
+      <Item Name="[subobject]" Condition="subtype == 7">*($T7*) storage</Item>
+      <Item Name="[subobject]" Condition="subtype == 8">*($T8*) storage</Item>
+      <Item Name="[subobject]" Condition="subtype == 9">*($T9*) storage</Item>
+      <Item Name="[subobject]" Condition="subtype == 10">*($T10*) storage</Item>
+    </Expand>
   </Type>
 
   <Type Name="ply::Reference&lt;*&gt;">
-    <DisplayString>{m_ptr}</DisplayString>
+    <DisplayString>{ptr}</DisplayString>
     <Expand>
-      <ExpandedItem>m_ptr</ExpandedItem>
+      <ExpandedItem>ptr</ExpandedItem>
     </Expand>
   </Type>
 
@@ -194,32 +184,39 @@
   </Type>
 
   <Type Name="ply::Float4">
-    <DisplayString>{{{x,f}, {y,f}, {z,f}, {w,f}}}</DisplayString>
+    <DisplayString>{{{x,g}, {y,g}, {z,g}, {w,g}}}</DisplayString>
   </Type>
 
   <Type Name="ply::Quaternion">
     <DisplayString>{{{x,g}, {y,g}, {z,g}, {w,g}}}</DisplayString>
   </Type>
 
-  <Type Name="ply::Int2&lt;*&gt;">
+  <Type Name="ply::Int2">
     <DisplayString>{{{x}, {y}}}</DisplayString>
   </Type>
 
-  <Type Name="ply::Float3x3">
+  <Type Name="ply::Mat2x2">
+    <DisplayString>col[1]={col[1]}</DisplayString>
+    <Expand>
+      <ExpandedItem>col</ExpandedItem>
+    </Expand>
+  </Type>
+
+  <Type Name="ply::Mat3x3">
     <DisplayString>col[2]={col[2]}</DisplayString>
     <Expand>
       <ExpandedItem>col</ExpandedItem>
     </Expand>
   </Type>
 
-  <Type Name="ply::Float3x4">
+  <Type Name="ply::Mat3x4">
     <DisplayString>col[3]={col[3]}</DisplayString>
     <Expand>
       <ExpandedItem>col</ExpandedItem>
     </Expand>
   </Type>
 
-  <Type Name="ply::Float4x4">
+  <Type Name="ply::Mat4x4">
     <DisplayString>col[3]={col[3]}</DisplayString>
     <Expand>
       <ExpandedItem>col</ExpandedItem>
