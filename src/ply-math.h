@@ -2,7 +2,7 @@
        ____
       ╱   ╱╲    Plywood C++ Base Library
      ╱___╱╭╮╲   https://plywood.dev/
-      └──┴┴┴┘   
+      └──┴┴┴┘
 ========================================================*/
 
 #pragma once
@@ -1560,7 +1560,10 @@ Mat3x4 operator*(const Mat3x4& a, const Mat3x4& b);
 //  ██ ██ ██ ▀█▄▄██  ▀█▄▄     ██
 //
 
-enum ClipNearType { CLIP_NEAR_TO_0, CLIP_NEAR_TO_NEG_1 };
+enum ClipNearType {
+    CLIP_NEAR_TO_0,
+    CLIP_NEAR_TO_NEG_1,
+};
 
 struct Mat4x4 {
     Float4 col[4];
@@ -1579,7 +1582,18 @@ struct Mat4x4 {
     static Mat4x4 translate(const Float3& pos);
     static Mat4x4 from_quaternion(const Quaternion& q, const Float3& pos = 0);
     static Mat4x4 from_quat_pos(const QuatPos& qp);
+
+    // Returns a perspective projection matrix that maps the given view frustum to normalized device coordinate (NDC)
+    // space. The `frustum` rectangle sits on the z = -1 plane and is viewed from the origin. NDC space extends from -1
+    // to +1 along both x and y axes. `z_near` and `z_far` must be positive values. If `clip_near` is `CLIP_NEAR_TO_0`,
+    // the projection matrix maps the z = `-z_near` plane to z = 0 (suitable for Metal); otherwise it maps to z = -1
+    // (suitable for OpenGL). The z = `-z_far` plane is mapped to z = +1.
     static Mat4x4 perspective_projection(const Rect& frustum, float z_near, float z_far, ClipNearType clip_near);
+
+    // Returns an orthographic projection matrix that maps the given view frustum to normalized device coordinate (NDC)
+    // space. The `frustum` rectangle sits on the z = -1 plane. NDC space extends from -1 to +1 along both x and y axes.
+    // If `clip_near` is `CLIP_NEAR_TO_0`, the projection matrix maps the z = `-z_near` plane to z = 0 (suitable for
+    // Metal); otherwise it maps to z = -1 (suitable for OpenGL). The z = `-z_far` plane is mapped to z = +1.
     static Mat4x4 orthographic_projection(const Rect& rect, float z_near, float z_far, ClipNearType clip_near);
 
     Float4& operator[](u32 i) {
