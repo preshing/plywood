@@ -164,13 +164,13 @@ struct TCPConnection {
         return this->remote_port_;
     }
     int get_socket() const {
-        return in_pipe.fd;
+        return in_pipe->fd;
     }
     Stream create_in_stream() {
-        return Stream{&this->in_pipe, false};
+        return Stream{this->in_pipe, false};
     }
     Stream create_out_stream() {
-        return Stream{&this->out_pipe, false};
+        return Stream{this->out_pipe, false};
     }
 };
 

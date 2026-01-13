@@ -42,6 +42,8 @@ set(CMAKE_CXX_FLAGS_FINAL "${CMAKE_C_FLAGS_FINAL}")
 
 if(IOS)
     include("${CMAKE_CURRENT_LIST_DIR}/../Apple_Developer_ID.cmake") # Should contain: set(CMAKE_XCODE_ATTRIBUTE_DEVELOPMENT_TEAM <10-character-id>)
+elseif(APPLE)
+    set(CMAKE_OSX_DEPLOYMENT_TARGET "14.6")
 endif()
 
 function(add_source_files var_name root_path)

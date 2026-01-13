@@ -1,4 +1,4 @@
-﻿/*========================================================
+/*========================================================
        ____
       ╱   ╱╲    Plywood C++ Base Library
      ╱___╱╭╮╲   https://plywood.dev/
@@ -69,7 +69,6 @@ PLY_NO_INLINE Node* Node::get(StringView key) {
 }
 
 PLY_NO_INLINE void Node::set(StringView key, Owned<Node>&& value) {
-    Node* result = value;
     if (this->type != Type::Object)
         return;
 
@@ -575,7 +574,7 @@ struct WriteContext {
         }
 
         switch (node->type) {
-            case (u64) Node::Type::Object: {
+            case Node::Type::Object: {
                 this->out.write("{\n");
                 this->indent_level++;
                 const Node::Object& obj_node = node->object();
@@ -588,14 +587,13 @@ struct WriteContext {
                         this->out.write(',');
                     }
                     this->out.write('\n');
-                    item_index++;
                 }
                 this->indent_level--;
                 indent();
                 this->out.write('}');
                 break;
             }
-            case (u64) Node::Type::Array: {
+            case Node::Type::Array: {
                 this->out.write("[\n");
                 this->indent_level++;
                 ArrayView<const Node* const> arr_node = node->array_view();
@@ -613,7 +611,7 @@ struct WriteContext {
                 this->out.write(']');
                 break;
             }
-            case (u64) Node::Type::Text: {
+            case Node::Type::Text: {
                 this->out.format("\"{}\"", escape(node->text()));
                 break;
             }

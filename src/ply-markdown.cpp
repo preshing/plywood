@@ -1,4 +1,4 @@
-﻿/*========================================================
+/*========================================================
        ____
       ╱   ╱╲    Plywood C++ Base Library
      ╱___╱╭╮╲   https://plywood.dev/
@@ -489,8 +489,8 @@ struct Delimiter {
     bool left_flanking = false;  // Stars & Underscores only
     bool right_flanking = false; // Stars & Underscores only
     bool active = true;          // Open_Link only
-    StringView text;
     String text_storage;
+    StringView text;
     Owned<Node> element; // Inline_Elem only, and it'll be an inline node type
 
     Delimiter() = default;

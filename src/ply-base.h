@@ -814,7 +814,7 @@ public:
         this->value = value;
     }
     void store_release(T value) {
-        __atomic_store(&this->value, value, __ATOMIC_RELEASE);
+        __atomic_store_n(&this->value, value, __ATOMIC_RELEASE);
     }
     T compare_exchange_acq_rel(T expected, T desired) {
         __atomic_compare_exchange(&this->value, &expected, desired, false, __ATOMIC_ACQ_REL, __ATOMIC_ACQ_REL);
@@ -3092,7 +3092,7 @@ struct Functor<Return(Args...)> {
         this->thunk = [](const Functor* f, Args... args) -> Return {
             return (*(Return (*)(Args...)) f->thunk_arg)(std::forward<Args>(args)...);
         };
-        this->thunk_arg = target;
+        this->thunk_arg = (void*) target;
     }
     Functor(const Functor& o) {
         if (o.dyn_ops) {
@@ -4192,6 +4192,12 @@ String join_path(StringViews&&... path_component_args) {
 //  ██▄▄█▀ ██ ██     ▀█▄▄▄  ▀█▄▄▄  ▀█▄▄ ▀█▄▄█▀ ██     ▀█▄▄██  ██▀▀██  ▀█▄▄██  ▀█▄▄ ▀█▄▄▄ ██  ██ ▀█▄▄▄  ██
 //                                                     ▄▄▄█▀
 
+#if !defined(PLY_WITH_DIRECTORY_WATCHER)
+#define PLY_WITH_DIRECTORY_WATCHER 0
+#endif
+
+#if PLY_WITH_DIRECTORY_WATCHER
+
 class DirectoryWatcher {
 public:
     String root;
@@ -4222,6 +4228,8 @@ public:
     void start(StringView root, Functor<void(StringView path, bool must_recurse)>&& callback);
     void stop();
 };
+
+#endif
 
 //   ▄▄▄▄         ▄▄
 //  ██  ▀▀ ▄▄  ▄▄ ██▄▄▄  ▄▄▄▄▄  ▄▄▄▄▄   ▄▄▄▄   ▄▄▄▄  ▄▄▄▄   ▄▄▄▄   ▄▄▄▄

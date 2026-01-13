@@ -360,7 +360,7 @@ Token peek_token(ParserImpl* parser) {
                     PLY_ASSERT(ending_input_range.parent_range_index == parser->pp.include_stack.back(-2).input_range_index);
                     const Preprocessor::InputRange* old_parent_range = &parser->pp.input_ranges[ending_input_range.parent_range_index];
                     u32 old_parent_range_length = old_parent_range[1].input_offset - old_parent_range[0].input_offset;
-                    u32 parent_file_seek = parser->pp.include_stack.back(-2).vin.get_seek_pos();
+                    u32 parent_file_seek = numeric_cast<u32>(parser->pp.include_stack.back(-2).vin.get_seek_pos());
                     // For includes (not macro expansions), the logical length of the parent
                     // segment should exactly match how far we've advanced in the parent file.
                     if (!ending_input_range.is_macro_expansion) {
@@ -925,7 +925,6 @@ Array<QualifiedID::Prefix> parse_nested_name_specifier(ParserImpl* parser) {
 
                         // Try to parse a type ID
                         auto& template_arg = tmpl_spec.args.append();
-                        Token start_token = peek_token(parser);
                         RestorePoint rp{parser};
                         TypeID type_id = parse_type_id(parser);
                         if (!rp.error_occurred()) {
@@ -1369,7 +1368,6 @@ void parse_parameter_declaration_list(ParserImpl* parser, Array<Parameter>* para
             param->decl_specifiers.append(decl_spec);
             any_tokens_consumed = true;
         } else {
-            u32 saved_error_count = parser->raw_error_count;
             u32 saved_token_index = parser->token_index;
             if (for_template) {
                 param = &params->append(parse_template_parameter(parser));
@@ -1441,7 +1439,6 @@ void parse_optional_trailing_return_type(ParserImpl* parser, DeclProduction* fn_
     if (arrow_token.type == Token::Arrow) {
         parser->token_index++;
         function.arrow = arrow_token;
-        Token qid_start_token = peek_token(parser);
         // FIXME: Should parse a TypeID here, not just a qualified ID:
         function.trailing_ret_type = parse_type_id(parser);
     }
@@ -1556,7 +1553,6 @@ void parse_declarator(ParserImpl* parser, Declarator& dcor, DeclProduction* nest
             PLY_ASSERT(dcor.qid.is_empty());
             dcor.qid = std::move(target.qid);
 
-            Token close_paren;
             if (!close_scope(parser, &parenthesized.close_paren, token))
                 return;
             break;
@@ -1804,14 +1800,14 @@ void parse_optional_variable_initializer(ParserImpl* parser, Initializer& result
         parser->token_index++;
         auto& assign = result.var.switch_to<Initializer::Assignment>();
         assign.equal_sign = token;
-        ParsedExpression exp_pair = parse_expression(parser);
+        parse_expression(parser);
         assign.var.switch_to<Owned<Expression>>();
         // FIXME: Fill in
     } else if (token.type == Token::SingleColon) {
         parser->token_index++;
         auto& bit_field = result.var.switch_to<Initializer::BitField>();
         bit_field.colon = token;
-        ParsedExpression exp_pair = parse_expression(parser);
+        parse_expression(parser);
     }
 }
 
@@ -3126,18 +3122,19 @@ void dump_expression(DumpContext& ctx, const Expression* expr);
 void dump_statement(DumpContext& ctx, const Statement& stmt);
 
 void dump_decl_specifier(DumpContext& ctx, const DeclSpecifier& decl_spec) {
+    using Var = decltype(decl_spec.var);
     switch (decl_spec.var.get_subtype_index()) {
-        case decl_spec.var.index_of<DeclSpecifier::Keyword>: {
+        case Var::index_of<DeclSpecifier::Keyword>: {
             auto* keyword = decl_spec.var.as<DeclSpecifier::Keyword>();
             ctx.out->format("{}Keyword '{}'\n", ctx.indent(), keyword->token.text);
             break;
         }
-        case decl_spec.var.index_of<DeclSpecifier::Linkage>: {
+        case Var::index_of<DeclSpecifier::Linkage>: {
             auto* lang_linkage = decl_spec.var.as<DeclSpecifier::Linkage>();
             ctx.out->format("{}Linkage '{}'\n", ctx.indent(), lang_linkage->literal.text);
             break;
         }
-        case decl_spec.var.index_of<DeclSpecifier::Class>: {
+        case Var::index_of<DeclSpecifier::Class>: {
             auto* class_ = decl_spec.var.as<DeclSpecifier::Class>();
             ctx.out->format("{}Class {} '{}'\n", ctx.indent(), class_->keyword.text, to_string(class_->qid));
             if (class_->virt_specifiers.num_items() > 0) {
@@ -3162,7 +3159,7 @@ void dump_decl_specifier(DumpContext& ctx, const DeclSpecifier& decl_spec) {
             }
             break;
         }
-        case decl_spec.var.index_of<DeclSpecifier::Enum>: {
+        case Var::index_of<DeclSpecifier::Enum>: {
             auto* enum_ = decl_spec.var.as<DeclSpecifier::Enum>();
             ctx.out->format("{}Enum{}{} '{}'\n", ctx.indent(), enum_->class_keyword.is_valid() ? " " : "",
                             enum_->class_keyword.text, to_string(enum_->qid));
@@ -3175,7 +3172,7 @@ void dump_decl_specifier(DumpContext& ctx, const DeclSpecifier& decl_spec) {
             }
             break;
         }
-        case decl_spec.var.index_of<DeclSpecifier::TypeSpecifier>: {
+        case Var::index_of<DeclSpecifier::TypeSpecifier>: {
             auto* type_spec = decl_spec.var.as<DeclSpecifier::TypeSpecifier>();
             ctx.out->format("{}TypeSpecifier '{}'\n", ctx.indent(), to_string(type_spec->qid));
             break;
@@ -3191,25 +3188,26 @@ void dump_declarator_production(DumpContext& ctx, const DeclProduction* prod) {
     if (!prod)
         return;
 
+    using Var = decltype(prod->var);
     switch (prod->var.get_subtype_index()) {
-        case prod->var.index_of<DeclProduction::Parenthesized>: {
+        case Var::index_of<DeclProduction::Parenthesized>: {
             ctx.out->format("{}Parenthesized\n", ctx.indent());
             break;
         }
-        case prod->var.index_of<DeclProduction::Indirection>: {
+        case Var::index_of<DeclProduction::Indirection>: {
             auto* pointer_to = prod->var.as<DeclProduction::Indirection>();
             ctx.out->format("{}Indirection ", ctx.indent());
             PLY_ASSERT(pointer_to->prefix.is_empty()); // Not supported yet
             ctx.out->format("'{}'\n", pointer_to->punc.text);
             break;
         }
-        case prod->var.index_of<DeclProduction::ArrayOf>: {
-            auto* array_of = prod->var.as<DeclProduction::ArrayOf>();
+        case Var::index_of<DeclProduction::ArrayOf>: {
+            //auto* array_of = prod->var.as<DeclProduction::ArrayOf>();
             ctx.out->format("{}ArrayOf\n", ctx.indent());
             // FIXME: dump size
             break;
         }
-        case prod->var.index_of<DeclProduction::Function>: {
+        case Var::index_of<DeclProduction::Function>: {
             auto* function = prod->var.as<DeclProduction::Function>();
             ctx.out->format("{}Function\n", ctx.indent());
             if (!function->params.is_empty()) {
@@ -3228,7 +3226,7 @@ void dump_declarator_production(DumpContext& ctx, const DeclProduction* prod) {
             // PLY_ASSERT(is_empty(function->trailing_ret_type)); // Not supported yet
             break;
         }
-        case prod->var.index_of<DeclProduction::Qualifier>: {
+        case Var::index_of<DeclProduction::Qualifier>: {
             auto* qualifier = prod->var.as<DeclProduction::Qualifier>();
             ctx.out->format("{}Qualifier '{}'\n", ctx.indent(), qualifier->keyword.text);
             break;
@@ -3248,11 +3246,12 @@ void dump_init_declarator(DumpContext& ctx, const InitDeclarator& init_decl) {
         PLY_SET_IN_SCOPE(ctx.indent_level, ctx.indent_level + 1);
         dump_declarator_production(ctx, init_decl.prod);
     }
+    using Var = decltype(init_decl.init.var);
     switch (init_decl.init.var.get_subtype_index()) {
         case 0: {
             break; // Empty
         }
-        case init_decl.init.var.index_of<Initializer::Assignment>: {
+        case Var::index_of<Initializer::Assignment>: {
             auto* assignment = init_decl.init.var.as<Initializer::Assignment>();
             if (auto* expression = assignment->var.as<Owned<Expression>>()) {
                 ctx.out->format("{}Assignment (expression)\n", ctx.indent());
@@ -3270,7 +3269,7 @@ void dump_init_declarator(DumpContext& ctx, const InitDeclarator& init_decl) {
             }
             break;
         }
-        case init_decl.init.var.index_of<Initializer::FunctionBody>: {
+        case Var::index_of<Initializer::FunctionBody>: {
             auto* function_body = init_decl.init.var.as<Initializer::FunctionBody>();
             ctx.out->format("{}FunctionBody\n", ctx.indent());
             PLY_SET_IN_SCOPE(ctx.indent_level, ctx.indent_level + 1);
@@ -3284,7 +3283,7 @@ void dump_init_declarator(DumpContext& ctx, const InitDeclarator& init_decl) {
             }
             break;
         }
-        case init_decl.init.var.index_of<Initializer::BitField>: {
+        case Var::index_of<Initializer::BitField>: {
             auto* bit_field = init_decl.init.var.as<Initializer::BitField>();
             ctx.out->format("{}BitField\n", ctx.indent());
             PLY_SET_IN_SCOPE(ctx.indent_level, ctx.indent_level + 1);
@@ -3303,8 +3302,9 @@ void dump_declaration(DumpContext& ctx, const Declaration& decl) {
         FileLocation file_loc = ctx.parser->get_file_location(token.input_offset);
         return String::format("{}({})", split_path(file_loc.abs_path).filename, file_loc.line);
     };
+    using Var = decltype(decl.var);
     switch (decl.var.get_subtype_index()) {
-        case decl.var.index_of<Declaration::Linkage>: {
+        case Var::index_of<Declaration::Linkage>: {
             auto* linkage = decl.var.as<Declaration::Linkage>();
             ctx.out->format("{}{}: Linkage '{}'\n", ctx.indent(), format_loc(linkage->extern_keyword),
                             linkage->literal.text);
@@ -3314,7 +3314,7 @@ void dump_declaration(DumpContext& ctx, const Declaration& decl) {
             }
             break;
         }
-        case decl.var.index_of<Declaration::Namespace>: {
+        case Var::index_of<Declaration::Namespace>: {
             auto* ns = decl.var.as<Declaration::Namespace>();
             ctx.out->format("{}{}: Namespace '{}'\n", ctx.indent(), format_loc(ns->keyword), to_string(ns->qid));
             PLY_SET_IN_SCOPE(ctx.indent_level, ctx.indent_level + 1);
@@ -3323,7 +3323,7 @@ void dump_declaration(DumpContext& ctx, const Declaration& decl) {
             }
             break;
         }
-        case decl.var.index_of<Declaration::Entity>: {
+        case Var::index_of<Declaration::Entity>: {
             auto* entity = decl.var.as<Declaration::Entity>();
             ctx.out->format("{}{}: Entity\n", ctx.indent(), format_loc(get_first_token(*entity)));
             PLY_SET_IN_SCOPE(ctx.indent_level, ctx.indent_level + 1);
@@ -3335,14 +3335,14 @@ void dump_declaration(DumpContext& ctx, const Declaration& decl) {
             }
             break;
         }
-        case decl.var.index_of<Declaration::Template>: {
+        case Var::index_of<Declaration::Template>: {
             auto* tmpl = decl.var.as<Declaration::Template>();
             ctx.out->format("{}{}: Template'\n", ctx.indent(), format_loc(tmpl->keyword));
             PLY_SET_IN_SCOPE(ctx.indent_level, ctx.indent_level + 1);
             dump_declaration(ctx, *tmpl->child_decl);
             break;
         }
-        case decl.var.index_of<Declaration::TypeAlias>: {
+        case Var::index_of<Declaration::TypeAlias>: {
             auto* alias = decl.var.as<Declaration::TypeAlias>();
             ctx.out->format("{}{}: TypeAlias '{}'\n", ctx.indent(), format_loc(alias->using_keyword), alias->name.text);
             PLY_SET_IN_SCOPE(ctx.indent_level, ctx.indent_level + 1);
@@ -3352,19 +3352,19 @@ void dump_declaration(DumpContext& ctx, const Declaration& decl) {
             dump_declarator_production(ctx, alias->type_id.abstract_dcor);
             break;
         }
-        case decl.var.index_of<Declaration::UsingNamespace>: {
+        case Var::index_of<Declaration::UsingNamespace>: {
             auto* using_directive = decl.var.as<Declaration::UsingNamespace>();
             ctx.out->format("{}{}: UsingNamespace '{}'\n", ctx.indent(), format_loc(using_directive->using_keyword),
                             to_string(using_directive->qid));
             break;
         }
-        case decl.var.index_of<Declaration::StaticAssert>: {
+        case Var::index_of<Declaration::StaticAssert>: {
             auto* static_assert_ = decl.var.as<Declaration::StaticAssert>();
             ctx.out->format("{}{}: StaticAssert\n", ctx.indent(), format_loc(static_assert_->keyword));
             // Dump expression
             break;
         }
-        case decl.var.index_of<Declaration::AccessSpecifier>: {
+        case Var::index_of<Declaration::AccessSpecifier>: {
             auto* access_spec = decl.var.as<Declaration::AccessSpecifier>();
             ctx.out->format("{}{}: AccessSpecifier '{}'\n", ctx.indent(), format_loc(access_spec->keyword),
                             access_spec->keyword.text);

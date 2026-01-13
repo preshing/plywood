@@ -7,6 +7,11 @@
 
 #include "ply-network.h"
 
+#if PLY_MACOS
+#include <arpa/inet.h>
+#define PLY_IPPOSIX_ALLOW_UNKNOWN_ERRORS 0
+#endif
+
 namespace ply {
 
 //  ▄▄▄▄ ▄▄▄▄▄   ▄▄▄▄      ▄▄     ▄▄
@@ -382,7 +387,7 @@ void Network::shutdown() {
 
 TCPConnection::~TCPConnection() {
     // Prevent double-deletion of file descriptor
-    this->out_pipe.fd = -1;
+    this->out_pipe->fd = -1;
 }
 
 Owned<TCPConnection> TCPListener::accept() {
@@ -421,8 +426,8 @@ Owned<TCPConnection> TCPListener::accept() {
         tcp_conn->remote_addr_ = IPAddress::from_ipv4(remoteAddrV4->sin_addr.s_addr);
     }
     tcp_conn->remote_port_ = convert_big_endian(remote_addr.sin6_port);
-    tcp_conn->in_pipe.fd = host_socket;
-    tcp_conn->out_pipe.fd = host_socket;
+    tcp_conn->in_pipe->fd = host_socket;
+    tcp_conn->out_pipe->fd = host_socket;
     Network::last_result_.store(IPResult::OK);
     return tcp_conn;
 }
@@ -570,8 +575,8 @@ Owned<TCPConnection> Network::connect_tcp(const IPAddress& address, u16 port) {
         TCPConnection* tcp_conn = Heap::create<TCPConnection>();
         tcp_conn->remote_addr_ = address;
         tcp_conn->remote_port_ = port;
-        tcp_conn->in_pipe.fd = connect_socket;
-        tcp_conn->out_pipe.fd = connect_socket;
+        tcp_conn->in_pipe->fd = connect_socket;
+        tcp_conn->out_pipe->fd = connect_socket;
         Network::last_result_.store(IPResult::OK);
         return tcp_conn;
     }

@@ -24,6 +24,9 @@
 #include <dirent.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
+#if PLY_WITH_DIRECTORY_WATCHER
+#include <CoreServices/CoreServices.h>
+#endif
 #endif
 #endif
 
@@ -623,7 +626,6 @@ static bool match_pattern_segment(MatchState& state, MatchMode mode) {
     // Variables to track the success of the current segment.
     bool any_clause_succeeded = false;
     bool current_clause_succeeded = true;
-    char* pattern_at_start_of_current_clause = state.pattern->cur_byte;
     char* input_at_start_of_current_clause = state.str->cur_byte;
     Array<Functor<void()>> output_variables_to_commit;
 
@@ -762,7 +764,6 @@ static bool match_pattern_segment(MatchState& state, MatchMode mode) {
                 } else {
                     // Reset status variables and try to match the next clause.
                     current_clause_succeeded = true;
-                    pattern_at_start_of_current_clause = state.pattern->cur_byte;
                     state.str->cur_byte = input_at_start_of_current_clause;
                     output_variables_to_commit.clear();
                 }
@@ -4155,6 +4156,7 @@ DirectoryEntry Filesystem::get_file_info(StringView path) {
 //  ██▄▄█▀ ██ ██     ▀█▄▄▄  ▀█▄▄▄  ▀█▄▄ ▀█▄▄█▀ ██     ▀█▄▄██  ██▀▀██  ▀█▄▄██  ▀█▄▄ ▀█▄▄▄ ██  ██ ▀█▄▄▄  ██
 //                                                     ▄▄▄█▀
 
+#if PLY_WITH_DIRECTORY_WATCHER
 #if defined(_WIN32)
 
 void DirectoryWatcher::run_watcher() {
@@ -4243,7 +4245,7 @@ void my_callback(ConstFSEventStreamRef stream_ref, void* client_call_back_info, 
         StringView p = paths[i];
         FSEventStreamEventFlags flags = event_flags[i];
         PLY_ASSERT(p.starts_with(watcher->root));
-        p = p.sub_str(watcher->root.num_bytes);
+        p = p.substr(watcher->root.num_bytes);
 
         // puts(String::format("change {} in {}, flags {}/0x{}", event_ids[i],
         // String::convert(p), flags, String::to_hex(flags)).bytes());
@@ -4268,7 +4270,7 @@ void DirectoryWatcher::run_watcher() {
     context.info = this;
     context.retain = NULL;
     context.release = NULL;
-    context.copy_description = NULL;
+    context.copyDescription = NULL;
     // FIXME: should use kFSEventStreamCreateFlagWatchRoot to check if the folder being
     // watched gets moved?
     FSEventStreamRef stream =
@@ -4277,6 +4279,7 @@ void DirectoryWatcher::run_watcher() {
                             kFSEventStreamCreateFlagFileEvents);
     CFRelease(paths_to_watch);
     CFRelease(root_path);
+    // FIXME: Replace with FSEventStreamSetDispatchQueue as per compiler deprecation warnings.
     FSEventStreamScheduleWithRunLoop(stream, (CFRunLoopRef) this->run_loop, kCFRunLoopDefaultMode);
     Boolean rc = FSEventStreamStart(stream);
     PLY_ASSERT(rc == TRUE);
@@ -4285,6 +4288,7 @@ void DirectoryWatcher::run_watcher() {
     CFRunLoopRun();
 
     FSEventStreamStop(stream);
+    // FIXME: Replace with FSEventStreamSetDispatchQueue as per compiler deprecation warnings.
     FSEventStreamUnscheduleFromRunLoop(stream, (CFRunLoopRef) this->run_loop, kCFRunLoopDefaultMode);
     FSEventStreamInvalidate(stream);
     FSEventStreamRelease(stream);
@@ -4310,5 +4314,7 @@ void DirectoryWatcher::stop() {
 }
 
 #endif
+#endif // PLY_WITH_DIRECTORY_WATCHER
+
 
 } // namespace ply
