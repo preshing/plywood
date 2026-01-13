@@ -10,7 +10,10 @@ if ($path === '/') {
         echo "Not found";
         exit;
     }
-    readfile($file);
+    $template = file_get_contents($file);
+    $toc = file_get_contents(CONTENT_PATH . "toc.html");
+    $full_html = str_replace("{%toc%}", $toc, $template);
+    echo $full_html;
     exit;
 } elseif (($path === "/docs") || ($path === "/docs/")) {
     header("Location: /docs/intro");

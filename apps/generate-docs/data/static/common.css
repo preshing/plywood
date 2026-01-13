@@ -450,3 +450,137 @@ html {
   border: 1px solid var(--border-secondary);
   padding: 0px 8px;
 }
+
+/*------------------------------------------------
+   Directory/TOC shared styles
+------------------------------------------------*/
+
+.directory ul {
+    line-height: 1.55;
+    overflow: hidden;
+}
+.directory span.caret-down::before {
+    -ms-transform: rotate(90deg);
+    -webkit-transform: rotate(90deg);
+    transform: rotate(90deg);
+}
+.directory .nested {
+    display: none;
+    height: 0px;
+}
+.directory .active {
+    display: block;
+    height: auto;
+}
+.directory span.caret {
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+    position: relative;
+}
+.directory span.caret::before {
+    content: var(--caret-icon);
+    position: absolute;
+    left: -16px;
+    top: 0.3em;
+    transform-origin: 55% 50%;
+    transition: transform 0.1s linear;
+}
+.directory li {
+    padding-left: 1.7em;
+    padding-right: 0.5em;
+}
+.directory ul ul li {
+    padding-left: 2.9em;
+}
+.directory ul ul ul li {
+    padding-left: 4.1em;
+}
+.directory ul ul ul ul li {
+    padding-left: 5.3em;
+}
+.directory ul ul ul ul ul li {
+    padding-left: 6.5em;
+}
+.directory ul ul ul ul ul ul li {
+    padding-left: 7.7em;
+}
+.directory li.selected, .directory li.selected:hover {
+    background: var(--bg-sidebar-selected);
+}
+.directory li.selectable:hover {
+    background: var(--bg-sidebar-hover);
+}
+.directory a {
+    color: inherit;
+}
+.directory .toc-header {
+    margin-left: 5px;
+    color: var(--text-muted);
+}
+
+.scroller {
+    overflow-x: hidden;
+    overflow-y: auto;
+    width: 100%;
+    height: 100%;
+    transform-origin: top right;
+}
+
+.scroller .inner {
+    margin: 8px 0px;
+    white-space: nowrap;
+}
+.scroller ul {
+    margin-bottom: 0px;
+}
+
+.scroller::-webkit-scrollbar, scrollbar {
+    width: 8px;
+}
+
+.scroller::-webkit-scrollbar-thumb, scrollbar-thumb {
+    background: var(--scrollbar-thumb);
+    border-radius: 4px;
+}
+
+.mobile-nav {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0px 16px 5px;
+    border-bottom: 1px solid var(--border-secondary);
+    margin-bottom: 4px;
+}
+
+.mobile-nav a {
+    color: var(--text-secondary);
+    font-weight: bold;
+    font-size: 14px;
+}
+
+.mobile-nav a:hover {
+    color: var(--link-color);
+}
+
+.mobile-nav .nav-link {
+    padding: 4px 8px;
+    border-radius: 4px;
+}
+
+.mobile-nav .nav-link:hover {
+    background: var(--bg-sidebar-hover);
+}
+
+.mobile-nav .theme-toggle {
+    margin-left: auto;
+}
+
+.mobile-nav .theme-toggle:hover {
+    background: var(--bg-sidebar-hover);
+}
+
+.mobile-nav .theme-toggle::before {
+    background-color: var(--text-secondary);
+}

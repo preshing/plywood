@@ -30,6 +30,20 @@
         <span style="font-size: 15px; color: #e7e79a; position: absolute; left: 178px; top: 53px;">C++ BASE LIBRARY</span>
     </div>
   </div>
+  <div class="directory" id="popup-menu">
+    <div class="scroller">
+      <div class="inner">
+        <div class="mobile-nav">
+          <a href="/docs/intro"><span class="nav-link">DOCS</span></a>
+          <a href="https://github.com/preshing/plywood" target="_blank"><span class="nav-link">GITHUB</span></a>
+          <button class="theme-toggle" id="popup-theme-toggle" aria-label="Toggle dark mode" title="Toggle dark/light mode"></button>
+        </div>
+        <ul>
+{%toc%}
+        </ul>
+      </div>
+    </div>
+  </div>
   <div class="inner-body content front-contents">
   <p class="tagline center-text">Build cross-platform native software in C++</p>
   <p class="center-text wip">This project is a work in progress.<br>Feel free to look around or check back later for updates.</p>
@@ -49,20 +63,6 @@
   <p class="center-text"><span class="button"><a href="/docs/intro">VIEW DOCUMENTATION</a></span></p>
   <p class="center-text"><span class="button"><a href="https://github.com/preshing/plywood" target="_blank">GET THE SOURCE CODE</a></span></p>
 </div>
-  <script>
-    (function() {
-      var toggle = document.getElementById('theme-toggle');
-      toggle.addEventListener('click', function() {
-        var currentTheme = document.documentElement.getAttribute('data-theme');
-        var newTheme = currentTheme === 'dark' ? 'light' : 'dark';
-        if (newTheme === 'light') {
-          document.documentElement.removeAttribute('data-theme');
-        } else {
-          document.documentElement.setAttribute('data-theme', 'dark');
-        }
-        localStorage.setItem('theme', newTheme);
-      });
-    })();
-  </script>
+  <script src="/static/common.js"></script>
 </body>
 </html>

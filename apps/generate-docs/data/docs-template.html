@@ -48,23 +48,7 @@
   <div class="content-parent"><article class="content" id="article">
 {%content%}
   </article></div>
-  <script>
-    (function() {
-      var toggles = document.querySelectorAll('.theme-toggle');
-      toggles.forEach(function(toggle) {
-        toggle.addEventListener('click', function() {
-          var currentTheme = document.documentElement.getAttribute('data-theme');
-          var newTheme = currentTheme === 'dark' ? 'light' : 'dark';
-          if (newTheme === 'light') {
-            document.documentElement.removeAttribute('data-theme');
-          } else {
-            document.documentElement.setAttribute('data-theme', 'dark');
-          }
-          localStorage.setItem('theme', newTheme);
-        });
-      });
-    })();
-  </script>
+  <script src="/static/common.js"></script>
   <script src="/static/doc-viewer.js"></script>
 </div></body>
 </html>

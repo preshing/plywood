@@ -104,8 +104,10 @@ void serve_plywood_docs(const Request& request, Response& response) {
         if (parts[0].is_empty()) {
             *response.headers.insert("Content-type").value = "text/html";
             Stream* out = response.begin(Response::OK);
-            String local_path = join_path(docs_folder, "content/index.html");
-            out->write(Filesystem::load_text(local_path));
+            String templ = Filesystem::load_text(join_path(docs_folder, "content/index.html"));
+            String toc = Filesystem::load_text(join_path(docs_folder, "content/toc.html"));
+            String full_html = templ.replace("{%toc%}", toc);
+            out->write(full_html);
             return;
         }
         if (parts[0] == "docs") {

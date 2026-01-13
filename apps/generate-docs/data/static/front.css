@@ -149,6 +149,12 @@
 ------------------------------------------------*/
 
 @media only screen and (min-width: 600px) {
+    .mobile-nav {
+        display: none;
+    }
+    .directory {
+        display: none;
+    }
 }
 
 @media only screen and (max-width: 599px) {
@@ -157,6 +163,34 @@
     }
     #hamburger {
         display: inline-block;
+    }
+    .directory {
+        display: none;
+        color: var(--text-secondary);
+        position: fixed;
+        width: 290px;
+        right: 0px;
+        top: 83px;
+        bottom: 25px;
+        max-height: 600px;
+        z-index: 3;
+        overflow: hidden;
+        font-size: 85%;
+        transform-origin: top right;
+        font-family: "source_sans_3", "Helvetica Neue", Arial, sans-serif;
+        background: var(--bg-sidebar);
+        border: 1px solid var(--border-sidebar);
+    }
+    .directory.expanded {
+        display: block;
+        animation-name: menuAnimation;
+        animation-duration: 0.15s;
+        animation-timing-function: linear;
+    }
+    .directory .expanded-content {
+        animation-name: menuContentsAnimation;
+        animation-duration: 0.15s;
+        animation-timing-function: linear;
     }
 }
 
