@@ -34,6 +34,11 @@
   <div class="directory">
     <div class="scroller">
       <div class="inner">
+        <div class="mobile-nav">
+          <a href="/docs/intro"><span class="nav-link">DOCS</span></a>
+          <a href="https://github.com/preshing/plywood" target="_blank"><span class="nav-link">GITHUB</span></a>
+          <button class="theme-toggle" aria-label="Toggle dark mode" title="Toggle dark/light mode"></button>
+        </div>
         <ul>
 {%toc%}
         </ul>
@@ -45,16 +50,18 @@
   </article></div>
   <script>
     (function() {
-      var toggle = document.getElementById('theme-toggle');
-      toggle.addEventListener('click', function() {
-        var currentTheme = document.documentElement.getAttribute('data-theme');
-        var newTheme = currentTheme === 'dark' ? 'light' : 'dark';
-        if (newTheme === 'light') {
-          document.documentElement.removeAttribute('data-theme');
-        } else {
-          document.documentElement.setAttribute('data-theme', 'dark');
-        }
-        localStorage.setItem('theme', newTheme);
+      var toggles = document.querySelectorAll('.theme-toggle');
+      toggles.forEach(function(toggle) {
+        toggle.addEventListener('click', function() {
+          var currentTheme = document.documentElement.getAttribute('data-theme');
+          var newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+          if (newTheme === 'light') {
+            document.documentElement.removeAttribute('data-theme');
+          } else {
+            document.documentElement.setAttribute('data-theme', 'dark');
+          }
+          localStorage.setItem('theme', newTheme);
+        });
       });
     })();
   </script>
