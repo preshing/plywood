@@ -634,9 +634,8 @@ public:
     bool attached = false;
 
     Thread() = default;
-    template <typename Callable>
-    Thread(Callable&& callable) {
-        run(std::forward<Callable>(callable));
+    Thread(Functor<void()>&& entry) {
+        run(std::move(entry));
     }
     ~Thread() {
         if (this->attached) {
@@ -646,13 +645,7 @@ public:
     bool is_valid() {
         return this->attached;
     }
-    template <typename Callable>
-    void run(Callable&& callable) {
-        PLY_ASSERT(!this->attached);
-        auto functor = Heap::create<Functor<void()>>(std::forward<Callable>(callable));
-        pthread_create(&this->handle, NULL, thread_entry, functor);
-        this->attached = true;
-    }
+    void run(Functor<void()>&& entry);
     void join() {
         PLY_ASSERT(this->attached);
         void* ret_val = nullptr;
@@ -1405,6 +1398,15 @@ inline void Thread::run(Functor<void()>&& entry) {
     this->handle = CreateThread(NULL, 0, thread_entry, functor, 0, NULL);
 }
 
+#elif defined(PLY_POSIX)
+
+inline void Thread::run(Functor<void()>&& entry) {
+    PLY_ASSERT(!this->attached);
+    auto* functor = Heap::create<Functor<void()>>(std::move(entry));
+    pthread_create(&this->handle, NULL, thread_entry, functor);
+    this->attached = true;
+}
+
 #endif
 
 //   ▄▄▄▄   ▄▄          ▄▄               ▄▄   ▄▄ ▄▄
@@ -1415,9 +1417,9 @@ inline void Thread::run(Functor<void()>&& entry) {
 
 struct String;
 template <typename>
-struct ArrayView;
+class ArrayView;
 template <typename>
-struct Array;
+class Array;
 
 inline bool is_whitespace(char c) {
     return (c == ' ') || (c == '\t') || (c == '\r') || (c == '\n');
@@ -3109,7 +3111,7 @@ struct Functor<Return(Args...)> {
     }
     // Construct from any callable object such as a lambda expression.
     template <typename Callable, typename = decltype(declval<Callable>()(declval<Args>()...)),
-              std::enable_if_t<!std::is_same_v<Functor, std::decay_t<Callable>>, int> = 0>
+              std::enable_if_t<!std::is_same<Functor, std::decay_t<Callable>>::value, int> = 0>
     Functor(Callable&& callable) {
         using CallableType = std::decay_t<Callable>; // Remove const (if any)
         this->thunk = [](const Functor* f, Args... args) -> Return {
@@ -4020,7 +4022,7 @@ private:
         u32 dir_index;
     };
 
-    friend class Filesystem;
+    friend struct Filesystem;
     WalkTriple triple;
     Array<StackItem> stack;
 

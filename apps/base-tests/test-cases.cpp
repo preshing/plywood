@@ -626,9 +626,6 @@ TEST_CASE("Set stress test u32") {
         {128, 0},
         {256, 0},
     };
-    u32 sum_of_all_populations = 0;
-    u32 num_inserts_were_found = 0;
-    u32 num_absent_finds = 0;
 
     // Test setup.
     Set<u32> set;
@@ -652,7 +649,6 @@ TEST_CASE("Set stress test u32") {
         while (desired_population > set.items.num_items()) {
             u32 value_to_insert = r.generate_u32() % 1000;
             if (set.insert(value_to_insert).was_found) {
-                num_inserts_were_found++;
                 check(find(arr, value_to_insert) >= 0);
             } else {
                 arr.append(value_to_insert);
@@ -677,7 +673,6 @@ TEST_CASE("Set stress test u32") {
                 break;
             }
         }
-        sum_of_all_populations += desired_population;
 
         // Test find.
         sort(arr);
@@ -689,7 +684,6 @@ TEST_CASE("Set stress test u32") {
                 if (delta > 1) {
                     u32 absent_key = arr[i - 1] + 1 + (r.generate_u32() % (delta - 1));
                     check(!set.find(absent_key));
-                    num_absent_finds++;
                 }
             }
         }
@@ -746,9 +740,6 @@ TEST_CASE("Map stress test") {
         {128, 0},
         {256, 0},
     };
-    u32 sum_of_all_populations = 0;
-    u32 num_inserts_were_found = 0;
-    u32 num_absent_finds = 0;
 
     // Test setup.
     Map<u32, String> map;
@@ -773,7 +764,6 @@ TEST_CASE("Map stress test") {
             u32 key_to_insert = r.generate_u32() % 1000;
             auto result = map.insert(key_to_insert);
             if (result.was_found) {
-                num_inserts_were_found++;
                 check(find(arr, key_to_insert) >= 0);
             } else {
                 *result.value = String::format("{}", key_to_insert);
@@ -798,7 +788,6 @@ TEST_CASE("Map stress test") {
                 break;
             }
         }
-        sum_of_all_populations += desired_population;
 
         // Test find.
         sort(arr);
@@ -812,7 +801,6 @@ TEST_CASE("Map stress test") {
                 if (delta > 1) {
                     u32 absent_key = arr[i - 1] + 1 + (r.generate_u32() % (delta - 1));
                     check(!map.find(absent_key));
-                    num_absent_finds++;
                 }
             }
         }
@@ -842,8 +830,6 @@ TEST_CASE("BTree stress test u32") {
         {128, 0},
         {256, 0},
     };
-    u32 sum_of_all_populations = 0;
-    u32 num_duplicate_items = 0;
 
     // Test setup.
     BTree<u32> btree;
@@ -893,7 +879,6 @@ TEST_CASE("BTree stress test u32") {
                 break;
             }
         }
-        sum_of_all_populations += desired_population;
 
         // Test iteration.
         sort(arr);
@@ -901,9 +886,6 @@ TEST_CASE("BTree stress test u32") {
         for (u32 i = 0; i < arr.num_items(); i++) {
             check(iter);
             check(*iter == arr[i]);
-            if ((i > 0) && (arr[i] == arr[i - 1])) {
-                num_duplicate_items++;
-            }
             iter++;
         }
         check(!iter);

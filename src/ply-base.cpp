@@ -196,6 +196,10 @@ DWORD WINAPI thread_entry(LPVOID param) {
 #elif defined(PLY_POSIX)
 
 void* thread_entry(void* arg) {
+    Functor<void()>* entry = static_cast<Functor<void()>*>(arg);
+    (*entry)();
+    Heap::destroy(entry);
+    return nullptr;
 }
 
 #endif
@@ -4042,7 +4046,7 @@ Owned<Pipe> Filesystem::open_pipe_for_read(StringView path) {
     int fd = open_fd_for_read(path);
     if (fd == -1)
         return nullptr;
-    return Heap::create<Pipe_FD>(fd, Pipe::HAS_READ_PERMISSION);
+    return Heap::create<Pipe_FD>(fd, Pipe::HAS_READ_PERMISSION | Pipe::CAN_SEEK);
 }
 
 int Filesystem::open_fd_for_write(StringView path) {
@@ -4072,7 +4076,7 @@ Owned<Pipe> Filesystem::open_pipe_for_write(StringView path) {
     int fd = open_fd_for_write(path);
     if (fd == -1)
         return nullptr;
-    return Heap::create<Pipe_FD>(fd, Pipe::HAS_WRITE_PERMISSION);
+    return Heap::create<Pipe_FD>(fd, Pipe::HAS_WRITE_PERMISSION | Pipe::CAN_SEEK);
 }
 
 FSResult Filesystem::move_file(StringView src_path, StringView dst_path) {
