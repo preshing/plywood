@@ -776,10 +776,10 @@ struct Rect {
     Float2 clamp(const Float2& arg) const {
         return ply::clamp(arg, mins, maxs);
     }
-    Float2 top_left() const {
+    Float2 xmin_ymax() const {
         return Float2{mins.x, maxs.y};
     }
-    Float2 bottom_right() const {
+    Float2 xmax_ymin() const {
         return Float2{maxs.x, mins.y};
     }
     bool contains(const Float2& arg) const {
@@ -902,10 +902,10 @@ struct AABB {
     Float3 clamp(const Float3& arg) const {
         return ply::clamp(arg, mins, maxs);
     }
-    Float3 top_left() const {
+    Float3 xmin_ymax() const {
         return Float3{mins.x, maxs.y};
     }
-    Float3 bottom_right() const {
+    Float3 xmax_ymin() const {
         return Float3{maxs.x, mins.y};
     }
     bool contains(const Float3& arg) const {
@@ -1314,10 +1314,10 @@ struct IntRect {
     Int2 clamp(const Int2& arg) const {
         return ply::clamp(arg, mins, maxs);
     }
-    Int2 top_left() const {
+    Int2 xmin_ymax() const {
         return Int2{mins.x, maxs.y};
     }
-    Int2 bottom_right() const {
+    Int2 xmax_ymin() const {
         return Int2{maxs.x, mins.y};
     }
     bool contains(const Int2& arg) const {
