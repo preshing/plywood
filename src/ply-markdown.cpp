@@ -813,6 +813,23 @@ void destroy(Parser* parser) {
     Heap::destroy(static_cast<ParserDetails*>(parser));
 }
 
+Array<Owned<Element>> parse_whole_document(StringView markdown) {
+    Array<Owned<Element>> elements;
+    Owned<Parser> parser = create_parser();
+    ViewStream vins{markdown};
+
+    while (StringView line = read_line(vins)) {
+        if (Owned<Element> element = parse_line(parser, line)) {
+            elements.append(std::move(element));
+        }
+    }
+    if (Owned<Element> element = flush(parser)) {
+        elements.append(std::move(element));
+    }
+
+    return elements;
+}
+
 String convert_to_html(StringView src) {
     ViewStream vins{src};
     MemStream out;

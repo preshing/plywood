@@ -11,9 +11,11 @@
 namespace ply {
 namespace markdown {
 
-// The parser generates a sequence of `ply::markdown::Element` objects as output.
-// Each `Element` describes a top-level Markdown block (such as a paragraph, code
-// block or list) and all its child elements.
+//  ▄▄▄▄▄ ▄▄▄                                 ▄▄
+//  ██     ██   ▄▄▄▄  ▄▄▄▄▄▄▄   ▄▄▄▄  ▄▄▄▄▄  ▄██▄▄
+//  ██▀▀   ██  ██▄▄██ ██ ██ ██ ██▄▄██ ██  ██  ██
+//  ██▄▄▄ ▄██▄ ▀█▄▄▄  ██ ██ ██ ▀█▄▄▄  ██  ██  ▀█▄▄
+//
 
 struct Element {
     enum Type {
@@ -82,52 +84,39 @@ struct Element {
     }
 };
 
-// `ply::markdown::Parser` is an opaque data type you instantiate using
-// `create_parser()`. Its API consists of two main funtions: `parse_line()`,
-// which consumes one line of input text at a time, and `flush()`, which
-// terminates the current top-level block.
+//  ▄▄▄▄▄
+//  ██  ██  ▄▄▄▄  ▄▄▄▄▄   ▄▄▄▄   ▄▄▄▄  ▄▄▄▄▄
+//  ██▀▀▀   ▄▄▄██ ██  ▀▀ ▀█▄▄▄  ██▄▄██ ██  ▀▀
+//  ██     ▀█▄▄██ ██      ▄▄▄█▀ ▀█▄▄▄  ██
 //
-// These functions return an `Element` when a top-level block (such as a
-// paragraph or list) has ended, or `nullptr` if the current top-level
-// block hasn't ended yet.
-//
-// Basically, you feed this class a sequence of input lines, and it gives
-// you back a sequence of top-level `Element`s that make up the Markdown document.
 
 struct Parser {
-    // element_stack and leaf_element, together, represent the stack of elements leading up to the
-    // current location in the document being parsed.
-    // element_stack can only hold BlockQuote and ListItem elements.
-    // leaf_element represents the top of the stack where text goes. It can either hold a
-    // Element::Paragraph or Element::CodeBlock.
-    // All elements are ultimately owned by root_element.children or its descendents.
-    // Calls to parse_line and flush may complete the root element, causing it to be returned from the
-    // function and Parser::root_element reset to an empty state.
     Array<Element*> element_stack;
     Element* leaf_element = nullptr;
     Element root_element{nullptr, Element::Type::None};
 };
 
+// Creation and Destruction
+
 Owned<Parser> create_parser();
 void destroy(Parser* parser);
 
+// Parsing
+
 Owned<Element> parse_line(Parser* parser, StringView line);
 Owned<Element> flush(Parser* parser);
+Array<Owned<Element>> parse_whole_document(StringView markdown);
 
-// Alternatively, call `ply::markdown::convert_to_html()` to parse an entire Markdown document
-// at once and get an array of `Element`s back.
-
-String convert_to_html(StringView src);
-
-// `convert_to_html()` converts an `Element` (and all its children) to HTML.
+// Converting to HTML
 
 struct HTML_Options {
     bool child_anchors = false;
 };
 
+String convert_to_html(StringView src);
 void convert_to_html(Stream* outs, const Element* element, const HTML_Options& options);
 
-// dump() is for debugging purposes.
+// Debugging
 
 void dump(Stream* outs, const Element* element, u32 level = 0);
 

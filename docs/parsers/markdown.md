@@ -15,6 +15,7 @@ void destroy(Parser* parser)
 -- Parsing
 Owned<Element> parse_line(Parser* parser, StringView line)
 Owned<Element> flush(Parser* parser)
+Array<Owned<Element>> parse_whole_document(StringView markdown)
 -- Converting to HTML
 void convert_to_html(Stream* outs, const Element* element, const HTML_Options& options)
 String convert_to_html(StringView src)
@@ -44,6 +45,11 @@ Parses a single line of Markdown input. Returns an `Element` representing a comp
 Owned<Element> flush(Parser* parser)
 --
 Terminates the current top-level block and returns it. Call this after all input lines have been processed to retrieve any remaining content.
+
+>>
+Array<Owned<Element>> parse_whole_document(StringView markdown)
+--
+Parses an entire Markdown document and returns all top-level elements. This is a convenience function equivalent to calling `parse_line()` for each line followed by `flush()`.
 {/api_descriptions}
 
 ### Converting to HTML
@@ -57,32 +63,11 @@ Converts an `Element` and all its children to HTML, writing the output to the pr
 `bool`|`child_anchors`|If true, generates anchor elements for headings
 {/table}
 
-    // Convert a single element to HTML
-    Owned<Element> element = ...;
-    Stream out = get_stdout();
-    HTML_Options options;
-    options.child_anchors = true;
-    convert_to_html(&out, element.get(), options);
-
 >>
 String convert_to_html(StringView src)
 --
 Convenience function that parses an entire Markdown document and converts it directly to HTML. This is equivalent to parsing all lines, collecting the elements, and converting each to HTML.
 {/api_descriptions}
-
-    // Parse a Markdown document line by line
-    Owned<Parser> parser = create_parser();
-    Array<Owned<Element>> elements;
-
-    StringView lines[] = {"# Hello", "", "This is a paragraph."};
-    for (StringView line : lines) {
-        if (Owned<Element> element = parse_line(parser.get(), line)) {
-            elements.append(std::move(element));
-        }
-    }
-    if (Owned<Element> element = flush(parser.get())) {
-        elements.append(std::move(element));
-    }
 
 ### Parser State
 
