@@ -2,7 +2,7 @@
        ____
       ╱   ╱╲    Plywood C++ Base Library
      ╱___╱╭╮╲   https://plywood.dev/
-      └──┴┴┴┘   
+      └──┴┴┴┘
 ========================================================*/
 
 #include "ply-markdown.h"
@@ -71,15 +71,9 @@ String extract_code_line(StringView line, u32 from_indent) {
     return {};
 }
 
-struct Parser {
-    // multiline_context and leaf_node, together, represent the stack of elements for the
-    // current line. multiline_context can only hold BlockQuote and ListItem nodes.
-    // leaf_node represents the top of the stack where text goes. It can either hold a
-    // Node::Paragraph or Node::CodeBlock.
-    Array<Node*> multiline_context;
-    Node* leaf_node = nullptr;
-
-    // Only used if leaf_node is CodeBlock:
+// ParserDetails extends Parser with internal state not exposed in the public API.
+struct ParserDetails : Parser {
+    // Only used if leaf_element is CodeBlock:
     u32 num_blank_lines_in_code_block = 0;
 
     // This flag indicates that some Lists on the stack have their is_loose_if_continued
@@ -87,26 +81,23 @@ struct Parser {
     // and eliminate the is_loose_if_continued flag completely, but it would complicate
     // match_existing_indentation a little bit. Sticking with this approach for now.)
     bool check_list_continuations = false;
-
-    // All nodes are ultimately owned by output_node.children or its descendents.
-    Node output_node{nullptr, Node::Type::None};
 };
 
 // This is called at the start of each line. It figures out which of the existing
 // elements we are still inside by consuming indentation and blockquote '>' markers
 // that match the current element stack, then truncates any unmatched BlockQuote
-// nodes from the stack. (Unmatched ListItem nodes are not truncated here because
+// elements from the stack. (Unmatched ListItem elements are not truncated here because
 // list items are allowed to contain blank lines.) Returns true if there is more
 // text on the current line.
-bool match_existing_indentation(Parser* parser, StringView line, LineConsumer& lc) {
+bool match_existing_indentation(ParserDetails* parser, StringView line, LineConsumer& lc) {
     u32 keep_stack_depth = 0;
     for (;;) {
         while (lc.consume_space_or_tab()) {
         }
-        if (keep_stack_depth >= parser->multiline_context.num_items())
+        if (keep_stack_depth >= parser->element_stack.num_items())
             break;
-        Node* node = parser->multiline_context[keep_stack_depth];
-        if (node->type == Node::BlockQuote) {
+        Element* element = parser->element_stack[keep_stack_depth];
+        if (element->type == Element::BlockQuote) {
             if (lc.vins.num_remaining_bytes() > 0 && *lc.vins.cur_byte == '>' && lc.inner_indent() <= 3) {
                 // Continue the current blockquote
                 lc.vins.read_byte();
@@ -119,15 +110,15 @@ bool match_existing_indentation(Parser* parser, StringView line, LineConsumer& l
                 }
                 continue;
             }
-        } else if (node->type == Node::ListItem) {
-            if (lc.inner_indent() >= node->indent_or_level) {
+        } else if (element->type == Element::ListItem) {
+            if (lc.inner_indent() >= element->indent_or_level) {
                 // Continue the current list item
                 keep_stack_depth++;
-                lc.outer_indent += node->indent_or_level;
+                lc.outer_indent += element->indent_or_level;
                 continue;
             }
         } else {
-            // multiline_context should only hold BlockQuote and ListItem nodes.
+            // element_stack should only hold BlockQuote and ListItem elements.
             PLY_ASSERT(0);
         }
         break;
@@ -136,52 +127,52 @@ bool match_existing_indentation(Parser* parser, StringView line, LineConsumer& l
     // Is remainder of line blank?
     if (lc.trimmed_remainder().is_empty()) {
         // Yes. Terminate paragraph if any.
-        if (parser->leaf_node && parser->leaf_node->type == Node::Paragraph) {
-            parser->leaf_node = nullptr;
+        if (parser->leaf_element && parser->leaf_element->type == Element::Paragraph) {
+            parser->leaf_element = nullptr;
             PLY_ASSERT(parser->num_blank_lines_in_code_block == 0);
         }
 
         // Stay inside lists.
-        while (keep_stack_depth < parser->multiline_context.num_items() &&
-               parser->multiline_context[keep_stack_depth]->type == Node::ListItem) {
+        while (keep_stack_depth < parser->element_stack.num_items() &&
+               parser->element_stack[keep_stack_depth]->type == Element::ListItem) {
             keep_stack_depth++;
         }
 
-        // If there's another node in multiline_context, it must be a BlockQuote. Terminate it.
-        if (keep_stack_depth < parser->multiline_context.num_items()) {
-            PLY_ASSERT(parser->multiline_context[keep_stack_depth]->type == Node::BlockQuote);
-            parser->multiline_context.resize(keep_stack_depth);
-            parser->leaf_node = nullptr;
+        // If there's another element in element_stack, it must be a BlockQuote. Terminate it.
+        if (keep_stack_depth < parser->element_stack.num_items()) {
+            PLY_ASSERT(parser->element_stack[keep_stack_depth]->type == Element::BlockQuote);
+            parser->element_stack.resize(keep_stack_depth);
+            parser->leaf_element = nullptr;
             parser->num_blank_lines_in_code_block = 0;
         }
 
-        if (parser->leaf_node) {
-            // At this point, the only possible leaf node is a CodeBlock, because
+        if (parser->leaf_element) {
+            // At this point, the only possible leaf element is a CodeBlock, because
             // Paragraphs are terminated above, and Headings don't persist across
             // lines.
-            PLY_ASSERT(parser->leaf_node->type == Node::CodeBlock);
+            PLY_ASSERT(parser->leaf_element->type == Element::CodeBlock);
             // Count blank lines in CodeBlocks
             if (lc.indent - lc.outer_indent > 4) {
                 // Add intermediate blank lines
                 // FIXME: Could this be unified with the code below? (Code
                 // simplification)
                 for (u32 i = 0; i < parser->num_blank_lines_in_code_block; i++) {
-                    parser->leaf_node->raw_lines.append("\n");
+                    parser->leaf_element->raw_lines.append("\n");
                 }
                 parser->num_blank_lines_in_code_block = 0;
                 String code_line = extract_code_line(line, lc.outer_indent + 4);
-                parser->leaf_node->raw_lines.append(std::move(code_line));
+                parser->leaf_element->raw_lines.append(std::move(code_line));
             } else {
                 parser->num_blank_lines_in_code_block++;
             }
         } else {
-            // There's no leaf node and the remainder of the line is blank.
+            // There's no leaf element and the remainder of the line is blank.
             // Walk the stack and set the "isLooseIfContinued" flag on all Lists.
-            for (Node* node : parser->multiline_context) {
-                if (node->type == Node::ListItem) {
-                    PLY_ASSERT(node->parent->type == Node::List);
-                    if (!node->parent->is_loose) {
-                        node->parent->is_loose_if_continued = true;
+            for (Element* element : parser->element_stack) {
+                if (element->type == Element::ListItem) {
+                    PLY_ASSERT(element->parent->type == Element::List);
+                    if (!element->parent->is_loose) {
+                        element->parent->is_loose_if_continued = true;
                         parser->check_list_continuations = true;
                     }
                 }
@@ -191,9 +182,9 @@ bool match_existing_indentation(Parser* parser, StringView line, LineConsumer& l
     }
 
     // No. There's more text on the current line
-    if (keep_stack_depth < parser->multiline_context.num_items()) {
-        parser->multiline_context.resize(keep_stack_depth);
-        parser->leaf_node = nullptr;
+    if (keep_stack_depth < parser->element_stack.num_items()) {
+        parser->element_stack.resize(keep_stack_depth);
+        parser->leaf_element = nullptr;
         parser->num_blank_lines_in_code_block = 0;
     }
     return true;
@@ -202,10 +193,10 @@ bool match_existing_indentation(Parser* parser, StringView line, LineConsumer& l
 // This function consumes new blockquote '>' markers and list item markers such as
 // '*' that *don't* match existing block elements on the current stack. It creates
 // new block elements for each marker encountered.
-void parse_new_markers(Parser* parser, LineConsumer& lc) {
+void parse_new_markers(ParserDetails* parser, LineConsumer& lc) {
     PLY_ASSERT(!lc.trimmed_remainder().is_empty()); // Not called if remainder of line is blank
 
-    // Attempt to parse new Node markers
+    // Attempt to parse new Element markers
     while (lc.vins.num_remaining_bytes() > 0) {
         if (lc.inner_indent() >= 4)
             break;
@@ -216,45 +207,45 @@ void parse_new_markers(Parser* parser, LineConsumer& lc) {
         // This code block will handle any list markers encountered:
         auto got_list_marker = [&](s32 marker_number, char punc) {
             bool is_ordered = (marker_number >= 0);
-            parser->leaf_node = nullptr;
+            parser->leaf_element = nullptr;
             parser->num_blank_lines_in_code_block = 0;
-            Node* list_node = nullptr;
-            Node* parent_ctr = &parser->output_node;
-            if (parser->multiline_context) {
-                parent_ctr = parser->multiline_context.back();
+            Element* list_element = nullptr;
+            Element* parent_ctr = &parser->root_element;
+            if (parser->element_stack) {
+                parent_ctr = parser->element_stack.back();
             }
             PLY_ASSERT(parent_ctr->is_container_block());
             if (!parent_ctr->children.is_empty()) {
-                Node* potential_parent = parent_ctr->children.back();
-                if (potential_parent->type == Node::List && potential_parent->is_ordered_list() == is_ordered &&
+                Element* potential_parent = parent_ctr->children.back();
+                if (potential_parent->type == Element::List && potential_parent->is_ordered_list() == is_ordered &&
                     potential_parent->list_punc == punc) {
                     // Add item to existing list
-                    list_node = potential_parent;
+                    list_element = potential_parent;
                 }
-            } else if (parent_ctr->type == Node::ListItem) {
+            } else if (parent_ctr->type == Element::ListItem) {
                 // Begin new list as a sublist of existing list
                 parent_ctr = parent_ctr->parent;
-                PLY_ASSERT(parent_ctr->type == Node::List);
+                PLY_ASSERT(parent_ctr->type == Element::List);
             }
-            if (!list_node) {
+            if (!list_element) {
                 // Begin new list
-                // Note: parent_ctr automatically owns the new Node through its children member.
-                list_node = Heap::create<Node>(parent_ctr, Node::List);
-                list_node->list_start_number = marker_number;
-                list_node->list_punc = punc;
+                // Note: parent_ctr automatically owns the new Element through its children member.
+                list_element = Heap::create<Element>(parent_ctr, Element::List);
+                list_element->list_start_number = marker_number;
+                list_element->list_punc = punc;
             }
-            Node* list_item = Heap::create<Node>(list_node, Node::ListItem);
+            Element* list_item = Heap::create<Element>(list_element, Element::ListItem);
             list_item->indent_or_level = lc.outer_indent;
-            parser->multiline_context.append(list_item);
+            parser->element_stack.append(list_item);
         };
 
         char c = *lc.vins.cur_byte;
         PLY_ASSERT(!is_whitespace(c));
         if (c == '>') {
             // Begin a new blockquote
-            Node* parent = parser->multiline_context ? parser->multiline_context.back() : &parser->output_node;
-            // Note: parent automatically owns the new Node through its children member.
-            parser->multiline_context.append(Heap::create<Node>(parent, Node::BlockQuote));
+            Element* parent = parser->element_stack ? parser->element_stack.back() : &parser->root_element;
+            // Note: parent automatically owns the new Element through its children member.
+            parser->element_stack.append(Heap::create<Element>(parent, Element::BlockQuote));
             // Consume optional space after '>'
             lc.vins.read_byte();
             lc.indent++;
@@ -268,7 +259,7 @@ void parse_new_markers(Parser* parser, LineConsumer& lc) {
             u32 indent_after_star = lc.indent;
             if (!lc.consume_space_or_tab())
                 goto not_marker;
-            if (parser->leaf_node && lc.trimmed_remainder().is_empty()) {
+            if (parser->leaf_element && lc.trimmed_remainder().is_empty()) {
                 // If the list item interrupts a paragraph, it must not begin with a
                 // blank line.
                 goto not_marker;
@@ -279,7 +270,7 @@ void parse_new_markers(Parser* parser, LineConsumer& lc) {
             got_list_marker(-1, c);
         } else if (c >= '0' && c <= '9') {
             u64 num = read_u64_from_text(lc.vins);
-            if (parser->leaf_node && num != 1) {
+            if (parser->leaf_element && num != 1) {
                 // If list item interrupts a paragraph, the start number must be 1.
                 goto not_marker;
             }
@@ -299,7 +290,7 @@ void parse_new_markers(Parser* parser, LineConsumer& lc) {
             u32 indent_after_marker = lc.indent;
             if (!lc.consume_space_or_tab())
                 goto not_marker;
-            if (parser->leaf_node && lc.trimmed_remainder().is_empty()) {
+            if (parser->leaf_element && lc.trimmed_remainder().is_empty()) {
                 // If the list item interrupts a paragraph, it must not begin with a
                 // blank line.
                 goto not_marker;
@@ -326,41 +317,41 @@ void parse_new_markers(Parser* parser, LineConsumer& lc) {
     }
 }
 
-void parse_paragraph_text(Parser* parser, StringView line, LineConsumer& lc) {
+void parse_paragraph_text(ParserDetails* parser, StringView line, LineConsumer& lc) {
     StringView remaining_text = lc.trimmed_remainder();
-    bool has_para = parser->leaf_node && parser->leaf_node->type == Node::Paragraph;
+    bool has_para = parser->leaf_element && parser->leaf_element->type == Element::Paragraph;
     if (!has_para && lc.inner_indent() >= 4) {
-        // Potentially begin or append to code Node
-        if (remaining_text && !parser->leaf_node) {
-            Node* parent = parser->multiline_context ? parser->multiline_context.back() : &parser->output_node;
-            Node* leaf_node = Heap::create<Node>(parent, Node::CodeBlock);
-            parser->leaf_node = leaf_node;
+        // Potentially begin or append to code Element
+        if (remaining_text && !parser->leaf_element) {
+            Element* parent = parser->element_stack ? parser->element_stack.back() : &parser->root_element;
+            Element* leaf_element = Heap::create<Element>(parent, Element::CodeBlock);
+            parser->leaf_element = leaf_element;
             PLY_ASSERT(parser->num_blank_lines_in_code_block == 0);
         }
-        if (parser->leaf_node) {
-            PLY_ASSERT(parser->leaf_node->type == Node::CodeBlock);
+        if (parser->leaf_element) {
+            PLY_ASSERT(parser->leaf_element->type == Element::CodeBlock);
             // Add intermediate blank lines
             for (u32 i = 0; i < parser->num_blank_lines_in_code_block; i++) {
-                parser->leaf_node->raw_lines.append("\n");
+                parser->leaf_element->raw_lines.append("\n");
             }
             parser->num_blank_lines_in_code_block = 0;
             String code_line = extract_code_line(line, lc.outer_indent + 4);
-            parser->leaf_node->raw_lines.append(std::move(code_line));
+            parser->leaf_element->raw_lines.append(std::move(code_line));
         }
     } else {
         if (remaining_text) {
-            // We're going to create or extend a leaf node.
+            // We're going to create or extend a leaf element.
             // First, check if any Lists should be marked loose:
             if (parser->check_list_continuations) {
                 // Yes, we should mark some (possibly zero) lists loose. It's
-                // impossible for a leaf node to exist at this point:
-                PLY_ASSERT(!parser->leaf_node);
-                for (Node* node : parser->multiline_context) {
-                    if (node->type == Node::ListItem) {
-                        PLY_ASSERT(node->parent->type == Node::List);
-                        if (node->parent->is_loose_if_continued) {
-                            node->parent->is_loose = true;
-                            node->parent->is_loose_if_continued = false;
+                // impossible for a leaf element to exist at this point:
+                PLY_ASSERT(!parser->leaf_element);
+                for (Element* element : parser->element_stack) {
+                    if (element->type == Element::ListItem) {
+                        PLY_ASSERT(element->parent->type == Element::List);
+                        if (element->parent->is_loose_if_continued) {
+                            element->parent->is_loose = true;
+                            element->parent->is_loose_if_continued = false;
                         }
                     }
                 }
@@ -377,28 +368,28 @@ void parse_paragraph_text(Parser* parser, StringView line, LineConsumer& lc) {
                 StringView space = read_whitespace(lc.vins);
                 if (pound_seq.num_bytes <= 6 && (!space.is_empty() || lc.vins.num_remaining_bytes() == 0)) {
                     // Got a heading
-                    Node* parent = parser->multiline_context ? parser->multiline_context.back() : &parser->output_node;
-                    Node* heading_node = Heap::create<Node>(parent, Node::Heading);
-                    heading_node->indent_or_level = pound_seq.num_bytes;
+                    Element* parent = parser->element_stack ? parser->element_stack.back() : &parser->root_element;
+                    Element* heading_element = Heap::create<Element>(parent, Element::Heading);
+                    heading_element->indent_or_level = pound_seq.num_bytes;
                     if (StringView remaining_text = lc.trimmed_remainder()) {
-                        heading_node->raw_lines.append(remaining_text);
+                        heading_element->raw_lines.append(remaining_text);
                     }
-                    parser->leaf_node = nullptr;
+                    parser->leaf_element = nullptr;
                     parser->num_blank_lines_in_code_block = 0;
                     return;
                 }
                 lc.vins.seek_to(start_byte);
             }
-            // If parser->leaf_node already exists, it's a lazy paragraph continuation
+            // If parser->leaf_element already exists, it's a lazy paragraph continuation
             if (!has_para) {
                 // Begin new paragraph
-                Node* parent = parser->multiline_context ? parser->multiline_context.back() : &parser->output_node;
-                parser->leaf_node = Heap::create<Node>(parent, Node::Paragraph);
+                Element* parent = parser->element_stack ? parser->element_stack.back() : &parser->root_element;
+                parser->leaf_element = Heap::create<Element>(parent, Element::Paragraph);
                 parser->num_blank_lines_in_code_block = 0;
             }
-            parser->leaf_node->raw_lines.append(remaining_text);
+            parser->leaf_element->raw_lines.append(remaining_text);
         } else {
-            PLY_ASSERT(!parser->leaf_node); // Should already be cleared by this point
+            PLY_ASSERT(!parser->leaf_element); // Should already be cleared by this point
         }
     }
 }
@@ -458,8 +449,7 @@ String get_code_span(InlineConsumer& ic, u32 end_tick_count) {
             if (tick_count == end_tick_count) {
                 String result = mout.move_to_string();
                 PLY_ASSERT(result);
-                if (result[0] == ' ' && result.back() == ' ' &&
-                    result.find([](char c) { return c != ' '; }) >= 0) {
+                if (result[0] == ' ' && result.back() == ' ' && result.find([](char c) { return c != ' '; }) >= 0) {
                     result = result.substr(1, result.num_bytes - 2);
                 }
                 return result;
@@ -491,14 +481,14 @@ struct Delimiter {
     bool active = true;          // Open_Link only
     String text_storage;
     StringView text;
-    Owned<Node> element; // Inline_Elem only, and it'll be an inline node type
+    Owned<Element> element; // Inline_Elem only, and it'll be an inline element type
 
     Delimiter() = default;
     Delimiter(Type type, StringView text) : type{type}, text{text} {
     }
     Delimiter(Type type, String&& text) : type{type}, text_storage{std::move(text)}, text{text_storage} {
     }
-    Delimiter(Owned<Node>&& elem) : type{InlineElem}, element{std::move(elem)} {
+    Delimiter(Owned<Element>&& elem) : type{InlineElem}, element{std::move(elem)} {
     }
     static Delimiter make_run(Type type, StringView raw_line, u32 start, u32 num_bytes) {
         bool preceded_by_white = (start == 0) || is_whitespace(raw_line[start - 1]);
@@ -596,14 +586,14 @@ LinkDestination parse_link_destination(InlineConsumer& ic) {
     }
 }
 
-Array<Owned<Node>> convert_to_inline_elems(ArrayView<Delimiter> delimiters) {
-    Array<Owned<Node>> elements;
+Array<Owned<Element>> convert_to_inline_elems(ArrayView<Delimiter> delimiters) {
+    Array<Owned<Element>> elements;
     for (Delimiter& delimiter : delimiters) {
         if (delimiter.type == Delimiter::InlineElem) {
             elements.append(std::move(delimiter.element));
         } else {
-            if (!(elements.num_items() > 0 && elements.back()->type == Node::Text)) {
-                elements.append(Heap::create<Node>(nullptr, Node::Text));
+            if (!(elements.num_items() > 0 && elements.back()->type == Element::Text)) {
+                elements.append(Heap::create<Element>(nullptr, Element::Text));
             }
             elements.back()->text += delimiter.text;
         }
@@ -611,7 +601,7 @@ Array<Owned<Node>> convert_to_inline_elems(ArrayView<Delimiter> delimiters) {
     return elements;
 }
 
-Array<Owned<Node>> process_emphasis(Array<Delimiter>& delimiters, u32 bottom_pos) {
+Array<Owned<Element>> process_emphasis(Array<Delimiter>& delimiters, u32 bottom_pos) {
     u32 star_opener = bottom_pos;
     u32 underscore_opener = bottom_pos;
     for (u32 pos = bottom_pos; pos < delimiters.num_items(); pos++) {
@@ -621,7 +611,8 @@ Array<Owned<Node>> process_emphasis(Array<Delimiter>& delimiters, u32 bottom_pos
                 if (delimiters[j].type == type && delimiters[j].left_flanking) {
                     u32 span_length = min(delimiters[j].text.num_bytes, delimiters[pos].text.num_bytes);
                     PLY_ASSERT(span_length > 0);
-                    Owned<Node> elem = Heap::create<Node>(nullptr, span_length >= 2 ? Node::Strong : Node::Emphasis);
+                    Owned<Element> elem =
+                        Heap::create<Element>(nullptr, span_length >= 2 ? Element::Strong : Element::Emphasis);
                     elem->add_children(convert_to_inline_elems(delimiters.subview(j + 1, pos - j - 1)));
                     u32 delims_to_subtract = min(span_length, 2u);
                     delimiters[j].text.num_bytes -= delims_to_subtract;
@@ -651,12 +642,12 @@ Array<Owned<Node>> process_emphasis(Array<Delimiter>& delimiters, u32 bottom_pos
             handle_closer(Delimiter::Underscores, underscore_opener);
         }
     }
-    Array<Owned<Node>> result = convert_to_inline_elems(delimiters.subview(bottom_pos));
+    Array<Owned<Element>> result = convert_to_inline_elems(delimiters.subview(bottom_pos));
     delimiters.resize(bottom_pos);
     return result;
 }
 
-Array<Owned<Node>> expand_inline_elements(ArrayView<const String> raw_lines) {
+Array<Owned<Element>> expand_inline_elements(ArrayView<const String> raw_lines) {
     Array<Delimiter> delimiters;
     InlineConsumer ic{raw_lines};
     u32 flushed_index = 0;
@@ -675,7 +666,7 @@ Array<Owned<Node>> expand_inline_elements(ArrayView<const String> raw_lines) {
             if (ic.line_index >= ic.raw_lines.num_items())
                 break;
             ic.raw_line = ic.raw_lines[ic.line_index];
-            delimiters.append(Heap::create<Node>(nullptr, Node::SoftBreak));
+            delimiters.append(Heap::create<Element>(nullptr, Element::SoftBreak));
         }
 
         char c = ic.raw_line[ic.i];
@@ -689,7 +680,7 @@ Array<Owned<Node>> expand_inline_elements(ArrayView<const String> raw_lines) {
             InlineConsumer backup = ic;
             String code_str = get_code_span(ic, tick_count);
             if (code_str) {
-                Owned<Node> code_span = Heap::create<Node>(nullptr, Node::CodeSpan);
+                Owned<Element> code_span = Heap::create<Element>(nullptr, Element::CodeSpan);
                 code_span->text = std::move(code_str);
                 delimiters.append(std::move(code_span));
                 flushed_index = ic.i;
@@ -745,7 +736,7 @@ Array<Owned<Node>> expand_inline_elements(ArrayView<const String> raw_lines) {
             }
 
             // Successfully parsed link destination
-            Owned<Node> elem = Heap::create<Node>(nullptr, Node::Link);
+            Owned<Element> elem = Heap::create<Element>(nullptr, Element::Link);
             elem->text = std::move(link_dest.dest);
             elem->add_children(process_emphasis(delimiters, open_link + 1));
             delimiters.resize(open_link);
@@ -759,17 +750,17 @@ Array<Owned<Node>> expand_inline_elements(ArrayView<const String> raw_lines) {
     return process_emphasis(delimiters, 0);
 }
 
-static void do_inlines(Node* node) {
-    if (node->is_container_block()) {
-        PLY_ASSERT(node->raw_lines.is_empty());
-        for (Node* child : node->children) {
+static void do_inlines(Element* element) {
+    if (element->is_container_block()) {
+        PLY_ASSERT(element->raw_lines.is_empty());
+        for (Element* child : element->children) {
             do_inlines(child);
         }
     } else {
-        PLY_ASSERT(node->is_leaf_block());
-        if (node->type != Node::CodeBlock) {
-            node->add_children(expand_inline_elements(node->raw_lines));
-            node->raw_lines.clear();
+        PLY_ASSERT(element->is_leaf_block());
+        if (element->type != Element::CodeBlock) {
+            element->add_children(expand_inline_elements(element->raw_lines));
+            element->raw_lines.clear();
         }
     }
 }
@@ -777,47 +768,49 @@ static void do_inlines(Node* node) {
 //-----------------------------------------------------------------
 
 Owned<Parser> create_parser() {
-    return Heap::create<Parser>();
+    return Heap::create<ParserDetails>();
 }
 
-Owned<Node> parse_line(Parser* parser, StringView line) {
+Owned<Element> parse_line(Parser* parser, StringView line) {
+    ParserDetails* details = static_cast<ParserDetails*>(parser);
     LineConsumer lc{line};
-    if (match_existing_indentation(parser, line, lc)) {
-        parse_new_markers(parser, lc);
-        parse_paragraph_text(parser, line, lc);
+    if (match_existing_indentation(details, line, lc)) {
+        parse_new_markers(details, lc);
+        parse_paragraph_text(details, line, lc);
     }
-    if (parser->output_node.children.num_items() > 1) {
-        // parse_paragraph_text can only add one child node, so output_node can only have
-        // exactly 2 nodes at this point. Pop the first one and return it.
-        PLY_ASSERT(parser->output_node.children.num_items() == 2);
-        Owned<Node> out = std::move(parser->output_node.children[0]);
-        parser->output_node.children.erase(0);
+    if (details->root_element.children.num_items() > 1) {
+        // parse_paragraph_text can only add one child element, so root_element can only have
+        // exactly 2 elements at this point. Pop the first one and return it.
+        PLY_ASSERT(details->root_element.children.num_items() == 2);
+        Owned<Element> out = std::move(details->root_element.children[0]);
+        details->root_element.children.erase(0);
         do_inlines(out);
         return out;
     }
     return {};
 }
 
-Owned<Node> flush(Parser* parser) {
-    // Terminate all existing nodes.
-    parser->multiline_context.clear();
-    parser->leaf_node = nullptr;
-    parser->num_blank_lines_in_code_block = 0;
+Owned<Element> flush(Parser* parser) {
+    ParserDetails* details = static_cast<ParserDetails*>(parser);
+    // Terminate all existing elements.
+    details->element_stack.clear();
+    details->leaf_element = nullptr;
+    details->num_blank_lines_in_code_block = 0;
 
-    if (parser->output_node.children) {
-        // There cannot be more than one child node at this point.
-        PLY_ASSERT(parser->output_node.children.num_items() == 1);
-        Owned<Node> node = std::move(parser->output_node.children[0]);
-        parser->output_node.children.erase(0);
-        do_inlines(node);
-        node->parent = nullptr;
-        return node;
+    if (details->root_element.children) {
+        // There cannot be more than one child element at this point.
+        PLY_ASSERT(details->root_element.children.num_items() == 1);
+        Owned<Element> element = std::move(details->root_element.children[0]);
+        details->root_element.children.erase(0);
+        do_inlines(element);
+        element->parent = nullptr;
+        return element;
     }
     return {};
 }
 
 void destroy(Parser* parser) {
-    Heap::destroy(parser);
+    Heap::destroy(static_cast<ParserDetails*>(parser));
 }
 
 String convert_to_html(StringView src) {
@@ -827,12 +820,12 @@ String convert_to_html(StringView src) {
     Owned<Parser> parser = create_parser();
 
     while (StringView line = read_line(vins)) {
-        if (Owned<Node> node = parse_line(parser, line)) {
-            convert_to_html(&out, node, options);
+        if (Owned<Element> element = parse_line(parser, line)) {
+            convert_to_html(&out, element, options);
         }
     }
-    if (Owned<Node> node = flush(parser)) {
-        convert_to_html(&out, node, options);
+    if (Owned<Element> element = flush(parser)) {
+        convert_to_html(&out, element, options);
     }
 
     return out.move_to_string();
@@ -840,71 +833,71 @@ String convert_to_html(StringView src) {
 
 //-----------------------------------------------------------------
 
-void dump(Stream* outs, const Node* node, u32 level) {
+void dump(Stream* outs, const Element* element, u32 level) {
     String indent = StringView{"  "} * level;
     outs->write(indent);
-    switch (node->type) {
-        case Node::List: {
+    switch (element->type) {
+        case Element::List: {
             outs->write("list");
-            if (node->is_loose) {
+            if (element->is_loose) {
                 outs->write(" (loose");
             } else {
                 outs->write(" (tight");
             }
-            if (node->is_ordered_list()) {
-                outs->format(", ordered, start={})", node->list_start_number);
+            if (element->is_ordered_list()) {
+                outs->format(", ordered, start={})", element->list_start_number);
             } else {
                 outs->write(", unordered)");
             }
             break;
         }
-        case Node::ListItem: {
+        case Element::ListItem: {
             outs->write("item");
             break;
         }
-        case Node::BlockQuote: {
+        case Element::BlockQuote: {
             outs->write("block_quote");
             break;
         }
-        case Node::Heading: {
-            outs->format("heading level={}", node->indent_or_level);
+        case Element::Heading: {
+            outs->format("heading level={}", element->indent_or_level);
             break;
         }
-        case Node::Paragraph: {
+        case Element::Paragraph: {
             outs->write("paragraph");
             break;
         }
-        case Node::CodeBlock: {
+        case Element::CodeBlock: {
             outs->write("code_block");
             break;
         }
-        case Node::Text: {
+        case Element::Text: {
             outs->write("text \"");
-            print_escaped_string(*outs, node->text);
+            print_escaped_string(*outs, element->text);
             outs->write('"');
             break;
         }
-        case Node::Link: {
+        case Element::Link: {
             outs->write("link destination=\"");
-            print_escaped_string(*outs, node->text);
+            print_escaped_string(*outs, element->text);
             outs->write('"');
             break;
         }
-        case Node::CodeSpan: {
+        case Element::CodeSpan: {
             outs->write("code \"");
-            print_escaped_string(*outs, node->text);
+            print_escaped_string(*outs, element->text);
             outs->write('"');
             break;
         }
-        case Node::SoftBreak: {
+        case Element::SoftBreak: {
             outs->write("softbreak");
             break;
         }
-        case Node::Emphasis: {
+        case Element::Emphasis: {
             outs->write("emph");
             break;
         }
-        case Node::Strong: {
+        case Element::Strong: {
             outs->write("strong");
             break;
         }
@@ -915,52 +908,52 @@ void dump(Stream* outs, const Node* node, u32 level) {
         }
     }
     outs->write("\n");
-    for (StringView text : node->raw_lines) {
+    for (StringView text : element->raw_lines) {
         outs->format("{}  \"", indent);
         print_escaped_string(*outs, text);
         outs->write("\"\n");
     }
-    for (const Node* child : node->children) {
-        PLY_ASSERT(child->parent == node);
+    for (const Element* child : element->children) {
+        PLY_ASSERT(child->parent == element);
         dump(outs, child, level + 1);
     }
 }
 
 //-----------------------------------------------------------------
 
-void convert_to_html(Stream* outs, const Node* node, const HTML_Options& options) {
-    switch (node->type) {
-        case Node::List: {
-            if (node->is_ordered_list()) {
-                if (node->list_start_number != 1) {
-                    outs->format("<ol start=\"{}\">\n", node->list_start_number);
+void convert_to_html(Stream* outs, const Element* element, const HTML_Options& options) {
+    switch (element->type) {
+        case Element::List: {
+            if (element->is_ordered_list()) {
+                if (element->list_start_number != 1) {
+                    outs->format("<ol start=\"{}\">\n", element->list_start_number);
                 } else {
                     outs->write("<ol>\n");
                 }
             } else {
                 outs->write("<ul>\n");
             }
-            for (const Node* child : node->children) {
+            for (const Element* child : element->children) {
                 convert_to_html(outs, child, options);
             }
-            if (node->is_ordered_list()) {
+            if (element->is_ordered_list()) {
                 outs->write("</ol>\n");
             } else {
                 outs->write("</ul>\n");
             }
             break;
         }
-        case Node::ListItem: {
+        case Element::ListItem: {
             outs->write("<li>");
-            if (!node->parent->is_loose && node->children[0]->type == Node::Paragraph) {
+            if (!element->parent->is_loose && element->children[0]->type == Element::Paragraph) {
                 // Don't output a newline before the paragraph in a tight list.
             } else {
                 outs->write("\n");
             }
-            for (u32 i = 0; i < node->children.num_items(); i++) {
-                convert_to_html(outs, node->children[i], options);
-                if (!node->parent->is_loose && node->children[i]->type == Node::Paragraph &&
-                    i + 1 < node->children.num_items()) {
+            for (u32 i = 0; i < element->children.num_items(); i++) {
+                convert_to_html(outs, element->children[i], options);
+                if (!element->parent->is_loose && element->children[i]->type == Element::Paragraph &&
+                    i + 1 < element->children.num_items()) {
                     // This paragraph had no <p> tag and didn't end in a newline, but
                     // there are more children following it, so add a newline here.
                     outs->write("\n");
@@ -969,44 +962,44 @@ void convert_to_html(Stream* outs, const Node* node, const HTML_Options& options
             outs->write("</li>\n");
             break;
         }
-        case Node::BlockQuote: {
+        case Element::BlockQuote: {
             outs->write("<blockquote>\n");
-            for (const Node* child : node->children) {
+            for (const Element* child : element->children) {
                 convert_to_html(outs, child, options);
             }
             outs->write("</blockquote>\n");
             break;
         }
-        case Node::Heading: {
-            outs->format("<h{}", node->indent_or_level);
-            if (node->id) {
+        case Element::Heading: {
+            outs->format("<h{}", element->indent_or_level);
+            if (element->id) {
                 if (options.child_anchors) {
                     outs->write(" class=\"anchored\"><span class=\"anchor\" id=\"");
-                    print_xml_escaped_string(*outs, node->id);
+                    print_xml_escaped_string(*outs, element->id);
                     outs->write("\">&nbsp;</span>");
                 } else {
                     outs->write(" id=\"");
-                    print_xml_escaped_string(*outs, node->id);
+                    print_xml_escaped_string(*outs, element->id);
                     outs->write("\">");
                 }
             } else {
                 outs->write('>');
             }
-            PLY_ASSERT(node->raw_lines.is_empty());
-            for (const Node* child : node->children) {
+            PLY_ASSERT(element->raw_lines.is_empty());
+            for (const Element* child : element->children) {
                 convert_to_html(outs, child, options);
             }
-            outs->format("</h{}>\n", node->indent_or_level);
+            outs->format("</h{}>\n", element->indent_or_level);
             break;
         }
-        case Node::Paragraph: {
+        case Element::Paragraph: {
             bool is_inside_tight =
-                (node->parent && node->parent->type == Node::ListItem && !node->parent->parent->is_loose);
+                (element->parent && element->parent->type == Element::ListItem && !element->parent->parent->is_loose);
             if (!is_inside_tight) {
                 outs->write("<p>");
             }
-            PLY_ASSERT(node->raw_lines.is_empty());
-            for (const Node* child : node->children) {
+            PLY_ASSERT(element->raw_lines.is_empty());
+            for (const Element* child : element->children) {
                 convert_to_html(outs, child, options);
             }
             if (!is_inside_tight) {
@@ -1014,53 +1007,53 @@ void convert_to_html(Stream* outs, const Node* node, const HTML_Options& options
             }
             break;
         }
-        case Node::CodeBlock: {
+        case Element::CodeBlock: {
             outs->write("<pre>");
-            PLY_ASSERT(node->children.is_empty());
-            for (StringView raw_line : node->raw_lines) {
+            PLY_ASSERT(element->children.is_empty());
+            for (StringView raw_line : element->raw_lines) {
                 print_xml_escaped_string(*outs, raw_line);
             }
             outs->write("</pre>\n");
             break;
         }
-        case Node::Text: {
-            print_xml_escaped_string(*outs, node->text);
-            PLY_ASSERT(node->children.is_empty());
+        case Element::Text: {
+            print_xml_escaped_string(*outs, element->text);
+            PLY_ASSERT(element->children.is_empty());
             break;
         }
-        case Node::Link: {
+        case Element::Link: {
             outs->write("<a href=\"");
-            print_xml_escaped_string(*outs, node->text);
+            print_xml_escaped_string(*outs, element->text);
             outs->write("\">");
-            for (const Node* child : node->children) {
+            for (const Element* child : element->children) {
                 convert_to_html(outs, child, options);
             }
             outs->write("</a>");
             break;
         }
-        case Node::CodeSpan: {
+        case Element::CodeSpan: {
             outs->write("<code>");
-            print_xml_escaped_string(*outs, node->text);
+            print_xml_escaped_string(*outs, element->text);
             outs->write("</code>");
-            PLY_ASSERT(node->children.is_empty());
+            PLY_ASSERT(element->children.is_empty());
             break;
         }
-        case Node::SoftBreak: {
+        case Element::SoftBreak: {
             outs->write("\n");
-            PLY_ASSERT(node->children.is_empty());
+            PLY_ASSERT(element->children.is_empty());
             break;
         }
-        case Node::Emphasis: {
+        case Element::Emphasis: {
             outs->write("<em>");
-            for (const Node* child : node->children) {
+            for (const Element* child : element->children) {
                 convert_to_html(outs, child, options);
             }
             outs->write("</em>");
             break;
         }
-        case Node::Strong: {
+        case Element::Strong: {
             outs->write("<strong>");
-            for (const Node* child : node->children) {
+            for (const Element* child : element->children) {
                 convert_to_html(outs, child, options);
             }
             outs->write("</strong>");

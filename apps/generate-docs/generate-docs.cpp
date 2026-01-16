@@ -182,14 +182,14 @@ void parse_api_descriptions(Stream& out, const Map<StringView, String>& args, Vi
         } else {
             if (line.starts_with(">>")) {
                 // Flush current markdown block.
-                if (Owned<markdown::Node> node = flush(md)) {
+                if (Owned<markdown::Element> node = flush(md)) {
                     convert_to_html(&out, node, options);
                 }
                 out.write("</dd>\n<dt>");
                 in_title = true;
                 first_decl = true;
             } else {
-                if (Owned<markdown::Node> node = parse_line(md, line)) {
+                if (Owned<markdown::Element> node = parse_line(md, line)) {
                     convert_to_html(&out, node, options);
                 }
             }
@@ -199,7 +199,7 @@ void parse_api_descriptions(Stream& out, const Map<StringView, String>& args, Vi
         out.write("</dt></dl>\n");
     } else {
         // Flush current markdown block.
-        if (Owned<markdown::Node> node = flush(md)) {
+        if (Owned<markdown::Element> node = flush(md)) {
             convert_to_html(&out, node, options);
         }
         out.write("</dd></dl>\n");
@@ -254,7 +254,7 @@ void parse_markdown(Stream& out, ViewStream& in) {
         StringView cmd;
         if (line_in.match("'{%i", &cmd)) {
             // Flush current markdown block.
-            if (Owned<markdown::Node> node = flush(parser)) {
+            if (Owned<markdown::Element> node = flush(parser)) {
                 convert_to_html(&out, node, options);
             }
 
@@ -279,7 +279,7 @@ void parse_markdown(Stream& out, ViewStream& in) {
             } else if (cmd == "example") {
                 parse_example(out, in);
             } else if (cmd == "output") {
-                if (Owned<markdown::Node> node = flush(parser)) {
+                if (Owned<markdown::Element> node = flush(parser)) {
                     convert_to_html(&out, node, options);
                 }
                 parse_output(out, in);
@@ -291,12 +291,12 @@ void parse_markdown(Stream& out, ViewStream& in) {
                 PLY_ASSERT(0); // Unrecognized section type
             }
         } else {
-            if (Owned<markdown::Node> node = parse_line(parser, line)) {
+            if (Owned<markdown::Element> node = parse_line(parser, line)) {
                 convert_to_html(&out, node, options);
             }
         }
     }
-    if (Owned<markdown::Node> node = flush(parser)) {
+    if (Owned<markdown::Element> node = flush(parser)) {
         convert_to_html(&out, node, options);
     }
 }
