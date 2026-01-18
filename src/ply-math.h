@@ -478,6 +478,7 @@ struct Float4 {
     }
     Float4(const Float2& v, float z, float w) : x{v.x}, y{v.y}, z{z}, w{w} {
     }
+    Float4(const Color& color);
 
     explicit operator Float2() const {
         return {x, y};
@@ -1394,26 +1395,18 @@ struct Color {
     u8 a = 0;
 
     Color() = default;
+    Color(StringView hex);
     Color(u8 r, u8 g, u8 b, u8 a) : r{r}, g{g}, b{b}, a{a} {
     }
-
-    explicit operator Float4() const {
-        return {r / 255.f, g / 255.f, b / 255.f, a / 255.f};
-    }
-    static Color from_hex(const char* hex, s32 num_bytes = -1);
-    static Color from_hex(StringView hex);
 };
+
+inline Float4::Float4(const Color& color) : Float4{color.r / 255.f, color.g / 255.f, color.b / 255.f, color.a / 255.f} {
+}
 
 inline Float4::operator Color() const {
     PLY_ASSERT(all(*this >= 0) && all(*this <= 1));
     return {u8(x * 255.99f), u8(y * 255.99f), u8(z * 255.99f), u8(w * 255.99f)};
 }
-
-#if defined(PLY_RUNTIME_INCLUDED)
-inline Color Color::from_hex(StringView hex) {
-    return from_hex(hex.bytes, hex.num_bytes);
-}
-#endif
 
 float srgb_to_linear(float s);
 float linear_to_srgb(float l);

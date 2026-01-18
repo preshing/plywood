@@ -133,25 +133,37 @@ Float4 step_towards(const Float4& start, const Float4& target, float amount) {
 //  ▀█▄▄█▀ ▀█▄▄█▀ ▄██▄ ▀█▄▄█▀ ██
 //
 
-void convert_from_hex(float* values, size_t num_values, const char* hex) {
-    for (size_t i = 0; i < num_values; i++) {
-        int c = 0;
+Color::Color(StringView hex) {
+    if ((hex.num_bytes != 6) && (hex.num_bytes != 8)) {
+        PLY_ASSERT(0);  // Invalid hex string
+        return;
+    }
+    const char* s = hex.bytes;
+    auto read_hex = [&]() -> u32 {
+        u32 c = 0;
         for (int j = 0; j < 2; j++) {
             c <<= 4;
-            if (*hex >= '0' && *hex <= '9') {
-                c += *hex - '0';
-            } else if (*hex >= 'a' && *hex <= 'f') {
-                c += *hex - 'a' + 10;
-            } else if (*hex >= 'A' && *hex <= 'F') {
-                c += *hex - 'A' + 10;
+            if (*s >= '0' && *s <= '9') {
+                c += *s - '0';
+            } else if (*s >= 'a' && *s <= 'f') {
+                c += *s - 'a' + 10;
+            } else if (*s >= 'A' && *s <= 'F') {
+                c += *s - 'A' + 10;
             } else {
                 PLY_ASSERT(0);
             }
-            hex++;
+            s++;
         }
-        values[i] = c * (1 / 255.f);
+        return (u8) c;
+    };
+    this->r = read_hex();
+    this->g = read_hex();
+    this->b = read_hex();
+    if (hex.num_bytes == 8) {
+        this->a = read_hex();
+    } else {
+        this->a = 255;
     }
-    PLY_ASSERT(*hex == 0);
 }
 
 float srgb_to_linear(float s) {
