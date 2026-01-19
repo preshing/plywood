@@ -59,6 +59,7 @@ A `Set` is a collection of items that supports fast lookup using a key type that
 Set(std::initializer_list<Item> items)
 -- Accessing Items
 const Item* find(const Key& key) const
+ArrayView<Item> items()
 ArrayView<const Item> items() const
 -- Modifying Set Contents
 void clear()
@@ -94,7 +95,7 @@ Otherwise, the item type must implement a `get_lookup_key` member function. The 
 The items in a `Set` are maintained in insertion order unless `erase_quick` is called.
 
     Set<u32> set = {4, 5, 6, 7};
-    Array<u32> items = set.items();  // Returns {4, 5, 6, 7}
+    ArrayView<u32> items = set.items();  // Returns {4, 5, 6, 7}
 
     // erase maintains insertion order.
     set.erase(5);
@@ -122,7 +123,8 @@ Looks for an item in the collection that matches the given key. Returns a pointe
 The returned pointer is temporary. Any subsequent change to the `Set` can invalidate this pointer, so don't store it beyond the next call to `find` or `erase`, even if those calls involve different keys.
 
 >>
-ArrayView<const Item> get_items() const
+ArrayView<Item> items()
+ArrayView<const Item> items() const
 --
 Returns a view of all items in the set. The items are in insertion order unless `erase_quick` was called.
 {/api_descriptions}
@@ -172,6 +174,7 @@ A `Map` is a collection of key-value pairs whose types are determined by templat
 Map(std::initializer_list<Item> items)
 -- Accessing Items
 const Value* find(const KeyView& key) const
+ArrayView<Item> items()
 ArrayView<const Item> items() const
 -- Modifying Map Contents
 void clear()
@@ -222,6 +225,7 @@ const Value* find(const KeyView& key) const
 Looks up a value by key. Returns a pointer to the value if found, or `nullptr` if not present.
 
 >>
+ArrayView<Item> items()
 ArrayView<const Item> items() const
 --
 Returns a view of all key-value pairs in the map. The pairs are in insertion order unless `erase_quick` was called.

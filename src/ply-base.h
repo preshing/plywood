@@ -2677,34 +2677,41 @@ template <typename Item>
 struct Set : HashLookup<LookupKey<Item>, Set<Item>> {
     using Key = LookupKey<Item>;
 
-    Array<Item> items;
+    Array<Item> items_;
 
 private:
     friend struct HashLookup<Key, Set<Item>>;
 
     auto get_key(u32 index) const {
-        return get_any_lookup_key(this->items[index]);
+        return get_any_lookup_key(this->items_[index]);
     }
 
     template <typename U = Item, PLY_ENABLE_IF(is_constructible_from_key<U>)>
     u32 add_item(const Key& key) {
-        u32 index = this->items.num_items();
-        this->items.append(key);
+        u32 index = this->items_.num_items();
+        this->items_.append(key);
         return index;
     }
     template <typename U = Item, PLY_ENABLE_IF(!is_constructible_from_key<U>)>
     u32 add_item(const Key&) {
-        u32 index = this->items.num_items();
-        this->items.append();
+        u32 index = this->items_.num_items();
+        this->items_.append();
         return index;
     }
 
 public:
+    ArrayView<Item> items() {
+        return this->items_;
+    }
+    ArrayView<const Item> items() const {
+        return this->items_;
+    }
+
     Item* find(const Key& key) {
         s32 item_index = this->find_index(key);
         if (item_index < 0)
             return nullptr;
-        return &this->items[item_index];
+        return &this->items_[item_index];
     }
 
     const Item* find(const Key& key) const {
@@ -2719,18 +2726,18 @@ public:
     template <typename K = Key, PLY_ENABLE_IF(is_constructible_from_key<K>)>
     InsertResult insert(const K& key) {
         auto result = this->insert_index(key);
-        return {&this->items[numeric_cast<u32>(result.index)], result.was_found};
+        return {&this->items_[numeric_cast<u32>(result.index)], result.was_found};
     }
 
     InsertResult insert_item(Item&& item) {
         auto result = this->insert_index(get_any_lookup_key(item));
-        Item* dst_item = &this->items[numeric_cast<u32>(result.index)];
+        Item* dst_item = &this->items_[numeric_cast<u32>(result.index)];
         *dst_item = std::move(item);
         return {dst_item, result.was_found};
     }
 
     PLY_NO_INLINE bool erase(const Key& key) {
-        if (!this->items)
+        if (!this->items_)
             return false;
         PLY_ASSERT(is_power_of_2(this->num_allocated_indices));
         u32 mask = this->num_allocated_indices - 1;
@@ -2739,12 +2746,12 @@ public:
             if (item_index < 0)
                 return false;
 
-            if (key == get_any_lookup_key(this->items[item_index])) {
+            if (key == get_any_lookup_key(this->items_[item_index])) {
                 // Found the item to erase.
-                u32 last_index = this->items.num_items() - 1;
+                u32 last_index = this->items_.num_items() - 1;
                 if ((u32) item_index < last_index) {
                     // Move the last item to the erased item's index.
-                    for (u32 j = calculate_hash(get_any_lookup_key(this->items[last_index]));; j++) {
+                    for (u32 j = calculate_hash(get_any_lookup_key(this->items_[last_index]));; j++) {
                         PLY_ASSERT(this->indices[j & mask] >= 0);
                         if ((u32) this->indices[j & mask] == last_index) {
                             this->indices[j & mask] = item_index;
@@ -2754,7 +2761,7 @@ public:
                 }
 
                 // Erase the item from the array.
-                this->items.erase_quick(item_index);
+                this->items_.erase_quick(item_index);
 
                 // Free the slot in the indices array.
                 this->indices[idx & mask] = -1;
@@ -2766,7 +2773,7 @@ public:
                         // No more trailing indices.
                         break;
                     }
-                    u32 trailing_item_hash = calculate_hash(get_any_lookup_key(this->items[trailing_item_index]));
+                    u32 trailing_item_hash = calculate_hash(get_any_lookup_key(this->items_[trailing_item_index]));
                     if (((trailing_idx - trailing_item_hash) & mask) >= ((trailing_idx - idx) & mask)) {
                         // Move this index.
                         this->indices[idx & mask] = trailing_item_index;
@@ -2785,10 +2792,10 @@ public:
     }
 
     const Item* begin() const {
-        return this->items.begin();
+        return this->items_.begin();
     }
     const Item* end() const {
-        return this->items.end();
+        return this->items_.end();
     }
 };
 
@@ -2824,6 +2831,13 @@ struct Map {
 
     const Value* find(const K& key) const {
         return const_cast<Map*>(this)->find(key);
+    }
+
+    ArrayView<Item> items() {
+        return this->item_set.items();
+    }
+    ArrayView<const Item> items() const {
+        return this->item_set.items();
     }
 
     struct InsertResult {
