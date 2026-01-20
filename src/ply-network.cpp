@@ -318,7 +318,7 @@ IPAddress Network::resolve_host_name(StringView host_name, IPVersion ip_version)
     }
 #endif
     struct addrinfo* res = nullptr;
-    int rc = getaddrinfo((host_name + '\0').bytes, nullptr, &hints, &res);
+    int rc = getaddrinfo((host_name + '\0').bytes(), nullptr, &hints, &res);
     PLY_ASSERT(rc == 0);
     PLY_UNUSED(rc);
     struct addrinfo* best = nullptr;
@@ -614,7 +614,7 @@ IPAddress Network::resolve_host_name(StringView host_name, IPVersion ip_version)
     }
 #endif
     struct addrinfo* res = nullptr;
-    int rc = getaddrinfo((host_name + '\0').bytes, nullptr, &hints, &res);
+    int rc = getaddrinfo((host_name + '\0').bytes(), nullptr, &hints, &res);
     PLY_ASSERT(rc == 0);
     PLY_UNUSED(rc);
     struct addrinfo* best = nullptr;

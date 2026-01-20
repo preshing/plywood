@@ -450,7 +450,7 @@ String get_code_span(InlineConsumer& ic, u32 end_tick_count) {
                 String result = mout.move_to_string();
                 PLY_ASSERT(result);
                 if (result[0] == ' ' && result.back() == ' ' && result.find([](char c) { return c != ' '; }) >= 0) {
-                    result = result.substr(1, result.num_bytes - 2);
+                    result = result.substr(1, result.num_bytes() - 2);
                 }
                 return result;
             }

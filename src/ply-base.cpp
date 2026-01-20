@@ -489,7 +489,7 @@ String StringView::upper() const {
         if (c >= 'a' && c <= 'z') {
             c += 'A' - 'a';
         }
-        result.bytes[i] = c;
+        result[i] = c;
     }
     return result;
 }
@@ -501,7 +501,7 @@ String StringView::lower() const {
         if (c >= 'A' && c <= 'Z') {
             c += 'a' - 'A';
         }
-        result.bytes[i] = c;
+        result[i] = c;
     }
     return result;
 }
@@ -536,14 +536,14 @@ s32 compare(StringView a, StringView b) {
 
 String operator+(StringView a, StringView b) {
     String result = String::allocate(a.num_bytes() + b.num_bytes());
-    memcpy(result.bytes, a.bytes(), a.num_bytes());
-    memcpy(result.bytes + a.num_bytes(), b.bytes(), b.num_bytes());
+    memcpy(result.bytes(), a.bytes(), a.num_bytes());
+    memcpy(result.bytes() + a.num_bytes(), b.bytes(), b.num_bytes());
     return result;
 }
 
 String operator*(StringView str, u32 count) {
     String result = String::allocate(str.num_bytes() * count);
-    char* dst = result.bytes;
+    char* dst = result.bytes();
     for (u32 i = 0; i < count; i++) {
         memcpy(dst, str.bytes(), str.num_bytes());
         dst += str.num_bytes();
@@ -866,20 +866,20 @@ bool match_with_args(ViewStream& in, StringView pattern, ArrayView<const MatchAr
 //  ▀█▄▄█▀  ▀█▄▄ ██     ██ ██  ██ ▀█▄▄██
 //                                 ▄▄▄█▀
 
-String::String(StringView other) : bytes{(char*) Heap::alloc(other.num_bytes())}, num_bytes{other.num_bytes()} {
-    memcpy(this->bytes, other.bytes(), other.num_bytes());
+String::String(StringView other) : bytes_{(char*) Heap::alloc(other.num_bytes())}, num_bytes_{other.num_bytes()} {
+    memcpy(this->bytes_, other.bytes(), other.num_bytes());
 }
 
 String String::allocate(u32 num_bytes) {
     String result;
-    result.bytes = (char*) Heap::alloc(num_bytes);
-    result.num_bytes = num_bytes;
+    result.bytes_ = (char*) Heap::alloc(num_bytes);
+    result.num_bytes_ = num_bytes;
     return result;
 }
 
 void String::resize(u32 num_bytes) {
-    this->bytes = (char*) Heap::realloc(this->bytes, num_bytes);
-    this->num_bytes = num_bytes;
+    this->bytes_ = (char*) Heap::realloc(this->bytes_, num_bytes);
+    this->num_bytes_ = num_bytes;
 }
 
 //  ▄▄  ▄▄               ▄▄     ▄▄
@@ -2971,13 +2971,11 @@ struct WString {
         new (this) WString{std::move(other)};
     }
     static WString move_from_string(String&& other) {
-        PLY_ASSERT(is_aligned_to_power_of_2(uptr(other.bytes), 2));
-        PLY_ASSERT(is_aligned_to_power_of_2(other.num_bytes, 2));
+        PLY_ASSERT(is_aligned_to_power_of_2(uptr(other.bytes()), 2));
+        PLY_ASSERT(is_aligned_to_power_of_2(other.num_bytes(), 2));
         WString result;
-        result.units = (char16_t*) other.bytes;
-        result.num_units = other.num_bytes >> 1;
-        other.bytes = nullptr;
-        other.num_bytes = 0;
+        result.num_units = other.num_bytes() >> 1;
+        result.units = (char16_t*) other.release();
         return result;
     }
 
@@ -3440,7 +3438,7 @@ String Filesystem::load_binary(StringView path) {
         u64 file_size = in_pipe->get_file_size();
         // Files >= 4GB cannot be loaded this way:
         result.resize(numeric_cast<u32>(file_size));
-        in_pipe->read({result.bytes, result.num_bytes});
+        in_pipe->read({result.bytes(), result.num_bytes()});
     }
     return result;
 }
@@ -3872,7 +3870,7 @@ DirectoryEntry Filesystem::get_file_info(StringView path) {
 Array<DirectoryEntry> Filesystem::list_dir(StringView path) {
     Array<DirectoryEntry> result;
 
-    DIR* dir = opendir((path + '\0').bytes);
+    DIR* dir = opendir((path + '\0').bytes());
     if (!dir) {
         switch (errno) {
             case ENOENT: {
@@ -3921,7 +3919,7 @@ Array<DirectoryEntry> Filesystem::list_dir(StringView path) {
         // Get additional file information
         String joined_path = join_path(POSIXPath, path, entry.name);
         struct stat buf;
-        int rc = stat((joined_path + '\0').bytes, &buf);
+        int rc = stat((joined_path + '\0').bytes(), &buf);
         if (rc != 0) {
             if (errno == ENOENT)
                 continue;
@@ -3945,7 +3943,7 @@ Array<DirectoryEntry> Filesystem::list_dir(StringView path) {
 }
 
 FSResult Filesystem::make_dir(StringView path) {
-    int rc = mkdir((path + '\0').bytes, mode_t(0755));
+    int rc = mkdir((path + '\0').bytes(), mode_t(0755));
     if (rc == 0) {
         return Filesystem::set_last_result(FS_OK);
     } else {
@@ -3963,7 +3961,7 @@ FSResult Filesystem::make_dir(StringView path) {
 }
 
 FSResult Filesystem::set_working_directory(StringView path) {
-    int rc = chdir((path + '\0').bytes);
+    int rc = chdir((path + '\0').bytes());
     if (rc == 0) {
         return Filesystem::set_last_result(FS_OK);
     } else {
@@ -3982,7 +3980,7 @@ String Filesystem::get_working_directory() {
     u32 num_units_with_null_term = PATH_MAX + 1;
     String path = String::allocate(num_units_with_null_term);
     for (;;) {
-        char* rs = getcwd(path.bytes, num_units_with_null_term);
+        char* rs = getcwd(path.bytes(), num_units_with_null_term);
         if (rs) {
             s32 len = path.find('\0');
             PLY_ASSERT(len >= 0);
@@ -4008,7 +4006,7 @@ String Filesystem::get_working_directory() {
 
 ExistsResult Filesystem::exists(StringView path) {
     struct stat buf;
-    int rc = stat((path + '\0').bytes, &buf);
+    int rc = stat((path + '\0').bytes(), &buf);
     if (rc == 0)
         return (buf.st_mode & S_IFMT) == S_IFDIR ? ER_DIRECTORY : ER_FILE;
     if (errno != ENOENT) {
@@ -4018,7 +4016,7 @@ ExistsResult Filesystem::exists(StringView path) {
 }
 
 int Filesystem::open_fd_for_read(StringView path) {
-    int fd = open((path + '\0').bytes, O_RDONLY | O_CLOEXEC);
+    int fd = open((path + '\0').bytes(), O_RDONLY | O_CLOEXEC);
     if (fd != -1) {
         Filesystem::set_last_result(FS_OK);
     } else {
@@ -4048,7 +4046,7 @@ Owned<Pipe> Filesystem::open_pipe_for_read(StringView path) {
 }
 
 int Filesystem::open_fd_for_write(StringView path) {
-    int fd = open((path + '\0').bytes, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, mode_t(0644));
+    int fd = open((path + '\0').bytes(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, mode_t(0644));
     if (fd != -1) {
         Filesystem::set_last_result(FS_OK);
     } else {
@@ -4078,7 +4076,7 @@ Owned<Pipe> Filesystem::open_pipe_for_write(StringView path) {
 }
 
 FSResult Filesystem::move_file(StringView src_path, StringView dst_path) {
-    int rc = rename((src_path + '\0').bytes, (dst_path + '\0').bytes);
+    int rc = rename((src_path + '\0').bytes(), (dst_path + '\0').bytes());
     if (rc != 0) {
         PLY_ASSERT(PLY_FSPOSIX_ALLOW_UNKNOWN_ERRORS);
         return Filesystem::set_last_result(FS_UNKNOWN);
@@ -4087,7 +4085,7 @@ FSResult Filesystem::move_file(StringView src_path, StringView dst_path) {
 }
 
 FSResult Filesystem::delete_file(StringView path) {
-    int rc = unlink((path + '\0').bytes);
+    int rc = unlink((path + '\0').bytes());
     if (rc != 0) {
         PLY_ASSERT(PLY_FSPOSIX_ALLOW_UNKNOWN_ERRORS);
         return Filesystem::set_last_result(FS_UNKNOWN);
@@ -4104,14 +4102,14 @@ FSResult Filesystem::remove_dir_tree(StringView dir_path) {
                 return fs_result;
             }
         } else {
-            int rc = unlink((joined + '\0').bytes);
+            int rc = unlink((joined + '\0').bytes());
             if (rc != 0) {
                 PLY_ASSERT(PLY_FSPOSIX_ALLOW_UNKNOWN_ERRORS);
                 return Filesystem::set_last_result(FS_UNKNOWN);
             }
         }
     }
-    int rc = rmdir((dir_path + '\0').bytes);
+    int rc = rmdir((dir_path + '\0').bytes());
     if (rc != 0) {
         PLY_ASSERT(PLY_FSPOSIX_ALLOW_UNKNOWN_ERRORS);
         return Filesystem::set_last_result(FS_UNKNOWN);
@@ -4122,7 +4120,7 @@ FSResult Filesystem::remove_dir_tree(StringView dir_path) {
 DirectoryEntry Filesystem::get_file_info(StringView path) {
     DirectoryEntry entry;
     struct stat buf;
-    int rc = stat((path + '\0').bytes, &buf);
+    int rc = stat((path + '\0').bytes(), &buf);
     if (rc != 0) {
         switch (errno) {
             case ENOENT: {
@@ -4260,7 +4258,7 @@ void my_callback(ConstFSEventStreamRef stream_ref, void* client_call_back_info, 
 
 void DirectoryWatcher::run_watcher() {
     this->run_loop = CFRunLoopGetCurrent();
-    CFStringRef root_path = CFStringCreateWithCString(NULL, this->root.bytes, kCFStringEncodingASCII);
+    CFStringRef root_path = CFStringCreateWithCString(NULL, this->root.bytes(), kCFStringEncodingASCII);
     CFArrayRef paths_to_watch = CFArrayCreate(NULL, (const void**) &root_path, 1, NULL);
     FSEventStreamContext context;
     context.version = 0;

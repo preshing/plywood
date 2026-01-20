@@ -38,6 +38,7 @@ s32 find(StringView substr, u32 start_pos = 0) const
 s32 find(const MatchFunc& match_func, u32 start_pos = 0) const
 s32 reverse_find(StringView substr, u32 start_pos) const
 s32 reverse_find(const MatchFunc& match_func, u32 start_pos) const
+-- Creating Subviews
 StringView substr(u32 start) const
 StringView substr(u32 start, u32 num_bytes) const
 StringView left(u32 num_bytes) const
@@ -111,8 +112,11 @@ Searches backwards for the last occurrence of `substr` starting from `start_pos`
 s32 reverse_find(const MatchFunc& match_func, s32 start_pos = -1) const
 --
 Searches backwards for the last byte that satisfies the match function. Returns the index of the match, or `-1` if not found.
+{/api_descriptions}
 
->>
+### Creating Subviews
+
+{api_descriptions class=String}
 StringView substr(u32 start) const
 --
 Returns a view of the substring starting at `start` and extending to the end of the string.

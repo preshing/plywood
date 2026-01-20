@@ -121,7 +121,7 @@ void parse_api_summary(Stream& out, const Map<StringView, String>& args, ViewStr
     // Write optional caption.
     if (const String* caption = args.find("caption")) {
         String html = markdown::convert_to_html(*caption);
-        out.format("<div class=\"caption\">{}</div>\n", html.substr(3, html.num_bytes - 8));
+        out.format("<div class=\"caption\">{}</div>\n", html.substr(3, html.num_bytes() - 8));
     }
 
     // Get class name.
@@ -215,7 +215,7 @@ void parse_table(Stream& out, const Map<StringView, String>& args, ViewStream& i
         out.write("<tr>");
         for (StringView column : s.split_byte('|')) {
             String html = markdown::convert_to_html(column);
-            out.format("<td>{}</td>", html.substr(3, html.num_bytes - 8));
+            out.format("<td>{}</td>", html.substr(3, html.num_bytes() - 8));
         }
         out.write("</tr>\n");
     }

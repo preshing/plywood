@@ -1507,6 +1507,11 @@ public:
         }
         return -1;
     }
+
+    //----------------------------------------------------
+    // Creating subviews
+    //----------------------------------------------------
+
     StringView substr(u32 start) const {
         start = min(start, this->num_bytes_);
         return {this->bytes_ + start, this->num_bytes_ - start};
@@ -1615,10 +1620,11 @@ struct MutStringView {
 //  ▀█▄▄█▀  ▀█▄▄ ██     ██ ██  ██ ▀█▄▄██
 //                                 ▄▄▄█▀
 
-struct String {
-    char* bytes = nullptr;
-    u32 num_bytes = 0;
+class String {
+    char* bytes_ = nullptr;
+    u32 num_bytes_ = 0;
 
+public:
     //----------------------------------------------------
     // Constructors
     //----------------------------------------------------
@@ -1626,23 +1632,16 @@ struct String {
     String() = default;
     String(const String& other) : String{StringView{other}} {
     }
-    String(String&& other) : bytes{other.bytes}, num_bytes{other.num_bytes} {
-        other.bytes = nullptr;
-        other.num_bytes = 0;
+    String(String&& other) : bytes_{other.bytes_}, num_bytes_{other.num_bytes_} {
+        other.bytes_ = nullptr;
+        other.num_bytes_ = 0;
     }
     String(StringView other);
     String(const char* s) : String{StringView{s}} { // Needed?
     }
-    static String allocate(u32 num_bytes);
-    static String adopt(char* bytes, u32 num_bytes) {
-        String str;
-        str.bytes = bytes;
-        str.num_bytes = num_bytes;
-        return str;
-    }
     ~String() {
-        if (this->bytes) {
-            Heap::free(this->bytes);
+        if (this->bytes_) {
+            Heap::free(this->bytes_);
         }
     }
 
@@ -1660,52 +1659,43 @@ struct String {
         new (this) String{std::move(other)};
         return *this;
     }
-    void operator+=(StringView other) {
-        *this = *this + other;
-    }
 
     //----------------------------------------------------
     // Type conversions
     //----------------------------------------------------
 
     operator StringView() const {
-        return {this->bytes, this->num_bytes};
-    }
-    explicit operator bool() const {
-        return this->num_bytes != 0;
+        return {this->bytes_, this->num_bytes_};
     }
 
     //----------------------------------------------------
     // Accessing string bytes
     //----------------------------------------------------
 
+    const char* bytes() const {
+        return this->bytes_;
+    }
+    char* bytes() {
+        return this->bytes_;
+    }
+    u32 num_bytes() const {
+        return this->num_bytes_;
+    }
     const char& operator[](u32 index) const {
-        PLY_ASSERT(index < this->num_bytes);
-        return this->bytes[index];
+        PLY_ASSERT(index < this->num_bytes_);
+        return this->bytes_[index];
     }
     char& operator[](u32 index) {
-        PLY_ASSERT(index < this->num_bytes);
-        return this->bytes[index];
+        PLY_ASSERT(index < this->num_bytes_);
+        return this->bytes_[index];
     }
     const char& back(s32 ofs = -1) const {
-        PLY_ASSERT(u32(-ofs - 1) < this->num_bytes);
-        return this->bytes[this->num_bytes + ofs];
+        PLY_ASSERT(u32(-ofs - 1) < this->num_bytes_);
+        return this->bytes_[this->num_bytes_ + ofs];
     }
     char& back(s32 ofs = -1) {
-        PLY_ASSERT(u32(-ofs - 1) < this->num_bytes);
-        return this->bytes[this->num_bytes + ofs];
-    }
-    char* begin() {
-        return this->bytes;
-    }
-    const char* begin() const {
-        return this->bytes;
-    }
-    char* end() {
-        return this->bytes + this->num_bytes;
-    }
-    const char* end() const {
-        return this->bytes + this->num_bytes;
+        PLY_ASSERT(u32(-ofs - 1) < this->num_bytes_);
+        return this->bytes_[this->num_bytes_ + ofs];
     }
 
     //----------------------------------------------------
@@ -1713,7 +1703,10 @@ struct String {
     //----------------------------------------------------
 
     bool is_empty() const {
-        return this->num_bytes == 0;
+        return this->num_bytes_ == 0;
+    }
+    explicit operator bool() const {
+        return this->num_bytes_ != 0;
     }
     bool starts_with(StringView arg) const {
         return ((StringView) * this).starts_with(arg);
@@ -1741,25 +1734,25 @@ struct String {
     //----------------------------------------------------
 
     StringView substr(u32 start) const {
-        PLY_ASSERT(start <= num_bytes);
-        return {this->bytes + start, this->num_bytes - start};
+        PLY_ASSERT(start <= this->num_bytes_);
+        return {this->bytes_ + start, this->num_bytes_ - start};
     }
     StringView substr(u32 start, u32 num_bytes) const {
-        PLY_ASSERT(start <= this->num_bytes);
-        PLY_ASSERT(start + num_bytes <= this->num_bytes);
-        return {this->bytes + start, num_bytes};
+        PLY_ASSERT(start <= this->num_bytes_);
+        PLY_ASSERT(start + num_bytes <= this->num_bytes_);
+        return {this->bytes_ + start, num_bytes};
     }
     StringView left(u32 num_bytes) const {
-        PLY_ASSERT(num_bytes <= this->num_bytes);
-        return {this->bytes, num_bytes};
+        PLY_ASSERT(num_bytes <= this->num_bytes_);
+        return {this->bytes_, num_bytes};
     }
     StringView shortened_by(u32 num_bytes) const {
-        PLY_ASSERT(num_bytes <= this->num_bytes);
-        return {this->bytes, this->num_bytes - num_bytes};
+        PLY_ASSERT(num_bytes <= this->num_bytes_);
+        return {this->bytes_, this->num_bytes_ - num_bytes};
     }
     StringView right(u32 num_bytes) const {
-        PLY_ASSERT(num_bytes <= this->num_bytes);
-        return {this->bytes + this->num_bytes - num_bytes, num_bytes};
+        PLY_ASSERT(num_bytes <= this->num_bytes_);
+        return {this->bytes_ + this->num_bytes_ - num_bytes, num_bytes};
     }
     StringView trim(bool (*match_func)(char) = is_whitespace, bool left = true, bool right = true) const {
         return ((StringView) * this).trim(match_func, left, right);
@@ -1775,9 +1768,6 @@ struct String {
     // Creating new strings
     //----------------------------------------------------
 
-    PLY_NO_DISCARD String replace(StringView old_substr, StringView new_substr) const {
-        return ((StringView) * this).replace(old_substr, new_substr);
-    }
     PLY_NO_DISCARD String upper() const {
         return ((StringView) * this).upper();
     }
@@ -1786,34 +1776,52 @@ struct String {
     }
     PLY_NO_DISCARD Array<StringView> split_byte(char sep) const;
     PLY_NO_DISCARD String join(ArrayView<const StringView> comps) const;
+    PLY_NO_DISCARD String replace(StringView old_substr, StringView new_substr) const {
+        return ((StringView) * this).replace(old_substr, new_substr);
+    }
+    static String allocate(u32 num_bytes);
+    static String adopt(char* bytes, u32 num_bytes) {
+        String str;
+        str.bytes_ = bytes;
+        str.num_bytes_ = num_bytes;
+        return str;
+    }
 
     //----------------------------------------------------
-    // Modifying the string
+    // Pattern matching
+    //----------------------------------------------------
+
+    template <typename... Args>
+    bool match(StringView pattern, Args*... args) const;
+
+    //----------------------------------------------------
+    // Modifying string contents
     //----------------------------------------------------
 
     void clear() {
-        if (this->bytes) {
-            Heap::free(this->bytes);
+        if (this->bytes_) {
+            Heap::free(this->bytes_);
         }
-        this->bytes = nullptr;
-        this->num_bytes = 0;
+        this->bytes_ = nullptr;
+        this->num_bytes_ = 0;
+    }
+    void operator+=(StringView other) {
+        *this = *this + other;
     }
     void resize(u32 num_bytes);
     char* release() {
-        char* r = this->bytes;
-        this->bytes = nullptr;
-        this->num_bytes = 0;
+        char* r = this->bytes_;
+        this->bytes_ = nullptr;
+        this->num_bytes_ = 0;
         return r;
     }
 
     //----------------------------------------------------
-    // Formatting and matching
+    // Formatting
     //----------------------------------------------------
 
     template <typename... Args>
     static String format(StringView fmt, const Args&... args);
-    template <typename... Args>
-    bool match(StringView pattern, Args*... args) const;
 };
 
 inline StringView get_any_lookup_key(const String& str) {
