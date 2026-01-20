@@ -1431,76 +1431,66 @@ inline bool is_decimal_digit(char c) {
     return (c >= '0' && c <= '9');
 }
 
-struct StringView {
-    const char* bytes = nullptr;
-    u32 num_bytes = 0;
+class StringView {
+private:
+    const char* bytes_ = nullptr;
+    u32 num_bytes_ = 0;
 
+public:
     //----------------------------------------------------
     // Constructors
     //----------------------------------------------------
 
     StringView() = default;
-    StringView(const char* s) : bytes{s}, num_bytes{numeric_cast<u32>(::strlen(s))} {
+    StringView(const char* s) : bytes_{s}, num_bytes_{numeric_cast<u32>(::strlen(s))} {
     }
-    StringView(const char* bytes, u32 num_bytes) : bytes{bytes}, num_bytes{num_bytes} {
+    StringView(const char* bytes, u32 num_bytes) : bytes_{bytes}, num_bytes_{num_bytes} {
     }
     StringView(const char* start_byte, const char* end_byte)
-        : bytes{start_byte}, num_bytes{numeric_cast<u32>(end_byte - start_byte)} {
+        : bytes_{start_byte}, num_bytes_{numeric_cast<u32>(end_byte - start_byte)} {
     }
-    StringView(const char& c) : bytes{&c}, num_bytes{1} {
+    StringView(const char& c) : bytes_{&c}, num_bytes_{1} {
     }
 
     //----------------------------------------------------
     // Accessing string bytes
     //----------------------------------------------------
 
+    const char* bytes() const {
+        return this->bytes_;
+    }
+    char* bytes() {
+        return const_cast<char*>(this->bytes_);
+    }
+    u32 num_bytes() const {
+        return this->num_bytes_;
+    }
     const char& operator[](u32 index) const {
-        PLY_ASSERT(index < this->num_bytes);
-        return this->bytes[index];
+        PLY_ASSERT(index < this->num_bytes_);
+        return this->bytes_[index];
     }
     const char& back(s32 ofs = -1) const {
-        PLY_ASSERT(u32(-ofs - 1) < this->num_bytes);
-        return this->bytes[this->num_bytes + ofs];
-    }
-    const char* begin() const {
-        return this->bytes;
-    }
-    const char* end() const {
-        return this->bytes + this->num_bytes;
+        PLY_ASSERT(u32(-ofs - 1) < this->num_bytes_);
+        return this->bytes_[this->num_bytes_ + ofs];
     }
 
-    explicit operator bool() const {
-        return this->num_bytes != 0;
-    }
+    //----------------------------------------------------
+    // Examining string contents
+    //----------------------------------------------------
+
     bool is_empty() const {
-        return this->num_bytes == 0;
+        return this->num_bytes_ == 0;
     }
-    StringView substr(u32 start) const {
-        start = min(start, this->num_bytes);
-        return {this->bytes + start, this->num_bytes - start};
+    explicit operator bool() const {
+        return this->num_bytes_ != 0;
     }
-    StringView substr(u32 start, u32 num_bytes) const {
-        start = min(start, this->num_bytes);
-        num_bytes = min(num_bytes, this->num_bytes - start);
-        return {this->bytes + start, num_bytes};
-    }
-    StringView left(u32 num_bytes) const {
-        num_bytes = min(num_bytes, this->num_bytes);
-        return {this->bytes, num_bytes};
-    }
-    StringView shortened_by(u32 num_bytes) const {
-        num_bytes = min(num_bytes, this->num_bytes);
-        return {this->bytes, this->num_bytes - num_bytes};
-    }
-    StringView right(u32 num_bytes) const {
-        num_bytes = min(num_bytes, this->num_bytes);
-        return {this->bytes + this->num_bytes - num_bytes, num_bytes};
-    }
+    bool starts_with(StringView arg) const;
+    bool ends_with(StringView arg) const;
     s32 find(StringView pattern, u32 start_pos = 0) const;
     template <typename Callable, PLY_ENABLE_IF_WELL_FORMED(declval<Callable>()(declval<char>()))>
     s32 find(const Callable& match_func, u32 start_pos = 0) const {
-        for (u32 i = start_pos; i < this->num_bytes; i++) {
-            if (match_func(this->bytes[i]))
+        for (u32 i = start_pos; i < this->num_bytes_; i++) {
+            if (match_func(this->bytes_[i]))
                 return i;
         }
         return -1;
@@ -1509,16 +1499,35 @@ struct StringView {
     template <typename Callable, PLY_ENABLE_IF_WELL_FORMED(declval<Callable>()(declval<char>()))>
     s32 reverse_find(const Callable& match_func, s32 start_pos = -1) const {
         if (start_pos < 0) {
-            start_pos += this->num_bytes;
+            start_pos += this->num_bytes_;
         }
         for (s32 i = start_pos; i >= 0; i--) {
-            if (match_func(this->bytes[i]))
+            if (match_func(this->bytes_[i]))
                 return i;
         }
         return -1;
     }
-    bool starts_with(StringView arg) const;
-    bool ends_with(StringView arg) const;
+    StringView substr(u32 start) const {
+        start = min(start, this->num_bytes_);
+        return {this->bytes_ + start, this->num_bytes_ - start};
+    }
+    StringView substr(u32 start, u32 num_bytes) const {
+        start = min(start, this->num_bytes_);
+        num_bytes = min(num_bytes, this->num_bytes_ - start);
+        return {this->bytes_ + start, num_bytes};
+    }
+    StringView left(u32 num_bytes) const {
+        num_bytes = min(num_bytes, this->num_bytes_);
+        return {this->bytes_, num_bytes};
+    }
+    StringView shortened_by(u32 num_bytes) const {
+        num_bytes = min(num_bytes, this->num_bytes_);
+        return {this->bytes_, this->num_bytes_ - num_bytes};
+    }
+    StringView right(u32 num_bytes) const {
+        num_bytes = min(num_bytes, this->num_bytes_);
+        return {this->bytes_ + this->num_bytes_ - num_bytes, num_bytes};
+    }
     StringView trim(bool (*match_func)(char) = is_whitespace, bool left = true, bool right = true) const;
     StringView trim_left(bool (*match_func)(char) = is_whitespace) const {
         return this->trim(match_func, true, false);
@@ -1527,11 +1536,20 @@ struct StringView {
         return this->trim(match_func, false, true);
     }
 
-    PLY_NO_DISCARD String replace(StringView old_substr, StringView new_substr) const;
-    PLY_NO_DISCARD String join(ArrayView<const StringView> comps) const;
+    //----------------------------------------------------
+    // Creating new strings
+    //----------------------------------------------------
+
+    PLY_NO_DISCARD String upper() const;
+    PLY_NO_DISCARD String lower() const;
     PLY_NO_DISCARD Array<StringView> split_byte(char sep) const;
-    PLY_NO_DISCARD String upper_asc() const;
-    PLY_NO_DISCARD String lower_asc() const;
+    PLY_NO_DISCARD String join(ArrayView<const StringView> comps) const;
+    PLY_NO_DISCARD String replace(StringView old_substr, StringView new_substr) const;
+
+    //----------------------------------------------------
+    // Pattern matching
+    //----------------------------------------------------
+
     template <typename... Args>
     bool match(StringView pattern, Args*... args) const;
 };
@@ -1760,11 +1778,11 @@ struct String {
     PLY_NO_DISCARD String replace(StringView old_substr, StringView new_substr) const {
         return ((StringView) * this).replace(old_substr, new_substr);
     }
-    PLY_NO_DISCARD String upper_asc() const {
-        return ((StringView) * this).upper_asc();
+    PLY_NO_DISCARD String upper() const {
+        return ((StringView) * this).upper();
     }
-    PLY_NO_DISCARD String lower_asc() const {
-        return ((StringView) * this).lower_asc();
+    PLY_NO_DISCARD String lower() const {
+        return ((StringView) * this).lower();
     }
     PLY_NO_DISCARD Array<StringView> split_byte(char sep) const;
     PLY_NO_DISCARD String join(ArrayView<const StringView> comps) const;
@@ -1985,8 +2003,8 @@ public:
         return {this->items_, this->num_items_};
     }
     static ArrayView<const Item> from(StringView view) {
-        u32 num_items = view.num_bytes / sizeof(Item); // Divide by constant is fast
-        return {(const Item*) view.bytes, num_items};
+        u32 num_items = view.num_bytes() / sizeof(Item); // Divide by constant is fast
+        return {(const Item*) view.bytes(), num_items};
     }
     StringView string_view() const {
         return {(const char*) this->items_, numeric_cast<u32>(this->num_items_ * sizeof(Item))};

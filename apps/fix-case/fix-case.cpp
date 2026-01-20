@@ -26,7 +26,7 @@ inline bool is_lower(char c) {
 
 ConventionUsed get_convention(StringView str) {
     bool possible[4] = { false };
-    if (str.num_bytes < 1)
+    if (str.num_bytes() < 1)
         return OtherCase;
     if (is_lower(str[0])) {
         possible[SnakeCase] = true;
@@ -106,12 +106,12 @@ void process_file(StringView full_path) {
             }
             if (conv == CamelCase) {
                 if (!token.text.starts_with("ai") && !token.text.starts_with("gl") && !token.text.starts_with("lp") && !token.text.starts_with("dw") && !token.text.starts_with("ft") && (find(ignore, token.text) < 0)) {
-                    if (!(token.text.num_bytes > 1 && is_upper(token.text[1]))) {
+                    if (!(token.text.num_bytes() > 1 && is_upper(token.text[1]))) {
                         all_tokens.insert(token.text);
                         for (char c : token.text) {
                             if (is_upper(c)) {
                                 mem.write('_');
-                                mem.write(StringView{c}.lower_asc());
+                                mem.write(StringView{c}.lower());
                             } else {
                                 mem.write(c);
                             }

@@ -62,19 +62,19 @@ TokenLocationMap TokenLocationMap::create_from_string(StringView src) {
 }
 
 TokenLocation TokenLocationMap::get_location_from_offset(u32 file_offset) const {
-    PLY_ASSERT(file_offset <= this->view.num_bytes);
+    PLY_ASSERT(file_offset <= this->view.num_bytes());
     const TokenLocation& file_location = this->table[file_offset >> 8];
     u32 chunk_ofs = file_offset & ~0xff;
-    const char* line_start = this->view.bytes + (chunk_ofs - file_location.num_bytes_into_line);
+    const char* line_start = this->view.bytes() + (chunk_ofs - file_location.num_bytes_into_line);
     StringView src = this->view;
     src = src.substr(chunk_ofs - file_location.num_bytes_into_column);
-    const char* target = this->view.bytes + file_offset;
+    const char* target = this->view.bytes() + file_offset;
     u32 line_number = file_location.line_number;
     u32 column_number = file_location.column_number;
 
     for (;;) {
-        if (src.bytes >= target) {
-            u32 nb = numeric_cast<u32>(target - src.bytes);
+        if (src.bytes() >= target) {
+            u32 nb = numeric_cast<u32>(target - src.bytes());
             // FIXME: num_bytes_into_line is incorrect here:
             return {line_number, numeric_cast<u32>(target - line_start), column_number, nb};
         }
@@ -758,8 +758,8 @@ retry:
     }
 
     token.text = {tkr.start_byte, in.cur_byte};
-    PLY_ASSERT(token.text.num_bytes > 0);
-    tkr.input_offset += token.text.num_bytes;
+    PLY_ASSERT(token.text.num_bytes() > 0);
+    tkr.input_offset += token.text.num_bytes();
     tkr.start_byte = nullptr;
     return token;
 }

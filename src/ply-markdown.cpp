@@ -49,7 +49,7 @@ struct LineConsumer {
 //-----------------------------------------------------------------
 String extract_code_line(StringView line, u32 from_indent) {
     u32 indent = 0;
-    for (u32 i = 0; i < line.num_bytes; i++) {
+    for (u32 i = 0; i < line.num_bytes(); i++) {
         if (indent == from_indent) {
             return line.substr(i);
         }
@@ -366,11 +366,11 @@ void parse_paragraph_text(ParserDetails* parser, StringView line, LineConsumer& 
                 }
                 StringView pound_seq{start_byte, lc.vins.cur_byte};
                 StringView space = read_whitespace(lc.vins);
-                if (pound_seq.num_bytes <= 6 && (!space.is_empty() || lc.vins.num_remaining_bytes() == 0)) {
+                if (pound_seq.num_bytes() <= 6 && (!space.is_empty() || lc.vins.num_remaining_bytes() == 0)) {
                     // Got a heading
                     Element* parent = parser->element_stack ? parser->element_stack.back() : &parser->root_element;
                     Element* heading_element = Heap::create<Element>(parent, Element::Heading);
-                    heading_element->indent_or_level = pound_seq.num_bytes;
+                    heading_element->indent_or_level = pound_seq.num_bytes();
                     if (StringView remaining_text = lc.trimmed_remainder()) {
                         heading_element->raw_lines.append(remaining_text);
                     }
@@ -412,7 +412,7 @@ struct InlineConsumer {
     enum ValidIndexResult { SameLine, NextLine, End };
 
     ValidIndexResult valid_index() {
-        if (this->i >= this->raw_line.num_bytes) {
+        if (this->i >= this->raw_line.num_bytes()) {
             if (this->line_index >= this->raw_lines.num_items()) {
                 return End;
             }
@@ -443,7 +443,7 @@ String get_code_span(InlineConsumer& ic, u32 end_tick_count) {
         ic.i++;
         if (c == '`') {
             u32 tick_count = 1;
-            for (; ic.i < ic.raw_line.num_bytes && ic.raw_line[ic.i] == '`'; ic.i++) {
+            for (; ic.i < ic.raw_line.num_bytes() && ic.raw_line[ic.i] == '`'; ic.i++) {
                 tick_count++;
             }
             if (tick_count == end_tick_count) {
@@ -493,9 +493,9 @@ struct Delimiter {
     static Delimiter make_run(Type type, StringView raw_line, u32 start, u32 num_bytes) {
         bool preceded_by_white = (start == 0) || is_whitespace(raw_line[start - 1]);
         bool followed_by_white =
-            (start + num_bytes >= raw_line.num_bytes) || is_whitespace(raw_line[start + num_bytes]);
+            (start + num_bytes >= raw_line.num_bytes()) || is_whitespace(raw_line[start + num_bytes]);
         bool preceded_by_punc = (start > 0) && is_asc_punc(raw_line[start - 1]);
-        bool followed_by_punc = (start + num_bytes < raw_line.num_bytes) && is_asc_punc(raw_line[start + num_bytes]);
+        bool followed_by_punc = (start + num_bytes < raw_line.num_bytes()) && is_asc_punc(raw_line[start + num_bytes]);
 
         Delimiter result{type, raw_line.substr(start, num_bytes)};
         result.left_flanking =
@@ -609,14 +609,14 @@ Array<Owned<Element>> process_emphasis(Array<Delimiter>& delimiters, u32 bottom_
             for (u32 j = pos; j > opener_pos;) {
                 --j;
                 if (delimiters[j].type == type && delimiters[j].left_flanking) {
-                    u32 span_length = min(delimiters[j].text.num_bytes, delimiters[pos].text.num_bytes);
+                    u32 span_length = min(delimiters[j].text.num_bytes(), delimiters[pos].text.num_bytes());
                     PLY_ASSERT(span_length > 0);
                     Owned<Element> elem =
                         Heap::create<Element>(nullptr, span_length >= 2 ? Element::Strong : Element::Emphasis);
                     elem->add_children(convert_to_inline_elems(delimiters.subview(j + 1, pos - j - 1)));
                     u32 delims_to_subtract = min(span_length, 2u);
-                    delimiters[j].text.num_bytes -= delims_to_subtract;
-                    delimiters[pos].text.num_bytes -= delims_to_subtract;
+                    delimiters[j].text = delimiters[j].text.left(delimiters[j].text.num_bytes() - delims_to_subtract);
+                    delimiters[pos].text = delimiters[pos].text.left(delimiters[pos].text.num_bytes() - delims_to_subtract);
                     // We're going to delete from j to pos inclusive, so leave remaining
                     // delimiters if any
                     if (!delimiters[j].text.is_empty()) {
@@ -658,7 +658,7 @@ Array<Owned<Element>> expand_inline_elements(ArrayView<const String> raw_lines) 
         }
     };
     for (;;) {
-        if (ic.i >= ic.raw_line.num_bytes) {
+        if (ic.i >= ic.raw_line.num_bytes()) {
             flush_text();
             ic.i = 0;
             flushed_index = 0;
@@ -673,7 +673,7 @@ Array<Owned<Element>> expand_inline_elements(ArrayView<const String> raw_lines) 
         if (c == '`') {
             flush_text();
             u32 tick_count = 1;
-            for (ic.i++; ic.i < ic.raw_line.num_bytes && ic.raw_line[ic.i] == '`'; ic.i++) {
+            for (ic.i++; ic.i < ic.raw_line.num_bytes() && ic.raw_line[ic.i] == '`'; ic.i++) {
                 tick_count++;
             }
             // Try consuming code span
@@ -691,7 +691,7 @@ Array<Owned<Element>> expand_inline_elements(ArrayView<const String> raw_lines) 
         } else if (c == '*') {
             flush_text();
             u32 run_length = 1;
-            for (ic.i++; ic.i < ic.raw_line.num_bytes && ic.raw_line[ic.i] == '*'; ic.i++) {
+            for (ic.i++; ic.i < ic.raw_line.num_bytes() && ic.raw_line[ic.i] == '*'; ic.i++) {
                 run_length++;
             }
             delimiters.append(Delimiter::make_run(Delimiter::Stars, ic.raw_line, ic.i - run_length, run_length));
@@ -699,7 +699,7 @@ Array<Owned<Element>> expand_inline_elements(ArrayView<const String> raw_lines) 
         } else if (c == '_') {
             flush_text();
             u32 run_length = 1;
-            for (ic.i++; ic.i < ic.raw_line.num_bytes && ic.raw_line[ic.i] == '_'; ic.i++) {
+            for (ic.i++; ic.i < ic.raw_line.num_bytes() && ic.raw_line[ic.i] == '_'; ic.i++) {
                 run_length++;
             }
             delimiters.append(Delimiter::make_run(Delimiter::Underscores, ic.raw_line, ic.i - run_length, run_length));
@@ -713,7 +713,7 @@ Array<Owned<Element>> expand_inline_elements(ArrayView<const String> raw_lines) 
             // Try to parse an inline link
             flush_text();
             ic.i++;
-            if (!(ic.i < ic.raw_line.num_bytes && ic.raw_line[ic.i] == '('))
+            if (!(ic.i < ic.raw_line.num_bytes() && ic.raw_line[ic.i] == '('))
                 continue; // No parenthesis
 
             // Got opening parenthesis

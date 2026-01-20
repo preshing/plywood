@@ -291,12 +291,12 @@ void handle_preprocessor_directive(ParserImpl* parser, StringView directive, u32
         skip_whitespace(in);
         StringView rest = read_line(in);
         // FIXME: Do proper parsing of < > vs " "
-        include_file(parser, rest.substr(1, rest.num_bytes - 2), input_offset);
+        include_file(parser, rest.substr(1, rest.num_bytes() - 2), input_offset);
     } else if (cmd == "define") {
         // Parse macro name.
         skip_whitespace(in);
         StringView name = read_identifier(in);
-        if (name.num_bytes > 0) {
+        if (name.num_bytes() > 0) {
             // Parse macro expansion (may be empty).
             StringView expansion = in.view_remaining_bytes().trim();
 
@@ -391,12 +391,12 @@ Token peek_token(ParserImpl* parser) {
                 &parser->tokens[page_index][parser->token_index - page_index * ParserImpl::NumTokensPerPage];
             packed[0].type = token.type;
             packed[0].input_offset = token.input_offset;
-            packed[1].input_offset = token.input_offset + token.text.num_bytes;
+            packed[1].input_offset = token.input_offset + token.text.num_bytes();
             parser->num_tokens++;
 
             // If it's a preprocessor directive, handle it.
             if (token.type == Token::PreprocessorDirective) {
-                handle_preprocessor_directive(parser, token.text.substr(1).trim(), token.input_offset + token.text.num_bytes);
+                handle_preprocessor_directive(parser, token.text.substr(1).trim(), token.input_offset + token.text.num_bytes());
                 // The directive may modify the include stack, so restart the loop to read the next token.
                 parser->token_index++;
                 continue;

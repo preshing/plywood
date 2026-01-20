@@ -130,9 +130,9 @@ void Parser::error(u32 file_ofs, String&& message) {
 }
 
 void Parser::advance_char() {
-    if (this->read_ofs + 1 < this->src_view.num_bytes) {
+    if (this->read_ofs + 1 < this->src_view.num_bytes()) {
         this->read_ofs++;
-        this->next_unit = this->src_view.bytes[this->read_ofs];
+        this->next_unit = this->src_view.bytes()[this->read_ofs];
     } else {
         this->next_unit = -1;
     }
@@ -288,7 +288,7 @@ Parser::Token Parser::read_literal() {
         this->advance_char();
     }
 
-    token.text = StringView{(char*) this->src_view.bytes + start_ofs, this->read_ofs - start_ofs};
+    token.text = StringView{(char*) this->src_view.bytes() + start_ofs, this->read_ofs - start_ofs};
     return token;
 }
 
@@ -530,7 +530,7 @@ Owned<Node> Parser::read_expression(Token&& first_token, const Token* after_toke
 
 Parser::Result Parser::parse(StringView path, StringView src_view_) {
     this->src_view = src_view_;
-    this->next_unit = this->src_view.num_bytes > 0 ? this->src_view[0] : -1;
+    this->next_unit = this->src_view.num_bytes() > 0 ? this->src_view[0] : -1;
 
     this->token_loc_map = TokenLocationMap::create_from_string(src_view_);
 
@@ -578,12 +578,12 @@ struct WriteContext {
                 this->out.write("{\n");
                 this->indent_level++;
                 const Node::Object& obj_node = node->object();
-                for (u32 item_index = 0; item_index < obj_node.items.items.num_items(); item_index++) {
-                    const Node::Object::Item& obj_item = obj_node.items.items[item_index];
+                for (u32 item_index = 0; item_index < obj_node.items.items().num_items(); item_index++) {
+                    const Node::Object::Item& obj_item = obj_node.items.items()[item_index];
                     indent();
                     this->out.format("\"{}\": ", escape(obj_item.key));
                     write(obj_item.value);
-                    if (item_index < obj_node.items.items.num_items() - 1) {
+                    if (item_index < obj_node.items.items().num_items() - 1) {
                         this->out.write(',');
                     }
                     this->out.write('\n');

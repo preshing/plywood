@@ -73,12 +73,12 @@ u32 PipeWinsock::read(MutStringView buf) {
 }
 
 bool PipeWinsock::write(StringView buf) {
-    while (buf.num_bytes > 0) {
-        int rc = send(this->socket, (const char*) buf.bytes, (DWORD) buf.num_bytes, 0);
+    while (buf.num_bytes() > 0) {
+        int rc = send(this->socket, (const char*) buf.bytes(), (DWORD) buf.num_bytes(), 0);
         if (rc == SOCKET_ERROR) // FIXME: Test to make sure that disconnected sockets return
                                 // SOCKET_ERROR and not 0
             return false;
-        PLY_ASSERT(rc >= 0 && u32(rc) <= buf.num_bytes);
+        PLY_ASSERT(rc >= 0 && u32(rc) <= buf.num_bytes());
         buf = buf.substr(rc);
     }
     return true;

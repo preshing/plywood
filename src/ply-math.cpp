@@ -134,11 +134,11 @@ Float4 step_towards(const Float4& start, const Float4& target, float amount) {
 //
 
 Color::Color(StringView hex) {
-    if ((hex.num_bytes != 6) && (hex.num_bytes != 8)) {
+    if ((hex.num_bytes() != 6) && (hex.num_bytes() != 8)) {
         PLY_ASSERT(0);  // Invalid hex string
         return;
     }
-    const char* s = hex.bytes;
+    const char* s = hex.bytes();
     auto read_hex = [&]() -> u32 {
         u32 c = 0;
         for (int j = 0; j < 2; j++) {
@@ -159,7 +159,7 @@ Color::Color(StringView hex) {
     this->r = read_hex();
     this->g = read_hex();
     this->b = read_hex();
-    if (hex.num_bytes == 8) {
+    if (hex.num_bytes() == 8) {
         this->a = read_hex();
     } else {
         this->a = 255;

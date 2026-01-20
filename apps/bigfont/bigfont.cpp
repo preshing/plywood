@@ -79,7 +79,7 @@ void print_bigfont(StringView text) {
     for (u32 i = 0; i < BigGlyph::height; i++) {
         MemStream mem;
         mem.write("// ");
-        for (u32 j = 0; j < text.num_bytes; j++) {
+        for (u32 j = 0; j < text.num_bytes(); j++) {
             // Look up glyph
             char c = text[j];
             if ((u8) c >= glyphs.num_items())

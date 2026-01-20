@@ -409,20 +409,20 @@ namespace ply {
 //                                 ▄▄▄█▀
 
 bool StringView::starts_with(StringView other) const {
-    if (other.num_bytes > num_bytes)
+    if (other.num_bytes_ > this->num_bytes_)
         return false;
-    return memcmp(bytes, other.bytes, other.num_bytes) == 0;
+    return memcmp(this->bytes_, other.bytes_, other.num_bytes_) == 0;
 }
 
 bool StringView::ends_with(StringView other) const {
-    if (other.num_bytes > num_bytes)
+    if (other.num_bytes_ > this->num_bytes_)
         return false;
-    return memcmp(bytes + num_bytes - other.num_bytes, other.bytes, other.num_bytes) == 0;
+    return memcmp(this->bytes_ + this->num_bytes_ - other.num_bytes_, other.bytes_, other.num_bytes_) == 0;
 }
 
 StringView StringView::trim(bool (*match_func)(char), bool left, bool right) const {
-    const char* start = this->bytes;
-    const char* end = start + this->num_bytes;
+    const char* start = this->bytes_;
+    const char* end = start + this->num_bytes_;
     if (left) {
         while ((start < end) && match_func(*start)) {
             start++;
@@ -438,8 +438,8 @@ StringView StringView::trim(bool (*match_func)(char), bool left, bool right) con
 
 Array<StringView> StringView::split_byte(char sep) const {
     Array<StringView> result;
-    const char* cur = this->bytes;
-    const char* end = this->bytes + this->num_bytes;
+    const char* cur = this->bytes_;
+    const char* end = this->bytes_ + this->num_bytes_;
     const char* split_start = nullptr;
     while (cur < end) {
         if (*cur == sep) {
@@ -464,28 +464,28 @@ Array<StringView> StringView::split_byte(char sep) const {
 }
 
 String StringView::replace(StringView old_substr, StringView new_substr) const {
-    PLY_ASSERT(old_substr.num_bytes > 0);
+    PLY_ASSERT(old_substr.num_bytes_ > 0);
     MemStream out;
-    u32 limit = this->num_bytes - old_substr.num_bytes;
+    u32 limit = this->num_bytes_ - old_substr.num_bytes_;
     u32 i = 0;
     for (; i < limit; i++) {
-        if (memcmp(this->bytes + i, old_substr.bytes, old_substr.num_bytes) == 0) {
+        if (memcmp(this->bytes_ + i, old_substr.bytes_, old_substr.num_bytes_) == 0) {
             out.write(new_substr);
-            i += old_substr.num_bytes - 1;
+            i += old_substr.num_bytes_ - 1;
         } else {
-            out.write(this->bytes[i]);
+            out.write(this->bytes_[i]);
         }
     }
-    if (i < this->num_bytes) {
-        out.write({this->bytes + i, this->bytes + num_bytes});
+    if (i < this->num_bytes_) {
+        out.write({this->bytes_ + i, this->bytes_ + this->num_bytes_});
     }
     return out.move_to_string();
 }
 
-String StringView::upper_asc() const {
-    String result = String::allocate(this->num_bytes);
-    for (u32 i = 0; i < this->num_bytes; i++) {
-        char c = this->bytes[i];
+String StringView::upper() const {
+    String result = String::allocate(this->num_bytes_);
+    for (u32 i = 0; i < this->num_bytes_; i++) {
+        char c = this->bytes_[i];
         if (c >= 'a' && c <= 'z') {
             c += 'A' - 'a';
         }
@@ -494,10 +494,10 @@ String StringView::upper_asc() const {
     return result;
 }
 
-String StringView::lower_asc() const {
-    String result = String::allocate(this->num_bytes);
-    for (u32 i = 0; i < this->num_bytes; i++) {
-        char c = this->bytes[i];
+String StringView::lower() const {
+    String result = String::allocate(this->num_bytes_);
+    for (u32 i = 0; i < this->num_bytes_; i++) {
+        char c = this->bytes_[i];
         if (c >= 'A' && c <= 'Z') {
             c += 'a' - 'A';
         }
@@ -520,9 +520,9 @@ String StringView::join(ArrayView<const StringView> comps) const {
 }
 
 s32 compare(StringView a, StringView b) {
-    u32 compare_bytes = min(a.num_bytes, b.num_bytes);
-    const u8* u0 = (const u8*) a.bytes;
-    const u8* u1 = (const u8*) b.bytes;
+    u32 compare_bytes = min(a.num_bytes(), b.num_bytes());
+    const u8* u0 = (const u8*) a.bytes();
+    const u8* u1 = (const u8*) b.bytes();
     const u8* u_end0 = u0 + compare_bytes;
     while (u0 < u_end0) {
         s32 diff = *u0 - *u1;
@@ -531,33 +531,33 @@ s32 compare(StringView a, StringView b) {
         u0++;
         u1++;
     }
-    return a.num_bytes - b.num_bytes;
+    return a.num_bytes() - b.num_bytes();
 }
 
 String operator+(StringView a, StringView b) {
-    String result = String::allocate(a.num_bytes + b.num_bytes);
-    memcpy(result.bytes, a.bytes, a.num_bytes);
-    memcpy(result.bytes + a.num_bytes, b.bytes, b.num_bytes);
+    String result = String::allocate(a.num_bytes() + b.num_bytes());
+    memcpy(result.bytes, a.bytes(), a.num_bytes());
+    memcpy(result.bytes + a.num_bytes(), b.bytes(), b.num_bytes());
     return result;
 }
 
 String operator*(StringView str, u32 count) {
-    String result = String::allocate(str.num_bytes * count);
+    String result = String::allocate(str.num_bytes() * count);
     char* dst = result.bytes;
     for (u32 i = 0; i < count; i++) {
-        memcpy(dst, str.bytes, str.num_bytes);
-        dst += str.num_bytes;
+        memcpy(dst, str.bytes(), str.num_bytes());
+        dst += str.num_bytes();
     }
     return result;
 }
 
 s32 StringView::find(StringView pattern, u32 start_pos) const {
-    if (start_pos + pattern.num_bytes > this->num_bytes)
+    if (start_pos + pattern.num_bytes_ > this->num_bytes_)
         return -1;
-    u32 limit = this->num_bytes - pattern.num_bytes;
+    u32 limit = this->num_bytes_ - pattern.num_bytes_;
     for (; start_pos <= limit; start_pos++) {
-        for (u32 i = 0; i < pattern.num_bytes; i++) {
-            if (pattern.bytes[i] != this->bytes[start_pos + i])
+        for (u32 i = 0; i < pattern.num_bytes_; i++) {
+            if (pattern.bytes_[i] != this->bytes_[start_pos + i])
                 goto next;
         }
         return start_pos;
@@ -568,14 +568,14 @@ s32 StringView::find(StringView pattern, u32 start_pos) const {
 
 s32 StringView::reverse_find(StringView pattern, s32 start_pos) const {
     if (start_pos < 0) {
-        start_pos += this->num_bytes;
+        start_pos += this->num_bytes_;
     }
-    if (start_pos + pattern.num_bytes >= this->num_bytes) {
-        start_pos = (s32) this->num_bytes - pattern.num_bytes;
+    if (start_pos + pattern.num_bytes_ >= this->num_bytes_) {
+        start_pos = (s32) this->num_bytes_ - pattern.num_bytes_;
     }
     for (; start_pos >= 0; start_pos--) {
-        for (u32 i = 0; i < pattern.num_bytes; i++) {
-            if (pattern.bytes[i] != this->bytes[start_pos + i])
+        for (u32 i = 0; i < pattern.num_bytes_; i++) {
+            if (pattern.bytes_[i] != this->bytes_[start_pos + i])
                 goto next;
         }
         // Found a match.
@@ -866,8 +866,8 @@ bool match_with_args(ViewStream& in, StringView pattern, ArrayView<const MatchAr
 //  ▀█▄▄█▀  ▀█▄▄ ██     ██ ██  ██ ▀█▄▄██
 //                                 ▄▄▄█▀
 
-String::String(StringView other) : bytes{(char*) Heap::alloc(other.num_bytes)}, num_bytes{other.num_bytes} {
-    memcpy(this->bytes, other.bytes, other.num_bytes);
+String::String(StringView other) : bytes{(char*) Heap::alloc(other.num_bytes())}, num_bytes{other.num_bytes()} {
+    memcpy(this->bytes, other.bytes(), other.num_bytes());
 }
 
 String String::allocate(u32 num_bytes) {
@@ -899,18 +899,17 @@ void add_to_hash(HashBuilder& builder, u32 value) {
 
 void add_to_hash(HashBuilder& builder, StringView str) {
     // FIXME: More work is needed for platforms that don't support unaligned reads
-    while (str.num_bytes >= 4) {
-        add_to_hash(builder, *(const u32*) str.bytes); // May be unaligned
-        str.bytes += 4;
-        str.num_bytes -= 4;
+    u32 i = 0;
+    while (i + 4 <= str.num_bytes()) {
+        add_to_hash(builder, *(const u32*) (str.bytes() + i)); // May be unaligned
+        i += 4;
     }
-    if (str.num_bytes > 0) {
+    if (i < str.num_bytes()) {
         // Avoid potential unaligned read across page boundary
         u32 v = 0;
-        while (str.num_bytes > 0) {
-            v = (v << 8) | *(const u8*) str.bytes;
-            str.bytes++;
-            str.num_bytes--;
+        while (i < str.num_bytes()) {
+            v = (v << 8) | *(const u8*) (str.bytes() + i);
+            i++;
         }
         add_to_hash(builder, v);
     }
@@ -981,14 +980,13 @@ u32 PipeHandle::read(MutStringView buf) {
 }
 
 bool PipeHandle::write(StringView buf) {
-    while (buf.num_bytes > 0) {
-        DWORD desired_bytes = min<DWORD>(buf.num_bytes, UINT32_MAX);
+    while (buf.num_bytes() > 0) {
+        DWORD desired_bytes = min<DWORD>(buf.num_bytes(), UINT32_MAX);
         DWORD written_bytes;
-        BOOL rc = WriteFile(this->handle, buf.bytes, desired_bytes, &written_bytes, NULL);
+        BOOL rc = WriteFile(this->handle, buf.bytes(), desired_bytes, &written_bytes, NULL);
         if (!rc) // Handles ERROR_NO_DATA and other errors.
             return false;
-        buf.bytes += written_bytes;
-        buf.num_bytes -= written_bytes;
+        buf = buf.substr(written_bytes);
     }
     return true;
 }
@@ -1036,13 +1034,12 @@ u32 Pipe_FD::read(MutStringView buf) {
 
 bool Pipe_FD::write(StringView buf) {
     PLY_ASSERT(this->fd >= 0);
-    while (buf.num_bytes > 0) {
-        s32 sent = (s32)::write(this->fd, buf.bytes, buf.num_bytes);
+    while (buf.num_bytes() > 0) {
+        s32 sent = (s32)::write(this->fd, buf.bytes(), buf.num_bytes());
         if (sent <= 0)
             return false;
-        PLY_ASSERT((u32) sent <= buf.num_bytes);
-        buf.bytes += sent;
-        buf.num_bytes -= sent;
+        PLY_ASSERT((u32) sent <= buf.num_bytes());
+        buf = buf.substr(sent);
     }
     return true;
 }
@@ -1163,7 +1160,7 @@ public:
 };
 
 bool OutPipeNewLineFilter::write(StringView buf) {
-    u32 desired_total_bytes_read = buf.num_bytes;
+    u32 desired_total_bytes_read = buf.num_bytes();
     u32 total_bytes_read = 0;
     for (;;) {
         this->out.make_writable();
@@ -1171,13 +1168,13 @@ bool OutPipeNewLineFilter::write(StringView buf) {
         // If try_make_bytes_available fails, process() will do nothing and we'll simply
         // return below:
         NewLineFilter::Params params;
-        params.src_byte = buf.bytes;
-        params.src_end_byte = buf.bytes + buf.num_bytes;
+        params.src_byte = buf.bytes();
+        params.src_end_byte = buf.bytes() + buf.num_bytes();
         params.dst_byte = this->out.cur_byte;
         params.dst_end_byte = this->out.end_byte;
         this->filter.process(&params);
         this->out.cur_byte = params.dst_byte;
-        u32 num_bytes_read = numeric_cast<u32>(params.src_byte - buf.bytes);
+        u32 num_bytes_read = numeric_cast<u32>(params.src_byte - buf.bytes());
         if (num_bytes_read == 0) {
             PLY_ASSERT(total_bytes_read <= desired_total_bytes_read);
             return total_bytes_read >= desired_total_bytes_read;
@@ -1489,8 +1486,8 @@ u32 Stream::write(StringView src) {
     u32 total_copied = 0;
     while (src && this->make_writable()) {
         // Copy as much data as possible to the current block.
-        u32 to_copy = min(this->num_remaining_bytes(), src.num_bytes);
-        memcpy(this->cur_byte, src.bytes, to_copy);
+        u32 to_copy = min(this->num_remaining_bytes(), src.num_bytes());
+        memcpy(this->cur_byte, src.bytes(), to_copy);
         this->cur_byte += to_copy;
         src = src.substr(to_copy);
         total_copied += to_copy;
@@ -1545,7 +1542,7 @@ void Stream::seek_to(u64 seek_pos) {
         this->cur_byte = buf + offset_in_buffer;
         this->end_byte = buf + num_bytes_in_buffer;
     } else if (this->type == Type::View) {
-        PLY_ASSERT(seek_pos <= this->end_byte - this->view.start_byte);
+        PLY_ASSERT(seek_pos <= numeric_cast<uptr>(this->end_byte - this->view.start_byte));
         this->cur_byte = this->view.start_byte + seek_pos;
     } else {
         PLY_ASSERT(0); // Shouldn't get here.
@@ -1597,9 +1594,9 @@ String MemStream::move_to_string() {
 ViewStream::ViewStream(StringView view) {
     this->type = Type::View;
     new (&this->view) ViewData;
-    this->view.start_byte = const_cast<char*>(view.bytes);
+    this->view.start_byte = const_cast<char*>(view.bytes());
     this->cur_byte = this->view.start_byte;
-    this->end_byte = this->cur_byte + view.num_bytes;
+    this->end_byte = this->cur_byte + view.num_bytes();
     this->has_read_permission = true;
 }
 
@@ -2203,7 +2200,7 @@ void print_xml_escaped_string(Stream& out, StringView str) {
 void print_arg(Stream& out, StringView fmt_spec, const FormatArg& arg) {
     bool xml_escape = false;
     u32 pos = 0;
-    while (pos < fmt_spec.num_bytes) {
+    while (pos < fmt_spec.num_bytes()) {
         char c = fmt_spec[pos++];
         if (c == '&') {
             PLY_ASSERT(arg.var.is<StringView>()); // Argument must be a StringView.
@@ -2234,24 +2231,24 @@ void print_arg(Stream& out, StringView fmt_spec, const FormatArg& arg) {
 void format_with_args(Stream& out, StringView fmt, ArrayView<const FormatArg> args) {
     u32 arg_index = 0;
     u32 pos = 0;
-    while (pos < fmt.num_bytes) {
+    while (pos < fmt.num_bytes()) {
         char c = fmt[pos++];
         if (c == '{') {
             u32 spec_start = pos;
-            PLY_ASSERT(pos < fmt.num_bytes); // Missing '}' after '{'.
+            PLY_ASSERT(pos < fmt.num_bytes()); // Missing '}' after '{'.
             if (fmt[pos] == '{') {
                 pos++;
                 out.write('{');
             } else {
                 do {
-                    PLY_ASSERT(pos < fmt.num_bytes); // Missing '}' after '{'.
+                    PLY_ASSERT(pos < fmt.num_bytes()); // Missing '}' after '{'.
                 } while (fmt[pos++] != '}');
                 PLY_ASSERT(arg_index < args.num_items()); // Not enough arguments for format string.
                 print_arg(out, fmt.substr(spec_start, pos - 1 - spec_start), args[arg_index]);
                 arg_index++;
             }
         } else if (c == '}') {
-            PLY_ASSERT((pos < fmt.num_bytes) && (fmt[pos] == '}')); // '}' must be followed by another '}'.
+            PLY_ASSERT((pos < fmt.num_bytes()) && (fmt[pos] == '}')); // '}' must be followed by another '}'.
             pos++;
             out.write('}');
         } else {
@@ -2462,7 +2459,7 @@ DecodeResult decode_unicode(StringView str, UnicodeType unicode_type, ExtendedTe
         return {-1, 0, DS_NOT_ENOUGH_DATA};
 
     if (unicode_type == NOT_UNICODE) {
-        u8 b = (u8) str.bytes[0];
+        u8 b = (u8) str.bytes()[0];
         if (ext_params) // Use lookup table if available.
             return {ext_params->lut[b], 1, DS_OK};
         return {b, 1, DS_OK};
@@ -2470,7 +2467,7 @@ DecodeResult decode_unicode(StringView str, UnicodeType unicode_type, ExtendedTe
         // (Note: Ill-formed encodings are interpreted as sequences of individual bytes.)
         s32 value = 0;
         u32 num_continuation_bytes = 0;
-        u8 b = (u8) str.bytes[0];
+        u8 b = (u8) str.bytes()[0];
 
         if (b < 0x80) {
             // 1-byte encoding: 0xxxxxxx
@@ -2495,16 +2492,16 @@ DecodeResult decode_unicode(StringView str, UnicodeType unicode_type, ExtendedTe
             return {b, 1, DS_ILL_FORMED};
         }
 
-        if (str.num_bytes < num_continuation_bytes + 1) {
+        if (str.num_bytes() < num_continuation_bytes + 1) {
             // Not enough bytes in buffer for continuation bytes.
             return {b, 1, DS_NOT_ENOUGH_DATA};
         }
 
         for (u32 i = 0; i < num_continuation_bytes; i++) {
-            u8 c = (u8) str.bytes[i + 1];
+            u8 c = (u8) str.bytes()[i + 1];
             if ((c >> 6) != 2) // Must be a continuation byte
                 return {b, 1, DS_ILL_FORMED};
-            value = (value << 6) | ((u8) str.bytes[i + 1] & 0x3f);
+            value = (value << 6) | ((u8) str.bytes()[i + 1] & 0x3f);
         }
 
         return {value, num_continuation_bytes + 1, DS_OK};
@@ -2513,18 +2510,18 @@ DecodeResult decode_unicode(StringView str, UnicodeType unicode_type, ExtendedTe
 #else
     } else if (unicode_type == UTF16_LE) {
 #endif
-        if (str.num_bytes < 2) {
+        if (str.num_bytes() < 2) {
             return {-1, 0, DS_NOT_ENOUGH_DATA};
         }
 
-        u16 first = *(const u16*) &str.bytes[0];
+        u16 first = *(const u16*) &str.bytes()[0];
 
         if (first >= 0xd800 && first < 0xdc00) {
-            if (str.num_bytes < 4) {
+            if (str.num_bytes() < 4) {
                 // A second 16-bit surrogate is expected, but not enough data.
                 return {first, 2, DS_NOT_ENOUGH_DATA};
             }
-            u16 second = *(const u16*) &str.bytes[2];
+            u16 second = *(const u16*) &str.bytes()[2];
             if (second >= 0xdc00 && second < 0xe000) {
                 // We got a valid pair of 16-bit surrogates.
                 return {0x10000 + ((first - 0xd800) << 10) + (second - 0xdc00), 4, DS_OK};
@@ -2541,18 +2538,18 @@ DecodeResult decode_unicode(StringView str, UnicodeType unicode_type, ExtendedTe
 #else
     } else if (unicode_type == UTF16_BE) {
 #endif
-        if (str.num_bytes < 2) {
+        if (str.num_bytes() < 2) {
             return {-1, 0, DS_NOT_ENOUGH_DATA};
         }
 
-        u16 first = reverse_bytes(*(const u16*) &str.bytes[0]);
+        u16 first = reverse_bytes(*(const u16*) &str.bytes()[0]);
 
         if (first >= 0xd800 && first < 0xdc00) {
-            if (str.num_bytes < 4) {
+            if (str.num_bytes() < 4) {
                 // A second 16-bit surrogate is expected, but not enough data.
                 return {first, 2, DS_NOT_ENOUGH_DATA};
             }
-            u16 second = reverse_bytes(*(const u16*) &str.bytes[2]);
+            u16 second = reverse_bytes(*(const u16*) &str.bytes()[2]);
             if (second >= 0xdc00 && second < 0xe000) {
                 // We got a valid pair of 16-bit surrogates.
                 return {0x10000 + ((first - 0xd800) << 10) + (second - 0xdc00), 4, DS_OK};
@@ -2585,7 +2582,7 @@ DecodeResult decode_unicode(Stream& in, UnicodeType unicode_type, ExtendedTextPa
 
 bool copy_from_shim(Stream& dst_out, StringView& shim_used) {
     if (shim_used) {
-        u32 to_copy = min(dst_out.num_remaining_bytes(), shim_used.num_bytes);
+        u32 to_copy = min(dst_out.num_remaining_bytes(), shim_used.num_bytes());
         dst_out.write(shim_used);
         shim_used = shim_used.substr(to_copy);
         if (shim_used)
@@ -2633,15 +2630,15 @@ bool OutPipeConvertUnicode::write(StringView src_buf) {
 
     // If the shim contains data, join it with the source buffer.
     if (this->shim_used > 0) {
-        u32 num_bytes_appended = min(src_buf.num_bytes, 4 - this->shim_used);
-        memcpy(this->shim_storage + this->shim_used, src_buf.bytes, num_bytes_appended);
+        u32 num_bytes_appended = min(src_buf.num_bytes(), 4 - this->shim_used);
+        memcpy(this->shim_storage + this->shim_used, src_buf.bytes(), num_bytes_appended);
         this->shim_used += num_bytes_appended;
 
         // Decode a codepoint from the shim using UTF-8.
         ViewStream s{StringView{this->shim_storage, this->shim_used}};
         DecodeResult decoded = decode_unicode(s, UTF8, nullptr);
         if (decoded.status == DS_NOT_ENOUGH_DATA) {
-            PLY_ASSERT(num_bytes_appended == src_buf.num_bytes);
+            PLY_ASSERT(num_bytes_appended == src_buf.num_bytes());
             return true; // Not enough data available in shim.
         }
 
@@ -3039,11 +3036,11 @@ inline bool is_sep_byte(PathFormat fmt, char c) {
 StringView get_drive_letter(PathFormat fmt, StringView path) {
     if (fmt != WindowsPath)
         return {};
-    if (path.num_bytes < 2)
+    if (path.num_bytes() < 2)
         return {};
-    char d = path.bytes[0];
+    char d = path.bytes()[0];
     bool drive_is_ascii_letter = (d >= 'A' && d <= 'Z') || (d >= 'a' && d <= 'z');
-    if (drive_is_ascii_letter && path.bytes[1] == ':') {
+    if (drive_is_ascii_letter && path.bytes()[1] == ':') {
         return path.left(2);
     }
     return {};
@@ -3051,9 +3048,9 @@ StringView get_drive_letter(PathFormat fmt, StringView path) {
 
 bool is_absolute_path(PathFormat fmt, StringView path) {
     if (fmt == WindowsPath) {
-        return (path.num_bytes >= 3) && get_drive_letter(fmt, path) && is_sep_byte(fmt, path[2]);
+        return (path.num_bytes() >= 3) && get_drive_letter(fmt, path) && is_sep_byte(fmt, path[2]);
     } else {
-        return (path.num_bytes >= 1) && is_sep_byte(fmt, path[0]);
+        return (path.num_bytes() >= 1) && is_sep_byte(fmt, path[0]);
     }
 }
 SplitPath split_path(PathFormat fmt, StringView path) {
@@ -3077,7 +3074,7 @@ SplitExtension split_file_extension(PathFormat fmt, StringView path) {
     }
     s32 dot_pos = last_comp.reverse_find([](u32 c) { return c == '.'; });
     if (dot_pos < 0 || dot_pos == 0) {
-        dot_pos = last_comp.num_bytes;
+        dot_pos = last_comp.num_bytes();
     }
     return {last_comp.left(dot_pos), last_comp.substr(dot_pos)};
 }
@@ -3089,7 +3086,7 @@ Array<StringView> split_path_full(PathFormat fmt, StringView path) {
             // Root with drive letter
             result.append(path.left(3));
             path = path.substr(3);
-            while (path.num_bytes > 0 && is_sep_byte(fmt, path[0])) {
+            while (path.num_bytes() > 0 && is_sep_byte(fmt, path[0])) {
                 path = path.substr(1);
             }
         } else {
@@ -3097,17 +3094,17 @@ Array<StringView> split_path_full(PathFormat fmt, StringView path) {
             result.append(path.left(2));
             path = path.substr(2);
         }
-    } else if (path.num_bytes > 0 && is_sep_byte(fmt, path[0])) {
+    } else if (path.num_bytes() > 0 && is_sep_byte(fmt, path[0])) {
         // Starts with path separator
         result.append(path.left(1));
         path = path.substr(1);
-        while (path.num_bytes > 0 && is_sep_byte(fmt, path[0])) {
+        while (path.num_bytes() > 0 && is_sep_byte(fmt, path[0])) {
             path = path.substr(1);
         }
     }
-    if (path.num_bytes > 0) {
+    if (path.num_bytes() > 0) {
         for (;;) {
-            PLY_ASSERT(path.num_bytes > 0);
+            PLY_ASSERT(path.num_bytes() > 0);
             PLY_ASSERT(!is_sep_byte(fmt, path[0]));
             s32 sep_pos = path.find([&](char c) { return is_sep_byte(fmt, c); });
             if (sep_pos < 0) {
@@ -3227,8 +3224,8 @@ String join_path_from_array(PathFormat fmt, ArrayView<const StringView> componen
             if (need_sep) {
                 out.write(get_path_separator(fmt));
             } else {
-                if (comp.num_bytes > 0) {
-                    need_sep = !is_sep_byte(fmt, comp[comp.num_bytes - 1]);
+                if (comp.num_bytes() > 0) {
+                    need_sep = !is_sep_byte(fmt, comp[comp.num_bytes() - 1]);
                 }
             }
             out.write(comp);
@@ -3291,7 +3288,7 @@ String make_relative_path(PathFormat fmt, StringView ancestor, StringView descen
     }
 
     // Trailing slash
-    if (descendant.num_bytes > 0 && is_sep_byte(fmt, descendant.back()) && need_sep) {
+    if (descendant.num_bytes() > 0 && is_sep_byte(fmt, descendant.back()) && need_sep) {
         out.write(get_path_separator(fmt));
     }
 

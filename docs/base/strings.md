@@ -32,7 +32,6 @@ const char& back(s32 ofs = -1) const
 -- Examining String Contents
 bool is_empty() const
 explicit operator bool() const
-bool operator==(StringView other) const
 bool starts_with(StringView arg) const
 bool ends_with(StringView arg) const
 s32 find(StringView substr, u32 start_pos = 0) const
