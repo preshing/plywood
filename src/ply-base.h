@@ -1473,6 +1473,18 @@ public:
         PLY_ASSERT(u32(-ofs - 1) < this->num_bytes_);
         return this->bytes_[this->num_bytes_ + ofs];
     }
+    char* begin() {
+        return const_cast<char*>(this->bytes_);
+    }
+    const char* begin() const {
+        return this->bytes_;
+    }
+    char* end() {
+        return const_cast<char*>(this->bytes_) + this->num_bytes_;
+    }
+    const char* end() const {
+        return this->bytes_ + this->num_bytes_;
+    }
 
     //----------------------------------------------------
     // Examining string contents
@@ -1696,6 +1708,18 @@ public:
     char& back(s32 ofs = -1) {
         PLY_ASSERT(u32(-ofs - 1) < this->num_bytes_);
         return this->bytes_[this->num_bytes_ + ofs];
+    }
+    char* begin() {
+        return this->bytes_;
+    }
+    const char* begin() const {
+        return this->bytes_;
+    }
+    char* end() {
+        return this->bytes_ + this->num_bytes_;
+    }
+    const char* end() const {
+        return this->bytes_ + this->num_bytes_;
     }
 
     //----------------------------------------------------

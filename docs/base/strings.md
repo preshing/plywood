@@ -29,6 +29,10 @@ char& operator[](u32 index)
 const char& operator[](u32 index) const
 char& back(s32 ofs = -1)
 const char& back(s32 ofs = -1) const
+char* begin()
+const char* begin() const
+char* end()
+const char* end() const
 -- Examining String Contents
 bool is_empty() const
 explicit operator bool() const
@@ -74,6 +78,23 @@ char& back(s32 ofs = -1)
 const char& back(s32 ofs = -1) const
 --
 Returns a reference to a byte relative to the end of the string. By default, returns the last byte. Pass `-2` for the second-to-last byte, and so on.
+
+>>
+char* begin()
+const char* begin() const
+--
+Returns a pointer to the first byte of the string. Suitable for range-for iteration.
+
+>>
+char* end()
+const char* end() const
+--
+Returns a pointer to one past the last byte of the string. Suitable for range-for iteration.
+
+    String str = "Hello";
+    for (char c : str) {
+        // Iterates over 'H', 'e', 'l', 'l', 'o'
+    }
 {/api_descriptions}
 
 ### Examining String Contents
