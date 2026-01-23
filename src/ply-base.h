@@ -4367,6 +4367,8 @@ public:
 //  ▀█▄▄█▀ ▀█▄▄██ ██▄▄█▀ ██▄▄█▀ ██     ▀█▄▄█▀ ▀█▄▄▄ ▀█▄▄▄   ▄▄▄█▀  ▄▄▄█▀
 //                       ██
 
+String get_current_executable_path();
+
 struct Subprocess {
     enum PipeType {
         PIPE_OPEN,

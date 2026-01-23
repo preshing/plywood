@@ -3,20 +3,14 @@
 Plywood provides portable threading primitives that wrap the platform's native threading API. These include threads, mutexes, condition variables, and atomic operations.
 
 {api_summary}
-PID get_current_process_id()
 TID get_current_thread_id()
 void sleep_millis(u32 millis)
 {/api_summary}
 
 {api_descriptions}
-PID get_current_process_id()
---
-Returns the operating system's process ID for the current process.
-
->>
 TID get_current_thread_id()
 --
-Returns the operating system's thread ID for the current thread.
+Returns the operating system's thread ID for the current thread. See also `get_current_process_id`.
 
 >>
 void sleep_millis(u32 millis)

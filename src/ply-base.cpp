@@ -24,6 +24,7 @@
 #include <dirent.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
+#include <mach-o/dyld.h>
 #if PLY_WITH_DIRECTORY_WATCHER
 #include <CoreServices/CoreServices.h>
 #endif
@@ -3026,6 +3027,59 @@ String from_wstring(WStringView str) {
 //  ██▀▀▀   ▄▄▄██  ██   ██  ██
 //  ██     ▀█▄▄██  ▀█▄▄ ██  ██
 //
+
+#if defined(_WIN32)
+
+String get_current_executable_path() {
+    u32 num_units = 1024;
+    for (;;) {
+        WString wstr = WString::allocate(num_units);
+        DWORD rc = GetModuleFileNameW(NULL, (LPWSTR) wstr.units, num_units);
+        if (rc < num_units) {
+            WStringView wsubstr = {wstr, rc};
+            if (wsubstr.num_units >= 4 &&
+                wsubstr.raw_bytes().left(8) == StringView{(const char*) L"\\\\?\\", 8}) {
+                // Drop leading "\\\\?\\":
+                wsubstr.units += 4;
+                wsubstr.num_units -= 4;
+            }
+            return from_wstring(wsubstr);
+        }
+        num_units *= 2;
+    }
+}
+
+#elif defined(__linux__)
+
+String get_current_executable_path() {
+    u32 num_bytes = 1024;
+    for (;;) {
+        String str = String::allocate(num_bytes);
+        ssize_t rc = readlink("/proc/self/exe", str.bytes(), num_bytes);
+        if (rc < 0) {
+            return {};
+        }
+        if ((u32) rc < num_bytes) {
+            return str.left(rc);
+        }
+        num_bytes *= 2;
+    }
+}
+
+#elif defined(__APPLE__)
+
+String get_current_executable_path() {
+    u32 num_bytes = 1024;
+    String str = String::allocate(num_bytes);
+    if (_NSGetExecutablePath(str.bytes(), &num_bytes) != 0) {
+        // num_bytes now contains the required size
+        str = String::allocate(num_bytes);
+        _NSGetExecutablePath(str.bytes(), &num_bytes);
+    }
+    return String{str.bytes()};  // Trim to null terminator
+}
+
+#endif
 
 inline bool is_sep_byte(PathFormat fmt, char c) {
     return c == '/' || (fmt == WindowsPath && c == '\\');

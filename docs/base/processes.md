@@ -1,6 +1,20 @@
 ﻿{title text="Processes" include="ply-base.h" namespace="ply"}
 
-Plywood provides facilities for spawning and managing child processes, including redirecting their input and output streams.
+{api_summary}
+PID get_current_process_id()
+String get_current_executable_path()
+{/api_summary}
+
+{api_descriptions}
+PID get_current_process_id()
+--
+Returns the operating system's process ID for the current process. See also `get_current_thread_id`.
+
+>>
+String get_current_executable_path()
+--
+Returns the path to the executable file for the current process.
+{/api_descriptions}
 
 ## `Subprocess`
 
