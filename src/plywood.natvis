@@ -40,27 +40,27 @@
   </Type>
 
   <Type Name="ply::Set&lt;*&gt;">
-    <DisplayString>size={items.num_items_}</DisplayString>
+    <DisplayString>size={items_.num_items_}</DisplayString>
     <Expand>
-      <ExpandedItem>items</ExpandedItem>
+      <ExpandedItem>items_</ExpandedItem>
     </Expand>
   </Type>
 
   <Type Name="ply::Map&lt;*,*&gt;">
-    <DisplayString>size={item_set.items.num_items_}</DisplayString>
+    <DisplayString>size={item_set.items_.num_items_}</DisplayString>
     <Expand>
-      <ExpandedItem>item_set.items</ExpandedItem>
+      <ExpandedItem>item_set.items_</ExpandedItem>
     </Expand>
   </Type>
 
   <Type Name="ply::String">
-    <DisplayString>{bytes,[num_bytes]s}</DisplayString>
-    <StringView>bytes,[num_bytes]s</StringView>
+    <DisplayString>{bytes_,[num_bytes_]s}</DisplayString>
+    <StringView>bytes_,[num_bytes_]s</StringView>
   </Type>
 
   <Type Name="ply::StringView">
-    <DisplayString>{bytes,[num_bytes]s}</DisplayString>
-    <StringView>bytes,[num_bytes]s</StringView>
+    <DisplayString>{bytes_,[num_bytes_]s}</DisplayString>
+    <StringView>bytes_,[num_bytes_]s</StringView>
   </Type>
 
   <Type Name="ply::Variant&lt;*&gt;">

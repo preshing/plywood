@@ -1378,7 +1378,6 @@ struct Heap {
     template <typename T, typename... Args>
     static T* create(Args&&... args) {
         T* obj = (T*) alloc(sizeof(T));
-
         new (obj) T{std::forward<Args>(args)...};
         return obj;
     }
