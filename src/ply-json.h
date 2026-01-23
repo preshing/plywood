@@ -2,7 +2,7 @@
        ____
       ╱   ╱╲    Plywood C++ Base Library
      ╱___╱╭╮╲   https://plywood.dev/
-      └──┴┴┴┘   
+      └──┴┴┴┘
 ========================================================*/
 
 #pragma once
@@ -19,45 +19,34 @@ namespace json {
 //
 
 struct Node {
-    enum class Type {
-        Invalid = 0,
-        Text,
-        Array,
-        Object,
+    struct Invalid {};
+    struct Text {
+        String text;
     };
-
-    Type type = Type::Invalid;
-    u32 file_ofs = 0;
-
+    struct Bool {
+        bool value = false;
+    };
+    struct Array {
+        ply::Array<Owned<Node>> items;
+    };
     struct Object {
-        struct Item {
-            String key;
-            Owned<Node> value;
-
-            StringView get_lookup_key() const {
-                return this->key;
-            }
-        };
-
-        Set<Item> items;
+        Map<String, Owned<Node>> items;
     };
 
-    union {
-        String text_;
-        Array<Owned<Node>> array_;
-        Object object_;
-    };
+    u32 file_ofs = 0;
+    Variant<Invalid, Text, Bool, Array, Object> var;
 
-    Node() {
+    Node() : var{Invalid{}} {
     }
-    Node(Type type, u32 file_ofs);
-    ~Node();
+    template <typename T>
+    Node(T&& v, u32 file_ofs = 0) : file_ofs{file_ofs}, var{std::forward<T>(v)} {
+    }
 
     static Node InvalidNode;
     static Object EmptyObject;
 
     bool is_valid() const {
-        return this->type != Type::Invalid;
+        return !this->var.is<Invalid>();
     }
 
     //-----------------------------------------------------------
@@ -65,21 +54,35 @@ struct Node {
     //-----------------------------------------------------------
 
     bool is_text() const {
-        return this->type == Type::Text;
+        return this->var.is<Text>();
     }
 
     StringView text() const {
-        if (this->type == Type::Text) {
-            return this->text_;
-        } else {
-            return {};
-        }
+        if (const Text* txt = this->var.as<Text>())
+            return txt->text;
+        return {};
     }
 
     void set_text(String&& text) {
-        if (this->type == Type::Text) {
-            this->text_ = std::move(text);
-        }
+        this->var = Text{std::move(text)};
+    }
+
+    //-----------------------------------------------------------
+    // Bool
+    //-----------------------------------------------------------
+
+    bool is_bool() const {
+        return this->var.is<Bool>();
+    }
+
+    bool get_bool() const {
+        if (const Bool* b = this->var.as<Bool>())
+            return b->value;
+        return false;
+    }
+
+    void set_bool(bool value) {
+        this->var = Bool{value};
     }
 
     //-----------------------------------------------------------
@@ -87,32 +90,31 @@ struct Node {
     //-----------------------------------------------------------
 
     bool is_array() const {
-        return this->type == Type::Array;
+        return this->var.is<Array>();
     }
 
     Node* get(u32 i) {
-        if (this->type != Type::Array)
-            return &InvalidNode;
-        if (i >= this->array_.num_items())
-            return &InvalidNode;
-        return this->array_[i];
+        if (Array* arr = this->var.as<Array>()) {
+            if (i < arr->items.num_items())
+                return arr->items[i];
+        }
+        return &InvalidNode;
     }
 
     const Node* get(u32 i) const {
         return const_cast<Node*>(this)->get(i);
     }
 
-    ArrayView<const Node* const> array_view() const {
-        if (this->type == Type::Array) {
-            return reinterpret_cast<const Array<const Node*>&>(this->array_);
-        } else {
-            return {};
-        }
+    ArrayView<const Owned<Node>> array_view() const {
+        if (const Array* arr = this->var.as<Array>())
+            return arr->items;
+        return {};
     }
 
-    Array<Owned<Node>>& array() {
-        PLY_ASSERT(this->type == Type::Array);
-        return this->array_;
+    ply::Array<Owned<Node>>& array() {
+        Array* arr = this->var.as<Array>();
+        PLY_ASSERT(arr);
+        return arr->items;
     }
 
     //-----------------------------------------------------------
@@ -120,7 +122,7 @@ struct Node {
     //-----------------------------------------------------------
 
     bool is_object() const {
-        return this->type == Type::Object;
+        return this->var.is<Object>();
     }
 
     Node* get(StringView key);
@@ -131,16 +133,15 @@ struct Node {
     void remove(StringView key);
 
     const Object& object() const {
-        if (this->type == Type::Object) {
-            return this->object_;
-        } else {
-            return EmptyObject;
-        }
+        if (const Object* obj = this->var.as<Object>())
+            return *obj;
+        return EmptyObject;
     }
 
     Object& object() {
-        PLY_ASSERT(this->type == Type::Object);
-        return this->object_;
+        Object* obj = this->var.as<Object>();
+        PLY_ASSERT(obj);
+        return *obj;
     }
 };
 
@@ -152,7 +153,12 @@ struct Node {
 
 struct ParseError {
     struct Scope {
-        enum Type { Object, Property, Duplicate, Array };
+        enum Type {
+            Object,
+            Property,
+            Duplicate,
+            Array,
+        };
         u32 file_ofs;
         Type type;
         StringView name;
@@ -193,7 +199,7 @@ private:
             Text,
             Junk,
             NewLine,
-            EndOfFile
+            EndOfFile,
         };
         Type type = Invalid;
         u32 file_ofs = 0;

@@ -2,7 +2,7 @@
        ____
       ╱   ╱╲    Plywood C++ Base Library
      ╱___╱╭╮╲   https://plywood.dev/
-      └──┴┴┴┘   
+      └──┴┴┴┘
 ========================================================*/
 
 #include "ply-json.h"
@@ -19,67 +19,32 @@ namespace json {
 Node Node::InvalidNode;
 Node::Object Node::EmptyObject;
 
-Node::Node(Type type, u32 file_ofs) : type{type}, file_ofs{file_ofs} {
-    switch (type) {
-        case Type::Text: {
-            new (&this->text_) String;
-            break;
-        }
-        case Type::Array: {
-            new (&this->array_) Array<Owned<Node>>;
-            break;
-        }
-        case Type::Object: {
-            new (&this->object_) Object;
-            break;
-        }
-        default:
-            break;
-    }
-}
-
-Node::~Node() {
-    switch (this->type) {
-        case Type::Text: {
-            this->text_.~String();
-            break;
-        }
-        case Type::Array: {
-            this->array_.~Array<Owned<Node>>();
-            break;
-        }
-        case Type::Object: {
-            this->object_.~Object();
-            break;
-        }
-        default:
-            break;
-    }
-}
-
 PLY_NO_INLINE Node* Node::get(StringView key) {
-    if (this->type != Type::Object)
+    Object* obj = this->var.as<Object>();
+    if (!obj)
         return &InvalidNode;
 
-    Object::Item* item  = this->object_.items.find(key);
-    if (!item)
+    Owned<Node>* value = obj->items.find(key);
+    if (!value)
         return &InvalidNode;
 
-    return item->value;
+    return value->get();
 }
 
 PLY_NO_INLINE void Node::set(StringView key, Owned<Node>&& value) {
-    if (this->type != Type::Object)
+    Object* obj = this->var.as<Object>();
+    if (!obj)
         return;
 
-    this->object_.items.insert_item({key, std::move(value)});
+    *obj->items.insert(key).value = std::move(value);
 }
 
 PLY_NO_INLINE void Node::remove(StringView key) {
-    if (this->type != Type::Object)
+    Object* obj = this->var.as<Object>();
+    if (!obj)
         return;
 
-    this->object_.items.erase(key);
+    obj->items.erase(key);
 }
 
 //  ▄▄▄▄▄
@@ -258,7 +223,8 @@ Parser::Token Parser::read_quoted_string() {
                         }
 
                         default: {
-                            this->error(escape_file_ofs, String::format("Unrecognized escape sequence \"\\{}\"", (char) code));
+                            this->error(escape_file_ofs,
+                                        String::format("Unrecognized escape sequence \"\\{}\"", (char) code));
                             return {}; // FIXME: Would be better to continue reading the
                                        // rest of the string
                         }
@@ -387,23 +353,23 @@ String Parser::to_string(const Token& token) {
 }
 
 String Parser::to_string(const Node* node) {
-    switch ((Node::Type) node->type) {
-        case Node::Type::Object:
-            return "object";
-        case Node::Type::Array:
-            return "array";
-        case Node::Type::Text:
-            return String::format("text \"{}\"", escape(node->text()));
-        default:
-            PLY_ASSERT(0);
-            return "???";
+    if (node->var.is<Node::Object>()) {
+        return "object";
+    } else if (node->var.is<Node::Array>()) {
+        return "array";
+    } else if (const Node::Text* txt = node->var.as<Node::Text>()) {
+        return String::format("text \"{}\"", escape(txt->text));
+    } else if (const Node::Bool* b = node->var.as<Node::Bool>()) {
+        return String::format("bool {}", b->value ? "true" : "false");
     }
+    PLY_ASSERT(0);
+    return "???";
 }
 
 Owned<Node> Parser::read_object(const Token& start_token) {
     PLY_ASSERT(start_token.type == Token::OpenCurly);
     ScopeHandler object_scope{*this, ParseError::Scope::object(start_token.file_ofs)};
-    Owned<Node> node = Heap::create<Node>(Node::Type::Object, start_token.file_ofs);
+    Owned<Node> node = Heap::create<Node>(Node::Object{}, start_token.file_ofs);
     Token prev_property = {};
     for (;;) {
         bool got_separator = false;
@@ -429,13 +395,13 @@ Owned<Node> Parser::read_object(const Token& start_token) {
         if (first_token.type == Token::Text) {
             if (prev_property.is_valid() && !got_separator) {
                 this->error(first_token.file_ofs, String::format("Expected a comma, semicolon or newline "
-                                                         "separator between properties \"{}\" and \"{}\"",
-                                                         escape(prev_property.text), escape(first_token.text)));
+                                                                 "separator between properties \"{}\" and \"{}\"",
+                                                                 escape(prev_property.text), escape(first_token.text)));
                 return {};
             }
         } else if (prev_property.is_valid()) {
-            this->error(first_token.file_ofs, String::format("Unexpected {} after property \"{}\"", to_string(first_token),
-                                                     escape(prev_property.text)));
+            this->error(first_token.file_ofs, String::format("Unexpected {} after property \"{}\"",
+                                                             to_string(first_token), escape(prev_property.text)));
             return {};
         } else {
             this->error(first_token.file_ofs, String::format("Expected property, got {}", to_string(first_token)));
@@ -451,8 +417,8 @@ Owned<Node> Parser::read_object(const Token& start_token) {
 
         Token colon = this->read_token();
         if (colon.type != Token::Colon && colon.type != Token::Equals) {
-            this->error(colon.file_ofs, String::format("Expected \":\" or \"=\" after \"{}\", got {}", escape(first_token.text),
-                                               to_string(colon)));
+            this->error(colon.file_ofs, String::format("Expected \":\" or \"=\" after \"{}\", got {}",
+                                                       escape(first_token.text), to_string(colon)));
             return {};
         }
 
@@ -473,7 +439,7 @@ Owned<Node> Parser::read_object(const Token& start_token) {
 Owned<Node> Parser::read_array(const Token& start_token) {
     PLY_ASSERT(start_token.type == Token::OpenSquare);
     ScopeHandler array_scope{*this, ParseError::Scope::array(start_token.file_ofs, 0)};
-    Owned<Node> array_node = Heap::create<Node>(Node::Type::Array, start_token.file_ofs);
+    Owned<Node> array_node = Heap::create<Node>(Node::Array{}, start_token.file_ofs);
     Token sep_token_holder;
     Token* sep_token = nullptr;
     for (;;) {
@@ -511,9 +477,13 @@ Owned<Node> Parser::read_expression(Token&& first_token, const Token* after_toke
             return this->read_array(first_token);
 
         case Token::Text: {
-            Owned<Node> node = Heap::create<Node>(Node::Type::Text, first_token.file_ofs);
-            node->text_ = std::move(first_token.text);
-            return node;
+            if (first_token.text == "true") {
+                return Heap::create<Node>(Node::Bool{true}, first_token.file_ofs);
+            }
+            if (first_token.text == "false") {
+                return Heap::create<Node>(Node::Bool{false}, first_token.file_ofs);
+            }
+            return Heap::create<Node>(Node::Text{std::move(first_token.text)}, first_token.file_ofs);
         }
 
         case Token::Invalid:
@@ -541,7 +511,8 @@ Parser::Result Parser::parse(StringView path, StringView src_view_) {
 
     Token next_token = this->read_token();
     if (next_token.type != Token::EndOfFile) {
-        this->error(next_token.file_ofs, String::format("Unexpected {} after {}", to_string(next_token), to_string(root)));
+        this->error(next_token.file_ofs,
+                    String::format("Unexpected {} after {}", to_string(next_token), to_string(root)));
         return {};
     }
 
@@ -573,51 +544,43 @@ struct WriteContext {
             return;
         }
 
-        switch (node->type) {
-            case Node::Type::Object: {
-                this->out.write("{\n");
-                this->indent_level++;
-                const Node::Object& obj_node = node->object();
-                for (u32 item_index = 0; item_index < obj_node.items.items().num_items(); item_index++) {
-                    const Node::Object::Item& obj_item = obj_node.items.items()[item_index];
-                    indent();
-                    this->out.format("\"{}\": ", escape(obj_item.key));
-                    write(obj_item.value);
-                    if (item_index < obj_node.items.items().num_items() - 1) {
-                        this->out.write(',');
-                    }
-                    this->out.write('\n');
-                }
-                this->indent_level--;
+        if (const Node::Object* obj = node->var.as<Node::Object>()) {
+            this->out.write("{\n");
+            this->indent_level++;
+            ArrayView<const Map<String, Owned<Node>>::Item> items = obj->items.items();
+            for (u32 item_index = 0; item_index < items.num_items(); item_index++) {
+                const auto& obj_item = items[item_index];
                 indent();
-                this->out.write('}');
-                break;
-            }
-            case Node::Type::Array: {
-                this->out.write("[\n");
-                this->indent_level++;
-                ArrayView<const Node* const> arr_node = node->array_view();
-                u32 num_items = arr_node.num_items();
-                for (u32 i = 0; i < num_items; i++) {
-                    indent();
-                    write(arr_node[i]);
-                    if (i < num_items - 1) {
-                        this->out.write(',');
-                    }
-                    this->out.write('\n');
+                this->out.format("\"{}\": ", escape(obj_item.key));
+                write(obj_item.value);
+                if (item_index < items.num_items() - 1) {
+                    this->out.write(',');
                 }
-                this->indent_level--;
+                this->out.write('\n');
+            }
+            this->indent_level--;
+            indent();
+            this->out.write('}');
+        } else if (const Node::Array* arr = node->var.as<Node::Array>()) {
+            this->out.write("[\n");
+            this->indent_level++;
+            for (u32 i = 0; i < arr->items.num_items(); i++) {
                 indent();
-                this->out.write(']');
-                break;
+                write(arr->items[i]);
+                if (i < arr->items.num_items() - 1) {
+                    this->out.write(',');
+                }
+                this->out.write('\n');
             }
-            case Node::Type::Text: {
-                this->out.format("\"{}\"", escape(node->text()));
-                break;
-            }
-            default:
-                this->out.write("null");
-                break;
+            this->indent_level--;
+            indent();
+            this->out.write(']');
+        } else if (const Node::Bool* b = node->var.as<Node::Bool>()) {
+            this->out.write(b->value ? "true" : "false");
+        } else if (const Node::Text* txt = node->var.as<Node::Text>()) {
+            this->out.format("\"{}\"", escape(txt->text));
+        } else {
+            this->out.write("null");
         }
     }
 };
