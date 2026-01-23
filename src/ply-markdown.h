@@ -42,7 +42,8 @@ struct Element {
     };
 
     Type type = None;
-    u32 indent_or_level = 0;            // only used by List_Items & Headings
+    u32 heading_level = 0;              // only used by Headings
+    u32 relative_indent = 0;            // only used by List_Items
     s32 list_start_number = 0;          // only used by Lists. -1 means unordered
     bool is_loose_if_continued = false; // only used by Lists
     bool is_loose = false;              // only used by Lists
@@ -50,7 +51,7 @@ struct Element {
     Array<Owned<Element>> children;
     Element* parent = nullptr;
     Array<String> raw_lines; // only used by Leaf elements (Heading, Paragraph, Code_Block)
-    String text;             // only used by Text, Code or Link (for the destination)
+    String text;             // only used by Text, CodeSpan or Link (for the destination)
     String id;               // sets the id attribute for Headings
 
     Element(Element* parent, Type type) : type{type}, parent{parent} {

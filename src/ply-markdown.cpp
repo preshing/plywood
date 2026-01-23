@@ -10,43 +10,43 @@
 namespace ply {
 namespace markdown {
 
-// A helper class that keeps track of the indentation level while consuming input.
-struct LineConsumer {
-    ViewStream vins;
+//  ▄▄▄▄▄  ▄▄▄               ▄▄         ▄▄▄▄▄ ▄▄▄                                 ▄▄
+//  ██  ██  ██   ▄▄▄▄   ▄▄▄▄ ██  ▄▄     ██     ██   ▄▄▄▄  ▄▄▄▄▄▄▄   ▄▄▄▄  ▄▄▄▄▄  ▄██▄▄  ▄▄▄▄
+//  ██▀▀█▄  ██  ██  ██ ██    ██▄█▀      ██▀▀   ██  ██▄▄██ ██ ██ ██ ██▄▄██ ██  ██  ██   ▀█▄▄▄
+//  ██▄▄█▀ ▄██▄ ▀█▄▄█▀ ▀█▄▄▄ ██ ▀█▄     ██▄▄▄ ▄██▄ ▀█▄▄▄  ██ ██ ██ ▀█▄▄▄  ██  ██  ▀█▄▄  ▄▄▄█▀
+//
+
+// Code to parse block elements (first pass).
+
+struct LineParser {
+    // Keeps track of the current read position.
+    ViewStream in;
+
+    // Keeps track of how many elements in Parser::element_stack were matched by current line's indentation and
+    // blockquote > markers.
+    u32 stack_depth = 0;
+
+    // If the last matching stack element was a blockquote, this is the column number after the > marker and optional
+    // following single space (if any). If the last matching stack element was a list item, this is the column number
+    // where sufficient indentation was reached for the rest of the line to be considered part of the list item. Note
+    // that different lines can have different outer_indent numbers for the same stack element, because blockquote >
+    // markers can be preceded by a different number (from 0 to 3) of spaces on each line.
     u32 outer_indent = 0;
+
+    // The number of columns of leading indentation (including blockquote > markers) that have been read on this line.
     u32 indent = 0;
 
-    bool consume_space_or_tab() {
-        if (this->vins.num_remaining_bytes() == 0)
-            return false;
-        char c = *this->vins.cur_byte;
-        if (c == ' ') {
-            this->indent++;
-        } else if (c == '\t') {
-            u32 tab_size = 4;
-            this->indent += tab_size - (this->indent % tab_size);
-        } else {
-            return false;
-        }
-        this->vins.read_byte();
-        return true;
-    }
-
+    // How much leading space was encountered on this line after outer_indent.
     u32 inner_indent() const {
         return this->indent - this->outer_indent;
     }
 
-    StringView trimmed_remainder() const {
-        return this->vins.view_remaining_bytes().trim(is_whitespace);
-    }
-
-    LineConsumer(StringView line) : vins{line} {
+    // Constructor.
+    LineParser(StringView line) : in{line} {
     }
 };
 
-//-----------------------------------------------------------------
-// Code to parse block elements (first pass)
-//-----------------------------------------------------------------
+// Helper function to extract a line from a code block without leading indentation.
 String extract_code_line(StringView line, u32 from_indent) {
     u32 indent = 0;
     for (u32 i = 0; i < line.num_bytes(); i++) {
@@ -76,133 +76,125 @@ struct ParserDetails : Parser {
     // Only used if leaf_element is CodeBlock:
     u32 num_blank_lines_in_code_block = 0;
 
-    // This flag indicates that some Lists on the stack have their is_loose_if_continued
-    // flag set: (Alternatively, we *could* store the number of such Lists on the stack,
-    // and eliminate the is_loose_if_continued flag completely, but it would complicate
-    // match_existing_indentation a little bit. Sticking with this approach for now.)
+    // This flag indicates that some Lists on the stack have their is_loose_if_continued flag set: (Alternatively, we
+    // *could* store the number of such Lists on the stack, and eliminate the is_loose_if_continued flag completely, but
+    // it would complicate match_existing_indentation a little bit. Sticking with this approach for now.)
     bool check_list_continuations = false;
 };
 
-// This is called at the start of each line. It figures out which of the existing
-// elements we are still inside by consuming indentation and blockquote '>' markers
-// that match the current element stack, then truncates any unmatched BlockQuote
-// elements from the stack. (Unmatched ListItem elements are not truncated here because
-// list items are allowed to contain blank lines.) Returns true if there is more
-// text on the current line.
-bool match_existing_indentation(ParserDetails* parser, StringView line, LineConsumer& lc) {
-    u32 keep_stack_depth = 0;
-    for (;;) {
-        while (lc.consume_space_or_tab()) {
-        }
-        if (keep_stack_depth >= parser->element_stack.num_items())
-            break;
-        Element* element = parser->element_stack[keep_stack_depth];
+// This is called at the start of each line. It figures out which of the existing elements we are still inside by
+// consuming indentation and blockquote '>' markers that match the element stack.
+void match_existing_indentation(ParserDetails* parser, LineParser& lp) {
+    // Consume leading spaces.
+    while (lp.in.num_remaining_bytes() > 0 && (*lp.in.cur_byte == ' ')) {
+        lp.in.cur_byte++;
+        lp.indent++;
+    }
+
+    // Iterate over stack items, matching as much leading indentation and BlockQuote '>' markers as possible.
+    PLY_ASSERT(lp.stack_depth == 0);
+    while (lp.stack_depth < parser->element_stack.num_items()) {
+        Element* element = parser->element_stack[lp.stack_depth];
         if (element->type == Element::BlockQuote) {
-            if (lc.vins.num_remaining_bytes() > 0 && *lc.vins.cur_byte == '>' && lc.inner_indent() <= 3) {
-                // Continue the current blockquote
-                lc.vins.read_byte();
-                lc.indent++;
-                lc.outer_indent = lc.indent;
-                keep_stack_depth++;
-                // Consume optional space and include it in outer_indent:
-                if (lc.consume_space_or_tab()) {
-                    lc.outer_indent++;
+            // If there is a '>' within 3 columns of outer_indent, match this BlockQuote element.
+            if ((lp.in.num_remaining_bytes() > 0) && (*lp.in.cur_byte == '>') && (lp.inner_indent() <= 3)) {
+                lp.stack_depth++;
+                lp.in.cur_byte++;
+                lp.indent++;
+                if (lp.in.num_remaining_bytes() > 0 && (*lp.in.cur_byte == ' ')) {
+                    // Read optional space after '>'.
+                    lp.in.cur_byte++;
+                    lp.indent++;
                 }
+                lp.outer_indent = lp.indent;
                 continue;
             }
+            // Consume additional spaces.
+            while (lp.in.num_remaining_bytes() > 0 && (*lp.in.cur_byte == ' ')) {
+                lp.in.cur_byte++;
+                lp.indent++;
+            }
         } else if (element->type == Element::ListItem) {
-            if (lc.inner_indent() >= element->indent_or_level) {
-                // Continue the current list item
-                keep_stack_depth++;
-                lc.outer_indent += element->indent_or_level;
+            // If the line's indentation surpasses the list item's indentation, match this ListItem element.
+            if (lp.inner_indent() >= element->relative_indent) {
+                lp.stack_depth++;
+                lp.outer_indent += element->relative_indent;
                 continue;
             }
         } else {
-            // element_stack should only hold BlockQuote and ListItem elements.
+            // element_stack can only hold BlockQuote and ListItem elements.
             PLY_ASSERT(0);
         }
         break;
     }
+}
 
-    // Is remainder of line blank?
-    if (lc.trimmed_remainder().is_empty()) {
-        // Yes. Terminate paragraph if any.
-        if (parser->leaf_element && parser->leaf_element->type == Element::Paragraph) {
-            parser->leaf_element = nullptr;
-            PLY_ASSERT(parser->num_blank_lines_in_code_block == 0);
-        }
-
-        // Stay inside lists.
-        while (keep_stack_depth < parser->element_stack.num_items() &&
-               parser->element_stack[keep_stack_depth]->type == Element::ListItem) {
-            keep_stack_depth++;
-        }
-
-        // If there's another element in element_stack, it must be a BlockQuote. Terminate it.
-        if (keep_stack_depth < parser->element_stack.num_items()) {
-            PLY_ASSERT(parser->element_stack[keep_stack_depth]->type == Element::BlockQuote);
-            parser->element_stack.resize(keep_stack_depth);
-            parser->leaf_element = nullptr;
-            parser->num_blank_lines_in_code_block = 0;
-        }
-
-        if (parser->leaf_element) {
-            // At this point, the only possible leaf element is a CodeBlock, because
-            // Paragraphs are terminated above, and Headings don't persist across
-            // lines.
-            PLY_ASSERT(parser->leaf_element->type == Element::CodeBlock);
-            // Count blank lines in CodeBlocks
-            if (lc.indent - lc.outer_indent > 4) {
-                // Add intermediate blank lines
-                // FIXME: Could this be unified with the code below? (Code
-                // simplification)
-                for (u32 i = 0; i < parser->num_blank_lines_in_code_block; i++) {
-                    parser->leaf_element->raw_lines.append("\n");
-                }
-                parser->num_blank_lines_in_code_block = 0;
-                String code_line = extract_code_line(line, lc.outer_indent + 4);
-                parser->leaf_element->raw_lines.append(std::move(code_line));
-            } else {
-                parser->num_blank_lines_in_code_block++;
-            }
-        } else {
-            // There's no leaf element and the remainder of the line is blank.
-            // Walk the stack and set the "isLooseIfContinued" flag on all Lists.
-            for (Element* element : parser->element_stack) {
-                if (element->type == Element::ListItem) {
-                    PLY_ASSERT(element->parent->type == Element::List);
-                    if (!element->parent->is_loose) {
-                        element->parent->is_loose_if_continued = true;
-                        parser->check_list_continuations = true;
-                    }
-                }
-            }
-        }
-        return false;
+// This is called after match_existing_indentation() if the remainder of the line is blank.
+void handle_blank_line(ParserDetails* parser, LineParser& lp) {
+    // Terminate paragraph if any.
+    if (parser->leaf_element && (parser->leaf_element->type == Element::Paragraph)) {
+        parser->leaf_element = nullptr;
+        PLY_ASSERT(parser->num_blank_lines_in_code_block == 0);
     }
 
-    // No. There's more text on the current line
-    if (keep_stack_depth < parser->element_stack.num_items()) {
-        parser->element_stack.resize(keep_stack_depth);
+    // Stay inside lists.
+    while ((lp.stack_depth < parser->element_stack.num_items()) &&
+           (parser->element_stack[lp.stack_depth]->type == Element::ListItem)) {
+        lp.stack_depth++;
+    }
+
+    // If there's another element in element_stack, it must be a BlockQuote. Terminate it.
+    if (lp.stack_depth < parser->element_stack.num_items()) {
+        PLY_ASSERT(parser->element_stack[lp.stack_depth]->type == Element::BlockQuote);
+        parser->element_stack.resize(lp.stack_depth);
         parser->leaf_element = nullptr;
         parser->num_blank_lines_in_code_block = 0;
     }
-    return true;
+
+    if (parser->leaf_element) {
+        // At this point, the only possible leaf element is a CodeBlock, because Paragraphs are terminated above, and
+        // Headings don't persist across lines.
+        PLY_ASSERT(parser->leaf_element->type == Element::CodeBlock);
+        // Count blank lines in CodeBlocks
+        if (lp.indent - lp.outer_indent > 4) {
+            // Add intermediate blank lines.
+            for (u32 i = 0; i < parser->num_blank_lines_in_code_block; i++) {
+                parser->leaf_element->raw_lines.append("\n");
+            }
+            parser->num_blank_lines_in_code_block = 0;
+            String code_line = extract_code_line({lp.in.view.start_byte, lp.in.end_byte}, lp.outer_indent + 4);
+            parser->leaf_element->raw_lines.append(std::move(code_line));
+        } else {
+            parser->num_blank_lines_in_code_block++;
+        }
+    } else {
+        // There's no leaf element and the remainder of the line is blank.
+        // Walk the stack and set the "isLooseIfContinued" flag on all Lists.
+        for (Element* element : parser->element_stack) {
+            if (element->type == Element::ListItem) {
+                PLY_ASSERT(element->parent->type == Element::List);
+                if (!element->parent->is_loose) {
+                    element->parent->is_loose_if_continued = true;
+                    parser->check_list_continuations = true;
+                }
+            }
+        }
+    }
 }
 
-// This function consumes new blockquote '>' markers and list item markers such as
-// '*' that *don't* match existing block elements on the current stack. It creates
-// new block elements for each marker encountered.
-void parse_new_markers(ParserDetails* parser, LineConsumer& lc) {
-    PLY_ASSERT(!lc.trimmed_remainder().is_empty()); // Not called if remainder of line is blank
+// This is called after match_existing_indentation() if the remainder of the line is not blank. It consumes new
+// blockquote '>' markers and list item markers such as '*', creating new list elements for each marker encountered.
+void parse_new_markers(ParserDetails* parser, LineParser& lp) {
+    // Line must not be blank.
+    PLY_ASSERT(!lp.in.view_remaining_bytes().trim().is_empty());
 
     // Attempt to parse new Element markers
-    while (lc.vins.num_remaining_bytes() > 0) {
-        if (lc.inner_indent() >= 4)
+    while (lp.in.num_remaining_bytes() > 0) {
+        if (lp.inner_indent() >= 4)
             break;
 
-        char* start_byte = lc.vins.cur_byte;
-        u32 saved_indent = lc.indent;
+        char* start_byte = lp.in.cur_byte;
+        u32 saved_indent = lp.indent;
 
         // This code block will handle any list markers encountered:
         auto got_list_marker = [&](s32 marker_number, char punc) {
@@ -235,92 +227,95 @@ void parse_new_markers(ParserDetails* parser, LineConsumer& lc) {
                 list_element->list_punc = punc;
             }
             Element* list_item = Heap::create<Element>(list_element, Element::ListItem);
-            list_item->indent_or_level = lc.outer_indent;
+            list_item->relative_indent = lp.outer_indent;
             parser->element_stack.append(list_item);
         };
 
-        char c = *lc.vins.cur_byte;
+        char c = *lp.in.cur_byte;
         PLY_ASSERT(!is_whitespace(c));
         if (c == '>') {
             // Begin a new blockquote
             Element* parent = parser->element_stack ? parser->element_stack.back() : &parser->root_element;
             // Note: parent automatically owns the new Element through its children member.
             parser->element_stack.append(Heap::create<Element>(parent, Element::BlockQuote));
-            // Consume optional space after '>'
-            lc.vins.read_byte();
-            lc.indent++;
-            lc.outer_indent = lc.indent;
-            if (lc.consume_space_or_tab()) {
-                lc.outer_indent++;
+            lp.in.read_byte();
+            lp.indent++;
+            if ((lp.in.num_remaining_bytes() > 0) && (*lp.in.cur_byte == ' ')) {
+                lp.in.cur_byte++;
+                lp.indent++;
             }
+            lp.outer_indent = lp.indent;
         } else if (c == '*' || c == '-' || c == '+') {
-            lc.vins.read_byte();
-            lc.indent++;
-            u32 indent_after_star = lc.indent;
-            if (!lc.consume_space_or_tab())
+            lp.in.read_byte();
+            lp.indent++;
+            u32 indent_after_star = lp.indent;
+            if ((lp.in.num_remaining_bytes() == 0) || (*lp.in.cur_byte != ' '))
                 goto not_marker;
-            if (parser->leaf_element && lc.trimmed_remainder().is_empty()) {
+            lp.in.cur_byte++;
+            lp.indent++;
+            if (parser->leaf_element && lp.in.view_remaining_bytes().trim().is_empty())
                 // If the list item interrupts a paragraph, it must not begin with a
                 // blank line.
                 goto not_marker;
-            }
 
             // It's an unordered list item.
-            lc.outer_indent = indent_after_star + 1;
+            lp.outer_indent = indent_after_star + 1;
             got_list_marker(-1, c);
         } else if (c >= '0' && c <= '9') {
-            u64 num = read_u64_from_text(lc.vins);
+            u64 num = read_u64_from_text(lp.in);
             if (parser->leaf_element && num != 1) {
                 // If list item interrupts a paragraph, the start number must be 1.
                 goto not_marker;
             }
-            uptr marker_length = (lc.vins.cur_byte - start_byte);
+            uptr marker_length = (lp.in.cur_byte - start_byte);
             if (marker_length > 9)
                 goto not_marker; // marker too long
-            lc.indent += numeric_cast<u32>(marker_length);
-            if (lc.vins.num_remaining_bytes() < 2)
+            lp.indent += numeric_cast<u32>(marker_length);
+            if (lp.in.num_remaining_bytes() < 2)
                 goto not_marker;
-            char punc = *lc.vins.cur_byte;
+            char punc = *lp.in.cur_byte;
             // FIXME: support alternate punctuator ')'.
             // If the punctuator doesn't match, it should start a new list.
             if (punc != '.' && punc != ')')
                 goto not_marker;
-            lc.vins.read_byte();
-            lc.indent++;
-            u32 indent_after_marker = lc.indent;
-            if (!lc.consume_space_or_tab())
+            lp.in.read_byte();
+            lp.indent++;
+            u32 indent_after_marker = lp.indent;
+            if ((lp.in.num_remaining_bytes() == 0) || (*lp.in.cur_byte != ' '))
                 goto not_marker;
-            if (parser->leaf_element && lc.trimmed_remainder().is_empty()) {
-                // If the list item interrupts a paragraph, it must not begin with a
-                // blank line.
+            lp.in.cur_byte++;
+            lp.indent++;
+            if (parser->leaf_element && lp.in.view_remaining_bytes().trim().is_empty()) {
+                // If the list item interrupts a paragraph, it must not begin with a blank line.
                 goto not_marker;
             }
 
             // It's an ordered list item.
-            // 32-bit demotion is safe because we know the marker is 9 digits or
-            // less:
-            lc.outer_indent = indent_after_marker + 1;
+            // 32-bit demotion is safe because we know the marker is 9 digits or less.
+            lp.outer_indent = indent_after_marker + 1;
             got_list_marker(numeric_cast<s32>(num), punc);
         } else {
             goto not_marker;
         }
 
         // Consume whitespace
-        while (lc.consume_space_or_tab()) {
+        while ((lp.in.num_remaining_bytes() > 0) && (*lp.in.cur_byte == ' ')) {
+            lp.in.cur_byte++;
+            lp.indent++;
         }
         continue;
 
     not_marker:
-        lc.vins.seek_to(start_byte);
-        lc.indent = saved_indent;
+        lp.in.seek_to(start_byte);
+        lp.indent = saved_indent;
         break;
     }
 }
 
-void parse_paragraph_text(ParserDetails* parser, StringView line, LineConsumer& lc) {
-    StringView remaining_text = lc.trimmed_remainder();
+void parse_paragraph_text(ParserDetails* parser, LineParser& lp) {
+    StringView remaining_text = lp.in.view_remaining_bytes().trim();
     bool has_para = parser->leaf_element && parser->leaf_element->type == Element::Paragraph;
-    if (!has_para && lc.inner_indent() >= 4) {
+    if (!has_para && lp.inner_indent() >= 4) {
         // Potentially begin or append to code Element
         if (remaining_text && !parser->leaf_element) {
             Element* parent = parser->element_stack ? parser->element_stack.back() : &parser->root_element;
@@ -335,16 +330,15 @@ void parse_paragraph_text(ParserDetails* parser, StringView line, LineConsumer& 
                 parser->leaf_element->raw_lines.append("\n");
             }
             parser->num_blank_lines_in_code_block = 0;
-            String code_line = extract_code_line(line, lc.outer_indent + 4);
+            String code_line = extract_code_line({lp.in.view.start_byte, lp.in.end_byte}, lp.outer_indent + 4);
             parser->leaf_element->raw_lines.append(std::move(code_line));
         }
     } else {
         if (remaining_text) {
-            // We're going to create or extend a leaf element.
-            // First, check if any Lists should be marked loose:
+            // We're going to create or extend a leaf element. First, check if any Lists should be marked loose:
             if (parser->check_list_continuations) {
-                // Yes, we should mark some (possibly zero) lists loose. It's
-                // impossible for a leaf element to exist at this point:
+                // Yes, we should mark some (possibly zero) lists loose. It's impossible for a leaf element to exist at
+                // this point:
                 PLY_ASSERT(!parser->leaf_element);
                 for (Element* element : parser->element_stack) {
                     if (element->type == Element::ListItem) {
@@ -358,27 +352,27 @@ void parse_paragraph_text(ParserDetails* parser, StringView line, LineConsumer& 
                 parser->check_list_continuations = false;
             }
 
-            if (*lc.vins.cur_byte == '#' && lc.inner_indent() <= 3) {
+            if (*lp.in.cur_byte == '#' && lp.inner_indent() <= 3) {
                 // Attempt to parse a heading
-                char* start_byte = lc.vins.cur_byte;
-                while (lc.vins.num_remaining_bytes() > 0 && *lc.vins.cur_byte == '#') {
-                    lc.vins.cur_byte++;
+                char* start_byte = lp.in.cur_byte;
+                while (lp.in.num_remaining_bytes() > 0 && *lp.in.cur_byte == '#') {
+                    lp.in.cur_byte++;
                 }
-                StringView pound_seq{start_byte, lc.vins.cur_byte};
-                StringView space = read_whitespace(lc.vins);
-                if (pound_seq.num_bytes() <= 6 && (!space.is_empty() || lc.vins.num_remaining_bytes() == 0)) {
+                StringView pound_seq{start_byte, lp.in.cur_byte};
+                StringView space = read_whitespace(lp.in);
+                if (pound_seq.num_bytes() <= 6 && (!space.is_empty() || lp.in.num_remaining_bytes() == 0)) {
                     // Got a heading
                     Element* parent = parser->element_stack ? parser->element_stack.back() : &parser->root_element;
                     Element* heading_element = Heap::create<Element>(parent, Element::Heading);
-                    heading_element->indent_or_level = pound_seq.num_bytes();
-                    if (StringView remaining_text = lc.trimmed_remainder()) {
+                    heading_element->heading_level = pound_seq.num_bytes();
+                    if (StringView remaining_text = lp.in.view_remaining_bytes().trim()) {
                         heading_element->raw_lines.append(remaining_text);
                     }
                     parser->leaf_element = nullptr;
                     parser->num_blank_lines_in_code_block = 0;
                     return;
                 }
-                lc.vins.seek_to(start_byte);
+                lp.in.seek_to(start_byte);
             }
             // If parser->leaf_element already exists, it's a lazy paragraph continuation
             if (!has_para) {
@@ -394,9 +388,14 @@ void parse_paragraph_text(ParserDetails* parser, StringView line, LineConsumer& 
     }
 }
 
-//-----------------------------------------------------------------
+//  ▄▄▄▄        ▄▄▄  ▄▄                   ▄▄▄▄▄ ▄▄▄                                 ▄▄
+//   ██  ▄▄▄▄▄   ██  ▄▄ ▄▄▄▄▄   ▄▄▄▄      ██     ██   ▄▄▄▄  ▄▄▄▄▄▄▄   ▄▄▄▄  ▄▄▄▄▄  ▄██▄▄  ▄▄▄▄
+//   ██  ██  ██  ██  ██ ██  ██ ██▄▄██     ██▀▀   ██  ██▄▄██ ██ ██ ██ ██▄▄██ ██  ██  ██   ▀█▄▄▄
+//  ▄██▄ ██  ██ ▄██▄ ██ ██  ██ ▀█▄▄▄      ██▄▄▄ ▄██▄ ▀█▄▄▄  ██ ██ ██ ▀█▄▄▄  ██  ██  ▀█▄▄  ▄▄▄█▀
+//
+
 // Code to parse inline elements (second pass)
-//-----------------------------------------------------------------
+
 struct InlineConsumer {
     ArrayView<const String> raw_lines;
     StringView raw_line;
@@ -461,7 +460,6 @@ String get_code_span(InlineConsumer& ic, u32 end_tick_count) {
     }
 }
 
-// FIXME: Recognize all Unicode punctuation
 inline bool is_asc_punc(char c) {
     return (c >= 0x21 && c <= 0x2f) || (c >= 0x3a && c <= 0x40) || (c >= 0x5b && c <= 0x60) || (c >= 0x7b && c <= 0x7e);
 }
@@ -616,7 +614,8 @@ Array<Owned<Element>> process_emphasis(Array<Delimiter>& delimiters, u32 bottom_
                     elem->add_children(convert_to_inline_elems(delimiters.subview(j + 1, pos - j - 1)));
                     u32 delims_to_subtract = min(span_length, 2u);
                     delimiters[j].text = delimiters[j].text.left(delimiters[j].text.num_bytes() - delims_to_subtract);
-                    delimiters[pos].text = delimiters[pos].text.left(delimiters[pos].text.num_bytes() - delims_to_subtract);
+                    delimiters[pos].text =
+                        delimiters[pos].text.left(delimiters[pos].text.num_bytes() - delims_to_subtract);
                     // We're going to delete from j to pos inclusive, so leave remaining
                     // delimiters if any
                     if (!delimiters[j].text.is_empty()) {
@@ -765,19 +764,68 @@ static void do_inlines(Element* element) {
     }
 }
 
-//-----------------------------------------------------------------
+//  ▄▄▄▄▄         ▄▄     ▄▄▄  ▄▄            ▄▄▄▄  ▄▄▄▄▄  ▄▄▄▄
+//  ██  ██ ▄▄  ▄▄ ██▄▄▄   ██  ▄▄  ▄▄▄▄     ██  ██ ██  ██  ██
+//  ██▀▀▀  ██  ██ ██  ██  ██  ██ ██        ██▀▀██ ██▀▀▀   ██
+//  ██     ▀█▄▄██ ██▄▄█▀ ▄██▄ ██ ▀█▄▄▄     ██  ██ ██     ▄██▄
+//
 
 Owned<Parser> create_parser() {
     return Heap::create<ParserDetails>();
 }
 
+String untabify(StringView str, u32 tab_size) {
+    MemStream mem;
+    u32 column = 0;
+    for (char c : str) {
+        if (c == '\t') {
+            u32 spaces = tab_size - (column % tab_size);
+            for (u32 i = 0; i < spaces; i++) {
+                mem.write(' ');
+            }
+            column += spaces;
+        } else {
+            mem.write(c);
+            if (c == '\n') {
+                column = 0;
+            } else if (c >= 32) {
+                column++;
+            }
+        }
+    }
+    return mem.move_to_string();
+}
+
 Owned<Element> parse_line(Parser* parser, StringView line) {
     ParserDetails* details = static_cast<ParserDetails*>(parser);
-    LineConsumer lc{line};
-    if (match_existing_indentation(details, line, lc)) {
-        parse_new_markers(details, lc);
-        parse_paragraph_text(details, line, lc);
+
+    // Untabify the input line (if needed) to simplify internal processing.
+    String untabified;
+    if (line.find(' ') >= 0) {
+        constexpr u32 tab_size = 4;
+        untabified = untabify(line, tab_size);
+        line = untabified;
     }
+
+    LineParser lp{line};
+
+    // Match existing indentation and blockquote '>' markers.
+    match_existing_indentation(details, lp);
+
+    if (lp.in.view_remaining_bytes().trim().is_empty()) {
+        // The rest of the line is blank.
+        handle_blank_line(details, lp);
+    } else {
+        // There's more text on the current line.
+        if (lp.stack_depth < details->element_stack.num_items()) {
+            details->element_stack.resize(lp.stack_depth);
+            details->leaf_element = nullptr;
+            details->num_blank_lines_in_code_block = 0;
+        }
+        parse_new_markers(details, lp);
+        parse_paragraph_text(details, lp);
+    }
+
     if (details->root_element.children.num_items() > 1) {
         // parse_paragraph_text can only add one child element, so root_element can only have
         // exactly 2 elements at this point. Pop the first one and return it.
@@ -816,9 +864,9 @@ void destroy(Parser* parser) {
 Array<Owned<Element>> parse_whole_document(StringView markdown) {
     Array<Owned<Element>> elements;
     Owned<Parser> parser = create_parser();
-    ViewStream vins{markdown};
+    ViewStream in{markdown};
 
-    while (StringView line = read_line(vins)) {
+    while (StringView line = read_line(in)) {
         if (Owned<Element> element = parse_line(parser, line)) {
             elements.append(std::move(element));
         }
@@ -831,12 +879,12 @@ Array<Owned<Element>> parse_whole_document(StringView markdown) {
 }
 
 String convert_to_html(StringView src) {
-    ViewStream vins{src};
+    ViewStream in{src};
     MemStream out;
     markdown::HTML_Options options;
     Owned<Parser> parser = create_parser();
 
-    while (StringView line = read_line(vins)) {
+    while (StringView line = read_line(in)) {
         if (Owned<Element> element = parse_line(parser, line)) {
             convert_to_html(&out, element, options);
         }
@@ -848,7 +896,11 @@ String convert_to_html(StringView src) {
     return out.move_to_string();
 }
 
-//-----------------------------------------------------------------
+//  ▄▄▄▄▄         ▄▄                          ▄▄
+//  ██  ██  ▄▄▄▄  ██▄▄▄  ▄▄  ▄▄  ▄▄▄▄▄  ▄▄▄▄▄ ▄▄ ▄▄▄▄▄   ▄▄▄▄▄
+//  ██  ██ ██▄▄██ ██  ██ ██  ██ ██  ██ ██  ██ ██ ██  ██ ██  ██
+//  ██▄▄█▀ ▀█▄▄▄  ██▄▄█▀ ▀█▄▄██ ▀█▄▄██ ▀█▄▄██ ██ ██  ██ ▀█▄▄██
+//                               ▄▄▄█▀  ▄▄▄█▀            ▄▄▄█▀
 
 void dump(Stream* outs, const Element* element, u32 level) {
     String indent = StringView{"  "} * level;
@@ -877,7 +929,7 @@ void dump(Stream* outs, const Element* element, u32 level) {
             break;
         }
         case Element::Heading: {
-            outs->format("heading level={}", element->indent_or_level);
+            outs->format("heading level={}", element->heading_level);
             break;
         }
         case Element::Paragraph: {
@@ -936,7 +988,11 @@ void dump(Stream* outs, const Element* element, u32 level) {
     }
 }
 
-//-----------------------------------------------------------------
+//  ▄▄  ▄▄ ▄▄▄▄▄▄ ▄▄   ▄▄ ▄▄
+//  ██  ██   ██   ███▄███ ██
+//  ██▀▀██   ██   ██▀█▀██ ██
+//  ██  ██   ██   ██   ██ ██▄▄▄
+//
 
 void convert_to_html(Stream* outs, const Element* element, const HTML_Options& options) {
     switch (element->type) {
@@ -988,7 +1044,7 @@ void convert_to_html(Stream* outs, const Element* element, const HTML_Options& o
             break;
         }
         case Element::Heading: {
-            outs->format("<h{}", element->indent_or_level);
+            outs->format("<h{}", element->heading_level);
             if (element->id) {
                 if (options.child_anchors) {
                     outs->write(" class=\"anchored\"><span class=\"anchor\" id=\"");
@@ -1006,7 +1062,7 @@ void convert_to_html(Stream* outs, const Element* element, const HTML_Options& o
             for (const Element* child : element->children) {
                 convert_to_html(outs, child, options);
             }
-            outs->format("</h{}>\n", element->indent_or_level);
+            outs->format("</h{}>\n", element->heading_level);
             break;
         }
         case Element::Paragraph: {
