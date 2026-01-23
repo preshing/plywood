@@ -19,19 +19,19 @@ namespace json {
 Node Node::InvalidNode;
 Node::Object Node::EmptyObject;
 
-PLY_NO_INLINE Node* Node::get(StringView key) {
+Node& Node::get(StringView key) {
     Object* obj = this->var.as<Object>();
     if (!obj)
-        return &InvalidNode;
+        return InvalidNode;
 
-    Owned<Node>* value = obj->items.find(key);
+    Node* value = obj->items.find(key);
     if (!value)
-        return &InvalidNode;
+        return InvalidNode;
 
-    return value->get();
+    return *value;
 }
 
-PLY_NO_INLINE void Node::set(StringView key, Owned<Node>&& value) {
+void Node::set(StringView key, Node&& value) {
     Object* obj = this->var.as<Object>();
     if (!obj)
         return;
@@ -39,7 +39,7 @@ PLY_NO_INLINE void Node::set(StringView key, Owned<Node>&& value) {
     *obj->items.insert(key).value = std::move(value);
 }
 
-PLY_NO_INLINE void Node::remove(StringView key) {
+void Node::remove(StringView key) {
     Object* obj = this->var.as<Object>();
     if (!obj)
         return;
@@ -352,24 +352,24 @@ String Parser::to_string(const Token& token) {
     }
 }
 
-String Parser::to_string(const Node* node) {
-    if (node->var.is<Node::Object>()) {
+String Parser::to_string(const Node& node) {
+    if (node.var.is<Node::Object>()) {
         return "object";
-    } else if (node->var.is<Node::Array>()) {
+    } else if (node.var.is<Node::Array>()) {
         return "array";
-    } else if (const Node::Text* txt = node->var.as<Node::Text>()) {
+    } else if (const Node::Text* txt = node.var.as<Node::Text>()) {
         return String::format("text \"{}\"", escape(txt->text));
-    } else if (const Node::Bool* b = node->var.as<Node::Bool>()) {
+    } else if (const Node::Bool* b = node.var.as<Node::Bool>()) {
         return String::format("bool {}", b->value ? "true" : "false");
     }
     PLY_ASSERT(0);
     return "???";
 }
 
-Owned<Node> Parser::read_object(const Token& start_token) {
+Node Parser::read_object(const Token& start_token) {
     PLY_ASSERT(start_token.type == Token::OpenCurly);
     ScopeHandler object_scope{*this, ParseError::Scope::object(start_token.file_ofs)};
-    Owned<Node> node = Heap::create<Node>(Node::Object{}, start_token.file_ofs);
+    Node node{Node::Object{}, start_token.file_ofs};
     Token prev_property = {};
     for (;;) {
         bool got_separator = false;
@@ -408,9 +408,9 @@ Owned<Node> Parser::read_object(const Token& start_token) {
             return {};
         }
 
-        Node* existing_node = node->get(first_token.text);
-        if (existing_node->is_valid()) {
-            ScopeHandler duplicate_scope{*this, ParseError::Scope::duplicate(existing_node->file_ofs)};
+        const Node& existing_node = node.get(first_token.text);
+        if (existing_node.is_valid()) {
+            ScopeHandler duplicate_scope{*this, ParseError::Scope::duplicate(existing_node.file_ofs)};
             this->error(first_token.file_ofs, String::format("Duplicate property \"{}\"", escape(first_token.text)));
             return {};
         }
@@ -425,10 +425,10 @@ Owned<Node> Parser::read_object(const Token& start_token) {
         {
             // Read value of property
             ScopeHandler property_scope{*this, ParseError::Scope::property(first_token.file_ofs, first_token.text)};
-            Owned<Node> value = this->read_expression(this->read_token(), &colon);
-            if (!value->is_valid())
+            Node value = this->read_expression(this->read_token(), &colon);
+            if (!value.is_valid())
                 return value;
-            node->set(first_token.text, std::move(value));
+            node.set(first_token.text, std::move(value));
         }
 
         prev_property = std::move(first_token);
@@ -436,10 +436,10 @@ Owned<Node> Parser::read_object(const Token& start_token) {
     return {};
 }
 
-Owned<Node> Parser::read_array(const Token& start_token) {
+Node Parser::read_array(const Token& start_token) {
     PLY_ASSERT(start_token.type == Token::OpenSquare);
     ScopeHandler array_scope{*this, ParseError::Scope::array(start_token.file_ofs, 0)};
-    Owned<Node> array_node = Heap::create<Node>(Node::Array{}, start_token.file_ofs);
+    Node array_node{Node::Array{}, start_token.file_ofs};
     Token sep_token_holder;
     Token* sep_token = nullptr;
     for (;;) {
@@ -456,10 +456,10 @@ Owned<Node> Parser::read_array(const Token& start_token) {
                 break;
 
             default: {
-                Owned<Node> value = this->read_expression(std::move(token), sep_token);
-                if (!value->is_valid())
+                Node value = this->read_expression(std::move(token), sep_token);
+                if (!value.is_valid())
                     return value;
-                array_node->array().append(std::move(value));
+                array_node.array().append(std::move(value));
                 array_scope.get().index++;
                 sep_token = nullptr;
                 break;
@@ -468,7 +468,7 @@ Owned<Node> Parser::read_array(const Token& start_token) {
     }
 }
 
-Owned<Node> Parser::read_expression(Token&& first_token, const Token* after_token) {
+Node Parser::read_expression(Token&& first_token, const Token* after_token) {
     switch (first_token.type) {
         case Token::OpenCurly:
             return this->read_object(first_token);
@@ -478,12 +478,12 @@ Owned<Node> Parser::read_expression(Token&& first_token, const Token* after_toke
 
         case Token::Text: {
             if (first_token.text == "true") {
-                return Heap::create<Node>(Node::Bool{true}, first_token.file_ofs);
+                return Node{Node::Bool{true}, first_token.file_ofs};
             }
             if (first_token.text == "false") {
-                return Heap::create<Node>(Node::Bool{false}, first_token.file_ofs);
+                return Node{Node::Bool{false}, first_token.file_ofs};
             }
-            return Heap::create<Node>(Node::Text{std::move(first_token.text)}, first_token.file_ofs);
+            return Node{Node::Text{std::move(first_token.text)}, first_token.file_ofs};
         }
 
         case Token::Invalid:
@@ -505,8 +505,8 @@ Parser::Result Parser::parse(StringView path, StringView src_view_) {
     this->token_loc_map = TokenLocationMap::create_from_string(src_view_);
 
     Token root_token = this->read_token();
-    Owned<Node> root = this->read_expression(std::move(root_token));
-    if (!root->is_valid())
+    Node root = this->read_expression(std::move(root_token));
+    if (!root.is_valid())
         return {};
 
     Token next_token = this->read_token();
@@ -538,16 +538,16 @@ struct WriteContext {
         }
     }
 
-    void write(const Node* node) {
-        if (!node) {
+    void write(const Node& node) {
+        if (!node.is_valid()) {
             this->out.write("null");
             return;
         }
 
-        if (const Node::Object* obj = node->var.as<Node::Object>()) {
+        if (const Node::Object* obj = node.var.as<Node::Object>()) {
             this->out.write("{\n");
             this->indent_level++;
-            ArrayView<const Map<String, Owned<Node>>::Item> items = obj->items.items();
+            ArrayView<const Map<String, Node>::Item> items = obj->items.items();
             for (u32 item_index = 0; item_index < items.num_items(); item_index++) {
                 const auto& obj_item = items[item_index];
                 indent();
@@ -561,7 +561,7 @@ struct WriteContext {
             this->indent_level--;
             indent();
             this->out.write('}');
-        } else if (const Node::Array* arr = node->var.as<Node::Array>()) {
+        } else if (const Node::Array* arr = node.var.as<Node::Array>()) {
             this->out.write("[\n");
             this->indent_level++;
             for (u32 i = 0; i < arr->items.num_items(); i++) {
@@ -575,9 +575,9 @@ struct WriteContext {
             this->indent_level--;
             indent();
             this->out.write(']');
-        } else if (const Node::Bool* b = node->var.as<Node::Bool>()) {
+        } else if (const Node::Bool* b = node.var.as<Node::Bool>()) {
             this->out.write(b->value ? "true" : "false");
-        } else if (const Node::Text* txt = node->var.as<Node::Text>()) {
+        } else if (const Node::Text* txt = node.var.as<Node::Text>()) {
             this->out.format("\"{}\"", escape(txt->text));
         } else {
             this->out.write("null");
@@ -585,12 +585,12 @@ struct WriteContext {
     }
 };
 
-void write(Stream& out, const Node* node) {
+void write(Stream& out, const Node& node) {
     WriteContext ctx{out};
     ctx.write(node);
 }
 
-String to_string(const Node* node) {
+String to_string(const Node& node) {
     MemStream out;
     write(out, node);
     return out.move_to_string();

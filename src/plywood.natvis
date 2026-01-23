@@ -47,9 +47,9 @@
   </Type>
 
   <Type Name="ply::Map&lt;*,*&gt;">
-    <DisplayString>size={item_set.items_.num_items_}</DisplayString>
+    <DisplayString>size={items_.num_items_}</DisplayString>
     <Expand>
-      <ExpandedItem>item_set.items_</ExpandedItem>
+      <ExpandedItem>items_</ExpandedItem>
     </Expand>
   </Type>
 

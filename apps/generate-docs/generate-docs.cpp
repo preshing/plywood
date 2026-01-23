@@ -16,7 +16,7 @@ String source_folder = join_path(PLYWOOD_ROOT_DIR, "apps/generate-docs/data");
 String docs_folder = join_path(PLYWOOD_ROOT_DIR, "docs");
 String out_folder = join_path(PLYWOOD_ROOT_DIR, "docs/build");
 TextFormat server_text_format = {UTF8, TextFormat::LF, false};
-Owned<json::Node> contents;
+json::Node contents;
 u32 publish_key = 0; // Prevent browsers from caching old stylesheets
 
 void print_decl_as_api_title(Stream& out, const Parser* parser, const Declaration& decl) {
@@ -301,30 +301,30 @@ void parse_markdown(Stream& out, ViewStream& in) {
     }
 }
 
-void flatten_pages(Array<const json::Node*>& pages, const json::Node* items) {
-    for (const json::Node* item : items->array_view()) {
-        pages.append(item);
-        if (item->get("children")->is_valid()) {
-            flatten_pages(pages, item->get("children"));
+void flatten_pages(Array<const json::Node*>& pages, const json::Node& items) {
+    for (const json::Node& item : items.array_view()) {
+        pages.append(&item);
+        if (item.get("children").is_valid()) {
+            flatten_pages(pages, item.get("children"));
         }
     }
 }
 
-void generate_table_of_contents_html(Stream& out, const json::Node* items) {
-    for (const json::Node* item : items->array_view()) {
-        const json::Node* children = item->get("children");
+void generate_table_of_contents_html(Stream& out, const json::Node& items) {
+    for (const json::Node& item : items.array_view()) {
+        const json::Node& children = item.get("children");
         StringView span_class;
-        if (children->is_valid()) {
+        if (children.is_valid()) {
             span_class = " class=\"caret caret-down\"";
         }
         String header_file;
-        if (item->get("header-file")->is_valid()) {
+        if (item.get("header-file").is_valid()) {
             header_file =
-                String::format(" <span class=\"toc-header\">&lt;{&}&gt;</span>", item->get("header-file")->text());
+                String::format(" <span class=\"toc-header\">&lt;{&}&gt;</span>", item.get("header-file").text());
         }
         out.format("<a href=\"/docs/{}\"><li class=\"selectable\"><span{}>{&}</span>{}</li></a>",
-                   item->get("path")->text(), span_class, item->get("title")->text(), header_file);
-        if (children->is_valid()) {
+                   item.get("path").text(), span_class, item.get("title").text(), header_file);
+        if (children.is_valid()) {
             out.write("<ul class=\"nested active\">");
             generate_table_of_contents_html(out, children);
             out.write("</ul>");
@@ -332,8 +332,8 @@ void generate_table_of_contents_html(Stream& out, const json::Node* items) {
     }
 }
 
-void convert_page(const json::Node* item, const json::Node* prev_page, const json::Node* next_page) {
-    String rel_name = item->get("path")->text();
+void convert_page(const json::Node& item, const json::Node* prev_page, const json::Node* next_page) {
+    String rel_name = item.get("path").text();
     String markdown_path = join_path(docs_folder, rel_name);
     if (Filesystem::is_dir(markdown_path)) {
         rel_name = join_path(rel_name, "index");
@@ -346,17 +346,17 @@ void convert_page(const json::Node* item, const json::Node* prev_page, const jso
     MemStream mem;
     parse_markdown(mem, in);
     String article_content = mem.move_to_string();
-    String page_title = item->get("title")->text();
+    String page_title = item.get("title").text();
 
     // Generate prev/next navigation
     String prev_link, next_link;
     if (prev_page) {
         prev_link = String::format("<a href=\"/docs/{}\"><span class=\"nav-button\">&#9664;&nbsp; {&}</span></a>",
-                                   prev_page->get("path")->text(), prev_page->get("title")->text());
+                                   prev_page->get("path").text(), prev_page->get("title").text());
     }
     if (next_page) {
         next_link = String::format("<a href=\"/docs/{}\"><span class=\"nav-button right\">{&}&nbsp; &#9654;</span></a>",
-                                   next_page->get("path")->text(), next_page->get("title")->text());
+                                   next_page->get("path").text(), next_page->get("title").text());
     }
     String nav_html = String::format("<div class=\"page-nav\">{}{}</div>", prev_link, next_link);
 
@@ -367,7 +367,7 @@ void convert_page(const json::Node* item, const json::Node* prev_page, const jso
     Filesystem::save_text(ajax_path, ajax_content, server_text_format);
 }
 
-Owned<json::Node> parse_json(StringView path) {
+json::Node parse_json(StringView path) {
     String src = Filesystem::load_text_autodetect(path);
     return json::Parser{}.parse(path, src).root;
 }
@@ -414,7 +414,7 @@ void generate_whole_site() {
     for (u32 i = 0; i < pages.num_items(); i++) {
         const json::Node* prev_page = (i > 0) ? pages[i - 1] : nullptr;
         const json::Node* next_page = (i + 1 < pages.num_items()) ? pages[i + 1] : nullptr;
-        convert_page(pages[i], prev_page, next_page);
+        convert_page(*pages[i], prev_page, next_page);
     }
 }
 

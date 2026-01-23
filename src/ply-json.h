@@ -19,52 +19,38 @@ namespace json {
 //
 
 struct Node {
-    struct Invalid {};
-    struct Text {
-        String text;
-    };
     struct Bool {
         bool value = false;
     };
+    struct Text {
+        String text;
+    };
     struct Array {
-        ply::Array<Owned<Node>> items;
+        ply::Array<Node> items;
     };
     struct Object {
-        Map<String, Owned<Node>> items;
+        Map<String, Node> items;
     };
 
     u32 file_ofs = 0;
-    Variant<Invalid, Text, Bool, Array, Object> var;
+    Variant<Bool, Text, Array, Object> var;
 
-    Node() : var{Invalid{}} {
+    Node() {
     }
-    template <typename T>
-    Node(T&& v, u32 file_ofs = 0) : file_ofs{file_ofs}, var{std::forward<T>(v)} {
+    Node(const Bool& b, u32 file_ofs = 0) : file_ofs{file_ofs}, var{b} {
+    }
+    Node(Text&& text, u32 file_ofs = 0) : file_ofs{file_ofs}, var{Text{std::move(text)}} {
+    }
+    Node(Array&& arr, u32 file_ofs = 0) : file_ofs{file_ofs}, var{std::move(arr)} {
+    }
+    Node(Object&& obj, u32 file_ofs = 0) : file_ofs{file_ofs}, var{std::move(obj)} {
     }
 
     static Node InvalidNode;
     static Object EmptyObject;
 
     bool is_valid() const {
-        return !this->var.is<Invalid>();
-    }
-
-    //-----------------------------------------------------------
-    // Text
-    //-----------------------------------------------------------
-
-    bool is_text() const {
-        return this->var.is<Text>();
-    }
-
-    StringView text() const {
-        if (const Text* txt = this->var.as<Text>())
-            return txt->text;
-        return {};
-    }
-
-    void set_text(String&& text) {
-        this->var = Text{std::move(text)};
+        return !this->var.is_empty();
     }
 
     //-----------------------------------------------------------
@@ -86,6 +72,24 @@ struct Node {
     }
 
     //-----------------------------------------------------------
+    // Text
+    //-----------------------------------------------------------
+
+    bool is_text() const {
+        return this->var.is<Text>();
+    }
+
+    StringView text() const {
+        if (const Text* txt = this->var.as<Text>())
+            return txt->text;
+        return {};
+    }
+
+    void set_text(String&& text) {
+        this->var = Text{std::move(text)};
+    }
+
+    //-----------------------------------------------------------
     // Array
     //-----------------------------------------------------------
 
@@ -93,25 +97,25 @@ struct Node {
         return this->var.is<Array>();
     }
 
-    Node* get(u32 i) {
+    Node& get(u32 i) {
         if (Array* arr = this->var.as<Array>()) {
             if (i < arr->items.num_items())
                 return arr->items[i];
         }
-        return &InvalidNode;
+        return InvalidNode;
     }
 
-    const Node* get(u32 i) const {
+    const Node& get(u32 i) const {
         return const_cast<Node*>(this)->get(i);
     }
 
-    ArrayView<const Owned<Node>> array_view() const {
+    ArrayView<const Node> array_view() const {
         if (const Array* arr = this->var.as<Array>())
             return arr->items;
         return {};
     }
 
-    ply::Array<Owned<Node>>& array() {
+    ply::Array<Node>& array() {
         Array* arr = this->var.as<Array>();
         PLY_ASSERT(arr);
         return arr->items;
@@ -125,11 +129,11 @@ struct Node {
         return this->var.is<Object>();
     }
 
-    Node* get(StringView key);
-    const Node* get(StringView key) const {
+    Node& get(StringView key);
+    const Node& get(StringView key) const {
         return const_cast<Node*>(this)->get(key);
     }
-    void set(StringView key, Owned<Node>&& value);
+    void set(StringView key, Node&& value);
     void remove(StringView key);
 
     const Object& object() const {
@@ -251,10 +255,10 @@ private:
     Token read_literal();
     Token read_token(bool tokenize_new_line = false);
     static String to_string(const Token& token);
-    static String to_string(const Node* node);
-    Owned<Node> read_object(const Token& start_token);
-    Owned<Node> read_array(const Token& start_token);
-    Owned<Node> read_expression(Token&& first_token, const Token* after_token = nullptr);
+    static String to_string(const Node& node);
+    Node read_object(const Token& start_token);
+    Node read_array(const Token& start_token);
+    Node read_expression(Token&& first_token, const Token* after_token = nullptr);
 
 public:
     void set_tab_size(int tab_size_) {
@@ -268,7 +272,7 @@ public:
     }
 
     struct Result {
-        Owned<Node> root;
+        Node root;
         TokenLocationMap token_loc_map;
     };
 
@@ -283,8 +287,8 @@ public:
 //   ██▀▀██  ██     ██  ▀█▄▄ ▀█▄▄▄
 //
 
-void write(Stream& out, const Node* a_node);
-String to_string(const Node* a_node);
+void write(Stream& out, const Node& a_node);
+String to_string(const Node& a_node);
 
 } // namespace json
 } // namespace ply

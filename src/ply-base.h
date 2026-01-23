@@ -2855,7 +2855,7 @@ public:
 //                 ██
 
 template <typename Key, typename Value>
-struct Map {
+struct Map : HashLookup<LookupKey<Key>, Map<Key, Value>> {
     using K = LookupKey<Key>;
 
     struct Item {
@@ -2868,14 +2868,34 @@ struct Map {
             return this->key;
         }
     };
+    Array<Item> items_;
 
-    Set<Item> item_set;
+private:
+    friend struct HashLookup<K, Map<Key, Value>>;
 
+    auto get_key(u32 index) const {
+        return get_any_lookup_key(this->items_[index]);
+    }
+
+    template <typename U = Item, PLY_ENABLE_IF(is_constructible_from_key<U>)>
+    u32 add_item(const K& key) {
+        u32 index = this->items_.num_items();
+        this->items_.append(key);
+        return index;
+    }
+    template <typename U = Item, PLY_ENABLE_IF(!is_constructible_from_key<U>)>
+    u32 add_item(const K&) {
+        u32 index = this->items_.num_items();
+        this->items_.append();
+        return index;
+    }
+
+public:
     Value* find(const K& key) {
-        Item* item = this->item_set.find(key);
-        if (!item)
+        s32 item_index = this->find_index(key);
+        if (item_index < 0)
             return nullptr;
-        return &item->value;
+        return &this->items_[item_index].value;
     }
 
     const Value* find(const K& key) const {
@@ -2883,10 +2903,10 @@ struct Map {
     }
 
     ArrayView<Item> items() {
-        return this->item_set.items();
+        return this->items_;
     }
     ArrayView<const Item> items() const {
-        return this->item_set.items();
+        return this->items_;
     }
 
     struct InsertResult {
@@ -2895,23 +2915,70 @@ struct Map {
     };
 
     InsertResult insert(const K& key) {
-        auto result = this->item_set.insert(key);
-        return {&result.item->value, result.was_found};
+        auto result = this->insert_index(key);
+        return {&this->items_[result.index].value, result.was_found};
     }
 
-    void erase(const K& key) {
-        this->item_set.erase(key);
+    bool erase(const K& key) {
+        if (!this->items_)
+            return false;
+        PLY_ASSERT(is_power_of_2(this->num_allocated_indices));
+        u32 mask = this->num_allocated_indices - 1;
+        for (u32 idx = calculate_hash(key);; idx++) {
+            s32 item_index = this->indices[idx & mask];
+            if (item_index < 0)
+                return false;
+
+            if (key == get_any_lookup_key(this->items_[item_index])) {
+                // Found the item to erase.
+                u32 last_index = this->items_.num_items() - 1;
+                if ((u32) item_index < last_index) {
+                    // Move the last item to the erased item's index.
+                    for (u32 j = calculate_hash(get_any_lookup_key(this->items_[last_index]));; j++) {
+                        PLY_ASSERT(this->indices[j & mask] >= 0);
+                        if ((u32) this->indices[j & mask] == last_index) {
+                            this->indices[j & mask] = item_index;
+                            break;
+                        }
+                    }
+                }
+
+                // Erase the item from the array.
+                this->items_.erase_quick(item_index);
+
+                // Free the slot in the indices array.
+                this->indices[idx & mask] = -1;
+
+                // Check subsequent indices to see if any should move into the newly freed slot.
+                for (u32 trailing_idx = idx + 1;; trailing_idx++) {
+                    s32 trailing_item_index = this->indices[trailing_idx & mask];
+                    if (trailing_item_index < 0) {
+                        // No more trailing indices.
+                        break;
+                    }
+                    u32 trailing_item_hash = calculate_hash(get_any_lookup_key(this->items_[trailing_item_index]));
+                    if (((trailing_idx - trailing_item_hash) & mask) >= ((trailing_idx - idx) & mask)) {
+                        // Move this index.
+                        this->indices[idx & mask] = trailing_item_index;
+                        this->indices[trailing_idx & mask] = -1;
+                        idx = trailing_idx; // This is the new freed slot.
+                    }
+                }
+                return true;
+            }
+        }
     }
 
     void clear() {
-        this->item_set.clear();
+        this->~Map();
+        new (this) Map;
     }
 
     const Item* begin() const {
-        return this->item_set.begin();
+        return this->items_.begin();
     }
     const Item* end() const {
-        return this->item_set.end();
+        return this->items_.end();
     }
 };
 

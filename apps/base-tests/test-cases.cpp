@@ -749,7 +749,7 @@ TEST_CASE("Map stress test") {
     // Main test loop.
     for (u32 iters = 0; iters < 500; iters++) {
         // Ensure the map and mirror array have the same number of items.
-        PLY_ASSERT(map.item_set.items().num_items() == arr.num_items());
+        PLY_ASSERT(map.items().num_items() == arr.num_items());
 
         // Decide what population size the map should have next.
         // We'll generate a random number using a Poisson distribution.
@@ -760,7 +760,7 @@ TEST_CASE("Map stress test") {
         u32 desired_population = (u32) clamp(random_population - 4.f, 0.f, 512.f);
 
         // Add items to the map if needed.
-        while (desired_population > map.item_set.items().num_items()) {
+        while (desired_population > map.items().num_items()) {
             u32 key_to_insert = r.generate_u32() % 1000;
             auto result = map.insert(key_to_insert);
             if (result.was_found) {
@@ -780,7 +780,7 @@ TEST_CASE("Map stress test") {
         }
 
         // Check its population.
-        check(desired_population == map.item_set.items().num_items());
+        check(desired_population == map.items().num_items());
         check(desired_population == arr.num_items());
         for (s32 i = histogram.num_items() - 1; i >= 0; i--) {
             if (desired_population >= histogram[i].population) {

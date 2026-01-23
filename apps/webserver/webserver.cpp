@@ -185,7 +185,7 @@ void serve_echo_page(const Request& request, Response& response) {
     out->write("<p>Request header:</p>\n");
     out->write("<pre>\n");
     out->format("{&} {&} {&}\n", request.method, request.uri, request.http_version);
-    for (const auto& item : request.headers.item_set.items()) {
+    for (const auto& item : request.headers.items()) {
         out->format("{&}: {&}\n", item.key, item.value);
     }
     out->write("</pre>\n");
@@ -219,7 +219,7 @@ StringView get_response_description(Response::Code response_code) {
 Stream* Response::begin(Response::Code response_code) {
     StringView message = get_response_description(response_code);
     out->format("HTTP/1.1 {} {}\r\n", response_code, message);
-    for (const auto& item : headers.item_set.items()) {
+    for (const auto& item : headers.items()) {
         out->format("{}: {}\r\n", item.key, item.value);
     }
     out->write("\r\n");
