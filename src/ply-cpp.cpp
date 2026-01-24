@@ -190,7 +190,7 @@ FileLocation get_file_location(const Preprocessor* pp, u32 input_offset) {
     while (input_range->is_macro_expansion) {
         input_range_index = input_range->parent_range_index;
         PLY_ASSERT(input_range_index >= 0);
-        PLY_ASSERT(input_range_index + 1 < pp->input_ranges.num_items());
+        PLY_ASSERT(input_range_index + 1 < numeric_cast<s32>(pp->input_ranges.num_items()));
         PLY_ASSERT(pp->input_ranges[input_range_index + 1].parent_range_index == input_range_index);
         input_range = &pp->input_ranges[input_range_index];
         input_offset = pp->input_ranges[input_range_index + 1].input_offset;
@@ -357,7 +357,8 @@ Token peek_token(ParserImpl* parser) {
                     PLY_ASSERT(ending_input_range.input_offset + (parser->pp.include_stack.back().vin.get_seek_pos() - ending_input_range.file_offset) == token.input_offset);
 
                     // Get the file offset where we are resuming the parent file or macro.
-                    PLY_ASSERT(ending_input_range.parent_range_index == parser->pp.include_stack.back(-2).input_range_index);
+                    PLY_ASSERT(ending_input_range.parent_range_index ==
+                               numeric_cast<s32>(parser->pp.include_stack.back(-2).input_range_index));
                     const Preprocessor::InputRange* old_parent_range = &parser->pp.input_ranges[ending_input_range.parent_range_index];
                     u32 old_parent_range_length = old_parent_range[1].input_offset - old_parent_range[0].input_offset;
                     u32 parent_file_seek = numeric_cast<u32>(parser->pp.include_stack.back(-2).vin.get_seek_pos());
@@ -3055,11 +3056,11 @@ void syntax_highlight_declarator(NodeVisitor* visitor, Variant<const QualifiedID
 }
 
 void syntax_highlight_initializer(NodeVisitor* visitor, const Initializer& init) {
-    if (auto* assign = init.var.as<Initializer::Assignment>()) {
+    if (init.var.as<Initializer::Assignment>()) {
         // Not supported yet
-    } else if (auto* assign = init.var.as<Initializer::FunctionBody>()) {
+    } else if (init.var.as<Initializer::FunctionBody>()) {
         // Not supported yet
-    } else if (auto* assign = init.var.as<Initializer::BitField>()) {
+    } else if (init.var.as<Initializer::BitField>()) {
         // Not supported yet
     }
 }
