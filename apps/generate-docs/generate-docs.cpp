@@ -213,7 +213,7 @@ void parse_table(Stream& out, const Map<StringView, String>& args, ViewStream& i
         if (s == "{/table}")
             break;
         out.write("<tr>");
-        for (StringView column : s.split_byte('|')) {
+        for (StringView column : s.split("|")) {
             String html = markdown::convert_to_html(column);
             out.format("<td>{}</td>", html.substr(3, html.num_bytes() - 8));
         }

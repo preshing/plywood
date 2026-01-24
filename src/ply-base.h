@@ -1558,7 +1558,7 @@ public:
 
     PLY_NO_DISCARD String upper() const;
     PLY_NO_DISCARD String lower() const;
-    PLY_NO_DISCARD Array<StringView> split_byte(char sep) const;
+    PLY_NO_DISCARD Array<StringView> split(StringView separator) const;
     PLY_NO_DISCARD String join(ArrayView<const StringView> comps) const;
     PLY_NO_DISCARD String replace(StringView old_substr, StringView new_substr) const;
 
@@ -1797,7 +1797,7 @@ public:
     PLY_NO_DISCARD String lower() const {
         return ((StringView) * this).lower();
     }
-    PLY_NO_DISCARD Array<StringView> split_byte(char sep) const;
+    PLY_NO_DISCARD Array<StringView> split(StringView separator) const;
     PLY_NO_DISCARD String join(ArrayView<const StringView> comps) const;
     PLY_NO_DISCARD String replace(StringView old_substr, StringView new_substr) const {
         return ((StringView) * this).replace(old_substr, new_substr);
@@ -2472,8 +2472,8 @@ struct ArrayTraits<const Array<Item_>> {
     using Item = const Item_;
 };
 
-inline Array<StringView> String::split_byte(char sep) const {
-    return ((StringView) * this).split_byte(sep);
+inline Array<StringView> String::split(StringView separator) const {
+    return ((StringView) * this).split(separator);
 }
 
 //  ▄▄▄▄▄ ▄▄                   ▄▄  ▄▄▄▄

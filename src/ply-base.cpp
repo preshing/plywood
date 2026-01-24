@@ -437,26 +437,24 @@ StringView StringView::trim(bool (*match_func)(char), bool left, bool right) con
     return {start, end};
 }
 
-Array<StringView> StringView::split_byte(char sep) const {
+Array<StringView> StringView::split(StringView separator) const {
     Array<StringView> result;
-    const char* cur = this->bytes_;
-    const char* end = this->bytes_ + this->num_bytes_;
-    const char* split_start = nullptr;
-    while (cur < end) {
-        if (*cur == sep) {
-            if (split_start) {
-                result.append({split_start, cur});
-                split_start = nullptr;
+    u32 start = 0;
+    while (start < this->num_bytes_) {
+        s32 pos = this->find(separator, start);
+        if (pos < 0) {
+            // No more separators found, add the rest
+            StringView remainder = this->substr(start);
+            if (remainder.num_bytes_ > 0) {
+                result.append(remainder);
             }
-        } else {
-            if (!split_start) {
-                split_start = cur;
-            }
+            break;
         }
-        cur++;
-    }
-    if (split_start) {
-        result.append({split_start, cur});
+        // Add the part before the separator (if non-empty)
+        if ((u32) pos > start) {
+            result.append(this->substr(start, pos - start));
+        }
+        start = pos + separator.num_bytes_;
     }
     if (result.is_empty()) {
         result.append({});

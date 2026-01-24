@@ -87,6 +87,66 @@ TEST_CASE("String reverse_find") {
     check(str.reverse_find('z') < 0);
 }
 
+TEST_CASE("String split") {
+    // Single char separator
+    {
+        String str = "apple,banana,cherry";
+        Array<StringView> parts = str.split(",");
+        check(parts.num_items() == 3);
+        check(parts[0] == "apple");
+        check(parts[1] == "banana");
+        check(parts[2] == "cherry");
+    }
+    // Multi char separator
+    {
+        String str = "apple::banana::cherry";
+        Array<StringView> parts = str.split("::");
+        check(parts.num_items() == 3);
+        check(parts[0] == "apple");
+        check(parts[1] == "banana");
+        check(parts[2] == "cherry");
+    }
+    // Multi char separator with partial match in content
+    {
+        String str = "apple::banana:cherry::date";
+        Array<StringView> parts = str.split("::");
+        check(parts.num_items() == 3);
+        check(parts[0] == "apple");
+        check(parts[1] == "banana:cherry");
+        check(parts[2] == "date");
+    }
+    // Consecutive separators (empty parts are skipped)
+    {
+        String str = "apple,,banana";
+        Array<StringView> parts = str.split(",");
+        check(parts.num_items() == 2);
+        check(parts[0] == "apple");
+        check(parts[1] == "banana");
+    }
+    // No separator found
+    {
+        String str = "hello world";
+        Array<StringView> parts = str.split(",");
+        check(parts.num_items() == 1);
+        check(parts[0] == "hello world");
+    }
+    // Empty string
+    {
+        String str = "";
+        Array<StringView> parts = str.split(",");
+        check(parts.num_items() == 1);
+        check(parts[0] == "");
+    }
+    // Separator at ends
+    {
+        String str = ",apple,banana,";
+        Array<StringView> parts = str.split(",");
+        check(parts.num_items() == 2);
+        check(parts[0] == "apple");
+        check(parts[1] == "banana");
+    }
+}
+
 TEST_CASE("String match identifier") {
     String str = "(hello)";
     StringView identifier;
@@ -1184,7 +1244,7 @@ struct ExtractedFormat {
 ExtractedFormat extract_format_from_name(StringView name) {
     TextFormat tf;
 
-    Array<StringView> components = name.split_byte('.');
+    Array<StringView> components = name.split(".");
     if (components.num_items() != 4)
         return {false, {}};
 
@@ -1233,7 +1293,7 @@ TEST_CASE("Autodetect file encodings") {
             check(detected_format.new_line == expected_format.format.new_line);
             check(detected_format.bom == expected_format.format.bom);
 
-            auto compare_to = Filesystem::load_binary(join_path(tests_folder, entry.name.split_byte('.')[0] + ".utf8.lf.nobom.txt"));
+            auto compare_to = Filesystem::load_binary(join_path(tests_folder, entry.name.split(".")[0] + ".utf8.lf.nobom.txt"));
             check(contents == compare_to);
             entry_count++;
         }

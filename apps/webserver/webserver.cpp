@@ -59,7 +59,7 @@ void serve_plywood_docs(const Request& request, Response& response) {
     if (query_pos >= 0) {
         url_path = url_path.left(query_pos);
     }
-    Array<StringView> parts = url_path.split_byte('/');
+    Array<StringView> parts = url_path.split("/");
     if (parts.num_items() > 5) {
         parts = parts.subview(0, 5);
     }
@@ -254,7 +254,7 @@ void handle_http_request(TCPConnection* tcp_conn, const RequestHandler& req_hand
 
     // Parse HTTP request line
     String request_line = read_line(in);
-    Array<StringView> tokens = request_line.trim_right().split_byte(' ');
+    Array<StringView> tokens = request_line.trim_right().split(" ");
     if (tokens.num_items() != 3) {
         // Ill-formed request
         send_generic_response(response, Response::BadRequest);
