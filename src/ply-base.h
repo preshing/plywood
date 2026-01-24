@@ -241,13 +241,10 @@ struct enable_if_type {
     template <typename T> \
     static constexpr bool name<T, void_t<decltype(expr)>> = true;
 
-template <typename T>
-constexpr bool is_unsigned = (T(0) < T(-1));
-
 //  ▄▄  ▄▄                               ▄▄
-//  ███ ██ ▄▄  ▄▄ ▄▄▄▄▄▄▄   ▄▄▄▄  ▄▄▄▄▄  ▄▄  ▄▄▄▄  ▄▄▄▄
-//  ██▀███ ██  ██ ██ ██ ██ ██▄▄██ ██  ▀▀ ██ ██    ▀█▄▄▄
-//  ██  ██ ▀█▄▄██ ██ ██ ██ ▀█▄▄▄  ██     ██ ▀█▄▄▄  ▄▄▄█▀
+//  ███ ██ ▄▄  ▄▄ ▄▄▄▄▄▄▄   ▄▄▄▄  ▄▄▄▄▄  ▄▄  ▄▄▄▄
+//  ██▀███ ██  ██ ██ ██ ██ ██▄▄██ ██  ▀▀ ██ ██
+//  ██  ██ ▀█▄▄██ ██ ██ ██ ▀█▄▄▄  ██     ██ ▀█▄▄▄
 //
 
 //--------------------------------------------
@@ -396,9 +393,15 @@ inline constexpr u64 round_up_to_nearest_to_power_of_2(u64 v) {
     v |= v >> 32;
     return v + 1;
 }
-template <typename DstType, typename SrcType, PLY_ENABLE_IF_WELL_FORMED(declval<DstType>() == declval<SrcType>())>
+template <typename DstType, typename SrcType>
+constexpr bool is_representable(SrcType val) {
+    if (((SrcType) (DstType) val) != val)
+        return false;
+    return (val > 0) == (((DstType) val) > 0);
+}
+template <typename DstType, typename SrcType>
 constexpr DstType numeric_cast(SrcType val) {
-    PLY_ASSERT((DstType) val == val);
+    PLY_ASSERT(is_representable<DstType>(val));
     return (DstType) val;
 }
 
@@ -2718,7 +2721,6 @@ public:
 //   ▀▀▀█▄ ██▄▄██  ██
 //  ▀█▄▄█▀ ▀█▄▄▄   ▀█▄▄
 //
-
 
 PLY_CHECK_WELL_FORMED(is_constructible_from_key, T{declval<const LookupKey<T>&>()})
 

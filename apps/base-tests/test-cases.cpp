@@ -9,6 +9,55 @@
 #include <ply-btree.h>
 #include <ply-math.h>
 
+//  ▄▄  ▄▄                               ▄▄
+//  ███ ██ ▄▄  ▄▄ ▄▄▄▄▄▄▄   ▄▄▄▄  ▄▄▄▄▄  ▄▄  ▄▄▄▄
+//  ██▀███ ██  ██ ██ ██ ██ ██▄▄██ ██  ▀▀ ██ ██
+//  ██  ██ ▀█▄▄██ ██ ██ ██ ▀█▄▄▄  ██     ██ ▀█▄▄▄
+//
+
+#undef TEST_CASE_PREFIX
+#define TEST_CASE_PREFIX Numeric_
+
+TEST_CASE("is_representable") {
+    // Integer ranges
+    check(is_representable<u32>(0));
+    check(is_representable<u32>(123));
+    check(!is_representable<u32>(-5));
+    check(is_representable<s32>(-5));
+    check(!is_representable<s8>(200));
+    check(is_representable<u8>(200));
+    check(!is_representable<s8>(u8(200)));
+    check(is_representable<u16>(get_max_value<s16>()));
+    check(!is_representable<s16>(get_max_value<u16>()));
+    check(!is_representable<s32>(get_min_value<s64>()));
+    check(!is_representable<s32>(get_max_value<s64>()));
+    check(!is_representable<s32>(get_max_value<u64>()));
+    check(!is_representable<u32>(get_min_value<s64>()));
+    check(!is_representable<u32>(get_max_value<s64>()));
+    check(!is_representable<u32>(get_max_value<u64>()));
+    check(is_representable<s64>(get_min_value<s32>()));
+    check(is_representable<s64>(get_max_value<s32>()));
+    check(is_representable<s64>(get_max_value<u32>()));
+    check(!is_representable<s64>(get_max_value<u64>()));
+    check(!is_representable<u64>(get_min_value<s32>()));
+    check(is_representable<u64>(get_max_value<s32>()));
+    check(is_representable<u64>(get_max_value<u32>()));
+    check(is_representable<u64>(get_max_value<s64>()));
+
+    // float to int
+    check(is_representable<u32>(123.0f));
+    check(!is_representable<u32>(123.25f));
+    check(is_representable<s32>(-2147483648.0f));
+
+    // int to float
+    check(is_representable<float>(16777216));
+    check(!is_representable<float>(16777217));
+
+    // float to float
+    check(is_representable<double>(16777216.f));
+    check(!is_representable<float>(16777217.0));
+}
+
 //  ▄▄▄▄▄▄ ▄▄                              ▄▄
 //    ██   ██▄▄▄  ▄▄▄▄▄   ▄▄▄▄   ▄▄▄▄   ▄▄▄██
 //    ██   ██  ██ ██  ▀▀ ██▄▄██  ▄▄▄██ ██  ██
