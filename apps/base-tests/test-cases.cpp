@@ -58,6 +58,31 @@ TEST_CASE("is_representable") {
     check(!is_representable<float>(16777217.0));
 }
 
+//  ▄▄▄▄▄▄ ▄▄                      ▄▄▄        ▄▄▄▄▄          ▄▄
+//    ██   ▄▄ ▄▄▄▄▄▄▄   ▄▄▄▄      ██ ▀▀       ██  ██  ▄▄▄▄  ▄██▄▄  ▄▄▄▄
+//    ██   ██ ██ ██ ██ ██▄▄██     ▄█▀█▄▀▀     ██  ██  ▄▄▄██  ██   ██▄▄██
+//    ██   ██ ██ ██ ██ ▀█▄▄▄      ▀█▄▄▀█▄     ██▄▄█▀ ▀█▄▄██  ▀█▄▄ ▀█▄▄▄
+//
+
+TEST_CASE("String::from_date_time") {
+    DateTime date_time;
+    date_time.year = 2025;
+    date_time.month = 12;
+    date_time.day = 1;
+    date_time.weekday = 1; // Monday
+    date_time.hour = 19;
+    date_time.minute = 0;
+    date_time.second = 1;
+    date_time.time_zone_offset_in_minutes = -300;
+    date_time.microsecond = 234000;
+
+    check(String::from_date_time("%Y-%m-%d", date_time) == "2025-12-01");
+    check(String::from_date_time("%H:%M:%S", date_time) == "19:00:01");
+    check(String::from_date_time("%A, %B %e, %Y", date_time) == "Monday, December 1, 2025");
+    check(String::from_date_time("%l:%M %p (UTC%Z)", date_time) == "7:00 PM (UTC-05:00)");
+    check(String::from_date_time("[%Y:%m:%d %H:%M:%S.%L]", date_time) == "[2025:12:01 19:00:01.234]");
+}
+
 //  ▄▄▄▄▄▄ ▄▄                              ▄▄
 //    ██   ██▄▄▄  ▄▄▄▄▄   ▄▄▄▄   ▄▄▄▄   ▄▄▄██
 //    ██   ██  ██ ██  ▀▀ ██▄▄██  ▄▄▄██ ██  ██

@@ -80,9 +80,9 @@ Prints the contents of a `DateTime` object as human-readable text. Month and wee
     s64 sys_time = get_unix_timestamp();
     DateTime date_time = convert_to_date_time(sys_time);
     Stream out = get_stdout();
-    print_date_time(out, "[%Y:%m:%d %H:%M:%s.%L]\n", date_time);
+    print_date_time(out, "[%Y:%m:%d %H:%M:%S.%L]\n", date_time);
     out.format("The date is {}.\n", String::from_date_time("%A, %B %e, %Y", date_time));
-    out.format("The time is {}.\n", String::from_date_time("%l:%M %p (UTC%Z)"));
+    out.format("The time is {}.\n", String::from_date_time("%l:%M %p (UTC%Z)", date_time));
 
 {output}
 [2025-12-01 19:00:01.234]

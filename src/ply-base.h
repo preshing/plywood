@@ -443,7 +443,7 @@ struct DateTime {
 s64 get_unix_timestamp();
 
 // Converts a Unix timestamp to a DateTime object.
-DateTime convert_to_date_time(s64 system_time);
+DateTime convert_to_date_time(s64 system_time);  // Uses local time zone offset
 DateTime convert_to_date_time(s64 system_time, s16 time_zone_offset_in_minutes);
 
 // Converts a DateTime object back to a Unix timestamp.
@@ -1870,6 +1870,7 @@ public:
 
     template <typename... Args>
     static String format(StringView fmt, const Args&... args);
+    static String from_date_time(StringView format, const DateTime& date_time);
 };
 
 inline StringView get_any_lookup_key(const String& str) {
@@ -4022,6 +4023,15 @@ template <typename... Args>
 void Stream::format(StringView fmt, const Args&... args) {
     FixedArray<FormatArg, sizeof...(Args)> fa{args...};
     format_with_args(*this, fmt, fa);
+}
+
+// Prints a DateTime object as human-readable text using a format string.
+void print_date_time(Stream& out, StringView format, const DateTime& date_time);
+
+inline String String::from_date_time(StringView format, const DateTime& date_time) {
+    MemStream mem;
+    print_date_time(mem, format, date_time);
+    return mem.move_to_string();
 }
 
 //  ▄▄  ▄▄        ▄▄                  ▄▄

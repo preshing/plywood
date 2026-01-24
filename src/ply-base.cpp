@@ -52,7 +52,7 @@ float get_cpu_ticks_per_second() {
     return (float) frequency.QuadPart;
 }
 
-s64 get_current_timestamp() {
+s64 get_unix_timestamp() {
     FILETIME file_time;
     ULARGE_INTEGER large_integer;
 
@@ -70,7 +70,7 @@ s64 get_current_timestamp() {
 #include <sys/time.h>
 #endif
 
-s64 get_current_timestamp() {
+s64 get_unix_timestamp() {
 #if PLY_USE_POSIX_2008_CLOCK
     struct timespec tick;
     clock_gettime(CLOCK_REALTIME, &tick);
@@ -86,6 +86,9 @@ s64 get_current_timestamp() {
 
 // Based on http://howardhinnant.github.io/date_algorithms.html
 static void set_date_from_epoch_days(DateTime* date_time, s32 days) {
+    // Calculate weekday from Unix epoch days (Jan 1, 1970 was Thursday = 4)
+    date_time->weekday = (u8) (days >= -4 ? (days + 4) % 7 : (days + 5) % 7 + 6);
+    // Convert from Unix epoch to civil epoch for date calculation
     days += 719468;
     s32 era = (days >= 0 ? days : days - 146096) / 146097;
     u32 doe = u32(days - era * 146097);                              // [0, 146096]
@@ -98,7 +101,6 @@ static void set_date_from_epoch_days(DateTime* date_time, s32 days) {
     date_time->year = y + (m <= 2);
     date_time->month = (u8) m;
     date_time->day = (u8) d;
-    date_time->weekday = (u8) (days >= -4 ? (days + 4) % 7 : (days + 5) % 7 + 6);
 }
 
 // Based on http://howardhinnant.github.io/date_algorithms.html
@@ -116,7 +118,10 @@ static s64 floor_div(s64 dividend, s64 divisor) {
     return (dividend > 0 ? dividend : dividend - divisor + 1) / divisor;
 };
 
-DateTime convert_to_calendar_time(s64 timestamp) {
+DateTime convert_to_date_time(s64 timestamp, s16 time_zone_offset_in_minutes) {
+    // Adjust timestamp by the time zone offset
+    timestamp = timestamp + s64(time_zone_offset_in_minutes) * 60 * 1000000;
+
     const s64 microsecs_per_day = 86400000000ll;
     s64 days = floor_div(timestamp, microsecs_per_day);
     s64 microsecs_in_day = timestamp - (days * microsecs_per_day);
@@ -130,15 +135,150 @@ DateTime convert_to_calendar_time(s64 timestamp) {
     date_time.minute = (u8) (minutes - hours * 60);
     date_time.second = (u8) (secs - minutes * 60);
     date_time.microsecond = (u32) (microsecs_in_day - u64(secs) * 1000000);
+
+    date_time.time_zone_offset_in_minutes = time_zone_offset_in_minutes;
     return date_time;
 }
 
-s64 convert_to_timestamp(const DateTime& date_time) {
+s16 get_local_time_zone_offset() {
+#if defined(PLY_WINDOWS)
+    TIME_ZONE_INFORMATION tz_info;
+    DWORD result = GetTimeZoneInformation(&tz_info);
+    // Bias is in minutes, and is the offset to add to UTC to get local time
+    // Windows returns it as UTC = local + bias, so we negate it
+    s32 bias = tz_info.Bias;
+    if (result == TIME_ZONE_ID_DAYLIGHT) {
+        bias += tz_info.DaylightBias;
+    } else if (result == TIME_ZONE_ID_STANDARD) {
+        bias += tz_info.StandardBias;
+    }
+    return (s16) -bias;
+#elif defined(PLY_POSIX)
+    time_t now = time(nullptr);
+    struct tm local_tm;
+    localtime_r(&now, &local_tm);
+    // tm_gmtoff is the offset in seconds east of UTC
+    return (s16) (local_tm.tm_gmtoff / 60);
+#else
+    return 0;
+#endif
+}
+
+DateTime convert_to_date_time(s64 timestamp) {
+    return convert_to_date_time(timestamp, get_local_time_zone_offset());
+}
+
+s64 convert_to_unix_timestamp(const DateTime& date_time) {
     static constexpr s64 microsecs_per_day = 86400000000ll;
     s32 days = get_epoch_days_from_date(date_time);
     s32 minutes = s32(date_time.hour) * 60 + date_time.minute;
     s32 seconds = minutes * 60 + date_time.second;
-    return s64(days) * microsecs_per_day + s64(seconds) * 1000000 + date_time.microsecond;
+    s64 local_timestamp = s64(days) * microsecs_per_day + s64(seconds) * 1000000 + date_time.microsecond;
+    // Adjust back to UTC by subtracting the time zone offset
+    return local_timestamp - s64(date_time.time_zone_offset_in_minutes) * 60 * 1000000;
+}
+
+static String zero_pad(u32 value, u32 width) {
+    String str = String::format("{}", value);
+    if (str.num_bytes() >= width) {
+        return str;
+    }
+    return (String{"000000"}.left(width - str.num_bytes()) + str);
+}
+
+void print_date_time(Stream& out, StringView format, const DateTime& date_time) {
+    static const char* abbreviated_weekdays[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
+    static const char* full_weekdays[] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
+    static const char* abbreviated_months[] = {"", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
+    static const char* full_months[] = {"", "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"};
+
+    for (u32 i = 0; i < format.num_bytes(); i++) {
+        if (format[i] == '%' && i + 1 < format.num_bytes()) {
+            char spec = format[i + 1];
+            i++; // Skip the specifier
+            switch (spec) {
+                case 'a': // abbreviated weekday
+                    out.write(abbreviated_weekdays[date_time.weekday]);
+                    break;
+                case 'A': // full weekday
+                    out.write(full_weekdays[date_time.weekday]);
+                    break;
+                case 'b': // abbreviated month name
+                    out.write(abbreviated_months[date_time.month]);
+                    break;
+                case 'B': // full month name
+                    out.write(full_months[date_time.month]);
+                    break;
+                case 'd': // day of the month with leading zero
+                    out.write(zero_pad(date_time.day, 2));
+                    break;
+                case 'e': // day of the month
+                    out.format("{}", date_time.day);
+                    break;
+                case 'H': // hour with leading zero (24-hour clock)
+                    out.write(zero_pad(date_time.hour, 2));
+                    break;
+                case 'k': // hour (24-hour clock)
+                    out.format("{}", date_time.hour);
+                    break;
+                case 'l': { // hour (12-hour clock)
+                    u8 hour12 = date_time.hour % 12;
+                    if (hour12 == 0) hour12 = 12;
+                    out.format("{}", hour12);
+                    break;
+                }
+                case 'm': // month with leading zero
+                    out.write(zero_pad(date_time.month, 2));
+                    break;
+                case 'M': // minute with leading zero
+                    out.write(zero_pad(date_time.minute, 2));
+                    break;
+                case 'p': // AM or PM
+                    out.write(date_time.hour < 12 ? "AM" : "PM");
+                    break;
+                case 'P': // am or pm
+                    out.write(date_time.hour < 12 ? "am" : "pm");
+                    break;
+                case 'S': // second with leading zero
+                    out.write(zero_pad(date_time.second, 2));
+                    break;
+                case 'y': // two-digit year
+                    out.write(zero_pad(date_time.year % 100, 2));
+                    break;
+                case 'Y': // year
+                    out.format("{}", date_time.year);
+                    break;
+                case 'L': // millisecond with leading zeros
+                    out.write(zero_pad(date_time.microsecond / 1000, 3));
+                    break;
+                case 'R': // microsecond with leading zeros
+                    out.write(zero_pad(date_time.microsecond, 6));
+                    break;
+                case 'Z': { // signed time zone offset
+                    s16 offset = date_time.time_zone_offset_in_minutes;
+                    char sign = offset >= 0 ? '+' : '-';
+                    if (offset < 0) offset = -offset;
+                    s16 hours = offset / 60;
+                    s16 mins = offset % 60;
+                    out.write(sign);
+                    out.write(zero_pad(hours, 2));
+                    out.write(':');
+                    out.write(zero_pad(mins, 2));
+                    break;
+                }
+                case '%': // literal %
+                    out.write('%');
+                    break;
+                default:
+                    // Unknown specifier, output as-is
+                    out.write('%');
+                    out.write(spec);
+                    break;
+            }
+        } else {
+            out.write(format[i]);
+        }
+    }
 }
 
 //  ▄▄▄▄▄                    ▄▄
@@ -149,7 +289,7 @@ s64 convert_to_timestamp(const DateTime& date_time) {
 
 Random::Random() {
     // Seed using misc. information from the environment
-    u64 t = get_current_timestamp();
+    u64 t = get_unix_timestamp();
     t = shuffle_bits(t);
     s[0] = shuffle_bits(t | 1);
 
