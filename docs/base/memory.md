@@ -106,30 +106,45 @@ Validates the heap's internal consistency. Useful for debugging. Will force an i
 The `VirtualMemory` class is a platform-independent wrapper for mapping virtual memory to physical memory.
 
 {api_summary class=VirtualMemory title="VirtualMemory member functions"}
-static VirtualMemory::Info get_page_info()
-static bool alloc(void*& out_addr, uptr num_bytes)
-static bool reserve(void*& out_addr, uptr num_bytes)
-static void commit(void* addr, uptr num_bytes)
-static void decommit(void* addr, uptr num_bytes)
-static void free(void* addr, uptr num_bytes)
+static VirtualMemory::Properties get_properties()
+static VirtualMemory::UsageSummary get_usage_summary()
+static bool alloc_pages(void*& out_addr, uptr num_bytes)
+static bool reserve_pages(void*& out_addr, uptr num_bytes)
+static void commit_pages(void* addr, uptr num_bytes)
+static void decommit_pages(void* addr, uptr num_bytes)
+static void free_pages(void* addr, uptr num_bytes)
 {/api_summary}
 
 In C++ applications, memory is represented as a 32-bit or 64-bit address space known as virtual memory, which is divided into fixed-sized pages. Most pages are initially unusable and will cause an access violation or segmentation fault if accessed. To make pages usable, they must be mapped to physical memory by the underlying operating system.
 
-{api_descriptions class=AddressSpace}
-static VirtualMemory::Info get_page_info()
+{api_descriptions class=VirtualMemory}
+static VirtualMemory::Properties get_properties()
 --
-Returns information about the system's virtual memory page size and allocation alignment. `VirtualMemory::Info` has these members:
+Returns information about the system's virtual memory page size and allocation alignment. `VirtualMemory::Properties` has these members:
 
-{table caption="`VirtualMemory::Info` members"}
+{table caption="`VirtualMemory::Properties` members"}
 `uptr`|alloc_alignment
 `uptr`|page_size
 {/table}
 
 >>
-static Stats get_usage_summary()
+static VirtualMemory::UsageSummary get_usage_summary()
 --
-Returns statistics about the current process's virtual memory usage.
+Returns statistics about the current process's virtual memory usage. `VirtualMemory::UsageSummary` has platform-specific members:
+
+On Windows:
+
+{table caption="`VirtualMemory::UsageSummary` members (Windows)"}
+`uptr`|working_set_size
+`uptr`|pagefile_usage
+{/table}
+
+On other platforms:
+
+{table caption="`VirtualMemory::UsageSummary` members (POSIX)"}
+`uptr`|virtual_size
+`uptr`|resident_size
+{/table}
 
 >>
 static bool alloc_pages(void*& out_addr, uptr num_bytes)
@@ -156,5 +171,3 @@ static void free_pages(void* addr, uptr num_bytes)
 --
 Frees previously allocated or reserved pages, returning the address space to the system.
 {/api_descriptions}
-
-

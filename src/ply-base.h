@@ -1342,17 +1342,30 @@ struct Semaphore {
 //                                                                                    ▄▄▄█▀
 
 struct VirtualMemory {
-    struct Info {
+    struct Properties {
         uptr alloc_alignment;
         uptr page_size;
     };
 
-    static Info get_info();
-    static bool alloc(char*& out_addr, uptr num_bytes);
-    static bool reserve(char*& out_addr, uptr num_bytes);
-    static void commit(char* addr, uptr num_bytes);
-    static void decommit(char* addr, uptr num_bytes);
-    static void free(char* addr, uptr num_bytes); // must not be a combined region
+#if defined(PLY_WINDOWS)
+    struct UsageSummary {
+        uptr working_set_size;
+        uptr pagefile_usage;
+    };
+#else
+    struct UsageSummary {
+        uptr virtual_size;
+        uptr resident_size;
+    };
+#endif
+
+    static Properties get_properties();
+    static UsageSummary get_usage_summary();
+    static bool alloc_pages(void*& out_addr, uptr num_bytes);
+    static bool reserve_pages(void*& out_addr, uptr num_bytes);
+    static void commit_pages(void* addr, uptr num_bytes);
+    static void decommit_pages(void* addr, uptr num_bytes);
+    static void free_pages(void* addr, uptr num_bytes);
 };
 
 //  ▄▄  ▄▄

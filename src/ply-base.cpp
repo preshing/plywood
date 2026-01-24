@@ -9,6 +9,7 @@
 
 #if defined(PLY_WINDOWS)
 #include <shellapi.h>
+#include <Psapi.h>
 #elif defined(PLY_POSIX)
 #include <string>
 #include <fstream>
@@ -25,6 +26,8 @@
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <mach-o/dyld.h>
+#include <mach/mach.h>
+#include <mach/task.h>
 #if PLY_WITH_DIRECTORY_WATCHER
 #include <CoreServices/CoreServices.h>
 #endif
@@ -216,36 +219,43 @@ void* thread_entry(void* arg) {
 
 #if defined(PLY_WINDOWS)
 
-VirtualMemory::Info VirtualMemory::get_info() {
-    static VirtualMemory::Info info = []() {
+VirtualMemory::Properties VirtualMemory::get_properties() {
+    static VirtualMemory::Properties props = []() {
         SYSTEM_INFO sys_info;
         GetSystemInfo(&sys_info);
         PLY_ASSERT(is_power_of_2((u32) sys_info.dwAllocationGranularity));
         PLY_ASSERT(is_power_of_2((u32) sys_info.dwPageSize));
-        return VirtualMemory::Info{sys_info.dwAllocationGranularity, sys_info.dwPageSize};
+        return VirtualMemory::Properties{sys_info.dwAllocationGranularity, sys_info.dwPageSize};
     }();
-    return info;
+    return props;
 }
 
-bool VirtualMemory::alloc(char*& out_addr, uptr num_bytes) {
-    PLY_ASSERT(is_aligned_to_power_of_2(num_bytes, VirtualMemory::get_info().alloc_alignment));
+VirtualMemory::UsageSummary VirtualMemory::get_usage_summary() {
+    PROCESS_MEMORY_COUNTERS pmc;
+    pmc.cb = sizeof(pmc);
+    GetProcessMemoryInfo(GetCurrentProcess(), &pmc, sizeof(pmc));
+    return {pmc.WorkingSetSize, pmc.PagefileUsage};
+}
+
+bool VirtualMemory::alloc_pages(void*& out_addr, uptr num_bytes) {
+    PLY_ASSERT(is_aligned_to_power_of_2(num_bytes, VirtualMemory::get_properties().alloc_alignment));
 
     DWORD type = MEM_RESERVE | MEM_COMMIT;
-    out_addr = (char*) VirtualAlloc(0, (SIZE_T) num_bytes, type, PAGE_READWRITE);
+    out_addr = VirtualAlloc(0, (SIZE_T) num_bytes, type, PAGE_READWRITE);
     return (out_addr != NULL);
 }
 
-bool VirtualMemory::reserve(char*& out_addr, uptr num_bytes) {
-    PLY_ASSERT(is_aligned_to_power_of_2(num_bytes, VirtualMemory::get_info().alloc_alignment));
+bool VirtualMemory::reserve_pages(void*& out_addr, uptr num_bytes) {
+    PLY_ASSERT(is_aligned_to_power_of_2(num_bytes, VirtualMemory::get_properties().alloc_alignment));
 
     DWORD type = MEM_RESERVE;
-    out_addr = (char*) VirtualAlloc(0, (SIZE_T) num_bytes, type, PAGE_READWRITE);
+    out_addr = VirtualAlloc(0, (SIZE_T) num_bytes, type, PAGE_READWRITE);
     return (out_addr != NULL);
 }
 
-void VirtualMemory::commit(char* addr, uptr num_bytes) {
-    PLY_ASSERT(is_aligned_to_power_of_2((uptr) addr, VirtualMemory::get_info().page_size));
-    PLY_ASSERT(is_aligned_to_power_of_2(num_bytes, VirtualMemory::get_info().page_size));
+void VirtualMemory::commit_pages(void* addr, uptr num_bytes) {
+    PLY_ASSERT(is_aligned_to_power_of_2((uptr) addr, VirtualMemory::get_properties().page_size));
+    PLY_ASSERT(is_aligned_to_power_of_2(num_bytes, VirtualMemory::get_properties().page_size));
 
     DWORD type = MEM_COMMIT;
     LPVOID result = VirtualAlloc(addr, (SIZE_T) num_bytes, type, PAGE_READWRITE);
@@ -253,9 +263,9 @@ void VirtualMemory::commit(char* addr, uptr num_bytes) {
     PLY_UNUSED(result);
 }
 
-void VirtualMemory::decommit(char* addr, uptr num_bytes) {
-    PLY_ASSERT(is_aligned_to_power_of_2((uptr) addr, VirtualMemory::get_info().page_size));
-    PLY_ASSERT(is_aligned_to_power_of_2(num_bytes, VirtualMemory::get_info().page_size));
+void VirtualMemory::decommit_pages(void* addr, uptr num_bytes) {
+    PLY_ASSERT(is_aligned_to_power_of_2((uptr) addr, VirtualMemory::get_properties().page_size));
+    PLY_ASSERT(is_aligned_to_power_of_2(num_bytes, VirtualMemory::get_properties().page_size));
 
     DWORD type = MEM_COMMIT;
     LPVOID result = VirtualAlloc(addr, (SIZE_T) num_bytes, type, PAGE_READWRITE);
@@ -263,9 +273,9 @@ void VirtualMemory::decommit(char* addr, uptr num_bytes) {
     PLY_UNUSED(result);
 }
 
-void VirtualMemory::free(char* addr, uptr num_bytes) {
-    PLY_ASSERT(is_aligned_to_power_of_2((uptr) addr, VirtualMemory::get_info().alloc_alignment));
-    PLY_ASSERT(is_aligned_to_power_of_2(num_bytes, VirtualMemory::get_info().alloc_alignment));
+void VirtualMemory::free_pages(void* addr, uptr num_bytes) {
+    PLY_ASSERT(is_aligned_to_power_of_2((uptr) addr, VirtualMemory::get_properties().alloc_alignment));
+    PLY_ASSERT(is_aligned_to_power_of_2(num_bytes, VirtualMemory::get_properties().alloc_alignment));
 
 #if defined(PLY_WITH_ASSERTS)
     {
@@ -286,43 +296,66 @@ void VirtualMemory::free(char* addr, uptr num_bytes) {
 
 #elif defined(PLY_POSIX)
 
-VirtualMemory::Info VirtualMemory::get_info() {
-    static VirtualMemory::Info info = []() {
+VirtualMemory::Properties VirtualMemory::get_properties() {
+    static VirtualMemory::Properties props = []() {
         long result = sysconf(_SC_PAGE_SIZE);
         PLY_ASSERT(is_power_of_2((u64) result));
-        return VirtualMemory::Info{(uptr) result, (uptr) result};
+        return VirtualMemory::Properties{(uptr) result, (uptr) result};
     }();
-    return info;
+    return props;
 }
 
-bool VirtualMemory::alloc(char*& out_addr, uptr num_bytes) {
-    PLY_ASSERT(is_aligned_to_power_of_2(num_bytes, VirtualMemory::get_info().alloc_alignment));
+VirtualMemory::UsageSummary VirtualMemory::get_usage_summary() {
+    VirtualMemory::UsageSummary summary = {0, 0};
+#if PLY_APPLE
+    struct mach_task_basic_info task_info_data;
+    mach_msg_type_number_t count = MACH_TASK_BASIC_INFO_COUNT;
+    if (task_info(mach_task_self(), MACH_TASK_BASIC_INFO, (task_info_t) &task_info_data, &count) == KERN_SUCCESS) {
+        summary.virtual_size = task_info_data.virtual_size;
+        summary.resident_size = task_info_data.resident_size;
+    }
+#else
+    Stream in = Filesystem::open_binary_for_read("/proc/self/statm");
+    if (in) {
+        u64 vm_pages = read_u64_from_text(in);
+        skip_whitespace(in);
+        u64 rss_pages = read_u64_from_text(in);
+        uptr page_size = VirtualMemory::get_properties().page_size;
+        summary.virtual_size = vm_pages * page_size;
+        summary.resident_size = rss_pages * page_size;
+    }
+#endif
+    return summary;
+}
 
-    out_addr = (char*) mmap(0, num_bytes, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+bool VirtualMemory::alloc_pages(void*& out_addr, uptr num_bytes) {
+    PLY_ASSERT(is_aligned_to_power_of_2(num_bytes, VirtualMemory::get_properties().alloc_alignment));
+
+    out_addr = mmap(0, num_bytes, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     PLY_ASSERT(out_addr != MAP_FAILED);
     return true;
 }
 
-bool VirtualMemory::reserve(char*& out_addr, uptr num_bytes) {
-    PLY_ASSERT(is_aligned_to_power_of_2(num_bytes, VirtualMemory::get_info().alloc_alignment));
+bool VirtualMemory::reserve_pages(void*& out_addr, uptr num_bytes) {
+    PLY_ASSERT(is_aligned_to_power_of_2(num_bytes, VirtualMemory::get_properties().alloc_alignment));
 
-    out_addr = (char*) mmap(0, num_bytes, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    out_addr = mmap(0, num_bytes, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     PLY_ASSERT(out_addr != MAP_FAILED);
     return true;
 }
 
-void VirtualMemory::commit(char* addr, uptr num_bytes) {
-    PLY_ASSERT(is_aligned_to_power_of_2((uptr) addr, VirtualMemory::get_info().page_size));
-    PLY_ASSERT(is_aligned_to_power_of_2(num_bytes, VirtualMemory::get_info().page_size));
+void VirtualMemory::commit_pages(void* addr, uptr num_bytes) {
+    PLY_ASSERT(is_aligned_to_power_of_2((uptr) addr, VirtualMemory::get_properties().page_size));
+    PLY_ASSERT(is_aligned_to_power_of_2(num_bytes, VirtualMemory::get_properties().page_size));
 
     int rc = mprotect(addr, num_bytes, PROT_READ | PROT_WRITE);
     PLY_ASSERT(rc == 0);
     PLY_UNUSED(rc);
 }
 
-void VirtualMemory::decommit(char* addr, uptr num_bytes) {
-    PLY_ASSERT(is_aligned_to_power_of_2((uptr) addr, VirtualMemory::get_info().page_size));
-    PLY_ASSERT(is_aligned_to_power_of_2(num_bytes, VirtualMemory::get_info().page_size));
+void VirtualMemory::decommit_pages(void* addr, uptr num_bytes) {
+    PLY_ASSERT(is_aligned_to_power_of_2((uptr) addr, VirtualMemory::get_properties().page_size));
+    PLY_ASSERT(is_aligned_to_power_of_2(num_bytes, VirtualMemory::get_properties().page_size));
 
     int rc = madvise(addr, num_bytes, MADV_DONTNEED);
     PLY_ASSERT(rc == 0);
@@ -331,9 +364,9 @@ void VirtualMemory::decommit(char* addr, uptr num_bytes) {
     PLY_UNUSED(rc);
 }
 
-void VirtualMemory::free(char* addr, uptr num_bytes) {
-    PLY_ASSERT(is_aligned_to_power_of_2((uptr) addr, VirtualMemory::get_info().alloc_alignment));
-    PLY_ASSERT(is_aligned_to_power_of_2(num_bytes, VirtualMemory::get_info().alloc_alignment));
+void VirtualMemory::free_pages(void* addr, uptr num_bytes) {
+    PLY_ASSERT(is_aligned_to_power_of_2((uptr) addr, VirtualMemory::get_properties().alloc_alignment));
+    PLY_ASSERT(is_aligned_to_power_of_2(num_bytes, VirtualMemory::get_properties().alloc_alignment));
 
     munmap(addr, num_bytes);
 }
