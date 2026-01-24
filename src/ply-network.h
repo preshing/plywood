@@ -9,7 +9,7 @@
 
 #include "ply-base.h"
 
-#if defined(_WIN32)  // Windows
+#if defined(PLY_WINDOWS)  // Windows
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #endif
@@ -60,7 +60,7 @@ struct IPAddress {
 struct TCPListener;
 struct TCPConnection;
 
-#if defined(_WIN32)
+#if defined(PLY_WINDOWS)
 
 struct PipeWinsock : Pipe {
     SOCKET socket = INVALID_SOCKET;
@@ -89,7 +89,7 @@ enum class IPResult : u8 {
 
 class Network {
 private:
-#if defined(_WIN32)
+#if defined(PLY_WINDOWS)
     using Handle = SOCKET;
     static constexpr Handle InvalidHandle = INVALID_SOCKET;
 #elif defined(PLY_POSIX)
@@ -118,7 +118,7 @@ public:
 //    ██   ▀█▄▄█▀ ██     ▀█▄▄█▀ ▀█▄▄█▀ ██  ██ ██  ██ ▀█▄▄▄  ▀█▄▄▄  ▀█▄▄ ██ ▀█▄▄█▀ ██  ██
 //
 
-#if defined(_WIN32)
+#if defined(PLY_WINDOWS)
 
 struct TCPConnection {
     IPAddress remote_addr_;
@@ -182,7 +182,7 @@ struct TCPConnection {
 //    ██   ▀█▄▄█▀ ██     ██▄▄▄ ██  ▄▄▄█▀  ▀█▄▄ ▀█▄▄▄  ██  ██ ▀█▄▄▄  ██
 //
 
-#if defined(_WIN32)
+#if defined(PLY_WINDOWS)
 
 struct TCPListener {
 public:

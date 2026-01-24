@@ -305,7 +305,7 @@ void run_http_server(u16 port, const RequestHandler& req_handler) {
 //-------------------------------------
 
 int main(int argc, const char* argv[]) {
-#if defined(_WIN32)
+#if defined(PLY_WINDOWS)
     SetConsoleOutputCP(CP_UTF8);
 #endif
 

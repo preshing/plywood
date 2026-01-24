@@ -11,7 +11,7 @@
 using namespace ply;
 
 int main(int argc, const char* argv[]) {
-#if defined(_WIN32)
+#if defined(PLY_WINDOWS)
     SetConsoleOutputCP(CP_UTF8);
 #endif
 

@@ -266,6 +266,8 @@ void stop()
 
 When `must_recurse` is `false`, the `path` refers to a specific file that changed.
 
+`DirectoryWatcher` is only supported on Windows and macOS and is not enabled by default. To enable it, define `PLY_WITH_DIRECTORY_WATCHER` in your project settings. If enabled on macOS, you must also link with the CoreServices framework.
+
 {api_descriptions class=DirectoryWatcher}
 DirectoryWatcher()
 --

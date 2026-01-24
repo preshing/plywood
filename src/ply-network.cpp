@@ -55,7 +55,7 @@ bool Network::IsInit = false;
 bool Network::HasIPv6 = false;
 ThreadLocal<IPResult> Network::last_result_;
 
-#if defined(_WIN32)
+#if defined(PLY_WINDOWS)
 
 PipeWinsock::~PipeWinsock() {
     if (this->socket != INVALID_SOCKET) {

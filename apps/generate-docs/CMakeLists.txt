@@ -17,9 +17,11 @@ if(WIN32)
 endif()
 add_library(plywood ${PLYWOOD_SOURCES})
 target_include_directories(plywood PUBLIC "${CMAKE_CURRENT_LIST_DIR}/../../src")
-target_compile_definitions(plywood PUBLIC PLY_WITH_DIRECTORY_WATCHER=1)
-if(APPLE AND NOT IOS)
-    target_link_libraries(plywood PUBLIC "-framework CoreServices")  # For DirectoryWatcher
+if(WIN32)
+    target_compile_definitions(plywood PUBLIC PLY_WITH_DIRECTORY_WATCHER=1)
+elseif(APPLE)
+    target_compile_definitions(plywood PUBLIC PLY_WITH_DIRECTORY_WATCHER=1)
+    target_link_libraries(plywood PUBLIC "-framework CoreServices")
 endif()
 
 # generate-docs

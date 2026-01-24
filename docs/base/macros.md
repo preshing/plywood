@@ -25,10 +25,12 @@ PLY_CALL_MEMBER(obj, pmf)
 PLY_PUN_GUARD()
 -- Platform Identification
 PLY_WINDOWS
-PLY_POSIX
+PLY_LINUX
+PLY_ANDROID
+PLY_APPLE
 PLY_MACOS
 PLY_IOS
-PLY_ANDROID
+PLY_POSIX
 PLY_MINGW
 PLY_PTR_SIZE
 {/api_summary}
@@ -143,14 +145,34 @@ This table shows blah blah blah. In application code, you often need to blah bla
 Most just use compiler-specific predefined macros to determine it and offer a convenient mnemonic.
 
 {api_descriptions}
-PLY_PTR_SIZE
---
-The size of a pointer in bytes. Defined as `4` when compiling for a 32-bit platform and `8` when compiling for a 64-bit platform. These days, most computers and mobile devices are 64-bit platforms, but it's still possible to compile 32-bit software if you need to support 32-bit Windows 10 or a 32-bit Linux. WebAssembly is strictly a 32-bit platform.
-
->>
 PLY_WINDOWS
 --
-Defined when compiling for Windows. Indicates that the Windows SDK is available.
+Defined when compiling for Windows.
+
+>>
+PLY_LINUX
+--
+Defined when compiling for Linux or Android.
+
+>>
+PLY_ANDROID
+--
+Defined when compiling for Android.
+
+>>
+PLY_APPLE
+--
+Defined when compiling for macOS or iOS.
+
+>>
+PLY_MACOS
+--
+Defined when compiling for macOS.
+
+>>
+PLY_IOS
+--
+Defined when compiling for iOS.
 
 >>
 PLY_POSIX
@@ -158,23 +180,13 @@ PLY_POSIX
 Defined when compiling for Linux, macOS, Android or iOS. Indicates that POSIX API is available.
 
 >>
-PLY_MACOS
---
-Defined when compiling for macOS. Indicates that the macOS SDK is available.
-
->>
-PLY_IOS
---
-Defined when compiling for iOS. Indicates that the iOS SDK is available.
-
->>
-PLY_ANDROID
---
-Defined when compiling for Android. Indicates that the Android SDK is available.
-
->>
 PLY_MINGW
 --
 Defined when compiling for [MinGW](https://www.mingw-w64.org/). 
+
+>>
+PLY_PTR_SIZE
+--
+The size of a pointer in bytes. Defined as `4` when compiling for a 32-bit platform and `8` when compiling for a 64-bit platform. These days, most computers and mobile devices are 64-bit platforms, but it's still possible to compile 32-bit software if you need to support 32-bit Windows 10 or a 32-bit Linux. WebAssembly is strictly a 32-bit platform.
 {/api_descriptions}
 

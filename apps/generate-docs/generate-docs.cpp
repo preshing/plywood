@@ -419,7 +419,7 @@ void generate_whole_site() {
 }
 
 int main(int argc, const char* argv[]) {
-#if defined(_WIN32)
+#if defined(PLY_WINDOWS)
     SetConsoleOutputCP(CP_UTF8);
 #endif
 
@@ -435,6 +435,7 @@ int main(int argc, const char* argv[]) {
     generate_whole_site();
 
     if (watch_mode) {
+#if PLY_WITH_DIRECTORY_WATCHER
         get_stdout().write("Watching for changes...\n");
 
         Mutex mutex;
@@ -466,6 +467,9 @@ int main(int argc, const char* argv[]) {
             generate_whole_site();
             get_stdout().write("Done.\n");
         }
+#else
+        get_stdout().write("-watch is not supported on this platform.");
+#endif
     }
 
     return 0;

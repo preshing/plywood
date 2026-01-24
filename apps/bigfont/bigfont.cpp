@@ -109,7 +109,7 @@ void print_bigfont(StringView text) {
 }
 
 int main(int argc, const char* argv[]) {
-#if defined(_WIN32)
+#if defined(PLY_WINDOWS)
     SetConsoleOutputCP(CP_UTF8);
 #endif
     if (argc != 2) {

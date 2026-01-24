@@ -7,7 +7,7 @@
 
 #include "ply-base.h"
 
-#if defined(_WIN32)
+#if defined(PLY_WINDOWS)
 #include <shellapi.h>
 #elif defined(PLY_POSIX)
 #include <string>
@@ -19,7 +19,7 @@
 #include <dirent.h>
 #include <fcntl.h>
 #include <math.h>
-#if defined(__APPLE__)
+#if defined(PLY_APPLE)
 #include <fcntl.h>
 #include <dirent.h>
 #include <sys/mman.h>
@@ -39,7 +39,7 @@ namespace ply {
 //    ██   ██ ██ ██ ██ ▀█▄▄▄      ▀█▄▄▀█▄     ██▄▄█▀ ▀█▄▄██  ▀█▄▄ ▀█▄▄▄
 //
 
-#if defined(_WIN32)
+#if defined(PLY_WINDOWS)
 
 float get_cpu_ticks_per_second() {
     static LARGE_INTEGER frequency;
@@ -188,7 +188,7 @@ u64 Random::generate_u64() {
 //    ██   ██  ██ ██     ▀█▄▄▄  ▀█▄▄██ ▀█▄▄██
 //
 
-#if defined(_WIN32)
+#if defined(PLY_WINDOWS)
 
 DWORD WINAPI thread_entry(LPVOID param) {
     Functor<void()>* entry = static_cast<Functor<void()>*>(param);
@@ -214,7 +214,7 @@ void* thread_entry(void* arg) {
 //    ▀█▀   ██ ██      ▀█▄▄ ▀█▄▄██ ▀█▄▄██ ▄██▄ ██   ██ ▀█▄▄▄  ██ ██ ██ ▀█▄▄█▀ ██     ▀█▄▄██
 //                                                                                    ▄▄▄█▀
 
-#if defined(_WIN32)
+#if defined(PLY_WINDOWS)
 
 VirtualMemory::Info VirtualMemory::get_info() {
     static VirtualMemory::Info info = []() {
@@ -962,7 +962,7 @@ void Pipe::seek_to(s64 offset) {
     PLY_ASSERT(0);
 }
 
-#if defined(_WIN32)
+#if defined(PLY_WINDOWS)
 
 PipeHandle::~PipeHandle() {
     if (this->handle != INVALID_HANDLE_VALUE) {
@@ -2263,7 +2263,7 @@ void format_with_args(Stream& out, StringView fmt, ArrayView<const FormatArg> ar
 //  ▀█▄▄█▀  ▀█▄▄ ▀█▄▄██ ██  ██ ▀█▄▄██ ▀█▄▄██ ██     ▀█▄▄██     ▄██▄ ██     ▀█▄▄█▀
 //
 
-#if defined(_WIN32)
+#if defined(PLY_WINDOWS)
 
 Pipe* get_stdin_pipe() {
     static PipeHandle in_pipe{GetStdHandle(STD_INPUT_HANDLE), Pipe::HAS_READ_PERMISSION};
@@ -2312,7 +2312,7 @@ Stream get_stdin(ConsoleMode mode) {
 Stream get_stdout(ConsoleMode mode) {
     Stream out{get_stdout_pipe(), false};
     bool write_crlf = false;
-#if defined(_WIN32)
+#if defined(PLY_WINDOWS)
     write_crlf = true;
 #endif
     // Always create a filter to make newlines consistent.
@@ -2322,7 +2322,7 @@ Stream get_stdout(ConsoleMode mode) {
 Stream get_stderr(ConsoleMode mode) {
     Stream out{get_stderr_pipe(), false};
     bool write_crlf = false;
-#if defined(_WIN32)
+#if defined(PLY_WINDOWS)
     write_crlf = true;
 #endif
     // Always create a filter to make newlines consistent.
@@ -2688,7 +2688,7 @@ void OutPipeConvertUnicode::flush(bool to_device) {
 
 TextFormat get_default_utf8_format() {
     TextFormat tff;
-#if defined(_WIN32)
+#if defined(PLY_WINDOWS)
     tff.new_line = TextFormat::NewLine::CRLF;
 #endif
     return tff;
@@ -2939,7 +2939,7 @@ struct WStringView {
     StringView raw_bytes() const {
         return {(const char*) this->units, this->num_units << 1};
     }
-#if defined(_WIN32)
+#if defined(PLY_WINDOWS)
     WStringView(LPCWSTR units) : units{(const char16_t*) units}, num_units{numeric_cast<u32>(wcslen(units))} {
     }
     WStringView(LPCWSTR units, u32 num_units) : units{(const char16_t*) units}, num_units{num_units} {
@@ -2988,7 +2988,7 @@ struct WString {
         return result;
     }
 
-#if defined(_WIN32)
+#if defined(PLY_WINDOWS)
     operator LPWSTR() const {
         PLY_ASSERT(this->includes_null_terminator()); // must be null terminated
         return (LPWSTR) this->units;
@@ -3026,7 +3026,7 @@ String from_wstring(WStringView str) {
 //  ██     ▀█▄▄██  ▀█▄▄ ██  ██
 //
 
-#if defined(_WIN32)
+#if defined(PLY_WINDOWS)
 
 String get_current_executable_path() {
     u32 num_units = 1024;
@@ -3047,7 +3047,7 @@ String get_current_executable_path() {
     }
 }
 
-#elif defined(__linux__)
+#elif defined(PLY_LINUX)
 
 String get_current_executable_path() {
     u32 num_bytes = 1024;
@@ -3064,7 +3064,7 @@ String get_current_executable_path() {
     }
 }
 
-#elif defined(__APPLE__)
+#elif defined(PLY_APPLE)
 
 String get_current_executable_path() {
     u32 num_bytes = 1024;
@@ -3553,7 +3553,7 @@ FSResult Filesystem::save_text(StringView path, StringView str_contents, const T
     return Filesystem::save_binary(path, raw_data);
 }
 
-#if defined(_WIN32)
+#if defined(PLY_WINDOWS)
 
 //-----------------------------------------------
 // Windows
@@ -4204,7 +4204,7 @@ DirectoryEntry Filesystem::get_file_info(StringView path) {
 //                                                     ▄▄▄█▀
 
 #if PLY_WITH_DIRECTORY_WATCHER
-#if defined(_WIN32)
+#if defined(PLY_WINDOWS)
 
 void DirectoryWatcher::run_watcher() {
     // FIXME: prepend \\?\ to the path to get past MAX_PATH limitation

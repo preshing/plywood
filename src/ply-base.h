@@ -46,6 +46,7 @@
 #elif defined(__GNUC__) // GCC/Clang
 
 #if defined(__APPLE__)
+#define PLY_APPLE 1
 #define PLY_POSIX 1
 #include <TargetConditionals.h>
 #if TARGET_IPHONE_SIMULATOR || TARGET_OS_IPHONE
@@ -58,7 +59,11 @@
 #define PLY_POSIX 1
 #endif
 #if defined(__linux__)
+#define PLY_LINUX 1
 #define PLY_POSIX 1
+#if defined(__ANDROID__)
+#define PLY_ANDROID 1
+#endif
 #endif
 #if defined(__MINGW32__) || defined(__MINGW64__)
 #define PLY_MINGW 1
@@ -87,7 +92,11 @@
 // Platform includes
 //--------------------------------------------
 
-#if defined(_WIN32) // Windows
+#if defined(_WIN32)
+#define PLY_WINDOWS 1
+#endif
+
+#if defined(PLY_WINDOWS) // Windows
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
@@ -104,7 +113,7 @@
 #include <sys/types.h>
 #include <sys/time.h>
 #include <sys/socket.h>
-#if defined(__MACH__) // macOS & iOS
+#if defined(PLY_APPLE) // macOS & iOS
 #include <mach/mach.h>
 #include <mach/mach_time.h>
 #else
@@ -446,11 +455,11 @@ s64 convert_to_unix_timestamp(const DateTime& date_time);
 
 // Returns a high-resolution CPU timestamp.
 inline u64 get_cpu_ticks() {
-#if defined(_WIN32)
+#if defined(PLY_WINDOWS)
     LARGE_INTEGER now;
     QueryPerformanceCounter(&now);
     return now.QuadPart;
-#elif defined(__MACH__)
+#elif defined(PLY_APPLE)
     return mach_absolute_time();
 #elif defined(PLY_POSIX)
     struct timespec tick;
@@ -506,7 +515,7 @@ public:
 // get_current_thread_id() and get_current_process_id() return the current thread and process ID.
 // TID and PID are type aliases for either u32 or u64, depending on the platform.
 
-#if defined(_WIN32)
+#if defined(PLY_WINDOWS)
 
 using TID = u32;
 using PID = u32;
@@ -531,7 +540,7 @@ inline PID get_current_process_id() {
 #endif
 }
 
-#elif defined(__MACH__)
+#elif defined(PLY_APPLE)
 
 using TID = std::conditional_t<sizeof(thread_port_t) == 4, u32, u64>;
 using PID = std::conditional_t<sizeof(pid_t) == 4, u32, u64>;
@@ -573,7 +582,7 @@ inline PID get_current_process_id() {
 
 // Suspends the calling thread for the specified number of milliseconds.
 inline void sleep_millis(u32 millis) {
-#if defined(_WIN32)
+#if defined(PLY_WINDOWS)
     Sleep((DWORD) millis);
 #elif defined(PLY_POSIX)
     timespec ts;
@@ -586,7 +595,7 @@ inline void sleep_millis(u32 millis) {
 template <typename>
 struct Functor;
 
-#if defined(_WIN32)
+#if defined(PLY_WINDOWS)
 
 DWORD WINAPI thread_entry(LPVOID param);
 
@@ -924,7 +933,7 @@ public:
     }
 };
 
-#if defined(_WIN32)
+#if defined(PLY_WINDOWS)
 
 //----------------------------------------------------
 // Windows implementation.
@@ -1034,7 +1043,7 @@ public:
 //  ██   ██ ▀█▄▄██  ▀█▄▄ ▀█▄▄▄  ▄█▀▀█▄
 //
 
-#if defined(_WIN32)
+#if defined(PLY_WINDOWS)
 
 //----------------------------------------------------
 // Windows implementation.
@@ -1115,7 +1124,7 @@ struct LockGuard {
 //  ▀█▄▄█▀ ▀█▄▄█▀ ██  ██ ▀█▄▄██ ██  ▀█▄▄ ██ ▀█▄▄█▀ ██  ██   ▀█▀   ▀█▄▄██ ██     ██ ▀█▄▄██ ██▄▄█▀ ▄██▄ ▀█▄▄▄
 //
 
-#if defined(_WIN32)
+#if defined(PLY_WINDOWS)
 
 //----------------------------------------------------
 // Windows implementation.
@@ -1191,7 +1200,7 @@ public:
 //  ██  ██ ▀█▄▄▄  ▀█▄▄██ ▀█▄▄██  ██▀▀██  ██     ██  ▀█▄▄ ▀█▄▄▄  ██▄▄▄ ▀█▄▄█▀ ▀█▄▄▄ ██ ▀█▄
 //
 
-#if defined(_WIN32)
+#if defined(PLY_WINDOWS)
 
 //----------------------------------------------------
 // Windows implementation.
@@ -1253,7 +1262,7 @@ struct ReadWriteLock {
 //  ▀█▄▄█▀ ▀█▄▄▄  ██ ██ ██ ▀█▄▄██ ██▄▄█▀ ██  ██ ▀█▄▄█▀ ██     ▀█▄▄▄
 //                                ██
 
-#if defined(_WIN32)
+#if defined(PLY_WINDOWS)
 
 //----------------------------------------------------
 // Windows implementation.
@@ -1274,7 +1283,7 @@ struct Semaphore {
     }
 };
 
-#elif defined(__MACH__)
+#elif defined(PLY_APPLE)
 
 //----------------------------------------------------
 // macOS & iOS implementation.
@@ -1392,7 +1401,7 @@ struct Heap {
     }
 };
 
-#if defined(_WIN32)
+#if defined(PLY_WINDOWS)
 
 inline void Thread::run(Functor<void()>&& entry) {
     PLY_ASSERT(this->handle == INVALID_HANDLE_VALUE);
@@ -3645,7 +3654,7 @@ public:
     }
 };
 
-#if defined(_WIN32)
+#if defined(PLY_WINDOWS)
 
 class PipeHandle : public Pipe {
 public:
@@ -4194,7 +4203,7 @@ struct Filesystem {
         return last_result_.load();
     }
 
-#if defined(_WIN32)
+#if defined(PLY_WINDOWS)
     static constexpr PathFormat path_format() {
         return WindowsPath;
     }
@@ -4324,10 +4333,6 @@ String join_path(StringViews&&... path_component_args) {
 //  ██▄▄█▀ ██ ██     ▀█▄▄▄  ▀█▄▄▄  ▀█▄▄ ▀█▄▄█▀ ██     ▀█▄▄██  ██▀▀██  ▀█▄▄██  ▀█▄▄ ▀█▄▄▄ ██  ██ ▀█▄▄▄  ██
 //                                                     ▄▄▄█▀
 
-#if !defined(PLY_WITH_DIRECTORY_WATCHER)
-#define PLY_WITH_DIRECTORY_WATCHER 0
-#endif
-
 #if PLY_WITH_DIRECTORY_WATCHER
 
 class DirectoryWatcher {
@@ -4337,10 +4342,12 @@ public:
 
 private:
     Thread watcher_thread;
-#if defined(_WIN32)
+#if defined(PLY_WINDOWS)
     HANDLE end_event = INVALID_HANDLE_VALUE;
-#elif defined(__APPLE__)
+#elif defined(PLY_APPLE)
     void* run_loop = nullptr;
+#else
+#error DirectoryWatcher not supported on this platform!
 #endif
 
     void run_watcher();
@@ -4433,7 +4440,7 @@ struct Subprocess {
     Owned<Pipe> read_from_std_out;
     Owned<Pipe> read_from_std_err;
 
-#if defined(_WIN32)
+#if defined(PLY_WINDOWS)
     HANDLE child_process = INVALID_HANDLE_VALUE;
     HANDLE child_main_thread = INVALID_HANDLE_VALUE;
 #elif defined(PLY_POSIX)
