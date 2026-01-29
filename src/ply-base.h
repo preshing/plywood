@@ -1343,26 +1343,26 @@ struct Semaphore {
 
 struct VirtualMemory {
     struct Properties {
-        uptr alloc_alignment;
-        uptr page_size;
+        uptr alloc_alignment = 0;
+        uptr page_size = 0;
     };
 
+    struct UsageStats {
 #if defined(PLY_WINDOWS)
-    struct UsageSummary {
-        uptr working_set_size;
-        uptr pagefile_usage;
-    };
+        // System-specific stats reported by GetProcessMemoryInfo:
+        uptr private_usage = 0;
+        uptr working_set_size = 0;
 #else
-    struct UsageSummary {
-        uptr virtual_size;
-        uptr resident_size;
-    };
+        // System-specific stats reported by task_info (Apple platforms) or /proc/self/statm (Linux):
+        uptr virtual_size = 0;
+        uptr resident_size = 0;
 #endif
+    };
 
     static Properties get_properties();
-    static UsageSummary get_usage_summary();
-    static bool alloc_pages(void*& out_addr, uptr num_bytes);
-    static bool reserve_pages(void*& out_addr, uptr num_bytes);
+    static UsageStats get_usage_stats();
+    static bool alloc_pages(void** out_addr, uptr num_bytes);
+    static bool reserve_pages(void** out_addr, uptr num_bytes);
     static void commit_pages(void* addr, uptr num_bytes);
     static void decommit_pages(void* addr, uptr num_bytes);
     static void free_pages(void* addr, uptr num_bytes);

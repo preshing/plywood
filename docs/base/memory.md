@@ -106,8 +106,8 @@ Validates the heap's internal consistency. Useful for debugging. Will force an i
 The `VirtualMemory` class is a platform-independent wrapper for mapping virtual memory to physical memory.
 
 {api_summary class=VirtualMemory title="VirtualMemory member functions"}
-static VirtualMemory::Properties get_properties()
-static VirtualMemory::UsageSummary get_usage_summary()
+static Properties get_properties()
+static UsageStats get_usage_stats()
 static bool alloc_pages(void*& out_addr, uptr num_bytes)
 static bool reserve_pages(void*& out_addr, uptr num_bytes)
 static void commit_pages(void* addr, uptr num_bytes)
@@ -128,20 +128,20 @@ Returns information about the system's virtual memory page size and allocation a
 {/table}
 
 >>
-static VirtualMemory::UsageSummary get_usage_summary()
+static VirtualMemory::UsageStats get_usage_stats()
 --
-Returns statistics about the current process's virtual memory usage. `VirtualMemory::UsageSummary` has platform-specific members:
+Returns statistics about the current process's virtual memory usage. `VirtualMemory::UsageStats` has platform-specific members:
 
 On Windows:
 
-{table caption="`VirtualMemory::UsageSummary` members (Windows)"}
+{table caption="`VirtualMemory::UsageStats` members (Windows)"}
+`uptr`|private_usage
 `uptr`|working_set_size
-`uptr`|pagefile_usage
 {/table}
 
 On other platforms:
 
-{table caption="`VirtualMemory::UsageSummary` members (POSIX)"}
+{table caption="`VirtualMemory::UsageStats` members (POSIX)"}
 `uptr`|virtual_size
 `uptr`|resident_size
 {/table}

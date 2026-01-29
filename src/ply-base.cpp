@@ -2,7 +2,7 @@
        ____
       ╱   ╱╲    Plywood C++ Base Library
      ╱___╱╭╮╲   https://plywood.dev/
-      └──┴┴┴┘   
+      └──┴┴┴┘
 ========================================================*/
 
 #include "ply-base.h"
@@ -189,8 +189,10 @@ static String zero_pad(u32 value, u32 width) {
 void print_date_time(Stream& out, StringView format, const DateTime& date_time) {
     static const char* abbreviated_weekdays[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
     static const char* full_weekdays[] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
-    static const char* abbreviated_months[] = {"", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
-    static const char* full_months[] = {"", "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"};
+    static const char* abbreviated_months[] = {"",    "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                                               "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
+    static const char* full_months[] = {"",     "January", "February",  "March",   "April",    "May",     "June",
+                                        "July", "August",  "September", "October", "November", "December"};
 
     for (u32 i = 0; i < format.num_bytes(); i++) {
         if (format[i] == '%' && i + 1 < format.num_bytes()) {
@@ -223,7 +225,8 @@ void print_date_time(Stream& out, StringView format, const DateTime& date_time) 
                     break;
                 case 'l': { // hour (12-hour clock)
                     u8 hour12 = date_time.hour % 12;
-                    if (hour12 == 0) hour12 = 12;
+                    if (hour12 == 0)
+                        hour12 = 12;
                     out.format("{}", hour12);
                     break;
                 }
@@ -257,7 +260,8 @@ void print_date_time(Stream& out, StringView format, const DateTime& date_time) 
                 case 'Z': { // signed time zone offset
                     s16 offset = date_time.time_zone_offset_in_minutes;
                     char sign = offset >= 0 ? '+' : '-';
-                    if (offset < 0) offset = -offset;
+                    if (offset < 0)
+                        offset = -offset;
                     s16 hours = offset / 60;
                     s16 mins = offset % 60;
                     out.write(sign);
@@ -359,6 +363,10 @@ void* thread_entry(void* arg) {
 
 #if defined(PLY_WINDOWS)
 
+//--------------------------------------------
+// Windows
+//--------------------------------------------
+
 VirtualMemory::Properties VirtualMemory::get_properties() {
     static VirtualMemory::Properties props = []() {
         SYSTEM_INFO sys_info;
@@ -370,36 +378,37 @@ VirtualMemory::Properties VirtualMemory::get_properties() {
     return props;
 }
 
-VirtualMemory::UsageSummary VirtualMemory::get_usage_summary() {
-    PROCESS_MEMORY_COUNTERS pmc;
+VirtualMemory::UsageStats VirtualMemory::get_usage_stats() {
+    PROCESS_MEMORY_COUNTERS_EX pmc;
     pmc.cb = sizeof(pmc);
-    GetProcessMemoryInfo(GetCurrentProcess(), &pmc, sizeof(pmc));
-    return {pmc.WorkingSetSize, pmc.PagefileUsage};
+    GetProcessMemoryInfo(GetCurrentProcess(), (PROCESS_MEMORY_COUNTERS*) &pmc, sizeof(pmc));
+
+    VirtualMemory::UsageStats usage_stats;
+    usage_stats.private_usage = pmc.PrivateUsage;
+    usage_stats.working_set_size = pmc.WorkingSetSize;
+    return usage_stats;
 }
 
-bool VirtualMemory::alloc_pages(void*& out_addr, uptr num_bytes) {
+bool VirtualMemory::alloc_pages(void** out_addr, uptr num_bytes) {
     PLY_ASSERT(is_aligned_to_power_of_2(num_bytes, VirtualMemory::get_properties().alloc_alignment));
 
-    DWORD type = MEM_RESERVE | MEM_COMMIT;
-    out_addr = VirtualAlloc(0, (SIZE_T) num_bytes, type, PAGE_READWRITE);
-    return (out_addr != NULL);
+    *out_addr = VirtualAlloc(0, (SIZE_T) num_bytes, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+    return (*out_addr != NULL);
 }
 
-bool VirtualMemory::reserve_pages(void*& out_addr, uptr num_bytes) {
+bool VirtualMemory::reserve_pages(void** out_addr, uptr num_bytes) {
     PLY_ASSERT(is_aligned_to_power_of_2(num_bytes, VirtualMemory::get_properties().alloc_alignment));
 
-    DWORD type = MEM_RESERVE;
-    out_addr = VirtualAlloc(0, (SIZE_T) num_bytes, type, PAGE_READWRITE);
-    return (out_addr != NULL);
+    *out_addr = VirtualAlloc(0, (SIZE_T) num_bytes, MEM_RESERVE, PAGE_READWRITE);
+    return (*out_addr != NULL);
 }
 
 void VirtualMemory::commit_pages(void* addr, uptr num_bytes) {
     PLY_ASSERT(is_aligned_to_power_of_2((uptr) addr, VirtualMemory::get_properties().page_size));
     PLY_ASSERT(is_aligned_to_power_of_2(num_bytes, VirtualMemory::get_properties().page_size));
 
-    DWORD type = MEM_COMMIT;
-    LPVOID result = VirtualAlloc(addr, (SIZE_T) num_bytes, type, PAGE_READWRITE);
-    PLY_ASSERT(result != NULL);
+    LPVOID result = VirtualAlloc(addr, (SIZE_T) num_bytes, MEM_COMMIT, PAGE_READWRITE);
+    PLY_ASSERT(result != NULL); // Failure is considered fatal
     PLY_UNUSED(result);
 }
 
@@ -407,10 +416,9 @@ void VirtualMemory::decommit_pages(void* addr, uptr num_bytes) {
     PLY_ASSERT(is_aligned_to_power_of_2((uptr) addr, VirtualMemory::get_properties().page_size));
     PLY_ASSERT(is_aligned_to_power_of_2(num_bytes, VirtualMemory::get_properties().page_size));
 
-    DWORD type = MEM_COMMIT;
-    LPVOID result = VirtualAlloc(addr, (SIZE_T) num_bytes, type, PAGE_READWRITE);
-    PLY_ASSERT(result != NULL);
-    PLY_UNUSED(result);
+    BOOL rc = VirtualFree(addr, num_bytes, MEM_DECOMMIT);
+    PLY_ASSERT(rc);
+    PLY_UNUSED(rc);
 }
 
 void VirtualMemory::free_pages(void* addr, uptr num_bytes) {
@@ -418,23 +426,26 @@ void VirtualMemory::free_pages(void* addr, uptr num_bytes) {
     PLY_ASSERT(is_aligned_to_power_of_2(num_bytes, VirtualMemory::get_properties().alloc_alignment));
 
 #if defined(PLY_WITH_ASSERTS)
-    {
-        // Must be entire reserved address space range
-        MEMORY_BASIC_INFORMATION mem_info;
-        SIZE_T rc = VirtualQuery(addr, &mem_info, sizeof(mem_info));
-        PLY_ASSERT(rc != 0);
-        PLY_UNUSED(rc);
-        PLY_ASSERT(mem_info.BaseAddress == addr);
-        PLY_ASSERT(mem_info.AllocationBase == addr);
-        PLY_ASSERT(mem_info.RegionSize <= num_bytes);
-    }
+    MEMORY_BASIC_INFORMATION mem_info;
+    SIZE_T rc = VirtualQuery(addr, &mem_info, sizeof(mem_info));
+    PLY_ASSERT(rc != 0);
+    PLY_UNUSED(rc);
+    PLY_ASSERT(mem_info.BaseAddress == addr);
+    PLY_ASSERT(mem_info.AllocationBase == addr);
+    // The entire address space range must be reserved as one block:
+    PLY_ASSERT(mem_info.RegionSize <= num_bytes);
 #endif
+
     BOOL rc2 = VirtualFree(addr, 0, MEM_RELEASE);
     PLY_ASSERT(rc2);
     PLY_UNUSED(rc2);
 }
 
 #elif defined(PLY_POSIX)
+
+//--------------------------------------------
+// POSIX
+//--------------------------------------------
 
 VirtualMemory::Properties VirtualMemory::get_properties() {
     static VirtualMemory::Properties props = []() {
@@ -445,14 +456,15 @@ VirtualMemory::Properties VirtualMemory::get_properties() {
     return props;
 }
 
-VirtualMemory::UsageSummary VirtualMemory::get_usage_summary() {
-    VirtualMemory::UsageSummary summary = {0, 0};
-#if PLY_APPLE
+VirtualMemory::UsageStats VirtualMemory::get_usage_stats() {
+    VirtualMemory::UsageStats usage_stats;
+
+#if defined(PLY_APPLE)
     struct mach_task_basic_info task_info_data;
     mach_msg_type_number_t count = MACH_TASK_BASIC_INFO_COUNT;
     if (task_info(mach_task_self(), MACH_TASK_BASIC_INFO, (task_info_t) &task_info_data, &count) == KERN_SUCCESS) {
-        summary.virtual_size = task_info_data.virtual_size;
-        summary.resident_size = task_info_data.resident_size;
+        usage_stats.virtual_size = task_info_data.virtual_size;
+        usage_stats.resident_size = task_info_data.resident_size;
     }
 #else
     Stream in = Filesystem::open_binary_for_read("/proc/self/statm");
@@ -461,26 +473,33 @@ VirtualMemory::UsageSummary VirtualMemory::get_usage_summary() {
         skip_whitespace(in);
         u64 rss_pages = read_u64_from_text(in);
         uptr page_size = VirtualMemory::get_properties().page_size;
-        summary.virtual_size = vm_pages * page_size;
-        summary.resident_size = rss_pages * page_size;
+        usage_stats.virtual_size = vm_pages * page_size;
+        usage_stats.resident_size = rss_pages * page_size;
     }
 #endif
-    return summary;
+
+    return usage_stats;
 }
 
-bool VirtualMemory::alloc_pages(void*& out_addr, uptr num_bytes) {
+bool VirtualMemory::alloc_pages(void** out_addr, uptr num_bytes) {
     PLY_ASSERT(is_aligned_to_power_of_2(num_bytes, VirtualMemory::get_properties().alloc_alignment));
 
-    out_addr = mmap(0, num_bytes, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-    PLY_ASSERT(out_addr != MAP_FAILED);
+    *out_addr = mmap(0, num_bytes, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    if (*out_addr == MAP_FAILED) {
+        *out_addr = nullptr;
+        return false;
+    }
     return true;
 }
 
-bool VirtualMemory::reserve_pages(void*& out_addr, uptr num_bytes) {
+bool VirtualMemory::reserve_pages(void** out_addr, uptr num_bytes) {
     PLY_ASSERT(is_aligned_to_power_of_2(num_bytes, VirtualMemory::get_properties().alloc_alignment));
 
-    out_addr = mmap(0, num_bytes, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-    PLY_ASSERT(out_addr != MAP_FAILED);
+    *out_addr = mmap(0, num_bytes, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    if (*out_addr == MAP_FAILED) {
+        *out_addr = nullptr;
+        return false;
+    }
     return true;
 }
 
@@ -508,7 +527,9 @@ void VirtualMemory::free_pages(void* addr, uptr num_bytes) {
     PLY_ASSERT(is_aligned_to_power_of_2((uptr) addr, VirtualMemory::get_properties().alloc_alignment));
     PLY_ASSERT(is_aligned_to_power_of_2(num_bytes, VirtualMemory::get_properties().alloc_alignment));
 
-    munmap(addr, num_bytes);
+    int rc = munmap(addr, num_bytes);
+    PLY_ASSERT(rc == 0);
+    PLY_UNUSED(rc);
 }
 
 #endif
@@ -3208,8 +3229,7 @@ String get_current_executable_path() {
         DWORD rc = GetModuleFileNameW(NULL, (LPWSTR) wstr.units, num_units);
         if (rc < num_units) {
             WStringView wsubstr = {wstr, rc};
-            if (wsubstr.num_units >= 4 &&
-                wsubstr.raw_bytes().left(8) == StringView{(const char*) L"\\\\?\\", 8}) {
+            if (wsubstr.num_units >= 4 && wsubstr.raw_bytes().left(8) == StringView{(const char*) L"\\\\?\\", 8}) {
                 // Drop leading "\\\\?\\":
                 wsubstr.units += 4;
                 wsubstr.num_units -= 4;
@@ -3247,7 +3267,7 @@ String get_current_executable_path() {
         str = String::allocate(num_bytes);
         _NSGetExecutablePath(str.bytes(), &num_bytes);
     }
-    return String{str.bytes()};  // Trim to null terminator
+    return String{str.bytes()}; // Trim to null terminator
 }
 
 #endif
@@ -4535,6 +4555,5 @@ void DirectoryWatcher::stop() {
 
 #endif
 #endif // PLY_WITH_DIRECTORY_WATCHER
-
 
 } // namespace ply
