@@ -52,9 +52,9 @@ Blocks until the thread finishes execution. Must be called before the `Thread` o
 Atomic(T value = 0)
 Atomic(const Atomic<T>& other)
 void operator=(const Atomic<T>& other)
-T load_nonatomic() const
+T load_relaxed() const
 T load_acquire() const
-void store_nonatomic(T value)
+void store_relaxed(T value)
 void store_release(T value)
 T compare_exchange_acq_rel(T expected, T desired)
 T exchange_acq_rel(T desired)
@@ -80,9 +80,9 @@ void operator=(const Atomic<T>& other)
 Copy assignment. Performs an atomic load and store.
 
 >>
-T load_nonatomic() const
+T load_relaxed() const
 --
-Reads the value without atomic guarantees. Only safe when no other thread is writing.
+Atomically reads the value with relaxed semantics.
 
 >>
 T load_acquire() const
@@ -90,9 +90,9 @@ T load_acquire() const
 Atomically reads the value with acquire semantics.
 
 >>
-void store_nonatomic(T value)
+void store_relaxed(T value)
 --
-Writes the value without atomic guarantees. Only safe when no other thread is reading.
+Atomically writes the value with relaxed semantics.
 
 >>
 void store_release(T value)

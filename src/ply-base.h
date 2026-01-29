@@ -701,16 +701,16 @@ public:
         this->value = other.value;
         return *this;
     }
-    T load_nonatomic() const {
-        return this->value;
+    T load_relaxed() const {
+        return *(volatile T*) &this->value;
     }
     T load_acquire() const {
         T result = *(volatile T*) &this->value;
         _ReadWriteBarrier();
         return result;
     }
-    void store_nonatomic(T value) {
-        this->value = value;
+    void store_relaxed(T value) {
+        *(volatile T*) &this->value = value;
     }
     void store_release(T value) {
         _ReadWriteBarrier();
@@ -752,8 +752,8 @@ public:
         this->value = other.value;
         return *this;
     }
-    T load_nonatomic() const {
-        return this->value;
+    T load_relaxed() const {
+        return *(volatile T*) &this->value;
     }
     T load_acquire() const {
 #if PLY_PTR_SIZE == 8
@@ -764,8 +764,8 @@ public:
         return _InterlockedCompareExchange64_acq((volatile __int64*) &this->value, 0, 0);
 #endif
     }
-    void store_nonatomic(T value) {
-        this->value = value;
+    void store_relaxed(T value) {
+        *(volatile T*) &this->value = value;
     }
     void store_release(T value) {
 #if PLY_PTR_SIZE == 8
@@ -783,10 +783,10 @@ public:
         return (T) _InterlockedExchange64((volatile __int64*) &this->value, (__int64) desired);
     }
     T fetch_add_acq_rel(T operand) {
-        return (T) _InterlockedAdd64((volatile __int64*) &this->value, (__int64) operand);
+        return (T) _InlineInterlockedAdd64((volatile __int64*) &this->value, (__int64) operand);
     }
     T fetch_sub_acq_rel(T operand) {
-        return (T) _InterlockedAdd64((volatile __int64*) &this->value, -(__int64) operand);
+        return (T) _InlineInterlockedAdd64((volatile __int64*) &this->value, -(__int64) operand);
     }
     T fetch_and_acq_rel(T operand) {
         return (T) _InterlockedAnd64((volatile __int64*) &this->value, (__int64) operand);
@@ -816,14 +816,14 @@ public:
         this->value = other.value;
         return *this;
     }
-    T load_nonatomic() const {
-        return this->value;
+    T load_relaxed() const {
+        return __atomic_load_n(&this->value, __ATOMIC_RELAXED);
     }
     T load_acquire() const {
         return __atomic_load_n(&this->value, __ATOMIC_ACQUIRE);
     }
-    void store_nonatomic(T value) {
-        this->value = value;
+    void store_relaxed(T value) {
+        __atomic_store_n(&this->value, value, __ATOMIC_RELAXED);
     }
     void store_release(T value) {
         __atomic_store_n(&this->value, value, __ATOMIC_RELEASE);
@@ -865,14 +865,14 @@ public:
         this->value = other.value;
         return *this;
     }
-    T load_nonatomic() const {
-        return this->value;
+    T load_relaxed() const {
+        return __atomic_load(&this->value, __ATOMIC_RELAXED);
     }
     T load_acquire() const {
         return __atomic_load(&this->value, __ATOMIC_ACQUIRE);
     }
-    void store_nonatomic(T value) {
-        this->value = value;
+    void store_relaxed(T value) {
+        __atomic_store(&this->value, value, __ATOMIC_RELAXED);
     }
     void store_release(T value) {
         __atomic_store(&this->value, value, __ATOMIC_RELEASE);
