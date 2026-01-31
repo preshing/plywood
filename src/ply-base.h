@@ -1341,40 +1341,63 @@ struct Semaphore {
 //    ▀█▀   ██ ██      ▀█▄▄ ▀█▄▄██ ▀█▄▄██ ▄██▄ ██   ██ ▀█▄▄▄  ██ ██ ██ ▀█▄▄█▀ ██     ▀█▄▄██
 //                                                                                    ▄▄▄█▀
 
-#if !defined(PLY_TRACK_VIRTUAL_MEMORY_USAGE)
-#define PLY_TRACK_VIRTUAL_MEMORY_USAGE 0
-#endif
-
 struct VirtualMemory {
+    // Usage stats
+    // The current total amount of address space that was reserved using alloc_region or reserve_region
+    static Atomic<uptr> total_reserved_bytes;
+    // The current total amount of memory that was committed using alloc_region or commit_pages
+    static Atomic<uptr> total_committed_bytes;
+
+    // Returned by get_properties()
     struct Properties {
-        uptr alloc_alignment = 0; // alloc/reserve/free_pages sizes must be a multiple of this
-        uptr page_size = 0;       // commit/decommit_pages sizes must be a multiple of this
+        uptr region_alignment = 0; // reserve/alloc_region sizes must be a multiple of this
+        uptr page_size = 0;        // commit_pages sizes must be a multiple of this
     };
 
-#if PLY_TRACK_VIRTUAL_MEMORY_USAGE
-    static Atomic<uptr> num_reserved_bytes;
-    static Atomic<uptr> num_committed_bytes;
-#endif
-
+    // Returned by get_system_stats()
     struct SystemStats {
 #if defined(PLY_WINDOWS)
-        // System-specific stats reported by GetProcessMemoryInfo:
+        // System-specific stats reported by GetProcessMemoryInfo
         uptr private_usage = 0;
         uptr working_set_size = 0;
 #else
-        // System-specific stats reported by task_info (Apple platforms) or /proc/self/statm (Linux):
+        // System-specific stats reported by task_info (Apple platforms) or /proc/self/statm (Linux)
         uptr virtual_size = 0;
         uptr resident_size = 0;
 #endif
     };
 
+    //----------------------------------------------------
+    // System information
+    //----------------------------------------------------
     static Properties get_properties();
     static SystemStats get_system_stats();
-    static bool alloc_pages(void** out_addr, uptr num_bytes);
-    static bool reserve_pages(void** out_addr, uptr num_bytes);
+
+    //----------------------------------------------------
+    // Managing pages
+    //----------------------------------------------------
+    // Reserves a region of address space. Memory pages are initially uncommitted. Returns nullptr on failure. num_bytes
+    // must be a multiple of region_alignment.
+    static void* reserve_region(uptr num_bytes);
+    // Unreserves a region of address space. num_reserved_bytes must match the argument passed to to reserve_region.
+    // Caller is responsible for passing the correct num_committed_bytes, otherwise stats will get out of sync.
+    static void unreserve_region(void* addr, uptr num_reserved_bytes, uptr num_committed_bytes);
+    // Commits a subregion of reserved address space, making it legal to read and write to the subregion.
+    // addr must be aligned to page_size and num_bytes must be a multiple of page_size.
     static void commit_pages(void* addr, uptr num_bytes);
+    // Decommits a subregion of previously committed memory.
+    // addr must be aligned to page_size and num_bytes must be a multiple of page_size.
     static void decommit_pages(void* addr, uptr num_bytes);
-    static void free_pages(void* addr, uptr num_bytes);
+
+    //----------------------------------------------------
+    // Allocating large blocks
+    //----------------------------------------------------
+    // Reserves and commits a region of address space. Returns nullptr on failure. Free using free_region. Don't
+    // decommit any pages in the returned region, otherwise stats will get out of sync. num_bytes must be a multiple of
+    // region_alignment.
+    static void* alloc_region(uptr num_bytes);
+    // Decommits and unreserves a region of address space. num_bytes must match the argument passed to alloc_region.
+    static void free_region(void* addr, uptr num_bytes);
 };
 
 //  ▄▄  ▄▄

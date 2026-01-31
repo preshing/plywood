@@ -106,19 +106,25 @@ Validates the heap's internal consistency. Useful for debugging. Will force an i
 The `VirtualMemory` class is a platform-independent wrapper for mapping virtual memory to physical memory.
 
 {api_summary class=VirtualMemory title="VirtualMemory member functions"}
+-- System Information
 static Properties get_properties()
 static SystemStats get_system_stats()
-static bool alloc_pages(void*& out_addr, uptr num_bytes)
-static bool reserve_pages(void*& out_addr, uptr num_bytes)
+-- Managing Pages
+static void* reserve_region(uptr num_bytes)
+static void unreserve_region(void* addr, uptr num_reserved_bytes, uptr num_committed_bytes)
 static void commit_pages(void* addr, uptr num_bytes)
 static void decommit_pages(void* addr, uptr num_bytes)
-static void free_pages(void* addr, uptr num_bytes)
--- Tracking
-static Atomic<uptr> num_reserved_bytes
-static Atomic<uptr> num_committed_bytes
+-- Allocating Large Blocks
+static void* alloc_region(uptr num_bytes)
+static void free_region(void* addr, uptr num_bytes)
+-- Usage Stats
+static Atomic<uptr> total_reserved_bytes
+static Atomic<uptr> total_committed_bytes
 {/api_summary}
 
 In C++ applications, memory is represented as a 32-bit or 64-bit address space known as virtual memory, which is divided into fixed-sized pages. Most pages are initially unusable and will cause an access violation or segmentation fault if accessed. To make pages usable, they must be mapped to physical memory by the underlying operating system.
+
+### System Information
 
 {api_descriptions class=VirtualMemory}
 static VirtualMemory::Properties get_properties()
@@ -126,8 +132,8 @@ static VirtualMemory::Properties get_properties()
 Returns information about the system's virtual memory page size and allocation alignment. `VirtualMemory::Properties` has these members:
 
 {table caption="`VirtualMemory::Properties` members"}
-`uptr`|alloc_alignment
-`uptr`|page_size
+`uptr`|region_alignment|`reserve_region` and `alloc_region` sizes must be a multiple of this
+`uptr`|page_size|`commit_pages` sizes must be a multiple of this
 {/table}
 
 >>
@@ -148,39 +154,54 @@ On other platforms:
 `uptr`|virtual_size
 `uptr`|resident_size
 {/table}
+{/api_descriptions}
+
+### Managing Pages
+
+{api_descriptions class=VirtualMemory}
+static void* reserve_region(uptr num_bytes)
+--
+Reserves a region of address space. Memory pages are initially uncommitted. Returns `nullptr` on failure. `num_bytes` must be a multiple of `region_alignment`.
 
 >>
-static bool alloc_pages(void*& out_addr, uptr num_bytes)
+static void unreserve_region(void* addr, uptr num_reserved_bytes, uptr num_committed_bytes)
 --
-Allocates and commits virtual memory pages. The address is written to `out_addr`. Returns `true` on success.
-
->>
-static bool reserve_pages(void*& out_addr, uptr num_bytes)
---
-Reserves virtual address space without committing physical memory. Use `commit_pages` later to back it with physical memory.
+Unreserves a region of address space. `num_reserved_bytes` must match the argument passed to `reserve_region`. Caller is responsible for passing the correct `num_committed_bytes`, otherwise stats will get out of sync.
 
 >>
 static void commit_pages(void* addr, uptr num_bytes)
 --
-Commits previously reserved pages, backing them with physical memory.
+Commits a subregion of reserved address space, making it legal to read and write to the subregion. `addr` must be aligned to `page_size` and `num_bytes` must be a multiple of `page_size`.
 
 >>
 static void decommit_pages(void* addr, uptr num_bytes)
 --
-Decommits pages, releasing the physical memory while keeping the address space reserved.
-
->>
-static void free_pages(void* addr, uptr num_bytes)
---
-Frees previously allocated or reserved pages, returning the address space to the system.
-
->>
-static Atomic<uptr> num_reserved_bytes
---
-The total number of bytes currently reserved via `VirtualMemory`. Only available when [`PLY_TRACK_VIRTUAL_MEMORY_USAGE`](/docs/configuration) is enabled.
-
->>
-static Atomic<uptr> num_committed_bytes
---
-The total number of bytes currently committed via `VirtualMemory`. Only available when [`PLY_TRACK_VIRTUAL_MEMORY_USAGE`](/docs/configuration) is enabled.
+Decommits a subregion of previously committed memory. `addr` must be aligned to `page_size` and `num_bytes` must be a multiple of `page_size`.
 {/api_descriptions}
+
+### Allocating Large Blocks
+
+{api_descriptions class=VirtualMemory}
+static void* alloc_region(uptr num_bytes)
+--
+Reserves and commits a region of address space. Returns `nullptr` on failure. Free using `free_region`. Don't decommit any pages in the returned region, otherwise stats will get out of sync. `num_bytes` must be a multiple of `region_alignment`.
+
+>>
+static void free_region(void* addr, uptr num_bytes)
+--
+Decommits and unreserves a region of address space. `num_bytes` must match the argument passed to `alloc_region`.
+{/api_descriptions}
+
+### Usage Stats
+
+{api_descriptions class=VirtualMemory}
+static Atomic<uptr> total_reserved_bytes
+--
+The current total amount of address space that was reserved using `alloc_region` or `reserve_region`.
+
+>>
+static Atomic<uptr> total_committed_bytes
+--
+The current total amount of memory that was committed using `alloc_region` or `commit_pages`.
+{/api_descriptions}
+

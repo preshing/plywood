@@ -362,10 +362,8 @@ void* thread_entry(void* arg) {
 //    ▀█▀   ██ ██      ▀█▄▄ ▀█▄▄██ ▀█▄▄██ ▄██▄ ██   ██ ▀█▄▄▄  ██ ██ ██ ▀█▄▄█▀ ██     ▀█▄▄██
 //                                                                                    ▄▄▄█▀
 
-#if PLY_TRACK_VIRTUAL_MEMORY_USAGE
-Atomic<uptr> VirtualMemory::num_reserved_bytes = 0;
-Atomic<uptr> VirtualMemory::num_committed_bytes = 0;
-#endif
+Atomic<uptr> VirtualMemory::total_reserved_bytes = 0;
+Atomic<uptr> VirtualMemory::total_committed_bytes = 0;
 
 #if defined(PLY_WINDOWS)
 
@@ -395,29 +393,37 @@ VirtualMemory::SystemStats VirtualMemory::get_system_stats() {
     return usage_stats;
 }
 
-bool VirtualMemory::alloc_pages(void** out_addr, uptr num_bytes) {
-    PLY_ASSERT(is_aligned_to_power_of_2(num_bytes, VirtualMemory::get_properties().alloc_alignment));
+void* VirtualMemory::reserve_region(uptr num_bytes) {
+    PLY_ASSERT(is_aligned_to_power_of_2(num_bytes, VirtualMemory::get_properties().region_alignment));
 
-    *out_addr = VirtualAlloc(0, (SIZE_T) num_bytes, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
-    if (*out_addr == NULL)
-        return false;
-#if PLY_TRACK_VIRTUAL_MEMORY_USAGE
-    num_reserved_bytes.fetch_add_acq_rel(num_bytes);
-    num_committed_bytes.fetch_add_acq_rel(num_bytes);
-#endif
-    return true;
+    void* addr = VirtualAlloc(0, (SIZE_T) num_bytes, MEM_RESERVE, PAGE_READWRITE);
+    if (addr == NULL)
+        return nullptr;
+    VirtualMemory::total_reserved_bytes.fetch_add_acq_rel(num_bytes);
+    return addr;
 }
 
-bool VirtualMemory::reserve_pages(void** out_addr, uptr num_bytes) {
-    PLY_ASSERT(is_aligned_to_power_of_2(num_bytes, VirtualMemory::get_properties().alloc_alignment));
+void VirtualMemory::unreserve_region(void* addr, uptr num_reserved_bytes, uptr num_committed_bytes) {
+    PLY_ASSERT(is_aligned_to_power_of_2((uptr) addr, VirtualMemory::get_properties().region_alignment));
+    PLY_ASSERT(is_aligned_to_power_of_2(num_reserved_bytes, VirtualMemory::get_properties().region_alignment));
+    PLY_ASSERT(is_aligned_to_power_of_2(num_committed_bytes, VirtualMemory::get_properties().page_size));
 
-    *out_addr = VirtualAlloc(0, (SIZE_T) num_bytes, MEM_RESERVE, PAGE_READWRITE);
-    if (*out_addr == NULL)
-        return false;
-#if PLY_TRACK_VIRTUAL_MEMORY_USAGE
-    num_reserved_bytes.fetch_add_acq_rel(num_bytes);
+#if defined(PLY_WITH_ASSERTS)
+    MEMORY_BASIC_INFORMATION mem_info;
+    SIZE_T rc = VirtualQuery(addr, &mem_info, sizeof(mem_info));
+    PLY_ASSERT(rc != 0);
+    PLY_UNUSED(rc);
+    PLY_ASSERT(mem_info.BaseAddress == addr);
+    PLY_ASSERT(mem_info.AllocationBase == addr);
+    // The entire address space range must be reserved as one block:
+    PLY_ASSERT(mem_info.RegionSize <= num_reserved_bytes);
 #endif
-    return true;
+
+    BOOL rc2 = VirtualFree(addr, 0, MEM_RELEASE);
+    PLY_ASSERT(rc2);
+    PLY_UNUSED(rc2);
+    VirtualMemory::total_reserved_bytes.fetch_sub_acq_rel(num_reserved_bytes);
+    VirtualMemory::total_committed_bytes.fetch_sub_acq_rel(num_committed_bytes);
 }
 
 void VirtualMemory::commit_pages(void* addr, uptr num_bytes) {
@@ -427,9 +433,7 @@ void VirtualMemory::commit_pages(void* addr, uptr num_bytes) {
     LPVOID result = VirtualAlloc(addr, (SIZE_T) num_bytes, MEM_COMMIT, PAGE_READWRITE);
     PLY_ASSERT(result != NULL); // Failure is considered fatal
     PLY_UNUSED(result);
-#if PLY_TRACK_VIRTUAL_MEMORY_USAGE
-    num_committed_bytes.fetch_add_acq_rel(num_bytes);
-#endif
+    VirtualMemory::total_committed_bytes.fetch_add_acq_rel(num_bytes);
 }
 
 void VirtualMemory::decommit_pages(void* addr, uptr num_bytes) {
@@ -439,46 +443,22 @@ void VirtualMemory::decommit_pages(void* addr, uptr num_bytes) {
     BOOL rc = VirtualFree(addr, num_bytes, MEM_DECOMMIT);
     PLY_ASSERT(rc);
     PLY_UNUSED(rc);
-#if PLY_TRACK_VIRTUAL_MEMORY_USAGE
-    num_committed_bytes.fetch_sub_acq_rel(num_bytes);
-#endif
+    VirtualMemory::total_committed_bytes.fetch_sub_acq_rel(num_bytes);
 }
 
-void VirtualMemory::free_pages(void* addr, uptr num_bytes) {
-    PLY_ASSERT(is_aligned_to_power_of_2((uptr) addr, VirtualMemory::get_properties().alloc_alignment));
-    PLY_ASSERT(is_aligned_to_power_of_2(num_bytes, VirtualMemory::get_properties().alloc_alignment));
+void* VirtualMemory::alloc_region(uptr num_bytes) {
+    PLY_ASSERT(is_aligned_to_power_of_2(num_bytes, VirtualMemory::get_properties().region_alignment));
 
-#if defined(PLY_WITH_ASSERTS) || PLY_TRACK_VIRTUAL_MEMORY_USAGE
-    MEMORY_BASIC_INFORMATION mem_info;
-    SIZE_T rc = VirtualQuery(addr, &mem_info, sizeof(mem_info));
-    PLY_ASSERT(rc != 0);
-    PLY_UNUSED(rc);
-    PLY_ASSERT(mem_info.BaseAddress == addr);
-    PLY_ASSERT(mem_info.AllocationBase == addr);
-    // The entire address space range must be reserved as one block:
-    PLY_ASSERT(mem_info.RegionSize <= num_bytes);
-#endif
+    void* addr = VirtualAlloc(0, (SIZE_T) num_bytes, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+    if (addr == NULL)
+        return nullptr;
+    VirtualMemory::total_reserved_bytes.fetch_add_acq_rel(num_bytes);
+    VirtualMemory::total_committed_bytes.fetch_add_acq_rel(num_bytes);
+    return addr;
+}
 
-#if PLY_TRACK_VIRTUAL_MEMORY_USAGE
-    // Scan regions to count committed bytes
-    uptr committed = 0;
-    char* scan_addr = (char*) addr;
-    char* end_addr = scan_addr + num_bytes;
-    while (scan_addr < end_addr) {
-        rc = VirtualQuery(scan_addr, &mem_info, sizeof(mem_info));
-        PLY_ASSERT(rc != 0);
-        if (mem_info.State == MEM_COMMIT) {
-            committed += mem_info.RegionSize;
-        }
-        scan_addr += mem_info.RegionSize;
-    }
-    num_reserved_bytes.fetch_sub_acq_rel(num_bytes);
-    num_committed_bytes.fetch_sub_acq_rel(committed);
-#endif
-
-    BOOL rc2 = VirtualFree(addr, 0, MEM_RELEASE);
-    PLY_ASSERT(rc2);
-    PLY_UNUSED(rc2);
+void VirtualMemory::free_region(void* addr, uptr num_bytes) {
+    VirtualMemory::unreserve_region(addr, num_bytes, num_bytes);
 }
 
 #elif defined(PLY_POSIX)
@@ -521,33 +501,26 @@ VirtualMemory::SystemStats VirtualMemory::get_system_stats() {
     return usage_stats;
 }
 
-bool VirtualMemory::alloc_pages(void** out_addr, uptr num_bytes) {
-    PLY_ASSERT(is_aligned_to_power_of_2(num_bytes, VirtualMemory::get_properties().alloc_alignment));
+void* VirtualMemory::reserve_region(uptr num_bytes) {
+    PLY_ASSERT(is_aligned_to_power_of_2(num_bytes, VirtualMemory::get_properties().region_alignment));
 
-    *out_addr = mmap(0, num_bytes, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-    if (*out_addr == MAP_FAILED) {
-        *out_addr = nullptr;
-        return false;
-    }
-#if PLY_TRACK_VIRTUAL_MEMORY_USAGE
-    num_reserved_bytes.fetch_add_acq_rel(num_bytes);
-    num_committed_bytes.fetch_add_acq_rel(num_bytes);
-#endif
-    return true;
+    void* addr = mmap(0, num_bytes, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    if (addr == MAP_FAILED)
+        return nullptr;
+    VirtualMemory::total_reserved_bytes.fetch_add_acq_rel(num_bytes);
+    return addr;
 }
 
-bool VirtualMemory::reserve_pages(void** out_addr, uptr num_bytes) {
-    PLY_ASSERT(is_aligned_to_power_of_2(num_bytes, VirtualMemory::get_properties().alloc_alignment));
+void VirtualMemory::unreserve_region(void* addr, uptr num_reserved_bytes, uptr num_committed_bytes) {
+    PLY_ASSERT(is_aligned_to_power_of_2((uptr) addr, VirtualMemory::get_properties().region_alignment));
+    PLY_ASSERT(is_aligned_to_power_of_2(num_reserved_bytes, VirtualMemory::get_properties().region_alignment));
+    PLY_ASSERT(is_aligned_to_power_of_2(num_committed_bytes, VirtualMemory::get_properties().page_size));
 
-    *out_addr = mmap(0, num_bytes, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-    if (*out_addr == MAP_FAILED) {
-        *out_addr = nullptr;
-        return false;
-    }
-#if PLY_TRACK_VIRTUAL_MEMORY_USAGE
-    num_reserved_bytes.fetch_add_acq_rel(num_bytes);
-#endif
-    return true;
+    int rc = munmap(addr, num_reserved_bytes);
+    PLY_ASSERT(rc == 0);
+    PLY_UNUSED(rc);
+    VirtualMemory::total_reserved_bytes.fetch_sub_acq_rel(num_reserved_bytes);
+    VirtualMemory::total_committed_bytes.fetch_sub_acq_rel(num_committed_bytes);
 }
 
 void VirtualMemory::commit_pages(void* addr, uptr num_bytes) {
@@ -557,9 +530,7 @@ void VirtualMemory::commit_pages(void* addr, uptr num_bytes) {
     int rc = mprotect(addr, num_bytes, PROT_READ | PROT_WRITE);
     PLY_ASSERT(rc == 0);
     PLY_UNUSED(rc);
-#if PLY_TRACK_VIRTUAL_MEMORY_USAGE
-    num_committed_bytes.fetch_add_acq_rel(num_bytes);
-#endif
+    VirtualMemory::total_committed_bytes.fetch_add_acq_rel(num_bytes);
 }
 
 void VirtualMemory::decommit_pages(void* addr, uptr num_bytes) {
@@ -571,104 +542,22 @@ void VirtualMemory::decommit_pages(void* addr, uptr num_bytes) {
     rc = mprotect(addr, num_bytes, PROT_NONE);
     PLY_ASSERT(rc == 0);
     PLY_UNUSED(rc);
-#if PLY_TRACK_VIRTUAL_MEMORY_USAGE
-    num_committed_bytes.fetch_sub_acq_rel(num_bytes);
-#endif
+    VirtualMemory::total_committed_bytes.fetch_sub_acq_rel(num_bytes);
 }
 
-void VirtualMemory::free_pages(void* addr, uptr num_bytes) {
-    PLY_ASSERT(is_aligned_to_power_of_2((uptr) addr, VirtualMemory::get_properties().alloc_alignment));
-    PLY_ASSERT(is_aligned_to_power_of_2(num_bytes, VirtualMemory::get_properties().alloc_alignment));
+void* VirtualMemory::alloc_region(uptr num_bytes) {
+    PLY_ASSERT(is_aligned_to_power_of_2(num_bytes, VirtualMemory::get_properties().region_alignment));
 
-#if PLY_TRACK_VIRTUAL_MEMORY_USAGE
-    // Scan regions to count committed bytes by querying OS for protection bits
-    uptr committed = 0;
-    uptr range_start = (uptr) addr;
-    uptr range_end = range_start + num_bytes;
+    void* addr = mmap(0, num_bytes, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    if (addr == MAP_FAILED)
+        return nullptr;
+    VirtualMemory::total_reserved_bytes.fetch_add_acq_rel(num_bytes);
+    VirtualMemory::total_committed_bytes.fetch_add_acq_rel(num_bytes);
+    return addr;
+}
 
-#if defined(PLY_APPLE)
-    // Use Mach VM API to iterate through memory regions
-    mach_vm_address_t scan_addr = range_start;
-    while (scan_addr < range_end) {
-        mach_vm_size_t region_size = 0;
-        vm_region_basic_info_data_64_t info;
-        mach_msg_type_number_t info_count = VM_REGION_BASIC_INFO_COUNT_64;
-        mach_port_t object_name;
-        kern_return_t kr = mach_vm_region(mach_task_self(), &scan_addr, &region_size, VM_REGION_BASIC_INFO_64,
-                                          (vm_region_info_t) &info, &info_count, &object_name);
-        if (kr != KERN_SUCCESS || scan_addr >= range_end)
-            break;
-        uptr region_end = scan_addr + region_size;
-        // Calculate overlap with our range
-        uptr overlap_start = max<uptr>(scan_addr, range_start);
-        uptr overlap_end = min<uptr>(region_end, range_end);
-        if (overlap_start < overlap_end &&
-            (info.protection & (VM_PROT_READ | VM_PROT_WRITE)) == (VM_PROT_READ | VM_PROT_WRITE)) {
-            committed += overlap_end - overlap_start;
-        }
-        scan_addr = region_end;
-    }
-#elif defined(PLY_LINUX)
-    // Parse /proc/self/maps to find regions with read+write permissions
-    int fd = open("/proc/self/maps", O_RDONLY);
-    PLY_ASSERT(fd >= 0);
-    char buf[4096];
-    ssize_t buf_len = 0;
-    ssize_t buf_pos = 0;
-    for (;;) {
-        // Read a line from the file
-        char line[256];
-        ssize_t line_len = 0;
-        for (;;) {
-            if (buf_pos >= buf_len) {
-                buf_len = read(fd, buf, sizeof(buf));
-                buf_pos = 0;
-                if (buf_len <= 0)
-                    break;
-            }
-            char c = buf[buf_pos++];
-            if (c == '\n')
-                break;
-            if (line_len < (ssize_t) sizeof(line) - 1)
-                line[line_len++] = c;
-        }
-        if (line_len == 0 && buf_len <= 0)
-            break;
-
-        // Parse: "start-end perms ..."
-        ViewStream in{StringView{line, (u32) line_len}};
-        uptr region_start = read_u64_from_text(in, 16);
-        if (in.cur_byte >= in.end_byte)
-            continue;
-        in.cur_byte++; // skip '-'
-        uptr region_end = read_u64_from_text(in, 16);
-        if (in.cur_byte >= in.end_byte)
-            continue;
-        in.cur_byte++; // skip ' '
-        if (in.cur_byte + 2 > in.end_byte)
-            continue;
-        char perms_r = *in.cur_byte++;
-        char perms_w = *in.cur_byte++;
-
-        // Check if this region overlaps with our range and has rw permissions
-        if (region_start < range_end && region_end > range_start && perms_r == 'r' && perms_w == 'w') {
-            uptr overlap_start = max<uptr>(region_start, range_start);
-            uptr overlap_end = min<uptr>(region_end, range_end);
-            committed += overlap_end - overlap_start;
-        }
-    }
-    close(fd);
-#else
-#error PLY_TRACK_VIRTUAL_MEMORY_USAGE not supported on this platform!
-#endif
-
-    num_reserved_bytes.fetch_sub_acq_rel(num_bytes);
-    num_committed_bytes.fetch_sub_acq_rel(committed);
-#endif
-
-    int rc = munmap(addr, num_bytes);
-    PLY_ASSERT(rc == 0);
-    PLY_UNUSED(rc);
+void VirtualMemory::free_region(void* addr, uptr num_bytes) {
+    VirtualMemory::unreserve_region(addr, num_bytes, num_bytes);
 }
 
 #endif
