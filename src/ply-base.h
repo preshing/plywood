@@ -443,7 +443,7 @@ struct DateTime {
 s64 get_unix_timestamp();
 
 // Converts a Unix timestamp to a DateTime object.
-DateTime convert_to_date_time(s64 system_time);  // Uses local time zone offset
+DateTime convert_to_date_time(s64 system_time); // Uses local time zone offset
 DateTime convert_to_date_time(s64 system_time, s16 time_zone_offset_in_minutes);
 
 // Converts a DateTime object back to a Unix timestamp.
@@ -866,16 +866,16 @@ public:
         return *this;
     }
     T load_relaxed() const {
-        return __atomic_load(&this->value, __ATOMIC_RELAXED);
+        return __atomic_load_n(&this->value, __ATOMIC_RELAXED);
     }
     T load_acquire() const {
-        return __atomic_load(&this->value, __ATOMIC_ACQUIRE);
+        return __atomic_load_n(&this->value, __ATOMIC_ACQUIRE);
     }
     void store_relaxed(T value) {
-        __atomic_store(&this->value, value, __ATOMIC_RELAXED);
+        __atomic_store_n(&this->value, value, __ATOMIC_RELAXED);
     }
     void store_release(T value) {
-        __atomic_store(&this->value, value, __ATOMIC_RELEASE);
+        __atomic_store_n(&this->value, value, __ATOMIC_RELEASE);
     }
     T compare_exchange_acq_rel(T expected, T desired) {
         __atomic_compare_exchange(&this->value, &expected, desired, false, __ATOMIC_ACQ_REL, __ATOMIC_ACQ_REL);
@@ -1341,13 +1341,22 @@ struct Semaphore {
 //    ▀█▀   ██ ██      ▀█▄▄ ▀█▄▄██ ▀█▄▄██ ▄██▄ ██   ██ ▀█▄▄▄  ██ ██ ██ ▀█▄▄█▀ ██     ▀█▄▄██
 //                                                                                    ▄▄▄█▀
 
+#if !defined(PLY_TRACK_VIRTUAL_MEMORY_USAGE)
+#define PLY_TRACK_VIRTUAL_MEMORY_USAGE 0
+#endif
+
 struct VirtualMemory {
     struct Properties {
-        uptr alloc_alignment = 0;
-        uptr page_size = 0;
+        uptr alloc_alignment = 0; // alloc/reserve/free_pages sizes must be a multiple of this
+        uptr page_size = 0;       // commit/decommit_pages sizes must be a multiple of this
     };
 
-    struct UsageStats {
+#if PLY_TRACK_VIRTUAL_MEMORY_USAGE
+    static Atomic<uptr> num_reserved_bytes;
+    static Atomic<uptr> num_committed_bytes;
+#endif
+
+    struct SystemStats {
 #if defined(PLY_WINDOWS)
         // System-specific stats reported by GetProcessMemoryInfo:
         uptr private_usage = 0;
@@ -1360,7 +1369,7 @@ struct VirtualMemory {
     };
 
     static Properties get_properties();
-    static UsageStats get_usage_stats();
+    static SystemStats get_system_stats();
     static bool alloc_pages(void** out_addr, uptr num_bytes);
     static bool reserve_pages(void** out_addr, uptr num_bytes);
     static void commit_pages(void* addr, uptr num_bytes);

@@ -1416,6 +1416,67 @@ TEST_CASE("Mem stream temp buffer") {
     }
 }
 
+//  ▄▄   ▄▄ ▄▄         ▄▄                 ▄▄▄  ▄▄   ▄▄
+//  ██   ██ ▄▄ ▄▄▄▄▄  ▄██▄▄ ▄▄  ▄▄  ▄▄▄▄   ██  ███▄███  ▄▄▄▄  ▄▄▄▄▄▄▄   ▄▄▄▄  ▄▄▄▄▄  ▄▄  ▄▄
+//   ██ ██  ██ ██  ▀▀  ██   ██  ██  ▄▄▄██  ██  ██▀█▀██ ██▄▄██ ██ ██ ██ ██  ██ ██  ▀▀ ██  ██
+//    ▀█▀   ██ ██      ▀█▄▄ ▀█▄▄██ ▀█▄▄██ ▄██▄ ██   ██ ▀█▄▄▄  ██ ██ ██ ▀█▄▄█▀ ██     ▀█▄▄██
+//                                                                                    ▄▄▄█▀
+
+#if PLY_TRACK_VIRTUAL_MEMORY_USAGE
+
+#undef TEST_CASE_PREFIX
+#define TEST_CASE_PREFIX VirtualMemory_
+
+TEST_CASE("VirtualMemory alloc_pages tracking") {
+    uptr alloc_size = VirtualMemory::get_properties().alloc_alignment;
+    uptr reserved_before = VirtualMemory::num_reserved_bytes.load_relaxed();
+    uptr committed_before = VirtualMemory::num_committed_bytes.load_relaxed();
+
+    void* addr = nullptr;    
+    VirtualMemory::alloc_pages(&addr, alloc_size);
+    check(VirtualMemory::num_reserved_bytes.load_relaxed() == reserved_before + alloc_size);
+    check(VirtualMemory::num_committed_bytes.load_relaxed() == committed_before + alloc_size);
+
+    VirtualMemory::free_pages(addr, alloc_size);
+    check(VirtualMemory::num_reserved_bytes.load_relaxed() == reserved_before);
+    check(VirtualMemory::num_committed_bytes.load_relaxed() == committed_before);
+}
+
+TEST_CASE("VirtualMemory mixed commit/decommit tracking") {
+    uptr reserved_before = VirtualMemory::num_reserved_bytes.load_relaxed();
+    uptr committed_before = VirtualMemory::num_committed_bytes.load_relaxed();
+
+    uptr page_size = VirtualMemory::get_properties().page_size;
+    uptr alloc_size = max<uptr>(VirtualMemory::get_properties().alloc_alignment, page_size * 4);
+    void* addr = nullptr;
+    VirtualMemory::reserve_pages(&addr, alloc_size);
+    check(VirtualMemory::num_reserved_bytes.load_relaxed() == reserved_before + alloc_size);
+    check(VirtualMemory::num_committed_bytes.load_relaxed() == committed_before);
+
+    // Commit first two pages
+    VirtualMemory::commit_pages(addr, page_size * 2);
+    check(VirtualMemory::num_reserved_bytes.load_relaxed() == reserved_before + alloc_size);
+    check(VirtualMemory::num_committed_bytes.load_relaxed() == committed_before + page_size * 2);
+
+    // Commit next two pages
+    VirtualMemory::commit_pages((char*) addr + page_size * 2, page_size * 2);
+    check(VirtualMemory::num_reserved_bytes.load_relaxed() == reserved_before + alloc_size);
+    check(VirtualMemory::num_committed_bytes.load_relaxed() == committed_before + page_size * 4);
+
+    // Decommit middle two pages
+    VirtualMemory::decommit_pages((char*) addr + page_size, page_size * 2);
+    check(VirtualMemory::num_reserved_bytes.load_relaxed() == reserved_before + alloc_size);
+    check(VirtualMemory::num_committed_bytes.load_relaxed() == committed_before + page_size * 2);
+
+    // Free pages
+    VirtualMemory::free_pages(addr, alloc_size);
+    check(VirtualMemory::num_reserved_bytes.load_relaxed() == reserved_before);
+    check(VirtualMemory::num_committed_bytes.load_relaxed() == committed_before);
+}
+
+#endif // PLY_TRACK_VIRTUAL_MEMORY_USAGE
+
+
 //  ▄▄▄▄▄  ▄▄                      ▄▄                        ▄▄    ▄▄         ▄▄         ▄▄
 //  ██  ██ ▄▄ ▄▄▄▄▄   ▄▄▄▄   ▄▄▄▄ ▄██▄▄  ▄▄▄▄  ▄▄▄▄▄  ▄▄  ▄▄ ██ ▄▄ ██  ▄▄▄▄  ▄██▄▄  ▄▄▄▄ ██▄▄▄   ▄▄▄▄  ▄▄▄▄▄
 //  ██  ██ ██ ██  ▀▀ ██▄▄██ ██     ██   ██  ██ ██  ▀▀ ██  ██ ▀█▄██▄█▀  ▄▄▄██  ██   ██    ██  ██ ██▄▄██ ██  ▀▀
