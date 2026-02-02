@@ -46,22 +46,29 @@ Blocks until the thread finishes execution. Must be called before the `Thread` o
 
 ## `Atomic`
 
-`Atomic` provides atomic operations on integer types with explicit memory ordering. The memory ordering is specified in the function name: `acquire` for load operations, `release` for store operations, and `acqRel` for read-modify-write operations.
+`Atomic` provides atomic operations on integer types with explicit memory ordering via a `MemoryOrder` argument. Must be aligned to the size of its template argument.
+
+```
+enum MemoryOrder {
+    Relaxed,
+    Acquire,
+    Release,
+    AcqRel
+};
+```
 
 {apiSummary class=Atomic}
 Atomic(T value = 0)
 Atomic(const Atomic<T>& other)
 void operator=(const Atomic<T>& other)
-T loadRelaxed() const
-T loadAcquire() const
-void storeRelaxed(T value)
-void storeRelease(T value)
-T compareExchangeAcqRel(T expected, T desired)
-T exchangeAcqRel(T desired)
-T fetchAddAcqRel(T operand)
-T fetchSubAcqRel(T operand)
-T fetchAndAcqRel(T operand)
-T fetchOrAcqRel(T operand)
+T load(MemoryOrder order) const
+void store(T value, MemoryOrder order)
+T compareExchange(T expected, T desired, MemoryOrder order)
+T exchange(T desired, MemoryOrder order)
+T fetchAdd(T operand, MemoryOrder order)
+T fetchSub(T operand, MemoryOrder order)
+T fetchAnd(T operand, MemoryOrder order)
+T fetchOr(T operand, MemoryOrder order)
 {/apiSummary}
 
 {apiDescriptions class=Atomic}
@@ -72,60 +79,50 @@ Constructs an atomic with the given initial value.
 >>
 Atomic(const Atomic<T>& other)
 --
-Copy constructor. Performs an atomic load from `other`.
+Copy constructor with no memory ordering guarantees.
 
 >>
 void operator=(const Atomic<T>& other)
 --
-Copy assignment. Performs an atomic load and store.
+Copy assignment with no memory ordering guarantees. Should only be called when there is no concurrent access to the destination.
 
 >>
-T loadRelaxed() const
+T load(MemoryOrder order) const
 --
-Atomically reads the value with relaxed semantics.
+Atomically reads the value with the specified memory order.
 
 >>
-T loadAcquire() const
+void store(T value, MemoryOrder order)
 --
-Atomically reads the value with acquire semantics.
+Atomically writes the value with the specified memory order.
 
 >>
-void storeRelaxed(T value)
---
-Atomically writes the value with relaxed semantics.
-
->>
-void storeRelease(T value)
---
-Atomically writes the value with release semantics.
-
->>
-T compareExchangeAcqRel(T expected, T desired)
+T compareExchange(T expected, T desired, MemoryOrder order)
 --
 If the current value equals `expected`, replaces it with `desired`. Returns the previous value.
 
 >>
-T exchangeAcqRel(T desired)
+T exchange(T desired, MemoryOrder order)
 --
 Atomically replaces the value and returns the previous value.
 
 >>
-T fetchAddAcqRel(T operand)
+T fetchAdd(T operand, MemoryOrder order)
 --
 Atomically adds `operand` to the value and returns the previous value.
 
 >>
-T fetchSubAcqRel(T operand)
+T fetchSub(T operand, MemoryOrder order)
 --
 Atomically subtracts `operand` from the value and returns the previous value.
 
 >>
-T fetchAndAcqRel(T operand)
+T fetchAnd(T operand, MemoryOrder order)
 --
 Atomically performs bitwise AND with `operand` and returns the previous value.
 
 >>
-T fetchOrAcqRel(T operand)
+T fetchOr(T operand, MemoryOrder order)
 --
 Atomically performs bitwise OR with `operand` and returns the previous value.
 {/apiDescriptions}

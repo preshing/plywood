@@ -681,6 +681,8 @@ inline Thread spawnThread(Functor<void()>&& entry) {
 template <typename T, int = sizeof(T)>
 class Atomic;
 
+enum MemoryOrder { Relaxed, Acquire, Release, AcqRel };
+
 #if defined(_MSC_VER)
 
 //----------------------------------------------------
@@ -693,45 +695,44 @@ protected:
 public:
     Atomic(T value = 0) : value{value} {
     }
-    Atomic(const Atomic<T, 4>& other) : value{other.value} {
+    Atomic(const Atomic<T, 4>& other) : value{other.load(Relaxed)} {
     }
     // Hide operator=
-    Atomic& operator=(T value) = delete;
-    Atomic& operator=(const Atomic<T, 4>& other) {
-        this->value = other.value;
+    Atomic& operator=(T) = delete;
+    // The copy assignment operator should only be called when there is no concurrent access to *this.
+    Atomic& operator=(const Atomic& other) {
+        this->value = other.load(Relaxed);
         return *this;
     }
-    T loadRelaxed() const {
-        return *(volatile T*) &this->value;
-    }
-    T loadAcquire() const {
+    T load(MemoryOrder order) const {
         T result = *(volatile T*) &this->value;
-        _ReadWriteBarrier();
+        if (order != Relaxed) {
+            _ReadWriteBarrier();
+        }
         return result;
     }
-    void storeRelaxed(T value) {
+    void store(T value, MemoryOrder order) {
+        if (order != Relaxed) {
+            _ReadWriteBarrier();
+        }
         *(volatile T*) &this->value = value;
     }
-    void storeRelease(T value) {
-        _ReadWriteBarrier();
-        *(volatile T*) &this->value = value;
-    }
-    T compareExchangeAcqRel(T expected, T desired) {
+    T compareExchange(T expected, T desired, MemoryOrder) {
         return (T) _InterlockedCompareExchange((volatile long*) &this->value, (long) desired, (long) expected);
     }
-    T exchangeAcqRel(T desired) {
+    T exchange(T desired, MemoryOrder) {
         return (T) _InterlockedExchange((volatile long*) &this->value, (long) desired);
     }
-    T fetchAddAcqRel(T operand) {
+    T fetchAdd(T operand, MemoryOrder) {
         return (T) _InterlockedExchangeAdd((volatile long*) &this->value, (long) operand);
     }
-    T fetchSubAcqRel(T operand) {
+    T fetchSub(T operand, MemoryOrder) {
         return (T) _InterlockedExchangeAdd((volatile long*) &this->value, -(long) operand);
     }
-    T fetchAndAcqRel(T operand) {
+    T fetchAnd(T operand, MemoryOrder) {
         return (T) _InterlockedAnd((volatile long*) &this->value, (long) operand);
     }
-    T fetchOrAcqRel(T operand) {
+    T fetchOr(T operand, MemoryOrder) {
         return (T) _InterlockedOr((volatile long*) &this->value, (long) operand);
     }
 };
@@ -744,54 +745,60 @@ protected:
 public:
     Atomic(T value = 0) : value{value} {
     }
-    Atomic(const Atomic<T, 8>& other) : value{other.value} {
+    Atomic(const Atomic<T, 8>& other) : value{other.load(Relaxed)} {
     }
     // Hide operator=
-    Atomic& operator=(T value) = delete;
-    Atomic& operator=(const Atomic<T, 8>& other) {
-        this->value = other.value;
+    Atomic& operator=(T) = delete;
+    // The copy assignment operator should only be called when there is no concurrent access to *this.
+    Atomic& operator=(const Atomic& other) {
+        this->value = other.load(Relaxed);
         return *this;
     }
-    T loadRelaxed() const {
-        return *(volatile T*) &this->value;
-    }
-    T loadAcquire() const {
+    T load(MemoryOrder order) const {
 #if PLY_PTR_SIZE == 8
         T result = *(volatile T*) &this->value;
-        _ReadWriteBarrier();
+        if (order != Relaxed) {
+            _ReadWriteBarrier();
+        }
         return result;
 #else
-        return _InterlockedCompareExchange64_acq((volatile __int64*) &this->value, 0, 0);
+        if (order != Relaxed) {
+            return _InterlockedCompareExchange64_acq((volatile __int64*) &this->value, 0, 0);
+        }
+        return *(volatile T*) &this->value;
 #endif
     }
-    void storeRelaxed(T value) {
-        *(volatile T*) &this->value = value;
-    }
-    void storeRelease(T value) {
+    void store(T value, MemoryOrder order) {
 #if PLY_PTR_SIZE == 8
-        _ReadWriteBarrier();
+        if (order != Relaxed) {
+            _ReadWriteBarrier();
+        }
         *(volatile T*) &this->value = value;
 #else
-        _InterlockedExchange64_rel((volatile __int64*) &this->value, value);
+        if (order != Relaxed) {
+            _InterlockedExchange64_rel((volatile __int64*) &this->value, value);
+        } else {
+            *(volatile T*) &this->value = value;
+        }
 #endif
     }
-    T compareExchangeAcqRel(T expected, T desired) {
+    T compareExchange(T expected, T desired, MemoryOrder) {
         return (T) _InterlockedCompareExchange64((volatile __int64*) &this->value, (__int64) desired,
                                                  (__int64) expected);
     }
-    T exchangeAcqRel(T desired) {
+    T exchange(T desired, MemoryOrder) {
         return (T) _InterlockedExchange64((volatile __int64*) &this->value, (__int64) desired);
     }
-    T fetchAddAcqRel(T operand) {
-        return (T) _InlineInterlockedAdd64((volatile __int64*) &this->value, (__int64) operand);
+    T fetchAdd(T operand, MemoryOrder) {
+        return (T) _InterlockedExchangeAdd64((volatile __int64*) &this->value, (__int64) operand);
     }
-    T fetchSubAcqRel(T operand) {
-        return (T) _InlineInterlockedAdd64((volatile __int64*) &this->value, -(__int64) operand);
+    T fetchSub(T operand, MemoryOrder) {
+        return (T) _InterlockedExchangeAdd64((volatile __int64*) &this->value, -(__int64) operand);
     }
-    T fetchAndAcqRel(T operand) {
+    T fetchAnd(T operand, MemoryOrder) {
         return (T) _InterlockedAnd64((volatile __int64*) &this->value, (__int64) operand);
     }
-    T fetchOrAcqRel(T operand) {
+    T fetchOr(T operand, MemoryOrder) {
         return (T) _InterlockedOr64((volatile __int64*) &this->value, (__int64) operand);
     }
 };
@@ -800,6 +807,20 @@ public:
 
 //----------------------------------------------------
 // GCC/Clang implementation.
+constexpr int toGccOrder(MemoryOrder order) {
+    switch (order) {
+        case Relaxed:
+        default:
+            return __ATOMIC_RELAXED;
+        case Acquire:
+            return __ATOMIC_ACQUIRE;
+        case Release:
+            return __ATOMIC_RELEASE;
+        case AcqRel:
+            return __ATOMIC_ACQ_REL;
+    }
+}
+
 template <typename T>
 class Atomic<T, 4> {
 protected:
@@ -808,44 +829,40 @@ protected:
 public:
     Atomic(T value = 0) : value{value} {
     }
-    Atomic(const Atomic<T, 4>& other) : value{other.value} {
+    Atomic(const Atomic<T, 4>& other) : value{other.load(Relaxed)} {
     }
     // Hide operator=
-    Atomic& operator=(T value) = delete;
-    Atomic& operator=(const Atomic<T, 4>& other) {
-        this->value = other.value;
+    Atomic& operator=(T) = delete;
+    // The copy assignment operator should only be called when there is no concurrent access to *this.
+    Atomic& operator=(const Atomic& other) {
+        this->value = other.load(Relaxed);
         return *this;
     }
-    T loadRelaxed() const {
-        return __atomic_load_n(&this->value, __ATOMIC_RELAXED);
+    T load(MemoryOrder order) const {
+        return __atomic_load_n(&this->value, toGccOrder(order));
     }
-    T loadAcquire() const {
-        return __atomic_load_n(&this->value, __ATOMIC_ACQUIRE);
+    void store(T value, MemoryOrder order) {
+        __atomic_store_n(&this->value, value, toGccOrder(order));
     }
-    void storeRelaxed(T value) {
-        __atomic_store_n(&this->value, value, __ATOMIC_RELAXED);
-    }
-    void storeRelease(T value) {
-        __atomic_store_n(&this->value, value, __ATOMIC_RELEASE);
-    }
-    T compareExchangeAcqRel(T expected, T desired) {
-        __atomic_compare_exchange(&this->value, &expected, desired, false, __ATOMIC_ACQ_REL, __ATOMIC_ACQ_REL);
+    T compareExchange(T expected, T desired, MemoryOrder order) {
+        MemoryOrder failOrder = (order == AcqRel) ? Acquire : ((order == Release) ? Relaxed : order);
+        __atomic_compare_exchange_n(&this->value, &expected, desired, false, toGccOrder(order), toGccOrder(failOrder));
         return expected;
     }
-    T exchangeAcqRel(T desired) {
-        return __atomic_exchange(&this->value, desired, __ATOMIC_ACQ_REL);
+    T exchange(T desired, MemoryOrder order) {
+        return __atomic_exchange_n(&this->value, desired, toGccOrder(order));
     }
-    T fetchAddAcqRel(T operand) {
-        return __atomic_fetch_add(&this->value, operand, __ATOMIC_ACQ_REL);
+    T fetchAdd(T operand, MemoryOrder order) {
+        return __atomic_fetch_add(&this->value, operand, toGccOrder(order));
     }
-    T fetchSubAcqRel(T operand) {
-        return __atomic_fetch_sub(&this->value, operand, __ATOMIC_ACQ_REL);
+    T fetchSub(T operand, MemoryOrder order) {
+        return __atomic_fetch_sub(&this->value, operand, toGccOrder(order));
     }
-    T fetchAndAcqRel(T operand) {
-        return __atomic_fetch_and(&this->value, operand, __ATOMIC_ACQ_REL);
+    T fetchAnd(T operand, MemoryOrder order) {
+        return __atomic_fetch_and(&this->value, operand, toGccOrder(order));
     }
-    T fetchOrAcqRel(T operand) {
-        return __atomic_fetch_or(&this->value, operand, __ATOMIC_ACQ_REL);
+    T fetchOr(T operand, MemoryOrder order) {
+        return __atomic_fetch_or(&this->value, operand, toGccOrder(order));
     }
 };
 
@@ -857,44 +874,40 @@ protected:
 public:
     Atomic(T value = 0) : value{value} {
     }
-    Atomic(const Atomic<T, 4>& other) : value{other.value} {
+    Atomic(const Atomic<T, 8>& other) : value{other.load(Relaxed)} {
     }
     // Hide operator=
-    Atomic& operator=(T value) = delete;
-    Atomic& operator=(const Atomic<T, 4>& other) {
-        this->value = other.value;
+    Atomic& operator=(T) = delete;
+    // The copy assignment operator should only be called when there is no concurrent access to *this.
+    Atomic& operator=(const Atomic& other) {
+        this->value = other.load(Relaxed);
         return *this;
     }
-    T loadRelaxed() const {
-        return __atomic_load_n(&this->value, __ATOMIC_RELAXED);
+    T load(MemoryOrder order) const {
+        return __atomic_load_n(&this->value, toGccOrder(order));
     }
-    T loadAcquire() const {
-        return __atomic_load_n(&this->value, __ATOMIC_ACQUIRE);
+    void store(T value, MemoryOrder order) {
+        __atomic_store_n(&this->value, value, toGccOrder(order));
     }
-    void storeRelaxed(T value) {
-        __atomic_store_n(&this->value, value, __ATOMIC_RELAXED);
-    }
-    void storeRelease(T value) {
-        __atomic_store_n(&this->value, value, __ATOMIC_RELEASE);
-    }
-    T compareExchangeAcqRel(T expected, T desired) {
-        __atomic_compare_exchange(&this->value, &expected, desired, false, __ATOMIC_ACQ_REL, __ATOMIC_ACQ_REL);
+    T compareExchange(T expected, T desired, MemoryOrder order) {
+        MemoryOrder failOrder = (order == AcqRel) ? Acquire : ((order == Release) ? Relaxed : order);
+        __atomic_compare_exchange_n(&this->value, &expected, desired, false, toGccOrder(order), toGccOrder(failOrder));
         return expected;
     }
-    T exchangeAcqRel(T desired) {
-        return __atomic_exchange(&this->value, desired, __ATOMIC_ACQ_REL);
+    T exchange(T desired, MemoryOrder order) {
+        return __atomic_exchange_n(&this->value, desired, toGccOrder(order));
     }
-    T fetchAddAcqRel(T operand) {
-        return __atomic_fetch_add(&this->value, operand, __ATOMIC_ACQ_REL);
+    T fetchAdd(T operand, MemoryOrder order) {
+        return __atomic_fetch_add(&this->value, operand, toGccOrder(order));
     }
-    T fetchSubAcqRel(T operand) {
-        return __atomic_fetch_sub(&this->value, operand, __ATOMIC_ACQ_REL);
+    T fetchSub(T operand, MemoryOrder order) {
+        return __atomic_fetch_sub(&this->value, operand, toGccOrder(order));
     }
-    T fetchAndAcqRel(T operand) {
-        return __atomic_fetch_and(&this->value, operand, __ATOMIC_ACQ_REL);
+    T fetchAnd(T operand, MemoryOrder order) {
+        return __atomic_fetch_and(&this->value, operand, toGccOrder(order));
     }
-    T fetchOrAcqRel(T operand) {
-        return __atomic_fetch_or(&this->value, operand, __ATOMIC_ACQ_REL);
+    T fetchOr(T operand, MemoryOrder order) {
+        return __atomic_fetch_or(&this->value, operand, toGccOrder(order));
     }
 };
 
@@ -2279,7 +2292,7 @@ public:
     }
     // Extend from any compatible array with copy semantics.
     template <typename Other, PLY_ENABLE_IF_WELL_FORMED(ArrayView<const Item>{declval<Other>()})>
-    Array& operator+=(Other&& other) {
+    Array& operator+=(Other && other) {
         u32 numOtherItems = ArrayView<const Item>{other}.numItems();
         this->reserve(this->numItems_ + numOtherItems);
         for (u32 i = 0; i < numOtherItems; i++) {
@@ -2472,8 +2485,7 @@ public:
     // Reserve space for a given number of items. The number is rounded up to the nearest power of 2.
     void reserve(u32 numItems) {
         if (numItems > this->allocated) {
-            this->allocated =
-                roundUpToNearestPowerOf2(numItems); // FIXME: Generalize to other resize strategies?
+            this->allocated = roundUpToNearestPowerOf2(numItems); // FIXME: Generalize to other resize strategies?
             this->items_ = (Item*) Heap::realloc(this->items_, uptr(this->allocated) * sizeof(Item));
         }
     }
@@ -3223,19 +3235,19 @@ private:
 
 public:
     void incRefCount() {
-        u32 oldCount = this->refCount.fetchAddAcqRel(1);
+        u32 oldCount = this->refCount.fetchAdd(1, AcqRel);
         PLY_ASSERT(oldCount < 5000);
         PLY_UNUSED(oldCount);
     }
     void decRefCount() {
-        s32 oldCount = this->refCount.fetchSubAcqRel(1);
+        s32 oldCount = this->refCount.fetchSub(1, AcqRel);
         PLY_ASSERT(oldCount < 5000);
         if (oldCount == 1) {
             static_cast<Subclass*>(this)->onRefCountZero();
         }
     }
     s32 getRefCount() const {
-        return this->refCount.loadAcquire();
+        return this->refCount.load(Acquire);
     }
 };
 
@@ -3276,7 +3288,7 @@ struct Functor<Return(Args...)> {
     Functor() = default;
     Functor(Return (*target)(Args...)) {
         this->thunk = [](const Functor* f, Args... args) -> Return {
-            return (*(Return(*)(Args...)) f->thunkArg)(std::forward<Args>(args)...);
+            return (*(Return (*)(Args...)) f->thunkArg)(std::forward<Args>(args)...);
         };
         this->thunkArg = (void*) target;
     }

@@ -399,7 +399,7 @@ void* VirtualMemory::reserveRegion(uptr numBytes) {
     void* addr = VirtualAlloc(0, (SIZE_T) numBytes, MEM_RESERVE, PAGE_READWRITE);
     if (addr == NULL)
         return nullptr;
-    VirtualMemory::totalReservedBytes.fetchAddAcqRel(numBytes);
+    VirtualMemory::totalReservedBytes.fetchAdd(numBytes, Relaxed);
     return addr;
 }
 
@@ -422,8 +422,8 @@ void VirtualMemory::unreserveRegion(void* addr, uptr numReservedBytes, uptr numC
     BOOL rc2 = VirtualFree(addr, 0, MEM_RELEASE);
     PLY_ASSERT(rc2);
     PLY_UNUSED(rc2);
-    VirtualMemory::totalReservedBytes.fetchSubAcqRel(numReservedBytes);
-    VirtualMemory::totalCommittedBytes.fetchSubAcqRel(numCommittedBytes);
+    VirtualMemory::totalReservedBytes.fetchSub(numReservedBytes, Relaxed);
+    VirtualMemory::totalCommittedBytes.fetchSub(numCommittedBytes, Relaxed);
 }
 
 void VirtualMemory::commitPages(void* addr, uptr numBytes) {
@@ -433,7 +433,7 @@ void VirtualMemory::commitPages(void* addr, uptr numBytes) {
     LPVOID result = VirtualAlloc(addr, (SIZE_T) numBytes, MEM_COMMIT, PAGE_READWRITE);
     PLY_ASSERT(result != NULL); // Failure is considered fatal
     PLY_UNUSED(result);
-    VirtualMemory::totalCommittedBytes.fetchAddAcqRel(numBytes);
+    VirtualMemory::totalCommittedBytes.fetchAdd(numBytes, Relaxed);
 }
 
 void VirtualMemory::decommitPages(void* addr, uptr numBytes) {
@@ -443,7 +443,7 @@ void VirtualMemory::decommitPages(void* addr, uptr numBytes) {
     BOOL rc = VirtualFree(addr, numBytes, MEM_DECOMMIT);
     PLY_ASSERT(rc);
     PLY_UNUSED(rc);
-    VirtualMemory::totalCommittedBytes.fetchSubAcqRel(numBytes);
+    VirtualMemory::totalCommittedBytes.fetchSub(numBytes, Relaxed);
 }
 
 void* VirtualMemory::allocRegion(uptr numBytes) {
@@ -452,8 +452,8 @@ void* VirtualMemory::allocRegion(uptr numBytes) {
     void* addr = VirtualAlloc(0, (SIZE_T) numBytes, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
     if (addr == NULL)
         return nullptr;
-    VirtualMemory::totalReservedBytes.fetchAddAcqRel(numBytes);
-    VirtualMemory::totalCommittedBytes.fetchAddAcqRel(numBytes);
+    VirtualMemory::totalReservedBytes.fetchAdd(numBytes, Relaxed);
+    VirtualMemory::totalCommittedBytes.fetchAdd(numBytes, Relaxed);
     return addr;
 }
 
@@ -507,7 +507,7 @@ void* VirtualMemory::reserveRegion(uptr numBytes) {
     void* addr = mmap(0, numBytes, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     if (addr == MAP_FAILED)
         return nullptr;
-    VirtualMemory::totalReservedBytes.fetchAddAcqRel(numBytes);
+    VirtualMemory::totalReservedBytes.fetchAdd(numBytes, Relaxed);
     return addr;
 }
 
@@ -519,8 +519,8 @@ void VirtualMemory::unreserveRegion(void* addr, uptr numReservedBytes, uptr numC
     int rc = munmap(addr, numReservedBytes);
     PLY_ASSERT(rc == 0);
     PLY_UNUSED(rc);
-    VirtualMemory::totalReservedBytes.fetchSubAcqRel(numReservedBytes);
-    VirtualMemory::totalCommittedBytes.fetchSubAcqRel(numCommittedBytes);
+    VirtualMemory::totalReservedBytes.fetchSub(numReservedBytes, Relaxed);
+    VirtualMemory::totalCommittedBytes.fetchSub(numCommittedBytes, Relaxed);
 }
 
 void VirtualMemory::commitPages(void* addr, uptr numBytes) {
@@ -530,7 +530,7 @@ void VirtualMemory::commitPages(void* addr, uptr numBytes) {
     int rc = mprotect(addr, numBytes, PROT_READ | PROT_WRITE);
     PLY_ASSERT(rc == 0);
     PLY_UNUSED(rc);
-    VirtualMemory::totalCommittedBytes.fetchAddAcqRel(numBytes);
+    VirtualMemory::totalCommittedBytes.fetchAdd(numBytes, Relaxed);
 }
 
 void VirtualMemory::decommitPages(void* addr, uptr numBytes) {
@@ -542,7 +542,7 @@ void VirtualMemory::decommitPages(void* addr, uptr numBytes) {
     rc = mprotect(addr, numBytes, PROT_NONE);
     PLY_ASSERT(rc == 0);
     PLY_UNUSED(rc);
-    VirtualMemory::totalCommittedBytes.fetchSubAcqRel(numBytes);
+    VirtualMemory::totalCommittedBytes.fetchSub(numBytes, Relaxed);
 }
 
 void* VirtualMemory::allocRegion(uptr numBytes) {
@@ -551,8 +551,8 @@ void* VirtualMemory::allocRegion(uptr numBytes) {
     void* addr = mmap(0, numBytes, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     if (addr == MAP_FAILED)
         return nullptr;
-    VirtualMemory::totalReservedBytes.fetchAddAcqRel(numBytes);
-    VirtualMemory::totalCommittedBytes.fetchAddAcqRel(numBytes);
+    VirtualMemory::totalReservedBytes.fetchAdd(numBytes, Relaxed);
+    VirtualMemory::totalCommittedBytes.fetchAdd(numBytes, Relaxed);
     return addr;
 }
 

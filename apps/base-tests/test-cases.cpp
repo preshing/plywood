@@ -1394,48 +1394,48 @@ TEST_CASE("Usage stats with reserve/commit/decommit/unreserve") {
     VirtualMemory::Properties props = VirtualMemory::getProperties();
     uptr regionSize = max(props.pageSize * 4, props.regionAlignment);
 
-    uptr initialReserved = VirtualMemory::totalReservedBytes.loadRelaxed();
-    uptr initialCommitted = VirtualMemory::totalCommittedBytes.loadRelaxed();
+    uptr initialReserved = VirtualMemory::totalReservedBytes.load(Relaxed);
+    uptr initialCommitted = VirtualMemory::totalCommittedBytes.load(Relaxed);
 
     // Reserve region
     void* addr = VirtualMemory::reserveRegion(regionSize);
     check(addr != nullptr);
-    check(VirtualMemory::totalReservedBytes.loadRelaxed() == initialReserved + regionSize);
-    check(VirtualMemory::totalCommittedBytes.loadRelaxed() == initialCommitted);
+    check(VirtualMemory::totalReservedBytes.load(Relaxed) == initialReserved + regionSize);
+    check(VirtualMemory::totalCommittedBytes.load(Relaxed) == initialCommitted);
 
     // Commit 3 pages
     VirtualMemory::commitPages(addr, props.pageSize * 3);
-    check(VirtualMemory::totalReservedBytes.loadRelaxed() == initialReserved + regionSize);
-    check(VirtualMemory::totalCommittedBytes.loadRelaxed() == initialCommitted + props.pageSize * 3);
+    check(VirtualMemory::totalReservedBytes.load(Relaxed) == initialReserved + regionSize);
+    check(VirtualMemory::totalCommittedBytes.load(Relaxed) == initialCommitted + props.pageSize * 3);
 
     // Decommit 1 page
     VirtualMemory::decommitPages(addr, props.pageSize);
-    check(VirtualMemory::totalReservedBytes.loadRelaxed() == initialReserved + regionSize);
-    check(VirtualMemory::totalCommittedBytes.loadRelaxed() == initialCommitted + props.pageSize * 2);
+    check(VirtualMemory::totalReservedBytes.load(Relaxed) == initialReserved + regionSize);
+    check(VirtualMemory::totalCommittedBytes.load(Relaxed) == initialCommitted + props.pageSize * 2);
 
     // Unreserve region (with 2 pages still committed)
     VirtualMemory::unreserveRegion(addr, regionSize, props.pageSize * 2);
-    check(VirtualMemory::totalReservedBytes.loadRelaxed() == initialReserved);
-    check(VirtualMemory::totalCommittedBytes.loadRelaxed() == initialCommitted);
+    check(VirtualMemory::totalReservedBytes.load(Relaxed) == initialReserved);
+    check(VirtualMemory::totalCommittedBytes.load(Relaxed) == initialCommitted);
 }
 
 TEST_CASE("Usage stats with alloc/free") {
     VirtualMemory::Properties props = VirtualMemory::getProperties();
     uptr regionSize = props.regionAlignment * 2;
 
-    uptr initialReserved = VirtualMemory::totalReservedBytes.loadRelaxed();
-    uptr initialCommitted = VirtualMemory::totalCommittedBytes.loadRelaxed();
+    uptr initialReserved = VirtualMemory::totalReservedBytes.load(Relaxed);
+    uptr initialCommitted = VirtualMemory::totalCommittedBytes.load(Relaxed);
 
     // Alloc region (reserves and commits)
     void* addr = VirtualMemory::allocRegion(regionSize);
     check(addr != nullptr);
-    check(VirtualMemory::totalReservedBytes.loadRelaxed() == initialReserved + regionSize);
-    check(VirtualMemory::totalCommittedBytes.loadRelaxed() == initialCommitted + regionSize);
+    check(VirtualMemory::totalReservedBytes.load(Relaxed) == initialReserved + regionSize);
+    check(VirtualMemory::totalCommittedBytes.load(Relaxed) == initialCommitted + regionSize);
 
     // Free region (decommits and unreserves)
     VirtualMemory::freeRegion(addr, regionSize);
-    check(VirtualMemory::totalReservedBytes.loadRelaxed() == initialReserved);
-    check(VirtualMemory::totalCommittedBytes.loadRelaxed() == initialCommitted);
+    check(VirtualMemory::totalReservedBytes.load(Relaxed) == initialReserved);
+    check(VirtualMemory::totalCommittedBytes.load(Relaxed) == initialCommitted);
 }
 
 //  ▄▄▄▄▄  ▄▄                      ▄▄                        ▄▄    ▄▄         ▄▄         ▄▄

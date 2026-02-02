@@ -445,7 +445,7 @@ int main(int argc, const char* argv[]) {
         auto onChange = [&](StringView path, bool mustRecurse) {
             if (splitPathFull(path)[0] != "build") {
                 LockGuard<Mutex> lock{mutex};
-                changed.storeRelease(1);
+                changed.store(1, Release);
                 cond.wakeOne();
             }
         };
@@ -456,14 +456,14 @@ int main(int argc, const char* argv[]) {
         for (;;) {
             {
                 LockGuard<Mutex> lock{mutex};
-                while (!changed.loadAcquire()) {
+                while (!changed.load(Acquire)) {
                     cond.wait(lock);
                 }
             }
 
             getStdOut().write("Change detected, regenerating...\n");
             sleepMillis(100);
-            changed.storeRelease(0);
+            changed.store(0, Release);
             generateWholeSite();
             getStdOut().write("Done.\n");
         }
