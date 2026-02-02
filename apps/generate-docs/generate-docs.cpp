@@ -158,7 +158,7 @@ void parseApiDescriptions(Stream& out, const Map<StringView, String>& args, View
 
     markdown::HTML_Options options;
     Owned<markdown::Parser> md = markdown::createParser();
-    out.write("<dl class=\"apiDefs\"><dt>");
+    out.write("<dl class=\"api_defs\"><dt>");
     bool inTitle = true;
     bool firstDecl = true;
     while (StringView line = readLine(in)) {
