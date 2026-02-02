@@ -2,7 +2,7 @@
 
 Plywood defines the following preprocessor macros.
 
-{api_summary}
+{apiSummary}
 -- Assertions
 PLY_ASSERT(cond)
 PLY_STATIC_ASSERT(cond)
@@ -33,7 +33,7 @@ PLY_IOS
 PLY_POSIX
 PLY_MINGW
 PLY_PTR_SIZE
-{/api_summary}
+{/apiSummary}
 
 ## Assertions
 
@@ -45,7 +45,7 @@ PLY_STATIC_ASSERT(cond)
 
 These macros are wrappers around compiler-specific extensions. They mainly hide differences between MSVC and GCC/Clang.
 
-{api_descriptions}
+{apiDescriptions}
 PLY_NO_INLINE
 --
 Prevents inline class methods from being considered as inlining candidates. Defined as `__declspec(noinline)` on MSVC and `__attribute__((noinline))` on GCC and Clang.
@@ -74,11 +74,11 @@ Prevents the compiler from [reordering adjacent memory operations](https://presh
 PLY_NO_DISCARD
 --
 Equivalent to the `nodiscard` keyword that was added in C++17. Defined as `_Check_return_` on MSVC and `__attribute__((warn_unused_result))` on GCC and Clang.
-{/api_descriptions}
+{/apiDescriptions}
 
 ## General-Purpose Macros
 
-{api_descriptions}
+{apiDescriptions}
 PLY_STRINGIFY(arg)
 --
 Converts its argument to a string literal.
@@ -129,7 +129,7 @@ PLY_CALL_MEMBER(obj, pmf)
 --
 A macro for invoking pointer-to-member functions, as recommended by the [C++ FAQ](https://isocpp.org/wiki/faq/pointers-to-members#macro-for-ptr-to-memfn).
 
-    void do_something(Foo* obj, void (Foo::*pmf)()) {
+    void doSomething(Foo* obj, void (Foo::*pmf)()) {
         PLY_CALL_MEMBER(obj, pmf)();
     }
 
@@ -137,14 +137,14 @@ A macro for invoking pointer-to-member functions, as recommended by the [C++ FAQ
 PLY_PUN_GUARD()
 --
 The C++ standard [forbids type punning](https://timsong-cpp.github.io/cppwp/n4950/basic.lval#11), since the compiler would generate less efficient code if it couldn't assume [strict aliasing](https://cellperformance.beyond3d.com/articles/2006/06/understanding-strict-aliasing.html). Plywood uses type punning in some places anyway, and this macro indicates where it's used. It uses `PLY_COMPILER_BARRIER` internally to prevent the compiler from making assumptions about the contents of memory around the enclosed scope.
-{/api_descriptions}
+{/apiDescriptions}
 
 ## Platform Identification
 
 This table shows blah blah blah. In application code, you often need to blah blah, so this gives you a way to do that.
 Most just use compiler-specific predefined macros to determine it and offer a convenient mnemonic.
 
-{api_descriptions}
+{apiDescriptions}
 PLY_WINDOWS
 --
 Defined when compiling for Windows.
@@ -188,5 +188,5 @@ Defined when compiling for [MinGW](https://www.mingw-w64.org/).
 PLY_PTR_SIZE
 --
 The size of a pointer in bytes. Defined as `4` when compiling for a 32-bit platform and `8` when compiling for a 64-bit platform. These days, most computers and mobile devices are 64-bit platforms, but it's still possible to compile 32-bit software if you need to support 32-bit Windows 10 or a 32-bit Linux. WebAssembly is strictly a 32-bit platform.
-{/api_descriptions}
+{/apiDescriptions}
 

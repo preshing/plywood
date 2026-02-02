@@ -2,7 +2,7 @@
        ____
       ╱   ╱╲    Plywood C++ Base Library
      ╱___╱╭╮╲   https://plywood.dev/
-      └──┴┴┴┘   
+      └──┴┴┴┘
 ========================================================*/
 
 #include "ply-math.h"
@@ -19,31 +19,31 @@ Float2 Float2::normalized() const {
     return *this / length();
 }
 
-Float2 Float2::safe_normalized(const Float2& fallback, float epsilon) const {
-    float L2 = this->length_squared();
+Float2 Float2::safeNormalized(const Float2& fallback, float epsilon) const {
+    float L2 = this->lengthSquared();
     if (L2 < epsilon * epsilon)
         return fallback;
     return *this / sqrtf(L2);
 }
 
-Rect rect_from_fov(float fov_y, float aspect) {
-    float half_tan_y = tanf(fov_y / 2);
-    return inflate(Rect{{0, 0}}, {half_tan_y * aspect, half_tan_y});
+Rect rectFromFov(float fovY, float aspect) {
+    float halfTanY = tanf(fovY / 2);
+    return inflate(Rect{{0, 0}}, {halfTanY * aspect, halfTanY});
 }
 
-Float2 round_up(const Float2& value) {
-    return {round_up(value.x), round_up(value.y)};
+Float2 roundUp(const Float2& value) {
+    return {roundUp(value.x), roundUp(value.y)};
 }
 
-Float2 round_down(const Float2& value) {
-    return {round_down(value.x), round_down(value.y)};
+Float2 roundDown(const Float2& value) {
+    return {roundDown(value.x), roundDown(value.y)};
 }
 
-Float2 round_nearest(const Float2& value) {
-    return {round_nearest(value.x), round_nearest(value.y)};
+Float2 roundNearest(const Float2& value) {
+    return {roundNearest(value.x), roundNearest(value.y)};
 }
 
-Float2 step_towards(const Float2& start, const Float2& target, float amount) {
+Float2 stepTowards(const Float2& start, const Float2& target, float amount) {
     Float2 delta = target - start;
     float length = delta.length();
     return (length < amount) ? target : start + delta * (amount / length);
@@ -59,8 +59,8 @@ Float3 Float3::normalized() const {
     return *this / length();
 }
 
-Float3 Float3::safe_normalized(const Float3& fallback, float epsilon) const {
-    float L2 = this->length_squared();
+Float3 Float3::safeNormalized(const Float3& fallback, float epsilon) const {
+    float L2 = this->lengthSquared();
     if (L2 < epsilon * epsilon)
         return fallback;
     return *this / sqrtf(L2);
@@ -70,19 +70,19 @@ Float3 pow(const Float3& a, const Float3& b) {
     return {powf(a.x, b.x), powf(a.y, b.y), powf(a.z, b.z)};
 }
 
-Float3 round_up(const Float3& value) {
-    return {round_up(value.x), round_up(value.y), round_up(value.z)};
+Float3 roundUp(const Float3& value) {
+    return {roundUp(value.x), roundUp(value.y), roundUp(value.z)};
 }
 
-Float3 round_down(const Float3& value) {
-    return {round_down(value.x), round_down(value.y), round_down(value.z)};
+Float3 roundDown(const Float3& value) {
+    return {roundDown(value.x), roundDown(value.y), roundDown(value.z)};
 }
 
-Float3 round_nearest(const Float3& value) {
-    return {round_nearest(value.x), round_nearest(value.y), round_nearest(value.z)};
+Float3 roundNearest(const Float3& value) {
+    return {roundNearest(value.x), roundNearest(value.y), roundNearest(value.z)};
 }
 
-Float3 step_towards(const Float3& start, const Float3& target, float amount) {
+Float3 stepTowards(const Float3& start, const Float3& target, float amount) {
     Float3 delta = target - start;
     float length = delta.length();
     return (length < amount) ? target : start + delta * (amount / length);
@@ -98,8 +98,8 @@ Float4 Float4::normalized() const {
     return *this / length();
 }
 
-Float4 Float4::safe_normalized(const Float4& fallback, float epsilon) const {
-    float L2 = this->length_squared();
+Float4 Float4::safeNormalized(const Float4& fallback, float epsilon) const {
+    float L2 = this->lengthSquared();
     if (L2 < epsilon * epsilon)
         return fallback;
     return *this / sqrtf(L2);
@@ -109,19 +109,19 @@ Float4 pow(const Float4& a, const Float4& b) {
     return {powf(a.x, b.x), powf(a.y, b.y), powf(a.z, b.z), powf(a.w, b.w)};
 }
 
-Float4 round_up(const Float4& vec) {
-    return {round_up(vec.x), round_up(vec.y), round_up(vec.z), round_up(vec.w)};
+Float4 roundUp(const Float4& vec) {
+    return {roundUp(vec.x), roundUp(vec.y), roundUp(vec.z), roundUp(vec.w)};
 }
 
-Float4 round_down(const Float4& vec) {
-    return {round_down(vec.x), round_down(vec.y), round_down(vec.z), round_down(vec.w)};
+Float4 roundDown(const Float4& vec) {
+    return {roundDown(vec.x), roundDown(vec.y), roundDown(vec.z), roundDown(vec.w)};
 }
 
-Float4 round_nearest(const Float4& vec) {
-    return {round_nearest(vec.x), round_nearest(vec.y), round_nearest(vec.z), round_nearest(vec.w)};
+Float4 roundNearest(const Float4& vec) {
+    return {roundNearest(vec.x), roundNearest(vec.y), roundNearest(vec.z), roundNearest(vec.w)};
 }
 
-Float4 step_towards(const Float4& start, const Float4& target, float amount) {
+Float4 stepTowards(const Float4& start, const Float4& target, float amount) {
     Float4 delta = target - start;
     float length = delta.length();
     return (length < amount) ? target : start + delta * (amount / length);
@@ -134,12 +134,12 @@ Float4 step_towards(const Float4& start, const Float4& target, float amount) {
 //
 
 Color::Color(StringView hex) {
-    if ((hex.num_bytes() != 6) && (hex.num_bytes() != 8)) {
-        PLY_ASSERT(0);  // Invalid hex string
+    if ((hex.numBytes() != 6) && (hex.numBytes() != 8)) {
+        PLY_ASSERT(0); // Invalid hex string
         return;
     }
     const char* s = hex.bytes();
-    auto read_hex = [&]() -> u32 {
+    auto readHex = [&]() -> u32 {
         u32 c = 0;
         for (int j = 0; j < 2; j++) {
             c <<= 4;
@@ -156,44 +156,44 @@ Color::Color(StringView hex) {
         }
         return (u8) c;
     };
-    this->r = read_hex();
-    this->g = read_hex();
-    this->b = read_hex();
-    if (hex.num_bytes() == 8) {
-        this->a = read_hex();
+    this->r = readHex();
+    this->g = readHex();
+    this->b = readHex();
+    if (hex.numBytes() == 8) {
+        this->a = readHex();
     } else {
         this->a = 255;
     }
 }
 
-float srgb_to_linear(float s) {
+float srgbToLinear(float s) {
     if (s < 0.0404482362771082f)
         return s / 12.92f;
     else
         return powf(((s + 0.055f) / 1.055f), 2.4f);
 }
 
-float linear_to_srgb(float l) {
+float linearToSrgb(float l) {
     if (l < 0.00313066844250063f)
         return l * 12.92f;
     else
         return 1.055f * powf(l, 1 / 2.4f) - 0.055f;
 }
 
-Float3 srgb_to_linear(const Float3& vec) {
-    return {srgb_to_linear(vec.x), srgb_to_linear(vec.y), srgb_to_linear(vec.z)};
+Float3 srgbToLinear(const Float3& vec) {
+    return {srgbToLinear(vec.x), srgbToLinear(vec.y), srgbToLinear(vec.z)};
 }
 
-Float4 srgb_to_linear(const Float4& vec) {
-    return {srgb_to_linear(vec.x), srgb_to_linear(vec.y), srgb_to_linear(vec.z), vec.w};
+Float4 srgbToLinear(const Float4& vec) {
+    return {srgbToLinear(vec.x), srgbToLinear(vec.y), srgbToLinear(vec.z), vec.w};
 }
 
-Float3 linear_to_srgb(const Float3& vec) {
-    return {linear_to_srgb(vec.x), linear_to_srgb(vec.y), linear_to_srgb(vec.z)};
+Float3 linearToSrgb(const Float3& vec) {
+    return {linearToSrgb(vec.x), linearToSrgb(vec.y), linearToSrgb(vec.z)};
 }
 
-Float4 linear_to_srgb(const Float4& vec) {
-    return {linear_to_srgb(vec.x), linear_to_srgb(vec.y), linear_to_srgb(vec.z), vec.w};
+Float4 linearToSrgb(const Float4& vec) {
+    return {linearToSrgb(vec.x), linearToSrgb(vec.y), linearToSrgb(vec.z), vec.w};
 }
 
 //                   ▄▄    ▄▄▄▄          ▄▄▄▄
@@ -211,16 +211,16 @@ Mat2x2 Mat2x2::scale(const Float2& scale) {
 }
 
 Mat2x2 Mat2x2::rotate(float radians) {
-    return from_complex(Complex::from_angle(radians));
+    return fromComplex(Complex::fromAngle(radians));
 }
 
-Mat2x2 Mat2x2::from_complex(const Float2& c) {
+Mat2x2 Mat2x2::fromComplex(const Float2& c) {
     return {{c.x, c.y}, {-c.y, c.x}};
 }
 
 Mat2x2 Mat2x2::transposed() const {
     PLY_PUN_GUARD;
-    auto* m = reinterpret_cast<const float (*)[2]>(this);
+    auto* m = reinterpret_cast<const float(*)[2]>(this);
     return {
         {m[0][0], m[1][0]},
         {m[0][1], m[1][1]},
@@ -236,7 +236,7 @@ Float2 operator*(const Mat2x2& m_, const Float2& v_) {
     {
         PLY_PUN_GUARD;
         auto* res = reinterpret_cast<float*>(&result);
-        auto* m = reinterpret_cast<const float (*)[2]>(&m_);
+        auto* m = reinterpret_cast<const float(*)[2]>(&m_);
         auto* v = reinterpret_cast<const float*>(&v_);
         for (u32 r = 0; r < 2; r++) {
             res[r] = m[0][r] * v[0] + m[1][r] * v[1];
@@ -273,23 +273,23 @@ Mat3x3 Mat3x3::scale(const Float3& arg) {
     return {{arg.x, 0, 0}, {0, arg.y, 0}, {0, 0, arg.z}};
 }
 
-Mat3x3 Mat3x3::rotate(const Float3& unit_axis, float radians) {
-    return Mat3x3::from_quaternion(Quaternion::from_axis_angle(unit_axis, radians));
+Mat3x3 Mat3x3::rotate(const Float3& unitAxis, float radians) {
+    return Mat3x3::fromQuaternion(Quaternion::fromAxisAngle(unitAxis, radians));
 }
 
-Mat3x3 Mat3x3::from_quaternion(const Quaternion& q) {
+Mat3x3 Mat3x3::fromQuaternion(const Quaternion& q) {
     return {{1 - 2 * q.y * q.y - 2 * q.z * q.z, 2 * q.x * q.y + 2 * q.z * q.w, 2 * q.x * q.z - 2 * q.y * q.w},
             {2 * q.x * q.y - 2 * q.z * q.w, 1 - 2 * q.x * q.x - 2 * q.z * q.z, 2 * q.y * q.z + 2 * q.x * q.w},
             {2 * q.x * q.z + 2 * q.y * q.w, 2 * q.y * q.z - 2 * q.x * q.w, 1 - 2 * q.x * q.x - 2 * q.y * q.y}};
 }
 
-bool Mat3x3::has_scale() const {
-    return !col[0].is_unit_length() || !col[1].is_unit_length() || !col[2].is_unit_length();
+bool Mat3x3::hasScale() const {
+    return !col[0].isUnitLength() || !col[1].isUnitLength() || !col[2].isUnitLength();
 }
 
 Mat3x3 Mat3x3::transposed() const {
     PLY_PUN_GUARD;
-    auto* m = reinterpret_cast<const float (*)[3]>(this);
+    auto* m = reinterpret_cast<const float(*)[3]>(this);
     return {
         {m[0][0], m[1][0], m[2][0]},
         {m[0][1], m[1][1], m[2][1]},
@@ -313,7 +313,7 @@ Float3 operator*(const Mat3x3& m_, const Float3& v_) {
     {
         PLY_PUN_GUARD;
         auto* res = reinterpret_cast<float*>(&result);
-        auto* m = reinterpret_cast<const float (*)[3]>(&m_);
+        auto* m = reinterpret_cast<const float(*)[3]>(&m_);
         auto* v = reinterpret_cast<const float*>(&v_);
         for (u32 r = 0; r < 3; r++) {
             res[r] = m[0][r] * v[0] + m[1][r] * v[1] + m[2][r] * v[2];
@@ -330,21 +330,20 @@ Mat3x3 operator*(const Mat3x3& a, const Mat3x3& b) {
     return result;
 }
 
-Mat3x3 make_basis(const Float3& dst_unit_fwd, const Float3& dst_up, const Float3& src_unit_fwd,
-                  const Float3& src_unit_up) {
-    PLY_ASSERT(dst_unit_fwd.is_unit_length());
-    PLY_ASSERT(src_unit_fwd.is_unit_length());
-    PLY_ASSERT(src_unit_up.is_unit_length());
+Mat3x3 makeBasis(const Float3& dstUnitFwd, const Float3& dstUp, const Float3& srcUnitFwd, const Float3& srcUnitUp) {
+    PLY_ASSERT(dstUnitFwd.isUnitLength());
+    PLY_ASSERT(srcUnitFwd.isUnitLength());
+    PLY_ASSERT(srcUnitUp.isUnitLength());
 
-    Float3 dst_right = cross(dst_unit_fwd, dst_up);
-    float L2 = dst_right.length_squared();
+    Float3 dstRight = cross(dstUnitFwd, dstUp);
+    float L2 = dstRight.lengthSquared();
     if (L2 < 1e-6f) {
-        dst_right = cross(dst_unit_fwd, get_noncollinear(dst_unit_fwd));
-        L2 = dst_right.length_squared();
+        dstRight = cross(dstUnitFwd, getNoncollinear(dstUnitFwd));
+        L2 = dstRight.lengthSquared();
     }
-    dst_right /= sqrtf(L2);
-    return Mat3x3{dst_right, dst_unit_fwd, cross(dst_right, dst_unit_fwd)} *
-           Mat3x3{cross(src_unit_fwd, src_unit_up), src_unit_fwd, src_unit_up}.transposed();
+    dstRight /= sqrtf(L2);
+    return Mat3x3{dstRight, dstUnitFwd, cross(dstRight, dstUnitFwd)} *
+           Mat3x3{cross(srcUnitFwd, srcUnitUp), srcUnitFwd, srcUnitUp}.transposed();
 }
 
 //                   ▄▄    ▄▄▄▄            ▄▄▄
@@ -371,22 +370,22 @@ Mat3x4 Mat3x4::scale(const Float3& arg) {
     return {{arg.x, 0, 0}, {0, arg.y, 0}, {0, 0, arg.z}, {0, 0, 0}};
 }
 
-Mat3x4 Mat3x4::rotate(const Float3& unit_axis, float radians) {
-    return Mat3x4::from_quaternion(Quaternion::from_axis_angle(unit_axis, radians));
+Mat3x4 Mat3x4::rotate(const Float3& unitAxis, float radians) {
+    return Mat3x4::fromQuaternion(Quaternion::fromAxisAngle(unitAxis, radians));
 }
 
 Mat3x4 Mat3x4::translate(const Float3& pos) {
     return {{1, 0, 0}, {0, 1, 0}, {0, 0, 1}, pos};
 }
 
-Mat3x4 Mat3x4::from_quaternion(const Quaternion& q, const Float3& pos) {
+Mat3x4 Mat3x4::fromQuaternion(const Quaternion& q, const Float3& pos) {
     return {{1 - 2 * q.y * q.y - 2 * q.z * q.z, 2 * q.x * q.y + 2 * q.z * q.w, 2 * q.x * q.z - 2 * q.y * q.w},
             {2 * q.x * q.y - 2 * q.z * q.w, 1 - 2 * q.x * q.x - 2 * q.z * q.z, 2 * q.y * q.z + 2 * q.x * q.w},
             {2 * q.x * q.z + 2 * q.y * q.w, 2 * q.y * q.z - 2 * q.x * q.w, 1 - 2 * q.x * q.x - 2 * q.y * q.y},
             pos};
 }
 
-Mat3x4 Mat3x4::inverted_ortho() const {
+Mat3x4 Mat3x4::invertedOrtho() const {
     Mat3x4 result;
     reinterpret_cast<Mat3x3&>(result) = reinterpret_cast<const Mat3x3&>(*this).transposed();
     result.col[3] = reinterpret_cast<Mat3x3&>(result) * -col[3];
@@ -409,7 +408,7 @@ Float3 operator*(const Mat3x4& m_, const Float3& v_) {
     {
         PLY_PUN_GUARD;
         auto* res = reinterpret_cast<float*>(&result);
-        auto* m = reinterpret_cast<const float (*)[3]>(&m_);
+        auto* m = reinterpret_cast<const float(*)[3]>(&m_);
         auto* v = reinterpret_cast<const float*>(&v_);
         for (u32 r = 0; r < 3; r++) {
             res[r] = m[0][r] * v[0] + m[1][r] * v[1] + m[2][r] * v[2] + m[3][r];
@@ -423,7 +422,7 @@ Float4 operator*(const Mat3x4& m_, const Float4& v_) {
     {
         PLY_PUN_GUARD;
         auto* res = reinterpret_cast<float*>(&result);
-        auto* m = reinterpret_cast<const float (*)[3]>(&m_);
+        auto* m = reinterpret_cast<const float(*)[3]>(&m_);
         auto* v = reinterpret_cast<const float*>(&v_);
         for (u32 r = 0; r < 3; r++) {
             res[r] = m[0][r] * v[0] + m[1][r] * v[1] + m[2][r] * v[2] + m[3][r] * v[3];
@@ -474,54 +473,54 @@ Mat4x4 Mat4x4::scale(const Float3& arg) {
     return {{arg.x, 0, 0, 0}, {0, arg.y, 0, 0}, {0, 0, arg.z, 0}, {0, 0, 0, 1}};
 }
 
-Mat4x4 Mat4x4::rotate(const Float3& unit_axis, float radians) {
-    return Mat4x4::from_quaternion(Quaternion::from_axis_angle(unit_axis, radians));
+Mat4x4 Mat4x4::rotate(const Float3& unitAxis, float radians) {
+    return Mat4x4::fromQuaternion(Quaternion::fromAxisAngle(unitAxis, radians));
 }
 
 Mat4x4 Mat4x4::translate(const Float3& pos) {
     return {{1, 0, 0, 0}, {0, 1, 0, 0}, {0, 0, 1, 0}, {pos, 1}};
 }
 
-Mat4x4 Mat4x4::from_quaternion(const Quaternion& q, const Float3& pos) {
+Mat4x4 Mat4x4::fromQuaternion(const Quaternion& q, const Float3& pos) {
     return {{1 - 2 * q.y * q.y - 2 * q.z * q.z, 2 * q.x * q.y + 2 * q.z * q.w, 2 * q.x * q.z - 2 * q.y * q.w, 0},
             {2 * q.x * q.y - 2 * q.z * q.w, 1 - 2 * q.x * q.x - 2 * q.z * q.z, 2 * q.y * q.z + 2 * q.x * q.w, 0},
             {2 * q.x * q.z + 2 * q.y * q.w, 2 * q.y * q.z - 2 * q.x * q.w, 1 - 2 * q.x * q.x - 2 * q.y * q.y, 0},
             {pos, 1}};
 }
 
-Mat4x4 Mat4x4::perspective_projection(const Rect& frustum, float z_near, float z_far, ClipNearType clip_near) {
-    PLY_ASSERT(z_near > 0 && z_far > 0);
+Mat4x4 Mat4x4::perspectiveProjection(const Rect& frustum, float zNear, float zFar, ClipNearType clipNear) {
+    PLY_ASSERT(zNear > 0 && zFar > 0);
     Mat4x4 result{0, 0, 0, 0};
-    float oo_xdenom = 1.f / frustum.width();
-    float oo_ydenom = 1.f / frustum.height();
-    float oo_zdenom = 1.f / (z_near - z_far);
-    result.col[0].x = 2.f * oo_xdenom;
-    result.col[2].x = (frustum.mins.x + frustum.maxs.x) * oo_xdenom;
-    result.col[1].y = 2.f * oo_ydenom;
-    result.col[2].y = (frustum.mins.y + frustum.maxs.y) * oo_xdenom;
-    result.col[2].z = (z_near + z_far) * oo_zdenom;
+    float ooXdenom = 1.f / frustum.width();
+    float ooYdenom = 1.f / frustum.height();
+    float ooZdenom = 1.f / (zNear - zFar);
+    result.col[0].x = 2.f * ooXdenom;
+    result.col[2].x = (frustum.mins.x + frustum.maxs.x) * ooXdenom;
+    result.col[1].y = 2.f * ooYdenom;
+    result.col[2].y = (frustum.mins.y + frustum.maxs.y) * ooXdenom;
+    result.col[2].z = (zNear + zFar) * ooZdenom;
     result.col[2].w = -1.f;
-    result.col[3].z = (2 * z_near * z_far) * oo_zdenom;
-    if (clip_near == CLIP_NEAR_TO_0) {
+    result.col[3].z = (2 * zNear * zFar) * ooZdenom;
+    if (clipNear == CLIP_NEAR_TO_0) {
         result.col[2].z = 0.5f * result.col[2].z - 0.5f;
         result.col[3].z *= 0.5f;
     }
     return result;
 }
 
-Mat4x4 Mat4x4::orthographic_projection(const Rect& rect, float z_near, float z_far, ClipNearType clip_near) {
+Mat4x4 Mat4x4::orthographicProjection(const Rect& rect, float zNear, float zFar, ClipNearType clipNear) {
     Mat4x4 result{0, 0, 0, 0};
     float tow = 2 / rect.width();
     float toh = 2 / rect.height();
-    float oo_zrange = 1 / (z_near - z_far);
+    float ooZrange = 1 / (zNear - zFar);
     result.col[0].x = tow;
     result.col[3].x = -rect.mid().x * tow;
     result.col[1].y = toh;
     result.col[3].y = -rect.mid().y * toh;
-    result.col[2].z = 2 * oo_zrange;
-    result.col[3].z = (z_near + z_far) * oo_zrange;
+    result.col[2].z = 2 * ooZrange;
+    result.col[3].z = (zNear + zFar) * ooZrange;
     result.col[3].w = 1.f;
-    if (clip_near == CLIP_NEAR_TO_0) {
+    if (clipNear == CLIP_NEAR_TO_0) {
         result.col[2].z *= 0.5f;
         result.col[3].z = 0.5f * result.col[3].z + 0.5f;
     }
@@ -530,7 +529,7 @@ Mat4x4 Mat4x4::orthographic_projection(const Rect& rect, float z_near, float z_f
 
 Mat4x4 Mat4x4::transposed() const {
     PLY_PUN_GUARD;
-    auto* m = reinterpret_cast<const float (*)[4]>(this);
+    auto* m = reinterpret_cast<const float(*)[4]>(this);
     return {
         {m[0][0], m[1][0], m[2][0], m[3][0]},
         {m[0][1], m[1][1], m[2][1], m[3][1]},
@@ -539,7 +538,7 @@ Mat4x4 Mat4x4::transposed() const {
     };
 }
 
-Mat4x4 Mat4x4::inverted_ortho() const {
+Mat4x4 Mat4x4::invertedOrtho() const {
     Mat4x4 result = transposed();
     result.col[0].w = 0;
     result.col[1].w = 0;
@@ -565,7 +564,7 @@ Float4 operator*(const Mat4x4& m_, const Float4& v_) {
     {
         PLY_PUN_GUARD;
         auto* res = reinterpret_cast<float*>(&result);
-        auto* m = reinterpret_cast<const float (*)[4]>(&m_);
+        auto* m = reinterpret_cast<const float(*)[4]>(&m_);
         auto* v = reinterpret_cast<const float*>(&v_);
         for (u32 r = 0; r < 4; r++) {
             res[r] = m[0][r] * v[0] + m[1][r] * v[1] + m[2][r] * v[2] + m[3][r] * v[3];
@@ -605,14 +604,14 @@ Mat4x4 operator*(const Mat4x4& a, const Mat3x4& b) {
 //  ▀█▄▄█▀ ▀█▄▄██ ▀█▄▄██  ▀█▄▄ ▀█▄▄▄  ██     ██  ██ ██ ▀█▄▄█▀ ██  ██
 //      ▀▀
 
-Quaternion Quaternion::from_axis_angle(const Float3& unit_axis, float radians) {
-    PLY_ASSERT(unit_axis.is_unit_length());
+Quaternion Quaternion::fromAxisAngle(const Float3& unitAxis, float radians) {
+    PLY_ASSERT(unitAxis.isUnitLength());
     float c = cosf(radians / 2);
     float s = sinf(radians / 2);
-    return {s * unit_axis.x, s * unit_axis.y, s * unit_axis.z, c};
+    return {s * unitAxis.x, s * unitAxis.y, s * unitAxis.z, c};
 }
 
-Quaternion Quaternion::from_unit_vectors(const Float3& start, const Float3& end) {
+Quaternion Quaternion::fromUnitVectors(const Float3& start, const Float3& end) {
     // Float4{cross(start, end), dot(start, end)} gives you double the desired rotation.
     // To get the desired rotation, "average" (really just sum) that with Float4{0, 0,
     // 0, 1}, then normalize.
@@ -620,8 +619,8 @@ Quaternion Quaternion::from_unit_vectors(const Float3& start, const Float3& end)
     if (w < 1e-6f) {
         // Exceptional case: Vectors point in opposite directions.
         // Choose a perpendicular axis and make a 180 degree rotation.
-        Float3 get_noncollinear = (abs(start.x) < 0.9f) ? Float3{1, 0, 0} : Float3{0, 1, 0};
-        Float3 axis = cross(start, get_noncollinear);
+        Float3 getNoncollinear = (abs(start.x) < 0.9f) ? Float3{1, 0, 0} : Float3{0, 1, 0};
+        Float3 axis = cross(start, getNoncollinear);
         return (Quaternion) Float4{axis, 0}.normalized();
     }
     Float3 v = cross(start, end);
@@ -629,7 +628,7 @@ Quaternion Quaternion::from_unit_vectors(const Float3& start, const Float3& end)
 }
 
 template <typename M>
-Quaternion quaternion_from_ortho(M m) {
+Quaternion quaternionFromOrtho(M m) {
     float t; // This will be set to 4*c*c for some quaternion component c.
     // At least one component's square must be >= 1/4. (Otherwise, it isn't a unit
     // quaternion.) Let's require t >= 1/2. This will accept any component whose square
@@ -659,20 +658,20 @@ Quaternion quaternion_from_ortho(M m) {
     return {0, 0, 0, 1};
 }
 
-Quaternion Quaternion::from_ortho(const Mat3x3& m) {
+Quaternion Quaternion::fromOrtho(const Mat3x3& m) {
     PLY_PUN_GUARD;
-    return quaternion_from_ortho(reinterpret_cast<const float (*)[3]>(&m));
+    return quaternionFromOrtho(reinterpret_cast<const float(*)[3]>(&m));
 }
 
-Quaternion Quaternion::from_ortho(const Mat4x4& m) {
+Quaternion Quaternion::fromOrtho(const Mat4x4& m) {
     PLY_PUN_GUARD;
-    return quaternion_from_ortho(reinterpret_cast<const float (*)[4]>(&m));
+    return quaternionFromOrtho(reinterpret_cast<const float(*)[4]>(&m));
 }
 
-Quaternion Quaternion::negated_if_closer_to(const Quaternion& other) const {
+Quaternion Quaternion::negatedIfCloserTo(const Quaternion& other) const {
     Float4 v0{*this};
     Float4 v1{other};
-    return Quaternion{(v0 - v1).length_squared() < (-v0 - v1).length_squared() ? v0 : -v0};
+    return Quaternion{(v0 - v1).lengthSquared() < (-v0 - v1).lengthSquared() ? v0 : -v0};
 }
 
 Float3 operator*(const Quaternion& q, const Float3& v) {
@@ -687,8 +686,8 @@ Quaternion operator*(const Quaternion& a, const Quaternion& b) {
 }
 
 Quaternion mix(const Quaternion& a, const Quaternion& b, float t) {
-    Float4 linear_mix = mix((Float4) a.negated_if_closer_to(b), (Float4) b, t);
-    return (Quaternion) linear_mix.normalized();
+    Float4 linearMix = mix((Float4) a.negatedIfCloserTo(b), (Float4) b, t);
+    return (Quaternion) linearMix.normalized();
 }
 
 //   ▄▄▄▄                 ▄▄         ▄▄▄▄▄
@@ -710,16 +709,16 @@ QuatPos QuatPos::translate(const Float3& pos) {
     return {{0, 0, 0, 1}, pos};
 }
 
-QuatPos QuatPos::rotate(const Float3& unit_axis, float radians) {
-    return {Quaternion::from_axis_angle(unit_axis, radians), {0, 0, 0}};
+QuatPos QuatPos::rotate(const Float3& unitAxis, float radians) {
+    return {Quaternion::fromAxisAngle(unitAxis, radians), {0, 0, 0}};
 }
 
-QuatPos QuatPos::from_ortho(const Mat3x4& m) {
-    return {Quaternion::from_ortho(m.as_mat3()), m[3]};
+QuatPos QuatPos::fromOrtho(const Mat3x4& m) {
+    return {Quaternion::fromOrtho(m.as_mat3()), m[3]};
 }
 
-QuatPos QuatPos::from_ortho(const Mat4x4& m) {
-    return {Quaternion::from_ortho(m), Float3{m[3]}};
+QuatPos QuatPos::fromOrtho(const Mat4x4& m) {
+    return {Quaternion::fromOrtho(m), Float3{m[3]}};
 }
 
 } // namespace ply

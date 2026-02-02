@@ -45,7 +45,7 @@ namespace ply {
 
 #if defined(PLY_WINDOWS)
 
-float get_cpu_ticks_per_second() {
+float getCpuTicksPerSecond() {
     static LARGE_INTEGER frequency;
     BOOL rc = QueryPerformanceFrequency(&frequency);
     PLY_ASSERT(rc);
@@ -53,14 +53,14 @@ float get_cpu_ticks_per_second() {
     return (float) frequency.QuadPart;
 }
 
-s64 get_unix_timestamp() {
-    FILETIME file_time;
-    ULARGE_INTEGER large_integer;
+s64 getUnixTimestamp() {
+    FILETIME fileTime;
+    ULARGE_INTEGER largeInteger;
 
-    GetSystemTimeAsFileTime(&file_time);
-    large_integer.LowPart = file_time.dwLowDateTime;
-    large_integer.HighPart = file_time.dwHighDateTime;
-    return s64(large_integer.QuadPart / 10) - 11644473600000000ll;
+    GetSystemTimeAsFileTime(&fileTime);
+    largeInteger.LowPart = fileTime.dwLowDateTime;
+    largeInteger.HighPart = fileTime.dwHighDateTime;
+    return s64(largeInteger.QuadPart / 10) - 11644473600000000ll;
 }
 
 #elif defined(PLY_POSIX)
@@ -71,7 +71,7 @@ s64 get_unix_timestamp() {
 #include <sys/time.h>
 #endif
 
-s64 get_unix_timestamp() {
+s64 getUnixTimestamp() {
 #if PLY_USE_POSIX_2008_CLOCK
     struct timespec tick;
     clock_gettime(CLOCK_REALTIME, &tick);
@@ -85,10 +85,10 @@ s64 get_unix_timestamp() {
 
 #endif
 
-// Based on http://howardhinnant.github.io/date_algorithms.html
-static void set_date_from_epoch_days(DateTime* date_time, s32 days) {
+// Based on http://howardhinnant.github.io/dateAlgorithms.html
+static void setDateFromEpochDays(DateTime* dateTime, s32 days) {
     // Calculate weekday from Unix epoch days (Jan 1, 1970 was Thursday = 4)
-    date_time->weekday = (u8) (days >= -4 ? (days + 4) % 7 : (days + 5) % 7 + 6);
+    dateTime->weekday = (u8) (days >= -4 ? (days + 4) % 7 : (days + 5) % 7 + 6);
     // Convert from Unix epoch to civil epoch for date calculation
     days += 719468;
     s32 era = (days >= 0 ? days : days - 146096) / 146097;
@@ -99,176 +99,176 @@ static void set_date_from_epoch_days(DateTime* date_time, s32 days) {
     u32 mp = (5 * doy + 2) / 153;                      // [0, 11]
     u32 d = doy - (153 * mp + 2) / 5 + 1;              // [1, 31]
     u32 m = mp + (mp < 10 ? 3 : -9);                   // [1, 12]
-    date_time->year = y + (m <= 2);
-    date_time->month = (u8) m;
-    date_time->day = (u8) d;
+    dateTime->year = y + (m <= 2);
+    dateTime->month = (u8) m;
+    dateTime->day = (u8) d;
 }
 
-// Based on http://howardhinnant.github.io/date_algorithms.html
-static s32 get_epoch_days_from_date(const DateTime& date_time) {
-    s32 m = date_time.month;
-    s32 y = date_time.year - (m <= 2);
+// Based on http://howardhinnant.github.io/dateAlgorithms.html
+static s32 getEpochDaysFromDate(const DateTime& dateTime) {
+    s32 m = dateTime.month;
+    s32 y = dateTime.year - (m <= 2);
     s32 era = (y >= 0 ? y : y - 399) / 400;
-    u32 yoe = u32(y - era * 400);                                          // [0, 399]
-    u32 doy = (153 * (m > 2 ? m - 3 : m + 9) + 2) / 5 + date_time.day - 1; // [0, 365]
-    u32 doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;                       // [0, 146096]
+    u32 yoe = u32(y - era * 400);                                         // [0, 399]
+    u32 doy = (153 * (m > 2 ? m - 3 : m + 9) + 2) / 5 + dateTime.day - 1; // [0, 365]
+    u32 doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;                      // [0, 146096]
     return era * 146097 + doe - 719468;
 }
 
-static s64 floor_div(s64 dividend, s64 divisor) {
+static s64 floorDiv(s64 dividend, s64 divisor) {
     return (dividend > 0 ? dividend : dividend - divisor + 1) / divisor;
 };
 
-DateTime convert_to_date_time(s64 timestamp, s16 time_zone_offset_in_minutes) {
+DateTime convertToDateTime(s64 timestamp, s16 timeZoneOffsetInMinutes) {
     // Adjust timestamp by the time zone offset
-    timestamp = timestamp + s64(time_zone_offset_in_minutes) * 60 * 1000000;
+    timestamp = timestamp + s64(timeZoneOffsetInMinutes) * 60 * 1000000;
 
-    const s64 microsecs_per_day = 86400000000ll;
-    s64 days = floor_div(timestamp, microsecs_per_day);
-    s64 microsecs_in_day = timestamp - (days * microsecs_per_day);
+    const s64 microsecsPerDay = 86400000000ll;
+    s64 days = floorDiv(timestamp, microsecsPerDay);
+    s64 microsecsInDay = timestamp - (days * microsecsPerDay);
 
-    DateTime date_time;
-    set_date_from_epoch_days(&date_time, numeric_cast<u32>(days));
-    u32 secs = numeric_cast<u32>(microsecs_in_day / 1000000);
+    DateTime dateTime;
+    setDateFromEpochDays(&dateTime, numericCast<u32>(days));
+    u32 secs = numericCast<u32>(microsecsInDay / 1000000);
     u32 minutes = secs / 60;
     u32 hours = minutes / 60;
-    date_time.hour = (u8) hours;
-    date_time.minute = (u8) (minutes - hours * 60);
-    date_time.second = (u8) (secs - minutes * 60);
-    date_time.microsecond = (u32) (microsecs_in_day - u64(secs) * 1000000);
+    dateTime.hour = (u8) hours;
+    dateTime.minute = (u8) (minutes - hours * 60);
+    dateTime.second = (u8) (secs - minutes * 60);
+    dateTime.microsecond = (u32) (microsecsInDay - u64(secs) * 1000000);
 
-    date_time.time_zone_offset_in_minutes = time_zone_offset_in_minutes;
-    return date_time;
+    dateTime.timeZoneOffsetInMinutes = timeZoneOffsetInMinutes;
+    return dateTime;
 }
 
-s16 get_local_time_zone_offset() {
+s16 getLocalTimeZoneOffset() {
 #if defined(PLY_WINDOWS)
-    TIME_ZONE_INFORMATION tz_info;
-    DWORD result = GetTimeZoneInformation(&tz_info);
+    TIME_ZONE_INFORMATION tzInfo;
+    DWORD result = GetTimeZoneInformation(&tzInfo);
     // Bias is in minutes, and is the offset to add to UTC to get local time
     // Windows returns it as UTC = local + bias, so we negate it
-    s32 bias = tz_info.Bias;
+    s32 bias = tzInfo.Bias;
     if (result == TIME_ZONE_ID_DAYLIGHT) {
-        bias += tz_info.DaylightBias;
+        bias += tzInfo.DaylightBias;
     } else if (result == TIME_ZONE_ID_STANDARD) {
-        bias += tz_info.StandardBias;
+        bias += tzInfo.StandardBias;
     }
     return (s16) -bias;
 #elif defined(PLY_POSIX)
     time_t now = time(nullptr);
-    struct tm local_tm;
-    localtime_r(&now, &local_tm);
+    struct tm localTm;
+    localtime_r(&now, &localTm);
     // tm_gmtoff is the offset in seconds east of UTC
-    return (s16) (local_tm.tm_gmtoff / 60);
+    return (s16) (localTm.tm_gmtoff / 60);
 #else
     return 0;
 #endif
 }
 
-DateTime convert_to_date_time(s64 timestamp) {
-    return convert_to_date_time(timestamp, get_local_time_zone_offset());
+DateTime convertToDateTime(s64 timestamp) {
+    return convertToDateTime(timestamp, getLocalTimeZoneOffset());
 }
 
-s64 convert_to_unix_timestamp(const DateTime& date_time) {
-    static constexpr s64 microsecs_per_day = 86400000000ll;
-    s32 days = get_epoch_days_from_date(date_time);
-    s32 minutes = s32(date_time.hour) * 60 + date_time.minute;
-    s32 seconds = minutes * 60 + date_time.second;
-    s64 local_timestamp = s64(days) * microsecs_per_day + s64(seconds) * 1000000 + date_time.microsecond;
+s64 convertToUnixTimestamp(const DateTime& dateTime) {
+    static constexpr s64 microsecsPerDay = 86400000000ll;
+    s32 days = getEpochDaysFromDate(dateTime);
+    s32 minutes = s32(dateTime.hour) * 60 + dateTime.minute;
+    s32 seconds = minutes * 60 + dateTime.second;
+    s64 localTimestamp = s64(days) * microsecsPerDay + s64(seconds) * 1000000 + dateTime.microsecond;
     // Adjust back to UTC by subtracting the time zone offset
-    return local_timestamp - s64(date_time.time_zone_offset_in_minutes) * 60 * 1000000;
+    return localTimestamp - s64(dateTime.timeZoneOffsetInMinutes) * 60 * 1000000;
 }
 
-static String zero_pad(u32 value, u32 width) {
+static String zeroPad(u32 value, u32 width) {
     String str = String::format("{}", value);
-    if (str.num_bytes() >= width) {
+    if (str.numBytes() >= width) {
         return str;
     }
-    return (String{"000000"}.left(width - str.num_bytes()) + str);
+    return (String{"000000"}.left(width - str.numBytes()) + str);
 }
 
-void print_date_time(Stream& out, StringView format, const DateTime& date_time) {
-    static const char* abbreviated_weekdays[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
-    static const char* full_weekdays[] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
-    static const char* abbreviated_months[] = {"",    "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-                                               "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
-    static const char* full_months[] = {"",     "January", "February",  "March",   "April",    "May",     "June",
-                                        "July", "August",  "September", "October", "November", "December"};
+void printDateTime(Stream& out, StringView format, const DateTime& dateTime) {
+    static const char* abbreviatedWeekdays[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
+    static const char* fullWeekdays[] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
+    static const char* abbreviatedMonths[] = {"",    "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                                              "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
+    static const char* fullMonths[] = {"",     "January", "February",  "March",   "April",    "May",     "June",
+                                       "July", "August",  "September", "October", "November", "December"};
 
-    for (u32 i = 0; i < format.num_bytes(); i++) {
-        if (format[i] == '%' && i + 1 < format.num_bytes()) {
+    for (u32 i = 0; i < format.numBytes(); i++) {
+        if (format[i] == '%' && i + 1 < format.numBytes()) {
             char spec = format[i + 1];
             i++; // Skip the specifier
             switch (spec) {
                 case 'a': // abbreviated weekday
-                    out.write(abbreviated_weekdays[date_time.weekday]);
+                    out.write(abbreviatedWeekdays[dateTime.weekday]);
                     break;
                 case 'A': // full weekday
-                    out.write(full_weekdays[date_time.weekday]);
+                    out.write(fullWeekdays[dateTime.weekday]);
                     break;
                 case 'b': // abbreviated month name
-                    out.write(abbreviated_months[date_time.month]);
+                    out.write(abbreviatedMonths[dateTime.month]);
                     break;
                 case 'B': // full month name
-                    out.write(full_months[date_time.month]);
+                    out.write(fullMonths[dateTime.month]);
                     break;
                 case 'd': // day of the month with leading zero
-                    out.write(zero_pad(date_time.day, 2));
+                    out.write(zeroPad(dateTime.day, 2));
                     break;
                 case 'e': // day of the month
-                    out.format("{}", date_time.day);
+                    out.format("{}", dateTime.day);
                     break;
                 case 'H': // hour with leading zero (24-hour clock)
-                    out.write(zero_pad(date_time.hour, 2));
+                    out.write(zeroPad(dateTime.hour, 2));
                     break;
                 case 'k': // hour (24-hour clock)
-                    out.format("{}", date_time.hour);
+                    out.format("{}", dateTime.hour);
                     break;
                 case 'l': { // hour (12-hour clock)
-                    u8 hour12 = date_time.hour % 12;
+                    u8 hour12 = dateTime.hour % 12;
                     if (hour12 == 0)
                         hour12 = 12;
                     out.format("{}", hour12);
                     break;
                 }
                 case 'm': // month with leading zero
-                    out.write(zero_pad(date_time.month, 2));
+                    out.write(zeroPad(dateTime.month, 2));
                     break;
                 case 'M': // minute with leading zero
-                    out.write(zero_pad(date_time.minute, 2));
+                    out.write(zeroPad(dateTime.minute, 2));
                     break;
                 case 'p': // AM or PM
-                    out.write(date_time.hour < 12 ? "AM" : "PM");
+                    out.write(dateTime.hour < 12 ? "AM" : "PM");
                     break;
                 case 'P': // am or pm
-                    out.write(date_time.hour < 12 ? "am" : "pm");
+                    out.write(dateTime.hour < 12 ? "am" : "pm");
                     break;
                 case 'S': // second with leading zero
-                    out.write(zero_pad(date_time.second, 2));
+                    out.write(zeroPad(dateTime.second, 2));
                     break;
                 case 'y': // two-digit year
-                    out.write(zero_pad(date_time.year % 100, 2));
+                    out.write(zeroPad(dateTime.year % 100, 2));
                     break;
                 case 'Y': // year
-                    out.format("{}", date_time.year);
+                    out.format("{}", dateTime.year);
                     break;
                 case 'L': // millisecond with leading zeros
-                    out.write(zero_pad(date_time.microsecond / 1000, 3));
+                    out.write(zeroPad(dateTime.microsecond / 1000, 3));
                     break;
                 case 'R': // microsecond with leading zeros
-                    out.write(zero_pad(date_time.microsecond, 6));
+                    out.write(zeroPad(dateTime.microsecond, 6));
                     break;
                 case 'Z': { // signed time zone offset
-                    s16 offset = date_time.time_zone_offset_in_minutes;
+                    s16 offset = dateTime.timeZoneOffsetInMinutes;
                     char sign = offset >= 0 ? '+' : '-';
                     if (offset < 0)
                         offset = -offset;
                     s16 hours = offset / 60;
                     s16 mins = offset % 60;
                     out.write(sign);
-                    out.write(zero_pad(hours, 2));
+                    out.write(zeroPad(hours, 2));
                     out.write(':');
-                    out.write(zero_pad(mins, 2));
+                    out.write(zeroPad(mins, 2));
                     break;
                 }
                 case '%': // literal %
@@ -294,13 +294,13 @@ void print_date_time(Stream& out, StringView format, const DateTime& date_time) 
 
 Random::Random() {
     // Seed using misc. information from the environment
-    u64 t = get_unix_timestamp();
-    t = shuffle_bits(t);
-    s[0] = shuffle_bits(t | 1);
+    u64 t = getUnixTimestamp();
+    t = shuffleBits(t);
+    s[0] = shuffleBits(t | 1);
 
-    t = get_cpu_ticks();
-    t = shuffle_bits(t) + (shuffle_bits(get_current_thread_id()) << 1);
-    s[1] = shuffle_bits(t | 1);
+    t = getCpuTicks();
+    t = shuffleBits(t) + (shuffleBits(getCurrentThreadId()) << 1);
+    s[1] = shuffleBits(t | 1);
 
     for (u32 i = 0; i < 10; i++) {
         generate_u64();
@@ -308,8 +308,8 @@ Random::Random() {
 }
 
 Random::Random(u64 seed) {
-    s[0] = shuffle_bits(seed + 1);
-    s[1] = shuffle_bits(s[0] + 1);
+    s[0] = shuffleBits(seed + 1);
+    s[1] = shuffleBits(s[0] + 1);
     generate_u64();
     generate_u64();
 }
@@ -338,7 +338,7 @@ u64 Random::generate_u64() {
 
 #if defined(PLY_WINDOWS)
 
-DWORD WINAPI thread_entry(LPVOID param) {
+DWORD WINAPI threadEntry(LPVOID param) {
     Functor<void()>* entry = static_cast<Functor<void()>*>(param);
     (*entry)();
     Heap::destroy(entry);
@@ -347,7 +347,7 @@ DWORD WINAPI thread_entry(LPVOID param) {
 
 #elif defined(PLY_POSIX)
 
-void* thread_entry(void* arg) {
+void* threadEntry(void* arg) {
     Functor<void()>* entry = static_cast<Functor<void()>*>(arg);
     (*entry)();
     Heap::destroy(entry);
@@ -362,8 +362,8 @@ void* thread_entry(void* arg) {
 //    ▀█▀   ██ ██      ▀█▄▄ ▀█▄▄██ ▀█▄▄██ ▄██▄ ██   ██ ▀█▄▄▄  ██ ██ ██ ▀█▄▄█▀ ██     ▀█▄▄██
 //                                                                                    ▄▄▄█▀
 
-Atomic<uptr> VirtualMemory::total_reserved_bytes = 0;
-Atomic<uptr> VirtualMemory::total_committed_bytes = 0;
+Atomic<uptr> VirtualMemory::totalReservedBytes = 0;
+Atomic<uptr> VirtualMemory::totalCommittedBytes = 0;
 
 #if defined(PLY_WINDOWS)
 
@@ -371,94 +371,94 @@ Atomic<uptr> VirtualMemory::total_committed_bytes = 0;
 // Windows
 //--------------------------------------------
 
-VirtualMemory::Properties VirtualMemory::get_properties() {
+VirtualMemory::Properties VirtualMemory::getProperties() {
     static VirtualMemory::Properties props = []() {
-        SYSTEM_INFO sys_info;
-        GetSystemInfo(&sys_info);
-        PLY_ASSERT(is_power_of_2((u32) sys_info.dwAllocationGranularity));
-        PLY_ASSERT(is_power_of_2((u32) sys_info.dwPageSize));
-        return VirtualMemory::Properties{sys_info.dwAllocationGranularity, sys_info.dwPageSize};
+        SYSTEM_INFO sysInfo;
+        GetSystemInfo(&sysInfo);
+        PLY_ASSERT(is_power_of_2((u32) sysInfo.dwAllocationGranularity));
+        PLY_ASSERT(is_power_of_2((u32) sysInfo.dwPageSize));
+        return VirtualMemory::Properties{sysInfo.dwAllocationGranularity, sysInfo.dwPageSize};
     }();
     return props;
 }
 
-VirtualMemory::SystemStats VirtualMemory::get_system_stats() {
+VirtualMemory::SystemStats VirtualMemory::getSystemStats() {
     PROCESS_MEMORY_COUNTERS_EX pmc;
     pmc.cb = sizeof(pmc);
     GetProcessMemoryInfo(GetCurrentProcess(), (PROCESS_MEMORY_COUNTERS*) &pmc, sizeof(pmc));
 
-    VirtualMemory::SystemStats usage_stats;
-    usage_stats.private_usage = pmc.PrivateUsage;
-    usage_stats.working_set_size = pmc.WorkingSetSize;
-    return usage_stats;
+    VirtualMemory::SystemStats usageStats;
+    usageStats.privateUsage = pmc.PrivateUsage;
+    usageStats.workingSetSize = pmc.WorkingSetSize;
+    return usageStats;
 }
 
-void* VirtualMemory::reserve_region(uptr num_bytes) {
-    PLY_ASSERT(is_aligned_to_power_of_2(num_bytes, VirtualMemory::get_properties().region_alignment));
+void* VirtualMemory::reserveRegion(uptr numBytes) {
+    PLY_ASSERT(is_aligned_to_power_of_2(numBytes, VirtualMemory::getProperties().regionAlignment));
 
-    void* addr = VirtualAlloc(0, (SIZE_T) num_bytes, MEM_RESERVE, PAGE_READWRITE);
+    void* addr = VirtualAlloc(0, (SIZE_T) numBytes, MEM_RESERVE, PAGE_READWRITE);
     if (addr == NULL)
         return nullptr;
-    VirtualMemory::total_reserved_bytes.fetch_add_acq_rel(num_bytes);
+    VirtualMemory::totalReservedBytes.fetchAddAcqRel(numBytes);
     return addr;
 }
 
-void VirtualMemory::unreserve_region(void* addr, uptr num_reserved_bytes, uptr num_committed_bytes) {
-    PLY_ASSERT(is_aligned_to_power_of_2((uptr) addr, VirtualMemory::get_properties().region_alignment));
-    PLY_ASSERT(is_aligned_to_power_of_2(num_reserved_bytes, VirtualMemory::get_properties().region_alignment));
-    PLY_ASSERT(is_aligned_to_power_of_2(num_committed_bytes, VirtualMemory::get_properties().page_size));
+void VirtualMemory::unreserveRegion(void* addr, uptr numReservedBytes, uptr numCommittedBytes) {
+    PLY_ASSERT(is_aligned_to_power_of_2((uptr) addr, VirtualMemory::getProperties().regionAlignment));
+    PLY_ASSERT(is_aligned_to_power_of_2(numReservedBytes, VirtualMemory::getProperties().regionAlignment));
+    PLY_ASSERT(is_aligned_to_power_of_2(numCommittedBytes, VirtualMemory::getProperties().pageSize));
 
 #if defined(PLY_WITH_ASSERTS)
-    MEMORY_BASIC_INFORMATION mem_info;
-    SIZE_T rc = VirtualQuery(addr, &mem_info, sizeof(mem_info));
+    MEMORY_BASIC_INFORMATION memInfo;
+    SIZE_T rc = VirtualQuery(addr, &memInfo, sizeof(memInfo));
     PLY_ASSERT(rc != 0);
     PLY_UNUSED(rc);
-    PLY_ASSERT(mem_info.BaseAddress == addr);
-    PLY_ASSERT(mem_info.AllocationBase == addr);
+    PLY_ASSERT(memInfo.BaseAddress == addr);
+    PLY_ASSERT(memInfo.AllocationBase == addr);
     // The entire address space range must be reserved as one block:
-    PLY_ASSERT(mem_info.RegionSize <= num_reserved_bytes);
+    PLY_ASSERT(memInfo.RegionSize <= numReservedBytes);
 #endif
 
     BOOL rc2 = VirtualFree(addr, 0, MEM_RELEASE);
     PLY_ASSERT(rc2);
     PLY_UNUSED(rc2);
-    VirtualMemory::total_reserved_bytes.fetch_sub_acq_rel(num_reserved_bytes);
-    VirtualMemory::total_committed_bytes.fetch_sub_acq_rel(num_committed_bytes);
+    VirtualMemory::totalReservedBytes.fetchSubAcqRel(numReservedBytes);
+    VirtualMemory::totalCommittedBytes.fetchSubAcqRel(numCommittedBytes);
 }
 
-void VirtualMemory::commit_pages(void* addr, uptr num_bytes) {
-    PLY_ASSERT(is_aligned_to_power_of_2((uptr) addr, VirtualMemory::get_properties().page_size));
-    PLY_ASSERT(is_aligned_to_power_of_2(num_bytes, VirtualMemory::get_properties().page_size));
+void VirtualMemory::commitPages(void* addr, uptr numBytes) {
+    PLY_ASSERT(is_aligned_to_power_of_2((uptr) addr, VirtualMemory::getProperties().pageSize));
+    PLY_ASSERT(is_aligned_to_power_of_2(numBytes, VirtualMemory::getProperties().pageSize));
 
-    LPVOID result = VirtualAlloc(addr, (SIZE_T) num_bytes, MEM_COMMIT, PAGE_READWRITE);
+    LPVOID result = VirtualAlloc(addr, (SIZE_T) numBytes, MEM_COMMIT, PAGE_READWRITE);
     PLY_ASSERT(result != NULL); // Failure is considered fatal
     PLY_UNUSED(result);
-    VirtualMemory::total_committed_bytes.fetch_add_acq_rel(num_bytes);
+    VirtualMemory::totalCommittedBytes.fetchAddAcqRel(numBytes);
 }
 
-void VirtualMemory::decommit_pages(void* addr, uptr num_bytes) {
-    PLY_ASSERT(is_aligned_to_power_of_2((uptr) addr, VirtualMemory::get_properties().page_size));
-    PLY_ASSERT(is_aligned_to_power_of_2(num_bytes, VirtualMemory::get_properties().page_size));
+void VirtualMemory::decommitPages(void* addr, uptr numBytes) {
+    PLY_ASSERT(is_aligned_to_power_of_2((uptr) addr, VirtualMemory::getProperties().pageSize));
+    PLY_ASSERT(is_aligned_to_power_of_2(numBytes, VirtualMemory::getProperties().pageSize));
 
-    BOOL rc = VirtualFree(addr, num_bytes, MEM_DECOMMIT);
+    BOOL rc = VirtualFree(addr, numBytes, MEM_DECOMMIT);
     PLY_ASSERT(rc);
     PLY_UNUSED(rc);
-    VirtualMemory::total_committed_bytes.fetch_sub_acq_rel(num_bytes);
+    VirtualMemory::totalCommittedBytes.fetchSubAcqRel(numBytes);
 }
 
-void* VirtualMemory::alloc_region(uptr num_bytes) {
-    PLY_ASSERT(is_aligned_to_power_of_2(num_bytes, VirtualMemory::get_properties().region_alignment));
+void* VirtualMemory::allocRegion(uptr numBytes) {
+    PLY_ASSERT(is_aligned_to_power_of_2(numBytes, VirtualMemory::getProperties().regionAlignment));
 
-    void* addr = VirtualAlloc(0, (SIZE_T) num_bytes, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+    void* addr = VirtualAlloc(0, (SIZE_T) numBytes, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
     if (addr == NULL)
         return nullptr;
-    VirtualMemory::total_reserved_bytes.fetch_add_acq_rel(num_bytes);
-    VirtualMemory::total_committed_bytes.fetch_add_acq_rel(num_bytes);
+    VirtualMemory::totalReservedBytes.fetchAddAcqRel(numBytes);
+    VirtualMemory::totalCommittedBytes.fetchAddAcqRel(numBytes);
     return addr;
 }
 
-void VirtualMemory::free_region(void* addr, uptr num_bytes) {
-    VirtualMemory::unreserve_region(addr, num_bytes, num_bytes);
+void VirtualMemory::freeRegion(void* addr, uptr numBytes) {
+    VirtualMemory::unreserveRegion(addr, numBytes, numBytes);
 }
 
 #elif defined(PLY_POSIX)
@@ -467,7 +467,7 @@ void VirtualMemory::free_region(void* addr, uptr num_bytes) {
 // POSIX
 //--------------------------------------------
 
-VirtualMemory::Properties VirtualMemory::get_properties() {
+VirtualMemory::Properties VirtualMemory::getProperties() {
     static VirtualMemory::Properties props = []() {
         long result = sysconf(_SC_PAGE_SIZE);
         PLY_ASSERT(is_power_of_2((u64) result));
@@ -476,88 +476,88 @@ VirtualMemory::Properties VirtualMemory::get_properties() {
     return props;
 }
 
-VirtualMemory::SystemStats VirtualMemory::get_system_stats() {
-    VirtualMemory::SystemStats usage_stats;
+VirtualMemory::SystemStats VirtualMemory::getSystemStats() {
+    VirtualMemory::SystemStats usageStats;
 
 #if defined(PLY_APPLE)
-    struct mach_task_basic_info task_info_data;
+    struct mach_task_basic_info taskInfoData;
     mach_msg_type_number_t count = MACH_TASK_BASIC_INFO_COUNT;
-    if (task_info(mach_task_self(), MACH_TASK_BASIC_INFO, (task_info_t) &task_info_data, &count) == KERN_SUCCESS) {
-        usage_stats.virtual_size = task_info_data.virtual_size;
-        usage_stats.resident_size = task_info_data.resident_size;
+    if (task_info(mach_task_self(), MACH_TASK_BASIC_INFO, (task_info_t) &taskInfoData, &count) == KERN_SUCCESS) {
+        usageStats.virtualSize = taskInfoData.virtual_size;
+        usageStats.residentSize = taskInfoData.resident_size;
     }
 #else
-    Stream in = Filesystem::open_binary_for_read("/proc/self/statm");
+    Stream in = Filesystem::openBinaryForRead("/proc/self/statm");
     if (in) {
-        u64 vm_pages = read_u64_from_text(in);
-        skip_whitespace(in);
-        u64 rss_pages = read_u64_from_text(in);
-        uptr page_size = VirtualMemory::get_properties().page_size;
-        usage_stats.virtual_size = vm_pages * page_size;
-        usage_stats.resident_size = rss_pages * page_size;
+        u64 vmPages = read_u64_from_text(in);
+        skipWhitespace(in);
+        u64 rssPages = read_u64_from_text(in);
+        uptr pageSize = VirtualMemory::getProperties().pageSize;
+        usageStats.virtualSize = vmPages * pageSize;
+        usageStats.residentSize = rssPages * pageSize;
     }
 #endif
 
-    return usage_stats;
+    return usageStats;
 }
 
-void* VirtualMemory::reserve_region(uptr num_bytes) {
-    PLY_ASSERT(is_aligned_to_power_of_2(num_bytes, VirtualMemory::get_properties().region_alignment));
+void* VirtualMemory::reserveRegion(uptr numBytes) {
+    PLY_ASSERT(is_aligned_to_power_of_2(numBytes, VirtualMemory::getProperties().regionAlignment));
 
-    void* addr = mmap(0, num_bytes, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    void* addr = mmap(0, numBytes, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     if (addr == MAP_FAILED)
         return nullptr;
-    VirtualMemory::total_reserved_bytes.fetch_add_acq_rel(num_bytes);
+    VirtualMemory::totalReservedBytes.fetchAddAcqRel(numBytes);
     return addr;
 }
 
-void VirtualMemory::unreserve_region(void* addr, uptr num_reserved_bytes, uptr num_committed_bytes) {
-    PLY_ASSERT(is_aligned_to_power_of_2((uptr) addr, VirtualMemory::get_properties().region_alignment));
-    PLY_ASSERT(is_aligned_to_power_of_2(num_reserved_bytes, VirtualMemory::get_properties().region_alignment));
-    PLY_ASSERT(is_aligned_to_power_of_2(num_committed_bytes, VirtualMemory::get_properties().page_size));
+void VirtualMemory::unreserveRegion(void* addr, uptr numReservedBytes, uptr numCommittedBytes) {
+    PLY_ASSERT(is_aligned_to_power_of_2((uptr) addr, VirtualMemory::getProperties().regionAlignment));
+    PLY_ASSERT(is_aligned_to_power_of_2(numReservedBytes, VirtualMemory::getProperties().regionAlignment));
+    PLY_ASSERT(is_aligned_to_power_of_2(numCommittedBytes, VirtualMemory::getProperties().pageSize));
 
-    int rc = munmap(addr, num_reserved_bytes);
+    int rc = munmap(addr, numReservedBytes);
     PLY_ASSERT(rc == 0);
     PLY_UNUSED(rc);
-    VirtualMemory::total_reserved_bytes.fetch_sub_acq_rel(num_reserved_bytes);
-    VirtualMemory::total_committed_bytes.fetch_sub_acq_rel(num_committed_bytes);
+    VirtualMemory::totalReservedBytes.fetchSubAcqRel(numReservedBytes);
+    VirtualMemory::totalCommittedBytes.fetchSubAcqRel(numCommittedBytes);
 }
 
-void VirtualMemory::commit_pages(void* addr, uptr num_bytes) {
-    PLY_ASSERT(is_aligned_to_power_of_2((uptr) addr, VirtualMemory::get_properties().page_size));
-    PLY_ASSERT(is_aligned_to_power_of_2(num_bytes, VirtualMemory::get_properties().page_size));
+void VirtualMemory::commitPages(void* addr, uptr numBytes) {
+    PLY_ASSERT(is_aligned_to_power_of_2((uptr) addr, VirtualMemory::getProperties().pageSize));
+    PLY_ASSERT(is_aligned_to_power_of_2(numBytes, VirtualMemory::getProperties().pageSize));
 
-    int rc = mprotect(addr, num_bytes, PROT_READ | PROT_WRITE);
+    int rc = mprotect(addr, numBytes, PROT_READ | PROT_WRITE);
     PLY_ASSERT(rc == 0);
     PLY_UNUSED(rc);
-    VirtualMemory::total_committed_bytes.fetch_add_acq_rel(num_bytes);
+    VirtualMemory::totalCommittedBytes.fetchAddAcqRel(numBytes);
 }
 
-void VirtualMemory::decommit_pages(void* addr, uptr num_bytes) {
-    PLY_ASSERT(is_aligned_to_power_of_2((uptr) addr, VirtualMemory::get_properties().page_size));
-    PLY_ASSERT(is_aligned_to_power_of_2(num_bytes, VirtualMemory::get_properties().page_size));
+void VirtualMemory::decommitPages(void* addr, uptr numBytes) {
+    PLY_ASSERT(is_aligned_to_power_of_2((uptr) addr, VirtualMemory::getProperties().pageSize));
+    PLY_ASSERT(is_aligned_to_power_of_2(numBytes, VirtualMemory::getProperties().pageSize));
 
-    int rc = madvise(addr, num_bytes, MADV_DONTNEED);
+    int rc = madvise(addr, numBytes, MADV_DONTNEED);
     PLY_ASSERT(rc == 0);
-    rc = mprotect(addr, num_bytes, PROT_NONE);
+    rc = mprotect(addr, numBytes, PROT_NONE);
     PLY_ASSERT(rc == 0);
     PLY_UNUSED(rc);
-    VirtualMemory::total_committed_bytes.fetch_sub_acq_rel(num_bytes);
+    VirtualMemory::totalCommittedBytes.fetchSubAcqRel(numBytes);
 }
 
-void* VirtualMemory::alloc_region(uptr num_bytes) {
-    PLY_ASSERT(is_aligned_to_power_of_2(num_bytes, VirtualMemory::get_properties().region_alignment));
+void* VirtualMemory::allocRegion(uptr numBytes) {
+    PLY_ASSERT(is_aligned_to_power_of_2(numBytes, VirtualMemory::getProperties().regionAlignment));
 
-    void* addr = mmap(0, num_bytes, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    void* addr = mmap(0, numBytes, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     if (addr == MAP_FAILED)
         return nullptr;
-    VirtualMemory::total_reserved_bytes.fetch_add_acq_rel(num_bytes);
-    VirtualMemory::total_committed_bytes.fetch_add_acq_rel(num_bytes);
+    VirtualMemory::totalReservedBytes.fetchAddAcqRel(numBytes);
+    VirtualMemory::totalCommittedBytes.fetchAddAcqRel(numBytes);
     return addr;
 }
 
-void VirtualMemory::free_region(void* addr, uptr num_bytes) {
-    VirtualMemory::unreserve_region(addr, num_bytes, num_bytes);
+void VirtualMemory::freeRegion(void* addr, uptr numBytes) {
+    VirtualMemory::unreserveRegion(addr, numBytes, numBytes);
 }
 
 #endif
@@ -622,28 +622,28 @@ namespace ply {
 //  ▀█▄▄█▀  ▀█▄▄ ██     ██ ██  ██ ▀█▄▄██   ▀█▀   ██ ▀█▄▄▄   ██▀▀██
 //                                 ▄▄▄█▀
 
-bool StringView::starts_with(StringView other) const {
-    if (other.num_bytes_ > this->num_bytes_)
+bool StringView::startsWith(StringView other) const {
+    if (other.numBytes_ > this->numBytes_)
         return false;
-    return memcmp(this->bytes_, other.bytes_, other.num_bytes_) == 0;
+    return memcmp(this->bytes_, other.bytes_, other.numBytes_) == 0;
 }
 
-bool StringView::ends_with(StringView other) const {
-    if (other.num_bytes_ > this->num_bytes_)
+bool StringView::endsWith(StringView other) const {
+    if (other.numBytes_ > this->numBytes_)
         return false;
-    return memcmp(this->bytes_ + this->num_bytes_ - other.num_bytes_, other.bytes_, other.num_bytes_) == 0;
+    return memcmp(this->bytes_ + this->numBytes_ - other.numBytes_, other.bytes_, other.numBytes_) == 0;
 }
 
-StringView StringView::trim(bool (*match_func)(char), bool left, bool right) const {
+StringView StringView::trim(bool (*matchFunc)(char), bool left, bool right) const {
     const char* start = this->bytes_;
-    const char* end = start + this->num_bytes_;
+    const char* end = start + this->numBytes_;
     if (left) {
-        while ((start < end) && match_func(*start)) {
+        while ((start < end) && matchFunc(*start)) {
             start++;
         }
     }
     if (right) {
-        while ((start < end) && match_func(end[-1])) {
+        while ((start < end) && matchFunc(end[-1])) {
             end--;
         }
     }
@@ -653,12 +653,12 @@ StringView StringView::trim(bool (*match_func)(char), bool left, bool right) con
 Array<StringView> StringView::split(StringView separator) const {
     Array<StringView> result;
     u32 start = 0;
-    while (start < this->num_bytes_) {
+    while (start < this->numBytes_) {
         s32 pos = this->find(separator, start);
         if (pos < 0) {
             // No more separators found, add the rest
             StringView remainder = this->substr(start);
-            if (remainder.num_bytes_ > 0) {
+            if (remainder.numBytes_ > 0) {
                 result.append(remainder);
             }
             break;
@@ -667,36 +667,36 @@ Array<StringView> StringView::split(StringView separator) const {
         if ((u32) pos > start) {
             result.append(this->substr(start, pos - start));
         }
-        start = pos + separator.num_bytes_;
+        start = pos + separator.numBytes_;
     }
-    if (result.is_empty()) {
+    if (result.isEmpty()) {
         result.append({});
     }
     return result;
 }
 
-String StringView::replace(StringView old_substr, StringView new_substr) const {
-    PLY_ASSERT(old_substr.num_bytes_ > 0);
+String StringView::replace(StringView oldSubstr, StringView newSubstr) const {
+    PLY_ASSERT(oldSubstr.numBytes_ > 0);
     MemStream out;
-    u32 limit = this->num_bytes_ - old_substr.num_bytes_;
+    u32 limit = this->numBytes_ - oldSubstr.numBytes_;
     u32 i = 0;
     for (; i < limit; i++) {
-        if (memcmp(this->bytes_ + i, old_substr.bytes_, old_substr.num_bytes_) == 0) {
-            out.write(new_substr);
-            i += old_substr.num_bytes_ - 1;
+        if (memcmp(this->bytes_ + i, oldSubstr.bytes_, oldSubstr.numBytes_) == 0) {
+            out.write(newSubstr);
+            i += oldSubstr.numBytes_ - 1;
         } else {
             out.write(this->bytes_[i]);
         }
     }
-    if (i < this->num_bytes_) {
-        out.write({this->bytes_ + i, this->bytes_ + this->num_bytes_});
+    if (i < this->numBytes_) {
+        out.write({this->bytes_ + i, this->bytes_ + this->numBytes_});
     }
-    return out.move_to_string();
+    return out.moveToString();
 }
 
 String StringView::upper() const {
-    String result = String::allocate(this->num_bytes_);
-    for (u32 i = 0; i < this->num_bytes_; i++) {
+    String result = String::allocate(this->numBytes_);
+    for (u32 i = 0; i < this->numBytes_; i++) {
         char c = this->bytes_[i];
         if (c >= 'a' && c <= 'z') {
             c += 'A' - 'a';
@@ -707,8 +707,8 @@ String StringView::upper() const {
 }
 
 String StringView::lower() const {
-    String result = String::allocate(this->num_bytes_);
-    for (u32 i = 0; i < this->num_bytes_; i++) {
+    String result = String::allocate(this->numBytes_);
+    for (u32 i = 0; i < this->numBytes_; i++) {
         char c = this->bytes_[i];
         if (c >= 'A' && c <= 'Z') {
             c += 'a' - 'A';
@@ -728,14 +728,14 @@ String StringView::join(ArrayView<const StringView> comps) const {
         out.write(comp);
         first = false;
     }
-    return out.move_to_string();
+    return out.moveToString();
 }
 
 s32 compare(StringView a, StringView b) {
-    u32 compare_bytes = min(a.num_bytes(), b.num_bytes());
+    u32 compareBytes = min(a.numBytes(), b.numBytes());
     const u8* u0 = (const u8*) a.bytes();
     const u8* u1 = (const u8*) b.bytes();
-    const u8* u_end0 = u0 + compare_bytes;
+    const u8* u_end0 = u0 + compareBytes;
     while (u0 < u_end0) {
         s32 diff = *u0 - *u1;
         if (diff != 0)
@@ -743,55 +743,55 @@ s32 compare(StringView a, StringView b) {
         u0++;
         u1++;
     }
-    return a.num_bytes() - b.num_bytes();
+    return a.numBytes() - b.numBytes();
 }
 
 String operator+(StringView a, StringView b) {
-    String result = String::allocate(a.num_bytes() + b.num_bytes());
-    memcpy(result.bytes(), a.bytes(), a.num_bytes());
-    memcpy(result.bytes() + a.num_bytes(), b.bytes(), b.num_bytes());
+    String result = String::allocate(a.numBytes() + b.numBytes());
+    memcpy(result.bytes(), a.bytes(), a.numBytes());
+    memcpy(result.bytes() + a.numBytes(), b.bytes(), b.numBytes());
     return result;
 }
 
 String operator*(StringView str, u32 count) {
-    String result = String::allocate(str.num_bytes() * count);
+    String result = String::allocate(str.numBytes() * count);
     char* dst = result.bytes();
     for (u32 i = 0; i < count; i++) {
-        memcpy(dst, str.bytes(), str.num_bytes());
-        dst += str.num_bytes();
+        memcpy(dst, str.bytes(), str.numBytes());
+        dst += str.numBytes();
     }
     return result;
 }
 
-s32 StringView::find(StringView pattern, u32 start_pos) const {
-    if (start_pos + pattern.num_bytes_ > this->num_bytes_)
+s32 StringView::find(StringView pattern, u32 startPos) const {
+    if (startPos + pattern.numBytes_ > this->numBytes_)
         return -1;
-    u32 limit = this->num_bytes_ - pattern.num_bytes_;
-    for (; start_pos <= limit; start_pos++) {
-        for (u32 i = 0; i < pattern.num_bytes_; i++) {
-            if (pattern.bytes_[i] != this->bytes_[start_pos + i])
+    u32 limit = this->numBytes_ - pattern.numBytes_;
+    for (; startPos <= limit; startPos++) {
+        for (u32 i = 0; i < pattern.numBytes_; i++) {
+            if (pattern.bytes_[i] != this->bytes_[startPos + i])
                 goto next;
         }
-        return start_pos;
+        return startPos;
     next:;
     }
     return -1;
 }
 
-s32 StringView::reverse_find(StringView pattern, s32 start_pos) const {
-    if (start_pos < 0) {
-        start_pos += this->num_bytes_;
+s32 StringView::reverseFind(StringView pattern, s32 startPos) const {
+    if (startPos < 0) {
+        startPos += this->numBytes_;
     }
-    if (start_pos + pattern.num_bytes_ >= this->num_bytes_) {
-        start_pos = (s32) this->num_bytes_ - pattern.num_bytes_;
+    if (startPos + pattern.numBytes_ >= this->numBytes_) {
+        startPos = (s32) this->numBytes_ - pattern.numBytes_;
     }
-    for (; start_pos >= 0; start_pos--) {
-        for (u32 i = 0; i < pattern.num_bytes_; i++) {
-            if (pattern.bytes_[i] != this->bytes_[start_pos + i])
+    for (; startPos >= 0; startPos--) {
+        for (u32 i = 0; i < pattern.numBytes_; i++) {
+            if (pattern.bytes_[i] != this->bytes_[startPos + i])
                 goto next;
         }
         // Found a match.
-        return start_pos;
+        return startPos;
     next:;
     }
     return -1;
@@ -800,8 +800,8 @@ s32 StringView::reverse_find(StringView pattern, s32 start_pos) const {
 struct MatchState {
     ViewStream* str;
     ViewStream* pattern;
-    ArrayView<const MatchArg> match_args;
-    u32 arg_index = 0;
+    ArrayView<const MatchArg> matchArgs;
+    u32 argIndex = 0;
 };
 
 enum class MatchMode {
@@ -809,7 +809,7 @@ enum class MatchMode {
     Skipping,
 };
 
-// match_pattern_segment reads pattern elements from state.pattern up until the next `)` or `$`.
+// matchPatternSegment reads pattern elements from state.pattern up until the next `)` or `$`.
 // If mode == Matching, it checks whether the input string matches the pattern segment, returning true if successful.
 // If mode == Skipping, the pattern is read without checking whether the input string matches.
 // When the pattern element is a format specifier (like `%d`), it attempts to read a formatted value from the input
@@ -834,44 +834,44 @@ enum class MatchMode {
 // `*` turns the previous element into a repeating element. If it matches, we try to match the element again, repeating
 // as many times as possible. If it fails, the input string is reverted to the start of the pattern element (as of the
 // latest iteration) and matching continues normally.
-static bool match_pattern_segment(MatchState& state, MatchMode mode) {
+static bool matchPatternSegment(MatchState& state, MatchMode mode) {
     // Variables to track the success of the current segment.
-    bool any_clause_succeeded = false;
-    bool current_clause_succeeded = true;
-    char* input_at_start_of_current_clause = state.str->cur_byte;
-    Array<Functor<void()>> output_variables_to_commit;
+    bool anyClauseSucceeded = false;
+    bool currentClauseSucceeded = true;
+    char* inputAtStartOfCurrentClause = state.str->curByte;
+    Array<Functor<void()>> outputVariablesToCommit;
 
     // Main loop to read the pattern segment one element at a time.
-    while (state.pattern->make_readable()) {
+    while (state.pattern->makeReadable()) {
         // Variables to track the success of the current element.
-        char* pattern_at_start_of_current_element = state.pattern->cur_byte;
-        char* input_at_start_of_current_element = state.str->cur_byte;
-        u32 arg_index_at_start_of_current_element = state.arg_index;
-        bool element_matched = false;
+        char* patternAtStartOfCurrentElement = state.pattern->curByte;
+        char* inputAtStartOfCurrentElement = state.str->curByte;
+        u32 argIndexAtStartOfCurrentElement = state.argIndex;
+        bool elementMatched = false;
 
         // Check the current pattern element.
-        char pattern_element = *state.pattern->cur_byte++;
-        if (pattern_element == '%') {
+        char patternElement = *state.pattern->curByte++;
+        if (patternElement == '%') {
             // It's a format specifier. Read the expected value type.
-            if (!state.pattern->make_readable()) {
+            if (!state.pattern->makeReadable()) {
                 PLY_ASSERT(0); // Expected specification char after %
                 return false;
             }
 
             // Get the next argument to capture the value.
-            u32 i = state.arg_index++;
-            const MatchArg& arg = state.match_args[i];
+            u32 i = state.argIndex++;
+            const MatchArg& arg = state.matchArgs[i];
 
             // Clear any previous input errors.
-            state.str->input_error = false;
+            state.str->inputError = false;
 
-            char spec = *state.pattern->cur_byte++;
+            char spec = *state.pattern->curByte++;
             if (spec == 'i') { // Identifier
                 if (mode == MatchMode::Matching) {
-                    StringView id = read_identifier(*state.str);
-                    if (!id.is_empty()) {
-                        element_matched = true;
-                        output_variables_to_commit.append([arg, id]() {
+                    StringView id = readIdentifier(*state.str);
+                    if (!id.isEmpty()) {
+                        elementMatched = true;
+                        outputVariablesToCommit.append([arg, id]() {
                             if (auto* ptr = arg.as<StringView*>()) {
                                 **ptr = id;
                             } else if (auto* ptr = arg.as<String*>()) {
@@ -886,9 +886,9 @@ static bool match_pattern_segment(MatchState& state, MatchMode mode) {
                 if (mode == MatchMode::Matching) {
                     if (arg.is<u64*>() || arg.is<u32*>()) {
                         u64 val = read_u64_from_text(*state.str);
-                        if (!state.str->input_error) {
-                            element_matched = true;
-                            output_variables_to_commit.append([arg, val]() {
+                        if (!state.str->inputError) {
+                            elementMatched = true;
+                            outputVariablesToCommit.append([arg, val]() {
                                 if (auto* ptr = arg.as<u64*>()) {
                                     **ptr = val;
                                 } else {
@@ -898,9 +898,9 @@ static bool match_pattern_segment(MatchState& state, MatchMode mode) {
                         }
                     } else if (arg.is<s64*>() || arg.is<s32*>()) {
                         s64 val = read_s64_from_text(*state.str);
-                        if (!state.str->input_error) {
-                            element_matched = true;
-                            output_variables_to_commit.append([arg, val]() {
+                        if (!state.str->inputError) {
+                            elementMatched = true;
+                            outputVariablesToCommit.append([arg, val]() {
                                 if (auto* ptr = arg.as<s64*>()) {
                                     **ptr = val;
                                 } else {
@@ -914,10 +914,10 @@ static bool match_pattern_segment(MatchState& state, MatchMode mode) {
                 }
             } else if (spec == 'f') { // Float
                 if (mode == MatchMode::Matching) {
-                    double val = read_double_from_text(*state.str);
-                    if (!state.str->input_error) {
-                        element_matched = true;
-                        output_variables_to_commit.append([arg, val]() {
+                    double val = readDoubleFromText(*state.str);
+                    if (!state.str->inputError) {
+                        elementMatched = true;
+                        outputVariablesToCommit.append([arg, val]() {
                             if (auto* ptr = arg.as<double*>()) {
                                 **ptr = val;
                             } else {
@@ -928,10 +928,10 @@ static bool match_pattern_segment(MatchState& state, MatchMode mode) {
                 }
             } else if (spec == 'q') { // Quoted string
                 if (mode == MatchMode::Matching) {
-                    String val = read_quoted_string(*state.str);
-                    if (!state.str->input_error) {
-                        element_matched = true;
-                        output_variables_to_commit.append([arg, val = std::move(val)]() {
+                    String val = readQuotedString(*state.str);
+                    if (!state.str->inputError) {
+                        elementMatched = true;
+                        outputVariablesToCommit.append([arg, val = std::move(val)]() {
                             if (auto* ptr = arg.as<String*>()) {
                                 **ptr = std::move(val);
                             } else {
@@ -943,131 +943,131 @@ static bool match_pattern_segment(MatchState& state, MatchMode mode) {
             } else {
                 PLY_ASSERT(0); // Unknown format specifier
             }
-        } else if (pattern_element == ' ') {
+        } else if (patternElement == ' ') {
             // It's a space character. Try to match whitespace.
             if (mode == MatchMode::Matching) {
-                if (state.str->make_readable() && is_whitespace(*state.str->cur_byte)) {
-                    element_matched = true;
-                    state.str->cur_byte++;
+                if (state.str->makeReadable() && isWhitespace(*state.str->curByte)) {
+                    elementMatched = true;
+                    state.str->curByte++;
                 }
             }
-        } else if (pattern_element == '(') {
+        } else if (patternElement == '(') {
             // It's a left parenthesis. Read a sub-pattern segment recursively.
-            element_matched = match_pattern_segment(state, mode);
-            if (!state.pattern->make_readable()) {
+            elementMatched = matchPatternSegment(state, mode);
+            if (!state.pattern->makeReadable()) {
                 PLY_ASSERT(0); // Expected a character after the opening parenthesis.
                 return false;
             }
-            char c = *state.pattern->cur_byte++;
+            char c = *state.pattern->curByte++;
             PLY_ASSERT(c == ')'); // Expected a closing parenthesis.
-        } else if ((pattern_element == ')') || (pattern_element == '$')) {
-            state.pattern->cur_byte--;
+        } else if ((patternElement == ')') || (patternElement == '$')) {
+            state.pattern->curByte--;
             break;
-        } else if (pattern_element == '|') {
+        } else if (patternElement == '|') {
             // It's a vertical bar. End the current clause and begin reading the next clause.
             if (mode == MatchMode::Matching) {
-                if (current_clause_succeeded) {
-                    any_clause_succeeded = true;
-                    for (Functor<void()>& commit : output_variables_to_commit) {
+                if (currentClauseSucceeded) {
+                    anyClauseSucceeded = true;
+                    for (Functor<void()>& commit : outputVariablesToCommit) {
                         commit();
                     }
-                    output_variables_to_commit.clear();
+                    outputVariablesToCommit.clear();
                     mode = MatchMode::Skipping;
                 } else {
                     // Reset status variables and try to match the next clause.
-                    current_clause_succeeded = true;
-                    state.str->cur_byte = input_at_start_of_current_clause;
-                    output_variables_to_commit.clear();
+                    currentClauseSucceeded = true;
+                    state.str->curByte = inputAtStartOfCurrentClause;
+                    outputVariablesToCommit.clear();
                 }
             }
             continue; // Skip the check for ? or * qualifiers
-        } else if (pattern_element == '\'') {
+        } else if (patternElement == '\'') {
             // It's a single quote. Treat the next pattern character as a literal character.
-            if (!state.pattern->make_readable()) {
+            if (!state.pattern->makeReadable()) {
                 PLY_ASSERT(0); // Expected a character to follow `'`.
                 return false;
             }
-            char escaped = *state.pattern->cur_byte++;
+            char escaped = *state.pattern->curByte++;
             if (mode == MatchMode::Matching) {
-                if (state.str->make_readable() && *state.str->cur_byte == escaped) {
-                    element_matched = true;
-                    state.str->cur_byte++;
+                if (state.str->makeReadable() && *state.str->curByte == escaped) {
+                    elementMatched = true;
+                    state.str->curByte++;
                 }
             }
         } else {
-            PLY_ASSERT((pattern_element != '*') && (pattern_element != '?')); // Unexpected quantifier.
+            PLY_ASSERT((patternElement != '*') && (patternElement != '?')); // Unexpected quantifier.
             if (mode == MatchMode::Matching) {
-                if (state.str->make_readable() && *state.str->cur_byte == pattern_element) {
-                    element_matched = true;
-                    state.str->cur_byte++;
+                if (state.str->makeReadable() && *state.str->curByte == patternElement) {
+                    elementMatched = true;
+                    state.str->curByte++;
                 }
             }
         }
 
-        if (state.pattern->make_readable()) {
-            char c = *state.pattern->cur_byte;
+        if (state.pattern->makeReadable()) {
+            char c = *state.pattern->curByte;
             if (c == '?') {
                 // It's a question mark. Make the current element optional.
-                state.pattern->cur_byte++;
-                if ((mode == MatchMode::Matching) && !element_matched) {
+                state.pattern->curByte++;
+                if ((mode == MatchMode::Matching) && !elementMatched) {
                     // The current element didn't match, but was optional.
                     // Revert the input string to the start of the current element.
-                    state.str->cur_byte = input_at_start_of_current_element;
+                    state.str->curByte = inputAtStartOfCurrentElement;
                 }
                 continue;
             } else if (c == '*') {
                 // It's a star. Make the current element repeatable.
-                state.pattern->cur_byte++;
+                state.pattern->curByte++;
                 // It's illegal to capture variables inside repeated elements:
-                PLY_ASSERT(state.arg_index == arg_index_at_start_of_current_element); // No repeated captures!
-                if ((mode == MatchMode::Matching) && element_matched) {
+                PLY_ASSERT(state.argIndex == argIndexAtStartOfCurrentElement); // No repeated captures!
+                if ((mode == MatchMode::Matching) && elementMatched) {
                     // The current element matched. Rewind the pattern to the start of the current element
                     // and try to match it again.
-                    state.pattern->cur_byte = pattern_at_start_of_current_element;
+                    state.pattern->curByte = patternAtStartOfCurrentElement;
                 } else {
                     // The current element didn't match, but was repeatable.
                     // Revert the input string to the start of the current element.
-                    state.str->cur_byte = input_at_start_of_current_element;
+                    state.str->curByte = inputAtStartOfCurrentElement;
                 }
                 continue;
             }
         }
 
-        if ((mode == MatchMode::Matching) && !element_matched) {
+        if ((mode == MatchMode::Matching) && !elementMatched) {
             // The current element didn't match.
-            current_clause_succeeded = false;
+            currentClauseSucceeded = false;
         }
     }
 
     // We reached the end of the segment.
-    if ((mode == MatchMode::Matching) && current_clause_succeeded) {
-        any_clause_succeeded = true;
-        for (Functor<void()>& commit : output_variables_to_commit) {
+    if ((mode == MatchMode::Matching) && currentClauseSucceeded) {
+        anyClauseSucceeded = true;
+        for (Functor<void()>& commit : outputVariablesToCommit) {
             commit();
         }
     }
 
-    return any_clause_succeeded;
+    return anyClauseSucceeded;
 }
 
-bool match_with_args(ViewStream& in, StringView pattern, ArrayView<const MatchArg> match_args) {
+bool matchWithArgs(ViewStream& in, StringView pattern, ArrayView<const MatchArg> matchArgs) {
     MatchState state;
-    ViewStream pattern_in{pattern};
+    ViewStream patternIn{pattern};
     state.str = &in;
-    state.pattern = &pattern_in;
-    state.match_args = match_args;
-    state.arg_index = 0;
+    state.pattern = &patternIn;
+    state.matchArgs = matchArgs;
+    state.argIndex = 0;
 
-    if (!match_pattern_segment(state, MatchMode::Matching))
+    if (!matchPatternSegment(state, MatchMode::Matching))
         return false;
 
-    if (state.pattern->make_readable() && (*state.pattern->cur_byte == '$')) {
-        if (state.str->make_readable())
+    if (state.pattern->makeReadable() && (*state.pattern->curByte == '$')) {
+        if (state.str->makeReadable())
             return false; // Expected end of string
     }
 
     // Check that we consumed all match args
-    PLY_ASSERT(state.arg_index == match_args.num_items());
+    PLY_ASSERT(state.argIndex == matchArgs.numItems());
 
     return true;
 }
@@ -1078,20 +1078,20 @@ bool match_with_args(ViewStream& in, StringView pattern, ArrayView<const MatchAr
 //  ▀█▄▄█▀  ▀█▄▄ ██     ██ ██  ██ ▀█▄▄██
 //                                 ▄▄▄█▀
 
-String::String(StringView other) : bytes_{(char*) Heap::alloc(other.num_bytes())}, num_bytes_{other.num_bytes()} {
-    memcpy(this->bytes_, other.bytes(), other.num_bytes());
+String::String(StringView other) : bytes_{(char*) Heap::alloc(other.numBytes())}, numBytes_{other.numBytes()} {
+    memcpy(this->bytes_, other.bytes(), other.numBytes());
 }
 
-String String::allocate(u32 num_bytes) {
+String String::allocate(u32 numBytes) {
     String result;
-    result.bytes_ = (char*) Heap::alloc(num_bytes);
-    result.num_bytes_ = num_bytes;
+    result.bytes_ = (char*) Heap::alloc(numBytes);
+    result.numBytes_ = numBytes;
     return result;
 }
 
-void String::resize(u32 num_bytes) {
-    this->bytes_ = (char*) Heap::realloc(this->bytes_, num_bytes);
-    this->num_bytes_ = num_bytes;
+void String::resize(u32 numBytes) {
+    this->bytes_ = (char*) Heap::realloc(this->bytes_, numBytes);
+    this->numBytes_ = numBytes;
 }
 
 //  ▄▄  ▄▄               ▄▄     ▄▄
@@ -1100,7 +1100,7 @@ void String::resize(u32 num_bytes) {
 //  ██  ██ ▀█▄▄██  ▄▄▄█▀ ██  ██ ██ ██  ██ ▀█▄▄██
 //                                         ▄▄▄█▀
 
-void add_to_hash(HashBuilder& builder, u32 value) {
+void addToHash(HashBuilder& builder, u32 value) {
     value *= 0xcc9e2d51u;
     value = (value << 15) | (value >> 17);
     value *= 0x1b873593u;
@@ -1109,21 +1109,21 @@ void add_to_hash(HashBuilder& builder, u32 value) {
     builder.accumulator = builder.accumulator * 5 + 0xe6546b64u;
 }
 
-void add_to_hash(HashBuilder& builder, StringView str) {
+void addToHash(HashBuilder& builder, StringView str) {
     // FIXME: More work is needed for platforms that don't support unaligned reads
     u32 i = 0;
-    while (i + 4 <= str.num_bytes()) {
-        add_to_hash(builder, *(const u32*) (str.bytes() + i)); // May be unaligned
+    while (i + 4 <= str.numBytes()) {
+        addToHash(builder, *(const u32*) (str.bytes() + i)); // May be unaligned
         i += 4;
     }
-    if (i < str.num_bytes()) {
+    if (i < str.numBytes()) {
         // Avoid potential unaligned read across page boundary
         u32 v = 0;
-        while (i < str.num_bytes()) {
+        while (i < str.numBytes()) {
             v = (v << 8) | *(const u8*) (str.bytes() + i);
             i++;
         }
-        add_to_hash(builder, v);
+        addToHash(builder, v);
     }
 }
 
@@ -1133,11 +1133,11 @@ void add_to_hash(HashBuilder& builder, StringView str) {
 //  ██  ██ ▀█▄▄██  ▄▄▄█▀ ██  ██ ██▄▄▄ ▀█▄▄█▀ ▀█▄▄█▀ ██ ▀█▄ ▀█▄▄██ ██▄▄█▀
 //                                                                ██
 
-u32 get_best_num_hash_indices(u32 num_items) {
-    if (num_items >= 8) {
-        return round_up_to_nearest_to_power_of_2(u32((u64{num_items} * 5) >> 2));
+u32 getBestNumHashIndices(u32 numItems) {
+    if (numItems >= 8) {
+        return round_up_to_nearest_to_power_of_2(u32((u64{numItems} * 5) >> 2));
     }
-    return (num_items < 4) ? 4 : 8;
+    return (numItems < 4) ? 4 : 8;
 }
 
 //  ▄▄▄▄▄  ▄▄
@@ -1161,17 +1161,17 @@ bool Pipe::write(StringView buf) {
     return false;
 }
 
-void Pipe::flush(bool to_device) {
+void Pipe::flush(bool toDevice) {
     PLY_ASSERT(0);
 }
 
-u64 Pipe::get_file_size() {
+u64 Pipe::getFileSize() {
     // This method is unsupported by the subclass. Do not call.
     PLY_ASSERT(0);
     return 0;
 }
 
-void Pipe::seek_to(s64 offset) {
+void Pipe::seekTo(s64 offset) {
     PLY_ASSERT(0);
 }
 
@@ -1184,38 +1184,38 @@ PipeHandle::~PipeHandle() {
 }
 
 u32 PipeHandle::read(MutStringView buf) {
-    DWORD read_bytes;
-    BOOL rc = ReadFile(this->handle, buf.bytes, buf.num_bytes, &read_bytes, NULL);
+    DWORD readBytes;
+    BOOL rc = ReadFile(this->handle, buf.bytes, buf.numBytes, &readBytes, NULL);
     if (!rc) // Handles ERROR_BROKEN_PIPE and other errors.
         return 0;
-    return read_bytes; // 0 when attempting to read past EOF.
+    return readBytes; // 0 when attempting to read past EOF.
 }
 
 bool PipeHandle::write(StringView buf) {
-    while (buf.num_bytes() > 0) {
-        DWORD desired_bytes = min<DWORD>(buf.num_bytes(), UINT32_MAX);
-        DWORD written_bytes;
-        BOOL rc = WriteFile(this->handle, buf.bytes(), desired_bytes, &written_bytes, NULL);
+    while (buf.numBytes() > 0) {
+        DWORD desiredBytes = min<DWORD>(buf.numBytes(), UINT32_MAX);
+        DWORD writtenBytes;
+        BOOL rc = WriteFile(this->handle, buf.bytes(), desiredBytes, &writtenBytes, NULL);
         if (!rc) // Handles ERROR_NO_DATA and other errors.
             return false;
-        buf = buf.substr(written_bytes);
+        buf = buf.substr(writtenBytes);
     }
     return true;
 }
 
-void PipeHandle::flush(bool to_device) {
-    if (to_device) {
+void PipeHandle::flush(bool toDevice) {
+    if (toDevice) {
         FlushFileBuffers(this->handle);
     }
 }
 
-u64 PipeHandle::get_file_size() {
-    LARGE_INTEGER file_size;
-    GetFileSizeEx(this->handle, &file_size);
-    return file_size.QuadPart;
+u64 PipeHandle::getFileSize() {
+    LARGE_INTEGER fileSize;
+    GetFileSizeEx(this->handle, &fileSize);
+    return fileSize.QuadPart;
 }
 
-void PipeHandle::seek_to(s64 offset) {
+void PipeHandle::seekTo(s64 offset) {
     LARGE_INTEGER distance;
     distance.QuadPart = offset;
     SetFilePointerEx(this->handle, distance, NULL, FILE_BEGIN);
@@ -1236,7 +1236,7 @@ u32 Pipe_FD::read(MutStringView buf) {
     // Retry as long as read() keeps failing due to EINTR caused by the debugger:
     s32 rc;
     do {
-        rc = (s32)::read(this->fd, buf.bytes, buf.num_bytes);
+        rc = (s32)::read(this->fd, buf.bytes, buf.numBytes);
     } while (rc == -1 && errno == EINTR);
     PLY_ASSERT(rc >= 0); // Note: Will probably need to detect closed pipes here
     if (rc < 0)
@@ -1246,22 +1246,22 @@ u32 Pipe_FD::read(MutStringView buf) {
 
 bool Pipe_FD::write(StringView buf) {
     PLY_ASSERT(this->fd >= 0);
-    while (buf.num_bytes() > 0) {
-        s32 sent = (s32)::write(this->fd, buf.bytes(), buf.num_bytes());
+    while (buf.numBytes() > 0) {
+        s32 sent = (s32)::write(this->fd, buf.bytes(), buf.numBytes());
         if (sent <= 0)
             return false;
-        PLY_ASSERT((u32) sent <= buf.num_bytes());
+        PLY_ASSERT((u32) sent <= buf.numBytes());
         buf = buf.substr(sent);
     }
     return true;
 }
 
-void Pipe_FD::flush(bool to_device) {
+void Pipe_FD::flush(bool toDevice) {
     // FIXME: Implement as per
     // https://github.com/libuv/libuv/issues/1579#issue-262113760
 }
 
-u64 Pipe_FD::get_file_size() {
+u64 Pipe_FD::getFileSize() {
     PLY_ASSERT(this->fd >= 0);
     struct stat buf;
     int rc = fstat(this->fd, &buf);
@@ -1270,9 +1270,9 @@ u64 Pipe_FD::get_file_size() {
     return buf.st_size;
 }
 
-void Pipe_FD::seek_to(s64 offset) {
+void Pipe_FD::seekTo(s64 offset) {
     PLY_ASSERT(this->fd >= 0);
-    off_t rc = lseek(this->fd, numeric_cast<off_t>(offset), SEEK_SET);
+    off_t rc = lseek(this->fd, numericCast<off_t>(offset), SEEK_SET);
     PLY_ASSERT(rc == 0);
     PLY_UNUSED(rc);
 }
@@ -1283,38 +1283,38 @@ void Pipe_FD::seek_to(s64 offset) {
 
 struct NewLineFilter {
     struct Params {
-        const char* src_byte = nullptr;
-        const char* src_end_byte = nullptr;
-        char* dst_byte = nullptr;
-        char* dst_end_byte = nullptr;
+        const char* srcByte = nullptr;
+        const char* srcEndByte = nullptr;
+        char* dstByte = nullptr;
+        char* dstEndByte = nullptr;
     };
 
     bool crlf = false; // If true, outputs \r\n instead of \n
-    bool needs_lf = false;
+    bool needsLf = false;
 
     void process(Params* params) {
-        while (params->dst_byte < params->dst_end_byte) {
+        while (params->dstByte < params->dstEndByte) {
             u8 c = 0;
-            if (this->needs_lf) {
+            if (this->needsLf) {
                 c = '\n';
-                this->needs_lf = false;
+                this->needsLf = false;
             } else {
                 for (;;) {
-                    if (params->src_byte >= params->src_end_byte)
+                    if (params->srcByte >= params->srcEndByte)
                         return; // src has been consumed
-                    c = *params->src_byte++;
+                    c = *params->srcByte++;
                     if (c == '\r') {
                         // Output nothing
                     } else {
                         if (c == '\n' && this->crlf) {
                             c = '\r';
-                            this->needs_lf = true;
+                            this->needsLf = true;
                         }
                         break;
                     }
                 }
             }
-            *params->dst_byte++ = c;
+            *params->dstByte++ = c;
         }
     }
 };
@@ -1327,30 +1327,30 @@ public:
     NewLineFilter filter;
 
     InPipeNewLineFilter(Stream&& in) : in{std::move(in)} {
-        PLY_ASSERT(this->in.has_read_permission);
+        PLY_ASSERT(this->in.hasReadPermission);
         this->flags = Pipe::HAS_READ_PERMISSION;
     }
     virtual u32 read(MutStringView buf) override;
 };
 
 u32 InPipeNewLineFilter::read(MutStringView buf) {
-    PLY_ASSERT(buf.num_bytes > 0);
+    PLY_ASSERT(buf.numBytes > 0);
 
     NewLineFilter::Params params;
-    params.dst_byte = buf.bytes;
-    params.dst_end_byte = buf.bytes + buf.num_bytes;
+    params.dstByte = buf.bytes;
+    params.dstEndByte = buf.bytes + buf.numBytes;
     for (;;) {
-        params.src_byte = this->in.cur_byte;
-        params.src_end_byte = this->in.end_byte;
+        params.srcByte = this->in.curByte;
+        params.srcEndByte = this->in.endByte;
         this->filter.process(&params);
 
-        this->in.cur_byte = const_cast<char*>(params.src_byte);
-        u32 num_bytes_written = numeric_cast<u32>(params.dst_byte - buf.bytes);
-        if (num_bytes_written > 0)
-            return num_bytes_written;
+        this->in.curByte = const_cast<char*>(params.srcByte);
+        u32 numBytesWritten = numericCast<u32>(params.dstByte - buf.bytes);
+        if (numBytesWritten > 0)
+            return numBytesWritten;
 
-        PLY_ASSERT(this->in.num_remaining_bytes() == 0);
-        if (!this->in.make_readable())
+        PLY_ASSERT(this->in.numRemainingBytes() == 0);
+        if (!this->in.makeReadable())
             return 0;
     }
 }
@@ -1362,43 +1362,43 @@ public:
     Stream out;
     NewLineFilter filter;
 
-    OutPipeNewLineFilter(Stream&& out, bool write_crlf) : out{std::move(out)} {
-        PLY_ASSERT(this->out.has_write_permission);
+    OutPipeNewLineFilter(Stream&& out, bool writeCrlf) : out{std::move(out)} {
+        PLY_ASSERT(this->out.hasWritePermission);
         this->flags = Pipe::HAS_WRITE_PERMISSION;
-        this->filter.crlf = write_crlf;
+        this->filter.crlf = writeCrlf;
     }
     virtual bool write(StringView buf) override;
-    virtual void flush(bool to_device) override;
+    virtual void flush(bool toDevice) override;
 };
 
 bool OutPipeNewLineFilter::write(StringView buf) {
-    u32 desired_total_bytes_read = buf.num_bytes();
-    u32 total_bytes_read = 0;
+    u32 desiredTotalBytesRead = buf.numBytes();
+    u32 totalBytesRead = 0;
     for (;;) {
-        this->out.make_writable();
+        this->out.makeWritable();
 
-        // If try_make_bytes_available fails, process() will do nothing and we'll simply
+        // If tryMakeBytesAvailable fails, process() will do nothing and we'll simply
         // return below:
         NewLineFilter::Params params;
-        params.src_byte = buf.bytes();
-        params.src_end_byte = buf.bytes() + buf.num_bytes();
-        params.dst_byte = this->out.cur_byte;
-        params.dst_end_byte = this->out.end_byte;
+        params.srcByte = buf.bytes();
+        params.srcEndByte = buf.bytes() + buf.numBytes();
+        params.dstByte = this->out.curByte;
+        params.dstEndByte = this->out.endByte;
         this->filter.process(&params);
-        this->out.cur_byte = params.dst_byte;
-        u32 num_bytes_read = numeric_cast<u32>(params.src_byte - buf.bytes());
-        if (num_bytes_read == 0) {
-            PLY_ASSERT(total_bytes_read <= desired_total_bytes_read);
-            return total_bytes_read >= desired_total_bytes_read;
+        this->out.curByte = params.dstByte;
+        u32 numBytesRead = numericCast<u32>(params.srcByte - buf.bytes());
+        if (numBytesRead == 0) {
+            PLY_ASSERT(totalBytesRead <= desiredTotalBytesRead);
+            return totalBytesRead >= desiredTotalBytesRead;
         }
-        total_bytes_read += num_bytes_read;
-        buf = buf.substr(num_bytes_read);
+        totalBytesRead += numBytesRead;
+        buf = buf.substr(numBytesRead);
     }
 }
 
-void OutPipeNewLineFilter::flush(bool to_device) {
+void OutPipeNewLineFilter::flush(bool toDevice) {
     // Forward flush command down the output chain.
-    this->out.flush(to_device);
+    this->out.flush(toDevice);
 };
 
 //   ▄▄▄▄   ▄▄
@@ -1410,30 +1410,30 @@ void OutPipeNewLineFilter::flush(bool to_device) {
 Stream::Stream() {
 }
 
-Stream::Stream(Pipe* pipe, bool is_pipe_owner) {
+Stream::Stream(Pipe* pipe, bool isPipeOwner) {
     if (pipe) {
         this->type = Type::Pipe;
         new (&this->pipe) PipeData;
         this->pipe.pipe = pipe;
-        this->is_pipe_owner = is_pipe_owner;
+        this->isPipeOwner = isPipeOwner;
         this->pipe.buffer = (char*) Heap::alloc(BUFFER_SIZE);
-        this->cur_byte = this->pipe.buffer;
-        this->end_byte = this->pipe.buffer;
-        this->has_read_permission = (pipe->get_flags() & Pipe::HAS_READ_PERMISSION) != 0;
-        this->has_write_permission = (pipe->get_flags() & Pipe::HAS_WRITE_PERMISSION) != 0;
+        this->curByte = this->pipe.buffer;
+        this->endByte = this->pipe.buffer;
+        this->hasReadPermission = (pipe->getFlags() & Pipe::HAS_READ_PERMISSION) != 0;
+        this->hasWritePermission = (pipe->getFlags() & Pipe::HAS_WRITE_PERMISSION) != 0;
     }
 }
 
 Stream::Stream(Stream&& other) {
-    this->cur_byte = other.cur_byte;
-    this->end_byte = other.end_byte;
+    this->curByte = other.curByte;
+    this->endByte = other.endByte;
     this->type = other.type;
     this->mode = other.mode;
-    this->is_pipe_owner = other.is_pipe_owner;
-    this->has_read_permission = other.has_read_permission;
-    this->has_write_permission = other.has_write_permission;
-    this->at_eof = other.at_eof;
-    this->input_error = other.input_error;
+    this->isPipeOwner = other.isPipeOwner;
+    this->hasReadPermission = other.hasReadPermission;
+    this->hasWritePermission = other.hasWritePermission;
+    this->atEof = other.atEof;
+    this->inputError = other.inputError;
     if (this->type == Type::Pipe) {
         new (&this->pipe) PipeData{std::move(other.pipe)};
     } else if (this->type == Type::Mem) {
@@ -1447,10 +1447,10 @@ Stream::Stream(Stream&& other) {
 Stream::~Stream() {
     if (this->type == Type::Pipe) {
         PLY_ASSERT(this->pipe.pipe);
-        if (this->has_write_permission) {
+        if (this->hasWritePermission) {
             this->flush();
         }
-        if (this->is_pipe_owner) {
+        if (this->isPipeOwner) {
             Heap::destroy(this->pipe.pipe);
         }
         Heap::free(this->pipe.buffer);
@@ -1458,309 +1458,305 @@ Stream::~Stream() {
         for (char* buf : this->mem.buffers) {
             Heap::free(buf);
         }
-        if (this->mem.temp_buffer) {
-            Heap::free(this->mem.temp_buffer);
+        if (this->mem.tempBuffer) {
+            Heap::free(this->mem.tempBuffer);
         }
         this->mem.~MemData();
     }
 }
 
-void Stream::flush_mem_writes() {
+void Stream::flushMemWrites() {
     PLY_ASSERT(this->type == Type::Mem);
     if (this->mode == Mode::Writing) {
-        if (this->using_temp_buffer) {
-            u32 num_bytes_written = numeric_cast<u32>(this->cur_byte - this->mem.temp_buffer);
-            u32 space_available = BUFFER_SIZE - this->mem.temp_buffer_offset;
-            memcpy(this->mem.buffers[this->mem.buffer_index] + this->mem.temp_buffer_offset, this->mem.temp_buffer,
-                   min(num_bytes_written, space_available));
-            if (space_available < num_bytes_written) {
-                if (this->mem.buffer_index + 1 >= this->mem.buffers.num_items()) {
+        if (this->usingTempBuffer) {
+            u32 numBytesWritten = numericCast<u32>(this->curByte - this->mem.tempBuffer);
+            u32 spaceAvailable = BUFFER_SIZE - this->mem.tempBufferOffset;
+            memcpy(this->mem.buffers[this->mem.bufferIndex] + this->mem.tempBufferOffset, this->mem.tempBuffer,
+                   min(numBytesWritten, spaceAvailable));
+            if (spaceAvailable < numBytesWritten) {
+                if (this->mem.bufferIndex + 1 >= this->mem.buffers.numItems()) {
                     this->mem.buffers.append((char*) Heap::alloc(BUFFER_SIZE));
-                    memcpy(this->mem.buffers.back(), this->mem.temp_buffer + space_available,
-                           num_bytes_written - space_available);
-                    this->mem.num_bytes_in_last_buffer = num_bytes_written - space_available;
+                    memcpy(this->mem.buffers.back(), this->mem.tempBuffer + spaceAvailable,
+                           numBytesWritten - spaceAvailable);
+                    this->mem.numBytesInLastBuffer = numBytesWritten - spaceAvailable;
                 }
-                this->mem.buffer_index++;
-                this->cur_byte = this->mem.buffers[this->mem.buffer_index] + (num_bytes_written - space_available);
+                this->mem.bufferIndex++;
+                this->curByte = this->mem.buffers[this->mem.bufferIndex] + (numBytesWritten - spaceAvailable);
             } else {
-                this->cur_byte =
-                    this->mem.buffers[this->mem.buffer_index] + this->mem.temp_buffer_offset + num_bytes_written;
+                this->curByte = this->mem.buffers[this->mem.bufferIndex] + this->mem.tempBufferOffset + numBytesWritten;
             }
-            this->end_byte = this->mem.buffers[this->mem.buffer_index] + BUFFER_SIZE;
-            this->using_temp_buffer = false;
+            this->endByte = this->mem.buffers[this->mem.bufferIndex] + BUFFER_SIZE;
+            this->usingTempBuffer = false;
         } else {
-            if (this->mem.buffer_index + 1 == this->mem.buffers.num_items()) {
+            if (this->mem.bufferIndex + 1 == this->mem.buffers.numItems()) {
                 // Extend number of bytes in the last buffer.
-                this->mem.num_bytes_in_last_buffer = max(this->mem.num_bytes_in_last_buffer,
-                                                         numeric_cast<u32>(this->cur_byte - this->mem.buffers.back()));
+                this->mem.numBytesInLastBuffer =
+                    max(this->mem.numBytesInLastBuffer, numericCast<u32>(this->curByte - this->mem.buffers.back()));
             }
         }
     }
 }
 
-bool Stream::make_readable_internal(u32 min_bytes) {
-    PLY_ASSERT(this->has_read_permission);
-    PLY_ASSERT(min_bytes <= MAX_CONSECUTIVE_BYTES);
-    if ((this->mode == Mode::Reading) && (this->num_remaining_bytes() >= min_bytes))
+bool Stream::makeReadableInternal(u32 minBytes) {
+    PLY_ASSERT(this->hasReadPermission);
+    PLY_ASSERT(minBytes <= MAX_CONSECUTIVE_BYTES);
+    if ((this->mode == Mode::Reading) && (this->numRemainingBytes() >= minBytes))
         return true;
 
     if (this->type == Type::Pipe) {
         if (this->mode == Mode::Writing) {
             // Write any buffered data to the pipe.
-            this->pipe.pipe->write({this->pipe.buffer, this->cur_byte});
-            this->pipe.seek_pos_at_buffer += (this->cur_byte - this->pipe.buffer);
+            this->pipe.pipe->write({this->pipe.buffer, this->curByte});
+            this->pipe.seekPosAtBuffer += (this->curByte - this->pipe.buffer);
         }
         if (this->mode != Mode::Reading) {
             // Reset buffer contents.
-            this->cur_byte = this->pipe.buffer;
-            this->end_byte = this->pipe.buffer;
+            this->curByte = this->pipe.buffer;
+            this->endByte = this->pipe.buffer;
             this->mode = Mode::Reading;
         } else {
             // Keep any bytes we have.
-            u32 num_to_preserve = this->num_remaining_bytes();
-            if (num_to_preserve > 0) {
-                memmove(this->pipe.buffer, this->cur_byte, this->num_remaining_bytes());
+            u32 numToPreserve = this->numRemainingBytes();
+            if (numToPreserve > 0) {
+                memmove(this->pipe.buffer, this->curByte, this->numRemainingBytes());
             }
-            this->pipe.seek_pos_at_buffer += (this->cur_byte - this->pipe.buffer);
-            this->cur_byte = this->pipe.buffer;
-            this->end_byte = this->pipe.buffer + num_to_preserve;
+            this->pipe.seekPosAtBuffer += (this->curByte - this->pipe.buffer);
+            this->curByte = this->pipe.buffer;
+            this->endByte = this->pipe.buffer + numToPreserve;
         }
 
         do {
             // Load data into the buffer.
-            u32 num_bytes_loaded = this->pipe.pipe->read({this->end_byte, BUFFER_SIZE - this->num_remaining_bytes()});
-            if (num_bytes_loaded == 0) {
-                if (this->num_remaining_bytes() == 0) {
-                    this->at_eof = true;
+            u32 numBytesLoaded = this->pipe.pipe->read({this->endByte, BUFFER_SIZE - this->numRemainingBytes()});
+            if (numBytesLoaded == 0) {
+                if (this->numRemainingBytes() == 0) {
+                    this->atEof = true;
                 }
                 return false;
             }
-            this->end_byte += num_bytes_loaded;
-        } while (this->num_remaining_bytes() < min_bytes);
+            this->endByte += numBytesLoaded;
+        } while (this->numRemainingBytes() < minBytes);
 
         // We have at least the number of bytes the caller asked for.
         return true;
     } else if (this->type == Type::Mem) {
-        this->flush_mem_writes();
+        this->flushMemWrites();
 
-        if (this->num_remaining_bytes() == 0) {
-            if (this->mem.buffer_index + 1 < this->mem.buffers.num_items()) {
-                this->mem.buffer_index++;
-                this->cur_byte = this->mem.buffers[this->mem.buffer_index];
-                if (this->mem.buffer_index + 1 < this->mem.buffers.num_items()) {
-                    this->end_byte = this->cur_byte + BUFFER_SIZE;
+        if (this->numRemainingBytes() == 0) {
+            if (this->mem.bufferIndex + 1 < this->mem.buffers.numItems()) {
+                this->mem.bufferIndex++;
+                this->curByte = this->mem.buffers[this->mem.bufferIndex];
+                if (this->mem.bufferIndex + 1 < this->mem.buffers.numItems()) {
+                    this->endByte = this->curByte + BUFFER_SIZE;
                 } else {
-                    this->end_byte = this->cur_byte + this->mem.num_bytes_in_last_buffer;
+                    this->endByte = this->curByte + this->mem.numBytesInLastBuffer;
                 }
             }
-        } else if (this->num_remaining_bytes() < min_bytes) {
-            if (this->mem.buffer_index + 1 < this->mem.buffers.num_items()) {
-                u32 num_bytes_in_next_buffer = BUFFER_SIZE;
-                if (this->mem.buffer_index + 2 == this->mem.buffers.num_items()) {
-                    num_bytes_in_next_buffer = this->mem.num_bytes_in_last_buffer;
+        } else if (this->numRemainingBytes() < minBytes) {
+            if (this->mem.bufferIndex + 1 < this->mem.buffers.numItems()) {
+                u32 numBytesInNextBuffer = BUFFER_SIZE;
+                if (this->mem.bufferIndex + 2 == this->mem.buffers.numItems()) {
+                    numBytesInNextBuffer = this->mem.numBytesInLastBuffer;
                 }
-                u32 num_bytes_to_expose = min(min_bytes, this->num_remaining_bytes() + num_bytes_in_next_buffer);
-                if (!this->mem.temp_buffer) {
-                    this->mem.temp_buffer = (char*) Heap::alloc(MAX_CONSECUTIVE_BYTES);
+                u32 numBytesToExpose = min(minBytes, this->numRemainingBytes() + numBytesInNextBuffer);
+                if (!this->mem.tempBuffer) {
+                    this->mem.tempBuffer = (char*) Heap::alloc(MAX_CONSECUTIVE_BYTES);
                 }
-                memcpy(this->mem.temp_buffer, this->cur_byte, this->num_remaining_bytes());
-                memcpy(this->mem.temp_buffer + this->num_remaining_bytes(),
-                       this->mem.buffers[this->mem.buffer_index + 1],
-                       num_bytes_to_expose - this->num_remaining_bytes());
-                this->mem.temp_buffer_offset =
-                    numeric_cast<u32>(this->cur_byte - this->mem.buffers[this->mem.buffer_index]);
-                this->using_temp_buffer = true;
-                this->cur_byte = this->mem.temp_buffer;
-                this->end_byte = this->mem.temp_buffer + num_bytes_to_expose;
+                memcpy(this->mem.tempBuffer, this->curByte, this->numRemainingBytes());
+                memcpy(this->mem.tempBuffer + this->numRemainingBytes(), this->mem.buffers[this->mem.bufferIndex + 1],
+                       numBytesToExpose - this->numRemainingBytes());
+                this->mem.tempBufferOffset = numericCast<u32>(this->curByte - this->mem.buffers[this->mem.bufferIndex]);
+                this->usingTempBuffer = true;
+                this->curByte = this->mem.tempBuffer;
+                this->endByte = this->mem.tempBuffer + numBytesToExpose;
             }
         }
-        if (this->num_remaining_bytes() == 0) {
-            this->at_eof = true;
+        if (this->numRemainingBytes() == 0) {
+            this->atEof = true;
         }
-        return (this->num_remaining_bytes() >= min_bytes);
+        return (this->numRemainingBytes() >= minBytes);
     } else if (this->type == Type::View) {
         this->mode = Mode::Reading;
-        if (this->cur_byte >= this->end_byte) {
-            this->at_eof = true;
+        if (this->curByte >= this->endByte) {
+            this->atEof = true;
         }
-        return (this->num_remaining_bytes() >= min_bytes);
+        return (this->numRemainingBytes() >= minBytes);
     }
 
     PLY_ASSERT(0); // Shouldn't get here.
     return false;
 }
 
-bool Stream::make_writable_internal(u32 min_bytes) {
-    PLY_ASSERT(this->has_write_permission);
-    PLY_ASSERT(min_bytes <= MAX_CONSECUTIVE_BYTES);
-    if ((this->mode == Mode::Writing) && (this->num_remaining_bytes() >= min_bytes))
+bool Stream::makeWritableInternal(u32 minBytes) {
+    PLY_ASSERT(this->hasWritePermission);
+    PLY_ASSERT(minBytes <= MAX_CONSECUTIVE_BYTES);
+    if ((this->mode == Mode::Writing) && (this->numRemainingBytes() >= minBytes))
         return true;
 
     if (this->type == Type::Pipe) {
         if (this->mode == Mode::Writing) {
             // Write buffered data to the pipe.
-            this->pipe.pipe->write({this->pipe.buffer, this->cur_byte});
-            this->pipe.seek_pos_at_buffer += (this->cur_byte - this->pipe.buffer);
+            this->pipe.pipe->write({this->pipe.buffer, this->curByte});
+            this->pipe.seekPosAtBuffer += (this->curByte - this->pipe.buffer);
         }
 
         // Make entire buffer available for writing.
-        this->cur_byte = this->pipe.buffer;
-        this->end_byte = this->cur_byte + BUFFER_SIZE;
-        this->at_eof = false;
+        this->curByte = this->pipe.buffer;
+        this->endByte = this->curByte + BUFFER_SIZE;
+        this->atEof = false;
     } else if (this->type == Type::Mem) {
-        this->flush_mem_writes();
+        this->flushMemWrites();
 
-        if (this->num_remaining_bytes() == 0) {
-            this->mem.buffer_index++;
-            if (this->mem.buffer_index >= this->mem.buffers.num_items()) {
+        if (this->numRemainingBytes() == 0) {
+            this->mem.bufferIndex++;
+            if (this->mem.bufferIndex >= this->mem.buffers.numItems()) {
                 this->mem.buffers.append((char*) Heap::alloc(BUFFER_SIZE));
-                this->mem.num_bytes_in_last_buffer = 0;
+                this->mem.numBytesInLastBuffer = 0;
             }
-            this->cur_byte = this->mem.buffers[this->mem.buffer_index];
-            this->end_byte = this->cur_byte + BUFFER_SIZE;
-        } else if (this->num_remaining_bytes() < min_bytes) {
-            if (!this->mem.temp_buffer) {
-                this->mem.temp_buffer = (char*) Heap::alloc(MAX_CONSECUTIVE_BYTES);
+            this->curByte = this->mem.buffers[this->mem.bufferIndex];
+            this->endByte = this->curByte + BUFFER_SIZE;
+        } else if (this->numRemainingBytes() < minBytes) {
+            if (!this->mem.tempBuffer) {
+                this->mem.tempBuffer = (char*) Heap::alloc(MAX_CONSECUTIVE_BYTES);
             }
-            this->mem.temp_buffer_offset =
-                numeric_cast<u32>(this->cur_byte - this->mem.buffers[this->mem.buffer_index]);
-            this->using_temp_buffer = true;
-            this->cur_byte = this->mem.temp_buffer;
-            this->end_byte = this->mem.temp_buffer + min_bytes;
+            this->mem.tempBufferOffset = numericCast<u32>(this->curByte - this->mem.buffers[this->mem.bufferIndex]);
+            this->usingTempBuffer = true;
+            this->curByte = this->mem.tempBuffer;
+            this->endByte = this->mem.tempBuffer + minBytes;
         }
-        this->at_eof = false;
+        this->atEof = false;
     } else if (this->type == Type::View) {
-        this->at_eof = true;
+        this->atEof = true;
     } else {
         PLY_ASSERT(0); // Shouldn't get here.
     }
 
     this->mode = Mode::Writing;
-    return !this->at_eof;
+    return !this->atEof;
 }
 
-char Stream::read_byte_internal() {
-    if (!this->make_readable())
+char Stream::readByteInternal() {
+    if (!this->makeReadable())
         return 0;
-    PLY_ASSERT(this->cur_byte < this->end_byte);
-    return *this->cur_byte++;
+    PLY_ASSERT(this->curByte < this->endByte);
+    return *this->curByte++;
 }
 
-u32 Stream::read_internal(MutStringView dst) {
-    u32 num_bytes_read = 0;
-    while (dst.num_bytes > 0) {
-        if (!this->make_readable()) {
-            memset(dst.bytes, 0, dst.num_bytes);
+u32 Stream::readInternal(MutStringView dst) {
+    u32 numBytesRead = 0;
+    while (dst.numBytes > 0) {
+        if (!this->makeReadable()) {
+            memset(dst.bytes, 0, dst.numBytes);
             break;
         }
-        u32 to_copy = min(dst.num_bytes, this->num_remaining_bytes());
-        memcpy(dst.bytes, this->cur_byte, to_copy);
-        this->cur_byte += to_copy;
-        dst = dst.subview(to_copy);
-        num_bytes_read += to_copy;
+        u32 toCopy = min(dst.numBytes, this->numRemainingBytes());
+        memcpy(dst.bytes, this->curByte, toCopy);
+        this->curByte += toCopy;
+        dst = dst.subview(toCopy);
+        numBytesRead += toCopy;
     }
-    return num_bytes_read;
+    return numBytesRead;
 }
 
-u32 Stream::skip_internal(u32 num_bytes) {
-    u32 num_bytes_skipped = 0;
-    while (num_bytes > 0) {
-        if (!this->make_readable())
+u32 Stream::skipInternal(u32 numBytes) {
+    u32 numBytesSkipped = 0;
+    while (numBytes > 0) {
+        if (!this->makeReadable())
             break;
-        u32 to_skip = min(num_bytes, this->num_remaining_bytes());
-        this->cur_byte += to_skip;
-        num_bytes -= to_skip;
-        num_bytes_skipped += to_skip;
+        u32 toSkip = min(numBytes, this->numRemainingBytes());
+        this->curByte += toSkip;
+        numBytes -= toSkip;
+        numBytesSkipped += toSkip;
     }
-    return num_bytes_skipped;
+    return numBytesSkipped;
 }
 
-void Stream::flush(bool to_device) {
-    PLY_ASSERT(this->has_write_permission);
+void Stream::flush(bool toDevice) {
+    PLY_ASSERT(this->hasWritePermission);
     if (this->mode != Mode::Writing)
         return;
     if (this->type == Type::Pipe) {
         PLY_ASSERT(this->pipe.pipe);
-        PLY_ASSERT(this->pipe.buffer + BUFFER_SIZE == this->end_byte);
+        PLY_ASSERT(this->pipe.buffer + BUFFER_SIZE == this->endByte);
 
         // Write buffered data to the pipe.
-        this->pipe.pipe->write({this->pipe.buffer, this->cur_byte});
-        this->cur_byte = this->pipe.buffer;
+        this->pipe.pipe->write({this->pipe.buffer, this->curByte});
+        this->curByte = this->pipe.buffer;
 
         // Forward flush command down the output chain.
-        this->pipe.pipe->flush(to_device);
+        this->pipe.pipe->flush(toDevice);
     } else if (this->type == Type::Mem) {
-        this->flush_mem_writes();
+        this->flushMemWrites();
     }
 }
 
 u32 Stream::write(StringView src) {
-    u32 total_copied = 0;
-    while (src && this->make_writable()) {
+    u32 totalCopied = 0;
+    while (src && this->makeWritable()) {
         // Copy as much data as possible to the current block.
-        u32 to_copy = min(this->num_remaining_bytes(), src.num_bytes());
-        memcpy(this->cur_byte, src.bytes(), to_copy);
-        this->cur_byte += to_copy;
-        src = src.substr(to_copy);
-        total_copied += to_copy;
+        u32 toCopy = min(this->numRemainingBytes(), src.numBytes());
+        memcpy(this->curByte, src.bytes(), toCopy);
+        this->curByte += toCopy;
+        src = src.substr(toCopy);
+        totalCopied += toCopy;
     }
-    return total_copied;
+    return totalCopied;
 }
 
-u64 Stream::get_seek_pos() {
+u64 Stream::getSeekPos() {
     if (this->type == Type::Pipe) {
-        return this->pipe.seek_pos_at_buffer + (this->cur_byte - this->pipe.buffer);
+        return this->pipe.seekPosAtBuffer + (this->curByte - this->pipe.buffer);
     } else if (this->type == Type::Mem) {
-        if (this->using_temp_buffer) {
-            return (this->mem.buffer_index * BUFFER_SIZE) + this->mem.temp_buffer_offset +
-                   (this->cur_byte - this->mem.temp_buffer);
+        if (this->usingTempBuffer) {
+            return (this->mem.bufferIndex * BUFFER_SIZE) + this->mem.tempBufferOffset +
+                   (this->curByte - this->mem.tempBuffer);
         } else {
-            char* buf = this->mem.buffers[this->mem.buffer_index];
-            return (this->mem.buffer_index * BUFFER_SIZE) + (this->cur_byte - buf);
+            char* buf = this->mem.buffers[this->mem.bufferIndex];
+            return (this->mem.bufferIndex * BUFFER_SIZE) + (this->curByte - buf);
         }
     } else if (this->type == Type::View) {
-        return (this->cur_byte - this->view.start_byte);
+        return (this->curByte - this->view.startByte);
     }
     PLY_ASSERT(0); // Shouldn't get here.
     return 0;
 }
 
-void Stream::seek_to(u64 seek_pos) {
+void Stream::seekTo(u64 seekPos) {
     if (this->type == Type::Pipe) {
-        PLY_ASSERT((this->pipe.pipe->get_flags() & Pipe::CAN_SEEK) != 0);
-        s64 relative_to_buffer = seek_pos - this->pipe.seek_pos_at_buffer;
-        u32 num_bytes_in_buffer = numeric_cast<u32>(this->end_byte - this->pipe.buffer);
-        if (relative_to_buffer >= 0 && relative_to_buffer <= num_bytes_in_buffer) {
-            this->cur_byte = this->pipe.buffer + relative_to_buffer;
+        PLY_ASSERT((this->pipe.pipe->getFlags() & Pipe::CAN_SEEK) != 0);
+        s64 relativeToBuffer = seekPos - this->pipe.seekPosAtBuffer;
+        u32 numBytesInBuffer = numericCast<u32>(this->endByte - this->pipe.buffer);
+        if (relativeToBuffer >= 0 && relativeToBuffer <= numBytesInBuffer) {
+            this->curByte = this->pipe.buffer + relativeToBuffer;
         } else {
-            this->pipe.pipe->seek_to(seek_pos);
-            this->cur_byte = this->pipe.buffer;
-            this->end_byte = this->pipe.buffer;
+            this->pipe.pipe->seekTo(seekPos);
+            this->curByte = this->pipe.buffer;
+            this->endByte = this->pipe.buffer;
         }
     } else if (this->type == Type::Mem) {
-        this->flush_mem_writes();
+        this->flushMemWrites();
 
-        u32 buffer_index = numeric_cast<u32>(seek_pos / BUFFER_SIZE);
-        PLY_ASSERT(buffer_index < this->mem.buffers.num_items());
-        this->mem.buffer_index = buffer_index;
-        char* buf = this->mem.buffers[buffer_index];
-        u32 offset_in_buffer = numeric_cast<u32>(seek_pos - u64(buffer_index) * BUFFER_SIZE);
-        u32 num_bytes_in_buffer = BUFFER_SIZE;
-        if (buffer_index == this->mem.buffers.num_items() - 1) {
-            num_bytes_in_buffer = this->mem.num_bytes_in_last_buffer;
-            PLY_ASSERT(buffer_index < this->mem.buffers.num_items());
-            PLY_ASSERT(offset_in_buffer <= num_bytes_in_buffer);
+        u32 bufferIndex = numericCast<u32>(seekPos / BUFFER_SIZE);
+        PLY_ASSERT(bufferIndex < this->mem.buffers.numItems());
+        this->mem.bufferIndex = bufferIndex;
+        char* buf = this->mem.buffers[bufferIndex];
+        u32 offsetInBuffer = numericCast<u32>(seekPos - u64(bufferIndex) * BUFFER_SIZE);
+        u32 numBytesInBuffer = BUFFER_SIZE;
+        if (bufferIndex == this->mem.buffers.numItems() - 1) {
+            numBytesInBuffer = this->mem.numBytesInLastBuffer;
+            PLY_ASSERT(bufferIndex < this->mem.buffers.numItems());
+            PLY_ASSERT(offsetInBuffer <= numBytesInBuffer);
         }
-        this->cur_byte = buf + offset_in_buffer;
-        this->end_byte = buf + num_bytes_in_buffer;
+        this->curByte = buf + offsetInBuffer;
+        this->endByte = buf + numBytesInBuffer;
     } else if (this->type == Type::View) {
-        PLY_ASSERT(seek_pos <= numeric_cast<uptr>(this->end_byte - this->view.start_byte));
-        this->cur_byte = this->view.start_byte + seek_pos;
+        PLY_ASSERT(seekPos <= numericCast<uptr>(this->endByte - this->view.startByte));
+        this->curByte = this->view.startByte + seekPos;
     } else {
         PLY_ASSERT(0); // Shouldn't get here.
     }
-    this->at_eof = false;
-    this->input_error = false;
+    this->atEof = false;
+    this->inputError = false;
 }
 
 //--------------------------------------------
@@ -1769,57 +1765,57 @@ MemStream::MemStream() {
     new (&this->mem) MemData;
     char* buf = (char*) Heap::alloc(BUFFER_SIZE);
     this->mem.buffers.append(buf);
-    this->cur_byte = buf;
-    this->end_byte = buf + BUFFER_SIZE;
-    this->has_read_permission = true;
-    this->has_write_permission = true;
+    this->curByte = buf;
+    this->endByte = buf + BUFFER_SIZE;
+    this->hasReadPermission = true;
+    this->hasWritePermission = true;
 }
 
-String MemStream::move_to_string() {
+String MemStream::moveToString() {
     PLY_ASSERT(this->type == Type::Mem);
 
-    if (this->mem.buffer_index + 1 == this->mem.buffers.num_items()) {
+    if (this->mem.bufferIndex + 1 == this->mem.buffers.numItems()) {
         // Extend number of bytes in the last buffer.
-        this->mem.num_bytes_in_last_buffer =
-            max(this->mem.num_bytes_in_last_buffer, numeric_cast<u32>(this->cur_byte - this->mem.buffers.back()));
+        this->mem.numBytesInLastBuffer =
+            max(this->mem.numBytesInLastBuffer, numericCast<u32>(this->curByte - this->mem.buffers.back()));
     }
 
-    if (this->mem.buffers.num_items() == 1) {
-        u32 num_bytes = this->mem.num_bytes_in_last_buffer;
-        char* bytes = (char*) Heap::realloc(this->mem.buffers[0], num_bytes);
+    if (this->mem.buffers.numItems() == 1) {
+        u32 numBytes = this->mem.numBytesInLastBuffer;
+        char* bytes = (char*) Heap::realloc(this->mem.buffers[0], numBytes);
         this->mem.~MemData();
         new (this) Stream;
-        return String::adopt(bytes, num_bytes);
+        return String::adopt(bytes, numBytes);
     }
 
-    u32 num_bytes = (this->mem.buffers.num_items() - 1) * BUFFER_SIZE + this->mem.num_bytes_in_last_buffer;
-    char* bytes = (char*) Heap::alloc(num_bytes);
-    for (u32 i = 0; i < this->mem.buffers.num_items(); i++) {
-        u32 to_copy = min(BUFFER_SIZE, num_bytes - (BUFFER_SIZE * i));
-        memcpy(bytes + (BUFFER_SIZE * i), this->mem.buffers[i], to_copy);
+    u32 numBytes = (this->mem.buffers.numItems() - 1) * BUFFER_SIZE + this->mem.numBytesInLastBuffer;
+    char* bytes = (char*) Heap::alloc(numBytes);
+    for (u32 i = 0; i < this->mem.buffers.numItems(); i++) {
+        u32 toCopy = min(BUFFER_SIZE, numBytes - (BUFFER_SIZE * i));
+        memcpy(bytes + (BUFFER_SIZE * i), this->mem.buffers[i], toCopy);
     }
     this->close();
-    return String::adopt(bytes, num_bytes);
+    return String::adopt(bytes, numBytes);
 }
 
 //--------------------------------------------
 ViewStream::ViewStream(StringView view) {
     this->type = Type::View;
     new (&this->view) ViewData;
-    this->view.start_byte = const_cast<char*>(view.bytes());
-    this->cur_byte = this->view.start_byte;
-    this->end_byte = this->cur_byte + view.num_bytes();
-    this->has_read_permission = true;
+    this->view.startByte = const_cast<char*>(view.bytes());
+    this->curByte = this->view.startByte;
+    this->endByte = this->curByte + view.numBytes();
+    this->hasReadPermission = true;
 }
 
 ViewStream::ViewStream(MutStringView view) {
     this->type = Type::View;
     new (&this->view) ViewData;
-    this->view.start_byte = view.bytes;
-    this->cur_byte = this->view.start_byte;
-    this->end_byte = this->cur_byte + view.num_bytes;
-    this->has_read_permission = true;
-    this->has_write_permission = true;
+    this->view.startByte = view.bytes;
+    this->curByte = this->view.startByte;
+    this->endByte = this->curByte + view.numBytes;
+    this->hasReadPermission = true;
+    this->hasWritePermission = true;
 }
 
 //  ▄▄▄▄▄                    ▄▄ ▄▄                   ▄▄▄▄▄▄                ▄▄
@@ -1828,71 +1824,71 @@ ViewStream::ViewStream(MutStringView view) {
 //  ██  ██ ▀█▄▄▄  ▀█▄▄██ ▀█▄▄██ ██ ██  ██ ▀█▄▄██       ██   ▀█▄▄▄  ▄█▀▀█▄  ▀█▄▄
 //                                         ▄▄▄█▀
 
-String read_line(Stream& in) {
+String readLine(Stream& in) {
     MemStream mem;
-    while (in.make_readable() && mem.make_writable()) {
-        u32 num_bytes_remaining = min(in.num_remaining_bytes(), mem.num_remaining_bytes());
-        for (u32 i = 0; i < num_bytes_remaining; i++) {
-            char c = *in.cur_byte++;
-            *mem.cur_byte++ = c;
+    while (in.makeReadable() && mem.makeWritable()) {
+        u32 numBytesRemaining = min(in.numRemainingBytes(), mem.numRemainingBytes());
+        for (u32 i = 0; i < numBytesRemaining; i++) {
+            char c = *in.curByte++;
+            *mem.curByte++ = c;
             if (c == '\n')
                 goto done;
         }
     }
 done:
-    return mem.move_to_string();
+    return mem.moveToString();
 }
 
-StringView read_line(ViewStream& view_in) {
-    char* start_byte = view_in.cur_byte;
-    while (view_in.cur_byte < view_in.end_byte) {
-        char c = *view_in.cur_byte++;
+StringView readLine(ViewStream& viewIn) {
+    char* startByte = viewIn.curByte;
+    while (viewIn.curByte < viewIn.endByte) {
+        char c = *viewIn.curByte++;
         if (c == '\n')
             break;
     }
-    return {start_byte, view_in.cur_byte};
+    return {startByte, viewIn.curByte};
 }
 
-String read_whitespace(Stream& in) {
+String readWhitespace(Stream& in) {
     MemStream mem;
-    while (in.make_readable() && mem.make_writable()) {
-        u32 num_bytes_remaining = min(in.num_remaining_bytes(), mem.num_remaining_bytes());
-        for (u32 i = 0; i < num_bytes_remaining; i++) {
-            char c = *in.cur_byte;
-            if (!is_whitespace(c))
+    while (in.makeReadable() && mem.makeWritable()) {
+        u32 numBytesRemaining = min(in.numRemainingBytes(), mem.numRemainingBytes());
+        for (u32 i = 0; i < numBytesRemaining; i++) {
+            char c = *in.curByte;
+            if (!isWhitespace(c))
                 goto done;
-            in.cur_byte++;
-            *mem.cur_byte++ = c;
+            in.curByte++;
+            *mem.curByte++ = c;
         }
     }
 done:
-    return mem.move_to_string();
+    return mem.moveToString();
 }
 
-StringView read_whitespace(ViewStream& view_in) {
-    char* start_byte = view_in.cur_byte;
-    while (view_in.cur_byte < view_in.end_byte) {
-        char c = *view_in.cur_byte;
-        if (!is_whitespace(c))
+StringView readWhitespace(ViewStream& viewIn) {
+    char* startByte = viewIn.curByte;
+    while (viewIn.curByte < viewIn.endByte) {
+        char c = *viewIn.curByte;
+        if (!isWhitespace(c))
             break;
-        view_in.cur_byte++;
+        viewIn.curByte++;
     }
-    return {start_byte, view_in.cur_byte};
+    return {startByte, viewIn.curByte};
 }
 
-void skip_whitespace(Stream& in) {
-    while (in.make_readable()) {
-        u32 num_bytes_remaining = in.num_remaining_bytes();
-        for (u32 i = 0; i < num_bytes_remaining; i++) {
-            char c = *in.cur_byte;
-            if (!is_whitespace(c))
+void skipWhitespace(Stream& in) {
+    while (in.makeReadable()) {
+        u32 numBytesRemaining = in.numRemainingBytes();
+        for (u32 i = 0; i < numBytesRemaining; i++) {
+            char c = *in.curByte;
+            if (!isWhitespace(c))
                 return;
-            in.cur_byte++;
+            in.curByte++;
         }
     }
 }
 
-String read_identifier(Stream& in, u32 flags) {
+String readIdentifier(Stream& in, u32 flags) {
     bool first = true;
     u32 mask[8] = {0, 0, 0x87fffffe, 0x7fffffe, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff};
     if ((flags & ID_WITH_DOLLAR_SIGN) != 0) {
@@ -1903,14 +1899,14 @@ String read_identifier(Stream& in, u32 flags) {
     }
 
     MemStream mem;
-    while (in.make_readable() && mem.make_writable()) {
-        u32 num_bytes_remaining = min(in.num_remaining_bytes(), mem.num_remaining_bytes());
-        for (u32 i = 0; i < num_bytes_remaining; i++) {
-            char c = *in.cur_byte;
+    while (in.makeReadable() && mem.makeWritable()) {
+        u32 numBytesRemaining = min(in.numRemainingBytes(), mem.numRemainingBytes());
+        for (u32 i = 0; i < numBytesRemaining; i++) {
+            char c = *in.curByte;
             if ((mask[c >> 5] & (1 << (c & 31))) == 0)
                 goto done;
-            in.cur_byte++;
-            *mem.cur_byte++ = c;
+            in.curByte++;
+            *mem.curByte++ = c;
             if (first) {
                 mask[1] |= 0x3ff0000; // accept digits after first unit
                 first = false;
@@ -1918,10 +1914,10 @@ String read_identifier(Stream& in, u32 flags) {
         }
     }
 done:
-    return mem.move_to_string();
+    return mem.moveToString();
 }
 
-StringView read_identifier(ViewStream& view_in, u32 flags) {
+StringView readIdentifier(ViewStream& viewIn, u32 flags) {
     bool first = true;
     u32 mask[8] = {0, 0, 0x87fffffe, 0x7fffffe, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff};
     if ((flags & ID_WITH_DOLLAR_SIGN) != 0) {
@@ -1931,22 +1927,22 @@ StringView read_identifier(ViewStream& view_in, u32 flags) {
         mask[1] |= 0x2000; // '-'
     }
 
-    char* start_byte = view_in.cur_byte;
-    while (view_in.cur_byte < view_in.end_byte) {
-        char c = *view_in.cur_byte;
+    char* startByte = viewIn.curByte;
+    while (viewIn.curByte < viewIn.endByte) {
+        char c = *viewIn.curByte;
         if ((mask[c >> 5] & (1 << (c & 31))) == 0)
             goto done;
-        view_in.cur_byte++;
+        viewIn.curByte++;
         if (first) {
             mask[1] |= 0x3ff0000; // accept digits after first unit
             first = false;
         };
     }
 done:
-    return {start_byte, view_in.cur_byte};
+    return {startByte, viewIn.curByte};
 }
 
-u8 digit_from_char(char c) {
+u8 digitFromChar(char c) {
     if (c >= '0' && c <= '9')
         return c - '0';
     char lower = (c | 32);
@@ -1958,29 +1954,29 @@ u8 digit_from_char(char c) {
 u64 read_u64_from_text(Stream& in, u32 radix) {
     PLY_ASSERT(radix > 0 && radix <= 36);
     u64 result = 0;
-    bool any_digits = false;
+    bool anyDigits = false;
     bool overflow = false;
     for (;;) {
-        if (!in.make_readable())
+        if (!in.makeReadable())
             break;
-        u8 digit = digit_from_char(*in.cur_byte);
+        u8 digit = digitFromChar(*in.curByte);
         if (digit >= radix)
             break;
-        in.cur_byte++;
+        in.curByte++;
         // FIXME: When available, check for (multiplicative & additive) overflow using
         // https://gcc.gnu.org/onlinedocs/gcc/Integer-Overflow-Builtins.html#Integer-Overflow-Builtins
         // and equivalent intrinsics instead of the following.
         // Note: 0x71c71c71c71c71b is the largest value that won't overflow for any
         // radix <= 36. We test against this constant first to avoid the costly integer
         // division.
-        if (result > 0x71c71c71c71c71b && result > (get_max_value<u64>() - digit) / radix) {
+        if (result > 0x71c71c71c71c71b && result > (getMaxValue<u64>() - digit) / radix) {
             overflow = true;
         }
         result = result * radix + digit;
-        any_digits = true;
+        anyDigits = true;
     }
-    if (!any_digits || overflow) {
-        in.input_error = true;
+    if (!anyDigits || overflow) {
+        in.inputError = true;
         return 0;
     }
     return result;
@@ -1989,22 +1985,22 @@ u64 read_u64_from_text(Stream& in, u32 radix) {
 s64 read_s64_from_text(Stream& in, u32 radix) {
     bool negate = false;
 
-    if (in.make_readable() && (*in.cur_byte == '-')) {
+    if (in.makeReadable() && (*in.curByte == '-')) {
         negate = true;
-        in.cur_byte++;
+        in.curByte++;
     }
 
-    u64 unsigned_component = read_u64_from_text(in, radix);
+    u64 unsignedComponent = read_u64_from_text(in, radix);
     if (negate) {
-        s64 result = -(s64) unsigned_component;
+        s64 result = -(s64) unsignedComponent;
         if (result > 0) {
-            in.input_error = true;
+            in.inputError = true;
         }
         return result;
     } else {
-        s64 result = unsigned_component;
+        s64 result = unsignedComponent;
         if (result < 0) {
-            in.input_error = true;
+            in.inputError = true;
         }
         return result;
     }
@@ -2012,184 +2008,184 @@ s64 read_s64_from_text(Stream& in, u32 radix) {
 
 struct DoubleComponentOut {
     double result = 0;
-    bool any_digits = false;
+    bool anyDigits = false;
 };
 
-void read_double_component(DoubleComponentOut* comp_out, Stream& in, u32 radix) {
+void readDoubleComponent(DoubleComponentOut* compOut, Stream& in, u32 radix) {
     double value = 0.0;
     double dr = (double) radix;
     for (;;) {
-        if (!in.make_readable())
+        if (!in.makeReadable())
             break;
-        u8 digit = digit_from_char(*in.cur_byte);
+        u8 digit = digitFromChar(*in.curByte);
         if (digit >= radix)
             break;
-        in.cur_byte++;
+        in.curByte++;
         value = value * dr + digit;
-        comp_out->any_digits = true;
+        compOut->anyDigits = true;
     }
-    comp_out->result = value;
+    compOut->result = value;
 }
 
-double read_double_from_text(Stream& in, u32 radix) {
+double readDoubleFromText(Stream& in, u32 radix) {
     PLY_ASSERT(radix <= 36);
     DoubleComponentOut comp;
 
     // Parse the optional minus sign
     bool negate = false;
-    if (in.make_readable() && (*in.cur_byte == '-')) {
-        in.cur_byte++;
+    if (in.makeReadable() && (*in.curByte == '-')) {
+        in.curByte++;
         negate = true;
     }
 
     // Parse the mantissa
-    read_double_component(&comp, in, radix);
+    readDoubleComponent(&comp, in, radix);
     double value = comp.result;
 
     // Parse the optional fractional part
-    if (in.make_readable() && (*in.cur_byte == '.')) {
-        in.cur_byte++;
+    if (in.makeReadable() && (*in.curByte == '.')) {
+        in.curByte++;
         double significance = 1.0;
         u64 numer = 0;
         u64 denom = 1;
         for (;;) {
-            if (!in.make_readable())
+            if (!in.makeReadable())
                 break;
-            u8 digit = digit_from_char(*in.cur_byte);
+            u8 digit = digitFromChar(*in.curByte);
             if (digit >= radix)
                 break;
-            in.cur_byte++;
-            u64 denom_with_next_digit = denom * radix;
-            if (denom_with_next_digit < denom) {
+            in.curByte++;
+            u64 denomWithNextDigit = denom * radix;
+            if (denomWithNextDigit < denom) {
                 // denominator overflowed
-                double oo_denom = 1.0 / denom;
-                value += significance * numer * oo_denom;
-                significance *= oo_denom;
+                double ooDenom = 1.0 / denom;
+                value += significance * numer * ooDenom;
+                significance *= ooDenom;
                 numer = digit;
                 denom = radix;
             } else {
                 numer = numer * radix + digit;
-                denom = denom_with_next_digit;
+                denom = denomWithNextDigit;
             }
         }
         value += significance * numer / denom;
     }
 
     // Parse optional exponent suffix
-    if (comp.any_digits && in.make_readable() && ((*in.cur_byte | 0x20) == 'e')) {
-        in.cur_byte++;
-        bool negate_exp = false;
-        if (in.make_readable()) {
-            if (*in.cur_byte == '+') {
-                in.cur_byte++;
-            } else if (*in.cur_byte == '-') {
-                in.cur_byte++;
-                negate_exp = true;
+    if (comp.anyDigits && in.makeReadable() && ((*in.curByte | 0x20) == 'e')) {
+        in.curByte++;
+        bool negateExp = false;
+        if (in.makeReadable()) {
+            if (*in.curByte == '+') {
+                in.curByte++;
+            } else if (*in.curByte == '-') {
+                in.curByte++;
+                negateExp = true;
             }
         }
-        comp.any_digits = false;
-        read_double_component(&comp, in, radix);
-        value *= pow((double) radix, negate_exp ? -comp.result : comp.result);
+        comp.anyDigits = false;
+        readDoubleComponent(&comp, in, radix);
+        value *= pow((double) radix, negateExp ? -comp.result : comp.result);
     }
 
-    if (!comp.any_digits) {
-        in.input_error = true;
+    if (!comp.anyDigits) {
+        in.inputError = true;
     }
 
     return negate ? -value : value;
 }
 
-String read_quoted_string(Stream& in, u32 flags, Functor<void(QS_Error_Code)> error_callback) {
-    auto handle_error = [&](QS_Error_Code error_code) {
-        in.input_error = true;
-        if (error_callback) {
-            error_callback(error_code);
+String readQuotedString(Stream& in, u32 flags, Functor<void(QS_Error_Code)> errorCallback) {
+    auto handleError = [&](QS_Error_Code errorCode) {
+        in.inputError = true;
+        if (errorCallback) {
+            errorCallback(errorCode);
         }
     };
 
     // Get opening quote
-    if (!in.make_readable()) {
-        handle_error(QS_UNEXPECTED_END_OF_FILE);
+    if (!in.makeReadable()) {
+        handleError(QS_UNEXPECTED_END_OF_FILE);
         return {};
     }
-    u8 quote_type = *in.cur_byte;
-    if (!(quote_type == '"' || ((flags & QS_ALLOW_SINGLE_QUOTE) && quote_type == '\''))) {
-        handle_error(QS_NO_OPENING_QUOTE);
+    u8 quoteType = *in.curByte;
+    if (!(quoteType == '"' || ((flags & QS_ALLOW_SINGLE_QUOTE) && quoteType == '\''))) {
+        handleError(QS_NO_OPENING_QUOTE);
         return {};
     }
-    in.cur_byte++;
+    in.curByte++;
 
     // Parse rest of quoted string
     MemStream out;
-    u32 quote_run = 1;
+    u32 quoteRun = 1;
     bool multiline = false;
     for (;;) {
-        if (!in.make_readable()) {
-            handle_error(QS_UNEXPECTED_END_OF_FILE);
+        if (!in.makeReadable()) {
+            handleError(QS_UNEXPECTED_END_OF_FILE);
             break; // end of string
         }
 
-        u8 next_byte = *in.cur_byte;
-        if (next_byte == quote_type) {
-            in.cur_byte++;
-            if (quote_run == 0) {
+        u8 nextByte = *in.curByte;
+        if (nextByte == quoteType) {
+            in.curByte++;
+            if (quoteRun == 0) {
                 if (multiline) {
-                    quote_run++;
+                    quoteRun++;
                 } else {
                     break; // end of string
                 }
             } else {
-                quote_run++;
-                if (quote_run == 3) {
+                quoteRun++;
+                if (quoteRun == 3) {
                     if (multiline) {
                         break; // end of string
                     } else {
                         multiline = true;
-                        quote_run = 0;
+                        quoteRun = 0;
                     }
                 }
             }
         } else {
             // FIXME: Check fmt::AllowMultilineWithTriple (and other flags)
-            if (quote_run > 0) {
+            if (quoteRun > 0) {
                 if (multiline) {
-                    for (u32 i = 0; i < quote_run; i++) {
-                        out.write(quote_type);
+                    for (u32 i = 0; i < quoteRun; i++) {
+                        out.write(quoteType);
                     }
-                } else if (quote_run == 2) {
+                } else if (quoteRun == 2) {
                     break; // empty string
                 }
-                quote_run = 0;
+                quoteRun = 0;
             }
 
-            switch (next_byte) {
+            switch (nextByte) {
                 case '\r':
                 case '\n': {
                     if (multiline) {
-                        if (next_byte == '\n') {
-                            out.write(next_byte);
+                        if (nextByte == '\n') {
+                            out.write(nextByte);
                         }
-                        in.cur_byte++;
+                        in.curByte++;
                     } else {
-                        handle_error(QS_UNEXPECTED_END_OF_LINE);
-                        goto end_of_string;
+                        handleError(QS_UNEXPECTED_END_OF_LINE);
+                        goto endOfString;
                     }
                     break;
                 }
 
                 case '\\': {
                     // Escape sequence
-                    in.cur_byte++;
-                    if (!in.make_readable()) {
-                        handle_error(QS_UNEXPECTED_END_OF_FILE);
-                        goto end_of_string;
+                    in.curByte++;
+                    if (!in.makeReadable()) {
+                        handleError(QS_UNEXPECTED_END_OF_FILE);
+                        goto endOfString;
                     }
-                    u8 code = *in.cur_byte;
+                    u8 code = *in.curByte;
                     switch (code) {
                         case '\r':
                         case '\n': {
-                            handle_error(QS_UNEXPECTED_END_OF_LINE);
-                            goto end_of_string;
+                            handleError(QS_UNEXPECTED_END_OF_LINE);
+                            goto endOfString;
                         }
 
                         case '\\':
@@ -2218,25 +2214,25 @@ String read_quoted_string(Stream& in, u32 flags, Functor<void(QS_Error_Code)> er
                             // case 'x':
 
                         default: {
-                            handle_error(QS_BAD_ESCAPE_SEQUENCE);
+                            handleError(QS_BAD_ESCAPE_SEQUENCE);
                             break;
                         }
                     }
-                    in.cur_byte++;
+                    in.curByte++;
                     break;
                 }
 
                 default: {
-                    out.write(next_byte);
-                    in.cur_byte++;
+                    out.write(nextByte);
+                    in.curByte++;
                     break;
                 }
             }
         }
     }
 
-end_of_string:
-    return out.move_to_string();
+endOfString:
+    return out.moveToString();
 }
 
 //  ▄▄    ▄▄        ▄▄  ▄▄   ▄▄                   ▄▄▄▄▄▄                ▄▄
@@ -2245,42 +2241,42 @@ end_of_string:
 //   ██▀▀██  ██     ██  ▀█▄▄ ██ ██  ██ ▀█▄▄██       ██   ▀█▄▄▄  ▄█▀▀█▄  ▀█▄▄
 //                                      ▄▄▄█▀
 
-inline char to_digit(u32 d, bool capitalize = false) {
-    const char* digit_table =
+inline char toDigit(u32 d, bool capitalize = false) {
+    const char* digitTable =
         capitalize ? "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ" : "0123456789abcdefghijklmnopqrstuvwxyz";
-    return (d <= 35) ? digit_table[d] : '?';
+    return (d <= 35) ? digitTable[d] : '?';
 }
 
-void print_number(Stream& outs, u64 value, u32 radix, bool capitalize) {
+void printNumber(Stream& outs, u64 value, u32 radix, bool capitalize) {
     PLY_ASSERT(radix >= 2);
-    char digit_buffer[64];
-    s32 digit_index = PLY_STATIC_ARRAY_SIZE(digit_buffer);
+    char digitBuffer[64];
+    s32 digitIndex = PLY_STATIC_ARRAY_SIZE(digitBuffer);
 
     if (value == 0) {
-        digit_buffer[--digit_index] = '0';
+        digitBuffer[--digitIndex] = '0';
     } else {
         while (value > 0) {
             u64 quotient = value / radix;
             u32 digit = u32(value - quotient * radix);
-            PLY_ASSERT(digit_index > 0);
-            digit_buffer[--digit_index] = to_digit(digit, capitalize);
+            PLY_ASSERT(digitIndex > 0);
+            digitBuffer[--digitIndex] = toDigit(digit, capitalize);
             value = quotient;
         }
     }
 
-    outs.write(StringView{digit_buffer + digit_index, (u32) PLY_STATIC_ARRAY_SIZE(digit_buffer) - digit_index});
+    outs.write(StringView{digitBuffer + digitIndex, (u32) PLY_STATIC_ARRAY_SIZE(digitBuffer) - digitIndex});
 }
 
-void print_number(Stream& outs, s64 value, u32 radix, bool capitalize) {
+void printNumber(Stream& outs, s64 value, u32 radix, bool capitalize) {
     if (value >= 0) {
-        print_number(outs, (u64) value, radix, capitalize);
+        printNumber(outs, (u64) value, radix, capitalize);
     } else {
         outs.write('-');
-        print_number(outs, (u64) -value, radix, capitalize);
+        printNumber(outs, (u64) -value, radix, capitalize);
     }
 }
 
-void print_number(Stream& outs, double value, u32 radix, bool capitalize) {
+void printNumber(Stream& outs, double value, u32 radix, bool capitalize) {
     PLY_ASSERT(radix >= 2);
 
 #if PLY_COMPILER_GCC
@@ -2302,45 +2298,45 @@ void print_number(Stream& outs, double value, u32 radix, bool capitalize) {
         u32 radix3 = radix * radix * radix;
         u32 radix6 = radix3 * radix3;
         if (value == 0.0 || (value * radix3 > radix && value < radix6)) {
-            u64 fixed_point = u64(value * radix3);
-            print_number(outs, fixed_point / radix3, radix, capitalize);
+            u64 fixedPoint = u64(value * radix3);
+            printNumber(outs, fixedPoint / radix3, radix, capitalize);
             outs.write('.');
-            u64 fractional_part = fixed_point % radix3;
+            u64 fractionalPart = fixedPoint % radix3;
             {
                 // Print zeroed
-                char digit_buffer[3];
+                char digitBuffer[3];
                 for (s32 i = 2; i >= 0; i--) {
-                    u64 quotient = fractional_part / radix;
-                    u32 digit = u32(fractional_part - quotient * radix);
-                    digit_buffer[i] = to_digit(digit, capitalize);
-                    fractional_part = quotient;
+                    u64 quotient = fractionalPart / radix;
+                    u32 digit = u32(fractionalPart - quotient * radix);
+                    digitBuffer[i] = toDigit(digit, capitalize);
+                    fractionalPart = quotient;
                 }
-                outs.write(StringView{digit_buffer, PLY_STATIC_ARRAY_SIZE(digit_buffer)});
+                outs.write(StringView{digitBuffer, PLY_STATIC_ARRAY_SIZE(digitBuffer)});
             }
         } else {
             // Scientific notation
-            double log_base = log(value) / log(radix);
-            double exponent = floor(log_base);
+            double logBase = log(value) / log(radix);
+            double exponent = floor(logBase);
             double m = value / pow(radix, exponent); // mantissa (initially)
             s32 digit = clamp((s32) floor(m), 1, (s32) radix - 1);
-            outs.write(to_digit(digit, capitalize));
+            outs.write(toDigit(digit, capitalize));
             outs.write('.');
             for (u32 i = 0; i < 3; i++) {
                 m = (m - digit) * radix;
                 digit = clamp((s32) floor(m), 0, (s32) radix - 1);
-                outs.write(to_digit(digit, capitalize));
+                outs.write(toDigit(digit, capitalize));
             }
             outs.write('e');
-            print_number(outs, (s64) exponent, radix, capitalize);
+            printNumber(outs, (s64) exponent, radix, capitalize);
         }
     }
 }
 
-void print_escaped_string(Stream& out, StringView str) {
+void printEscapedString(Stream& out, StringView str) {
     ViewStream vin{str};
-    while (vin.num_remaining_bytes() > 0) {
-        const char* start = vin.cur_byte;
-        DecodeResult decoded = decode_unicode(vin, UTF8);
+    while (vin.numRemainingBytes() > 0) {
+        const char* start = vin.curByte;
+        DecodeResult decoded = decodeUnicode(vin, UTF8);
         switch (decoded.point) {
             case '"': {
                 out.write("\\\"");
@@ -2366,7 +2362,7 @@ void print_escaped_string(Stream& out, StringView str) {
                 if (decoded.point >= 32) {
                     // This will preserve badly encoded UTF8 characters exactly as they are in
                     // the source string:
-                    out.write(StringView{start, vin.cur_byte});
+                    out.write(StringView{start, vin.curByte});
                 } else {
                     static const char* digits = "0123456789abcdef";
                     out.format("\\{}{}", digits[(decoded.point >> 4) & 0xf], digits[decoded.point & 0xf]);
@@ -2377,11 +2373,11 @@ void print_escaped_string(Stream& out, StringView str) {
     }
 }
 
-void print_xml_escaped_string(Stream& out, StringView str) {
+void printXmlEscapedString(Stream& out, StringView str) {
     ViewStream vin{str};
-    while (vin.num_remaining_bytes() > 0) {
-        const char* start = vin.cur_byte;
-        DecodeResult decoded = decode_unicode(vin, UTF8);
+    while (vin.numRemainingBytes() > 0) {
+        const char* start = vin.curByte;
+        DecodeResult decoded = decodeUnicode(vin, UTF8);
         switch (decoded.point) {
             case '<': {
                 out.write("&lt;");
@@ -2402,72 +2398,72 @@ void print_xml_escaped_string(Stream& out, StringView str) {
             default: {
                 // This will preserve badly encoded UTF8 characters exactly as they are in
                 // the source string:
-                out.write(StringView{start, vin.cur_byte});
+                out.write(StringView{start, vin.curByte});
                 break;
             }
         }
     }
 }
 
-void print_arg(Stream& out, StringView fmt_spec, const FormatArg& arg) {
-    bool xml_escape = false;
+void printArg(Stream& out, StringView fmtSpec, const FormatArg& arg) {
+    bool xmlEscape = false;
     u32 pos = 0;
-    while (pos < fmt_spec.num_bytes()) {
-        char c = fmt_spec[pos++];
+    while (pos < fmtSpec.numBytes()) {
+        char c = fmtSpec[pos++];
         if (c == '&') {
             PLY_ASSERT(arg.var.is<StringView>()); // Argument must be a StringView.
-            xml_escape = true;
+            xmlEscape = true;
         } else {
             PLY_ASSERT(0); // Invalid format specifier.
         }
     }
     if (arg.var.is<StringView>()) {
-        if (xml_escape) {
-            print_xml_escaped_string(out, *arg.var.as<StringView>());
+        if (xmlEscape) {
+            printXmlEscapedString(out, *arg.var.as<StringView>());
         } else {
             out.write(*arg.var.as<StringView>());
         }
     } else if (arg.var.is<bool>()) {
         out.write(*arg.var.as<bool>() ? "true" : "false");
     } else if (arg.var.is<s64>()) {
-        print_number(out, *arg.var.as<s64>());
+        printNumber(out, *arg.var.as<s64>());
     } else if (arg.var.is<u64>()) {
-        print_number(out, *arg.var.as<u64>());
+        printNumber(out, *arg.var.as<u64>());
     } else if (arg.var.is<double>()) {
-        print_number(out, *arg.var.as<double>());
+        printNumber(out, *arg.var.as<double>());
     } else {
         PLY_ASSERT(0); // Invalid argument type.
     }
 }
 
-void format_with_args(Stream& out, StringView fmt, ArrayView<const FormatArg> args) {
-    u32 arg_index = 0;
+void formatWithArgs(Stream& out, StringView fmt, ArrayView<const FormatArg> args) {
+    u32 argIndex = 0;
     u32 pos = 0;
-    while (pos < fmt.num_bytes()) {
+    while (pos < fmt.numBytes()) {
         char c = fmt[pos++];
         if (c == '{') {
-            u32 spec_start = pos;
-            PLY_ASSERT(pos < fmt.num_bytes()); // Missing '}' after '{'.
+            u32 specStart = pos;
+            PLY_ASSERT(pos < fmt.numBytes()); // Missing '}' after '{'.
             if (fmt[pos] == '{') {
                 pos++;
                 out.write('{');
             } else {
                 do {
-                    PLY_ASSERT(pos < fmt.num_bytes()); // Missing '}' after '{'.
+                    PLY_ASSERT(pos < fmt.numBytes()); // Missing '}' after '{'.
                 } while (fmt[pos++] != '}');
-                PLY_ASSERT(arg_index < args.num_items()); // Not enough arguments for format string.
-                print_arg(out, fmt.substr(spec_start, pos - 1 - spec_start), args[arg_index]);
-                arg_index++;
+                PLY_ASSERT(argIndex < args.numItems()); // Not enough arguments for format string.
+                printArg(out, fmt.substr(specStart, pos - 1 - specStart), args[argIndex]);
+                argIndex++;
             }
         } else if (c == '}') {
-            PLY_ASSERT((pos < fmt.num_bytes()) && (fmt[pos] == '}')); // '}' must be followed by another '}'.
+            PLY_ASSERT((pos < fmt.numBytes()) && (fmt[pos] == '}')); // '}' must be followed by another '}'.
             pos++;
             out.write('}');
         } else {
             out.write(c);
         }
     }
-    PLY_ASSERT(arg_index == args.num_items()); // Too many arguments for format string.
+    PLY_ASSERT(argIndex == args.numItems()); // Too many arguments for format string.
 }
 
 //   ▄▄▄▄   ▄▄                     ▄▄                   ▄▄     ▄▄▄▄     ▄▄  ▄▄▄▄
@@ -2478,68 +2474,68 @@ void format_with_args(Stream& out, StringView fmt, ArrayView<const FormatArg> ar
 
 #if defined(PLY_WINDOWS)
 
-Pipe* get_stdin_pipe() {
-    static PipeHandle in_pipe{GetStdHandle(STD_INPUT_HANDLE), Pipe::HAS_READ_PERMISSION};
-    return &in_pipe;
+Pipe* getStdinPipe() {
+    static PipeHandle inPipe{GetStdHandle(STD_INPUT_HANDLE), Pipe::HAS_READ_PERMISSION};
+    return &inPipe;
 }
 
-Pipe* get_stdout_pipe() {
-    static PipeHandle out_pipe{GetStdHandle(STD_OUTPUT_HANDLE), Pipe::HAS_WRITE_PERMISSION};
-    return &out_pipe;
+Pipe* getStdoutPipe() {
+    static PipeHandle outPipe{GetStdHandle(STD_OUTPUT_HANDLE), Pipe::HAS_WRITE_PERMISSION};
+    return &outPipe;
 }
 
-Pipe* get_stderr_pipe() {
-    static PipeHandle error_pipe{GetStdHandle(STD_ERROR_HANDLE), Pipe::HAS_WRITE_PERMISSION};
-    return &error_pipe;
+Pipe* getStderrPipe() {
+    static PipeHandle errorPipe{GetStdHandle(STD_ERROR_HANDLE), Pipe::HAS_WRITE_PERMISSION};
+    return &errorPipe;
 }
 
 #elif defined(PLY_POSIX)
 
-Pipe* get_stdin_pipe() {
-    static Pipe_FD in_pipe{STDIN_FILENO, Pipe::HAS_READ_PERMISSION};
-    return &in_pipe;
+Pipe* getStdinPipe() {
+    static Pipe_FD inPipe{STDIN_FILENO, Pipe::HAS_READ_PERMISSION};
+    return &inPipe;
 }
 
-Pipe* get_stdout_pipe() {
-    static Pipe_FD out_pipe{STDOUT_FILENO, Pipe::HAS_WRITE_PERMISSION};
-    return &out_pipe;
+Pipe* getStdoutPipe() {
+    static Pipe_FD outPipe{STDOUT_FILENO, Pipe::HAS_WRITE_PERMISSION};
+    return &outPipe;
 }
 
-Pipe* get_stderr_pipe() {
-    static Pipe_FD error_pipe{STDERR_FILENO, Pipe::HAS_WRITE_PERMISSION};
-    return &error_pipe;
+Pipe* getStderrPipe() {
+    static Pipe_FD errorPipe{STDERR_FILENO, Pipe::HAS_WRITE_PERMISSION};
+    return &errorPipe;
 }
 
 #endif
 
-Stream get_stdin(ConsoleMode mode) {
+Stream getStdin(ConsoleMode mode) {
     if (mode == ConsoleMode::TEXT) {
-        Stream in{get_stdin_pipe(), false};
+        Stream in{getStdinPipe(), false};
         // Always create a filter to make newlines consistent.
         return {Heap::create<InPipeNewLineFilter>(std::move(in)), true};
     } else {
-        return {get_stdin_pipe(), false};
+        return {getStdinPipe(), false};
     }
 }
 
-Stream get_stdout(ConsoleMode mode) {
-    Stream out{get_stdout_pipe(), false};
-    bool write_crlf = false;
+Stream getStdout(ConsoleMode mode) {
+    Stream out{getStdoutPipe(), false};
+    bool writeCrlf = false;
 #if defined(PLY_WINDOWS)
-    write_crlf = true;
+    writeCrlf = true;
 #endif
     // Always create a filter to make newlines consistent.
-    return {Heap::create<OutPipeNewLineFilter>(std::move(out), write_crlf), true};
+    return {Heap::create<OutPipeNewLineFilter>(std::move(out), writeCrlf), true};
 }
 
-Stream get_stderr(ConsoleMode mode) {
-    Stream out{get_stderr_pipe(), false};
-    bool write_crlf = false;
+Stream getStderr(ConsoleMode mode) {
+    Stream out{getStderrPipe(), false};
+    bool writeCrlf = false;
 #if defined(PLY_WINDOWS)
-    write_crlf = true;
+    writeCrlf = true;
 #endif
     // Always create a filter to make newlines consistent.
-    return {Heap::create<OutPipeNewLineFilter>(std::move(out), write_crlf), true};
+    return {Heap::create<OutPipeNewLineFilter>(std::move(out), writeCrlf), true};
 }
 
 //  ▄▄                         ▄▄
@@ -2548,10 +2544,10 @@ Stream get_stderr(ConsoleMode mode) {
 //  ██▄▄▄ ▀█▄▄█▀ ▀█▄▄██ ▀█▄▄██ ██ ██  ██ ▀█▄▄██
 //                ▄▄▄█▀  ▄▄▄█▀            ▄▄▄█▀
 
-void log_message_internal(StringView fmt, ArrayView<const FormatArg> args) {
-    Stream out = get_stderr();
-    format_with_args(out, fmt, args);
-    if (!fmt.ends_with('\n')) {
+void logMessageInternal(StringView fmt, ArrayView<const FormatArg> args) {
+    Stream out = getStderr();
+    formatWithArgs(out, fmt, args);
+    if (!fmt.endsWith('\n')) {
         out.write('\n');
     }
 }
@@ -2562,15 +2558,15 @@ void log_message_internal(StringView fmt, ArrayView<const FormatArg> args) {
 //  ▀█▄▄█▀ ▀█▄▄█▀ ██  ██   ▀█▀   ▀█▄▄▄  ██      ▀█▄▄     ▀█▄▄█▀ ██  ██ ██ ▀█▄▄▄ ▀█▄▄█▀ ▀█▄▄██ ▀█▄▄▄
 //
 
-u32 encode_unicode(FixedArray<char, 4>& buf, UnicodeType unicode_type, u32 codepoint, ExtendedTextParams* ext_params) {
-    if (unicode_type == NOT_UNICODE) {
+u32 encodeUnicode(FixedArray<char, 4>& buf, UnicodeType unicodeType, u32 codepoint, ExtendedTextParams* extParams) {
+    if (unicodeType == NOT_UNICODE) {
         s32 c;
-        if (ext_params) {
+        if (extParams) {
             // Use lookup table.
-            if (u8* value = ext_params->reverse_lut.find(codepoint)) {
+            if (u8* value = extParams->reverseLut.find(codepoint)) {
                 c = *value;
             } else {
-                c = ext_params->missing_char;
+                c = extParams->missingChar;
             }
         } else {
             // Encode this codepoint directly as a byte.
@@ -2581,7 +2577,7 @@ u32 encode_unicode(FixedArray<char, 4>& buf, UnicodeType unicode_type, u32 codep
         buf[0] = (char) c;
         return 1;
 
-    } else if (unicode_type == UTF8) {
+    } else if (unicodeType == UTF8) {
         if (codepoint < 0x80) {
             // 1-byte encoding: 0xxxxxxx
             buf[0] = char(codepoint);
@@ -2606,9 +2602,9 @@ u32 encode_unicode(FixedArray<char, 4>& buf, UnicodeType unicode_type, u32 codep
             return 4;
         }
 #if PLY_IS_BIG_ENDIAN
-    } else if (unicode_type == UTF16_BE) {
+    } else if (unicodeType == UTF16_BE) {
 #else
-    } else if (unicode_type == UTF16_LE) {
+    } else if (unicodeType == UTF16_LE) {
 #endif
         if (codepoint < 0x10000) {
             // Note: 0xd800 to 0xd8ff are invalid Unicode codepoints reserved for UTF-16
@@ -2624,21 +2620,21 @@ u32 encode_unicode(FixedArray<char, 4>& buf, UnicodeType unicode_type, u32 codep
             return 4;
         }
 #if PLY_IS_BIG_ENDIAN
-    } else if (unicode_type == UTF16_LE) {
+    } else if (unicodeType == UTF16_LE) {
 #else
-    } else if (unicode_type == UTF16_BE) {
+    } else if (unicodeType == UTF16_BE) {
 #endif
         if (codepoint < 0x10000) {
             // Note: 0xd800 to 0xd8ff are invalid Unicode codepoints reserved for UTF-16
             // surrogates. Such codepoints will simply be written as unpaired
             // surrogates.
-            *(u16*) &buf[0] = reverse_bytes((u16) codepoint);
+            *(u16*) &buf[0] = reverseBytes((u16) codepoint);
             return 2;
         } else {
             // Codepoints >= 0x10000 are encoded as a pair of surrogate units.
             u32 adjusted = codepoint - 0x10000;
-            *(u16*) &buf[0] = reverse_bytes(u16(0xd800 + ((adjusted >> 10) & 0x3ff)));
-            *(u16*) &buf[2] = reverse_bytes(u16(0xdc00 + (adjusted & 0x3ff)));
+            *(u16*) &buf[0] = reverseBytes(u16(0xd800 + ((adjusted >> 10) & 0x3ff)));
+            *(u16*) &buf[2] = reverseBytes(u16(0xdc00 + (adjusted & 0x3ff)));
             return 4;
         }
     } else {
@@ -2649,36 +2645,36 @@ u32 encode_unicode(FixedArray<char, 4>& buf, UnicodeType unicode_type, u32 codep
     return false;
 }
 
-bool encode_unicode(Stream& out, UnicodeType unicode_type, u32 codepoint, ExtendedTextParams* ext_params) {
-    out.make_writable();
-    if (out.num_remaining_bytes() >= 4) {
+bool encodeUnicode(Stream& out, UnicodeType unicodeType, u32 codepoint, ExtendedTextParams* extParams) {
+    out.makeWritable();
+    if (out.numRemainingBytes() >= 4) {
         // Encode directly into the output buffer.
-        u32 num_bytes = encode_unicode(*(FixedArray<char, 4>*) out.cur_byte, unicode_type, codepoint, ext_params);
-        out.cur_byte += num_bytes;
+        u32 numBytes = encodeUnicode(*(FixedArray<char, 4>*) out.curByte, unicodeType, codepoint, extParams);
+        out.curByte += numBytes;
         return true;
     } else {
         // Encode into a temporary buffer.
         FixedArray<char, 4> buf;
-        u32 num_bytes = encode_unicode(buf, unicode_type, codepoint, ext_params);
+        u32 numBytes = encodeUnicode(buf, unicodeType, codepoint, extParams);
         // Write the encoded bytes to the output stream.
-        out.write({&buf[0], num_bytes});
-        return !out.at_eof;
+        out.write({&buf[0], numBytes});
+        return !out.atEof;
     }
 }
 
-DecodeResult decode_unicode(StringView str, UnicodeType unicode_type, ExtendedTextParams* ext_params) {
-    if (str.is_empty())
+DecodeResult decodeUnicode(StringView str, UnicodeType unicodeType, ExtendedTextParams* extParams) {
+    if (str.isEmpty())
         return {-1, 0, DS_NOT_ENOUGH_DATA};
 
-    if (unicode_type == NOT_UNICODE) {
+    if (unicodeType == NOT_UNICODE) {
         u8 b = (u8) str.bytes()[0];
-        if (ext_params) // Use lookup table if available.
-            return {ext_params->lut[b], 1, DS_OK};
+        if (extParams) // Use lookup table if available.
+            return {extParams->lut[b], 1, DS_OK};
         return {b, 1, DS_OK};
-    } else if (unicode_type == UTF8) {
+    } else if (unicodeType == UTF8) {
         // (Note: Ill-formed encodings are interpreted as sequences of individual bytes.)
         s32 value = 0;
-        u32 num_continuation_bytes = 0;
+        u32 numContinuationBytes = 0;
         u8 b = (u8) str.bytes()[0];
 
         if (b < 0x80) {
@@ -2690,46 +2686,46 @@ DecodeResult decode_unicode(StringView str, UnicodeType unicode_type, ExtendedTe
         } else if (b < 0xe0) {
             // 2-byte encoding: 110xxxxx 10xxxxxx
             value = b & 0x1f;
-            num_continuation_bytes = 1;
+            numContinuationBytes = 1;
         } else if (b < 0xf0) {
             // 3-byte encoding: 1110xxxx 10xxxxxx 10xxxxxx
             value = b & 0xf;
-            num_continuation_bytes = 2;
+            numContinuationBytes = 2;
         } else if (b < 0xf8) {
             // 4-byte encoding: 11110xxx 10xxxxxx 10xxxxxx 10xxxxxx
             value = b & 0x7;
-            num_continuation_bytes = 3;
+            numContinuationBytes = 3;
         } else {
             // Illegal byte.
             return {b, 1, DS_ILL_FORMED};
         }
 
-        if (str.num_bytes() < num_continuation_bytes + 1) {
+        if (str.numBytes() < numContinuationBytes + 1) {
             // Not enough bytes in buffer for continuation bytes.
             return {b, 1, DS_NOT_ENOUGH_DATA};
         }
 
-        for (u32 i = 0; i < num_continuation_bytes; i++) {
+        for (u32 i = 0; i < numContinuationBytes; i++) {
             u8 c = (u8) str.bytes()[i + 1];
             if ((c >> 6) != 2) // Must be a continuation byte
                 return {b, 1, DS_ILL_FORMED};
             value = (value << 6) | ((u8) str.bytes()[i + 1] & 0x3f);
         }
 
-        return {value, num_continuation_bytes + 1, DS_OK};
+        return {value, numContinuationBytes + 1, DS_OK};
 #if PLY_IS_BIG_ENDIAN
-    } else if (unicode_type == UTF16_BE) {
+    } else if (unicodeType == UTF16_BE) {
 #else
-    } else if (unicode_type == UTF16_LE) {
+    } else if (unicodeType == UTF16_LE) {
 #endif
-        if (str.num_bytes() < 2) {
+        if (str.numBytes() < 2) {
             return {-1, 0, DS_NOT_ENOUGH_DATA};
         }
 
         u16 first = *(const u16*) &str.bytes()[0];
 
         if (first >= 0xd800 && first < 0xdc00) {
-            if (str.num_bytes() < 4) {
+            if (str.numBytes() < 4) {
                 // A second 16-bit surrogate is expected, but not enough data.
                 return {first, 2, DS_NOT_ENOUGH_DATA};
             }
@@ -2746,22 +2742,22 @@ DecodeResult decode_unicode(StringView str, UnicodeType unicode_type, ExtendedTe
         // It's a single 16-bit unit.
         return {first, 2, DS_OK};
 #if PLY_IS_BIG_ENDIAN
-    } else if (unicode_type == UTF16_LE) {
+    } else if (unicodeType == UTF16_LE) {
 #else
-    } else if (unicode_type == UTF16_BE) {
+    } else if (unicodeType == UTF16_BE) {
 #endif
-        if (str.num_bytes() < 2) {
+        if (str.numBytes() < 2) {
             return {-1, 0, DS_NOT_ENOUGH_DATA};
         }
 
-        u16 first = reverse_bytes(*(const u16*) &str.bytes()[0]);
+        u16 first = reverseBytes(*(const u16*) &str.bytes()[0]);
 
         if (first >= 0xd800 && first < 0xdc00) {
-            if (str.num_bytes() < 4) {
+            if (str.numBytes() < 4) {
                 // A second 16-bit surrogate is expected, but not enough data.
                 return {first, 2, DS_NOT_ENOUGH_DATA};
             }
-            u16 second = reverse_bytes(*(const u16*) &str.bytes()[2]);
+            u16 second = reverseBytes(*(const u16*) &str.bytes()[2]);
             if (second >= 0xdc00 && second < 0xe000) {
                 // We got a valid pair of 16-bit surrogates.
                 return {0x10000 + ((first - 0xd800) << 10) + (second - 0xdc00), 4, DS_OK};
@@ -2779,118 +2775,118 @@ DecodeResult decode_unicode(StringView str, UnicodeType unicode_type, ExtendedTe
     return {-1, 0, DS_NOT_ENOUGH_DATA};
 }
 
-DecodeResult decode_unicode(Stream& in, UnicodeType unicode_type, ExtendedTextParams* ext_params) {
+DecodeResult decodeUnicode(Stream& in, UnicodeType unicodeType, ExtendedTextParams* extParams) {
     // Try to get at least four bytes to read.
-    in.make_readable(4);
-    if (in.num_remaining_bytes() == 0)
+    in.makeReadable(4);
+    if (in.numRemainingBytes() == 0)
         return {-1, 0, DS_NOT_ENOUGH_DATA};
 
-    DecodeResult result = decode_unicode(in.view_remaining_bytes(), unicode_type, ext_params);
-    in.cur_byte += result.num_bytes;
+    DecodeResult result = decodeUnicode(in.viewRemainingBytes(), unicodeType, extParams);
+    in.curByte += result.numBytes;
     return result;
 }
 
 //--------------------------------------------------------------
 
-bool copy_from_shim(Stream& dst_out, StringView& shim_used) {
-    if (shim_used) {
-        u32 to_copy = min(dst_out.num_remaining_bytes(), shim_used.num_bytes());
-        dst_out.write(shim_used);
-        shim_used = shim_used.substr(to_copy);
-        if (shim_used)
+bool copyFromShim(Stream& dstOut, StringView& shimUsed) {
+    if (shimUsed) {
+        u32 toCopy = min(dstOut.numRemainingBytes(), shimUsed.numBytes());
+        dstOut.write(shimUsed);
+        shimUsed = shimUsed.substr(toCopy);
+        if (shimUsed)
             return true; // Destination buffer is full.
     }
-    shim_used = {};
+    shimUsed = {};
     return false;
 }
 
-// Fill dst_buf with UTF-8-encoded data.
-u32 InPipeConvertUnicode::read(MutStringView dst_buf) {
-    ViewStream dst_out{dst_buf};
+// Fill dstBuf with UTF-8-encoded data.
+u32 InPipeConvertUnicode::read(MutStringView dstBuf) {
+    ViewStream dstOut{dstBuf};
 
     // If the shim contains data, copy it first.
-    if (copy_from_shim(dst_out, this->shim_used))
-        return dst_buf.num_bytes; // Destination buffer is full.
+    if (copyFromShim(dstOut, this->shimUsed))
+        return dstBuf.numBytes; // Destination buffer is full.
 
     while (true) {
         // Decode a codepoint from input stream.
-        s32 codepoint = decode_unicode(this->in, this->src_type).point;
+        s32 codepoint = decodeUnicode(this->in, this->srcType).point;
         if (codepoint < 0)
             break; // Reached EOF.
 
         // Convert codepoint to UTF-8.
-        u32 w = dst_out.num_remaining_bytes();
+        u32 w = dstOut.numRemainingBytes();
         if (w >= 4) {
-            encode_unicode(dst_out, UTF8, codepoint);
+            encodeUnicode(dstOut, UTF8, codepoint);
         } else {
             // Use shim as an intermediate buffer.
-            ViewStream s{this->shim_storage.mut_string_view()};
-            encode_unicode(s, UTF8, codepoint);
-            this->shim_used =
-                StringView{this->shim_storage.items(), numeric_cast<u32>(s.cur_byte - this->shim_storage.items())};
-            if (copy_from_shim(dst_out, this->shim_used))
+            ViewStream s{this->shimStorage.mutStringView()};
+            encodeUnicode(s, UTF8, codepoint);
+            this->shimUsed =
+                StringView{this->shimStorage.items(), numericCast<u32>(s.curByte - this->shimStorage.items())};
+            if (copyFromShim(dstOut, this->shimUsed))
                 break; // Destination buffer is full.
         }
     }
 
-    return numeric_cast<u32>(dst_out.cur_byte - dst_buf.bytes);
+    return numericCast<u32>(dstOut.curByte - dstBuf.bytes);
 }
 
-// src_buf expects UTF-8-encoded data.
-bool OutPipeConvertUnicode::write(StringView src_buf) {
-    ViewStream src_in{src_buf};
+// srcBuf expects UTF-8-encoded data.
+bool OutPipeConvertUnicode::write(StringView srcBuf) {
+    ViewStream srcIn{srcBuf};
 
     // If the shim contains data, join it with the source buffer.
-    if (this->shim_used > 0) {
-        u32 num_bytes_appended = min(src_buf.num_bytes(), 4 - this->shim_used);
-        memcpy(this->shim_storage + this->shim_used, src_buf.bytes(), num_bytes_appended);
-        this->shim_used += num_bytes_appended;
+    if (this->shimUsed > 0) {
+        u32 numBytesAppended = min(srcBuf.numBytes(), 4 - this->shimUsed);
+        memcpy(this->shimStorage + this->shimUsed, srcBuf.bytes(), numBytesAppended);
+        this->shimUsed += numBytesAppended;
 
         // Decode a codepoint from the shim using UTF-8.
-        ViewStream s{StringView{this->shim_storage, this->shim_used}};
-        DecodeResult decoded = decode_unicode(s, UTF8, nullptr);
+        ViewStream s{StringView{this->shimStorage, this->shimUsed}};
+        DecodeResult decoded = decodeUnicode(s, UTF8, nullptr);
         if (decoded.status == DS_NOT_ENOUGH_DATA) {
-            PLY_ASSERT(num_bytes_appended == src_buf.num_bytes());
+            PLY_ASSERT(numBytesAppended == srcBuf.numBytes());
             return true; // Not enough data available in shim.
         }
 
         // Convert codepoint to the destination encoding.
-        encode_unicode(this->child_out, this->dst_type, decoded.point, this->ext_params);
+        encodeUnicode(this->childOut, this->dstType, decoded.point, this->extParams);
 
         // Skip ahead in the source buffer and clear the shim.
-        src_in.cur_byte += num_bytes_appended;
-        this->shim_used = 0;
+        srcIn.curByte += numBytesAppended;
+        this->shimUsed = 0;
     }
 
-    while (!this->child_out.at_eof) {
+    while (!this->childOut.atEof) {
         // Decode a codepoint from the source buffer using UTF-8.
-        DecodeResult decoded = decode_unicode(src_in, UTF8, nullptr);
+        DecodeResult decoded = decodeUnicode(srcIn, UTF8, nullptr);
         if (decoded.status == DS_NOT_ENOUGH_DATA) {
             // Not enough data available. Copy the rest of the source buffer to shim,
             // including the previous byte consumed by decode().
-            this->shim_used = src_in.num_remaining_bytes() + 1;
-            PLY_ASSERT(this->shim_used < 4);
-            memcpy(this->shim_storage, src_in.cur_byte - 1, this->shim_used);
+            this->shimUsed = srcIn.numRemainingBytes() + 1;
+            PLY_ASSERT(this->shimUsed < 4);
+            memcpy(this->shimStorage, srcIn.curByte - 1, this->shimUsed);
             return true;
         }
 
         // Convert codepoint to the destination encoding.
-        encode_unicode(this->child_out, this->dst_type, decoded.point, this->ext_params);
+        encodeUnicode(this->childOut, this->dstType, decoded.point, this->extParams);
     }
 
     return false; // We reached the end of the Stream.
 }
 
-void OutPipeConvertUnicode::flush(bool to_device) {
+void OutPipeConvertUnicode::flush(bool toDevice) {
     // The shim may still contain an incomplete (thus invalid) UTF-8 sequence.
-    for (u32 i = 0; i < this->shim_used; i++) {
+    for (u32 i = 0; i < this->shimUsed; i++) {
         // Interpret each byte as a separate codepoint.
-        encode_unicode(this->child_out, this->dst_type, (u8) this->shim_storage[i], this->ext_params);
+        encodeUnicode(this->childOut, this->dstType, (u8) this->shimStorage[i], this->extParams);
     }
-    this->shim_used = 0;
+    this->shimUsed = 0;
 
     // Forward flush command down the output chain.
-    this->child_out.flush(to_device);
+    this->childOut.flush(toDevice);
 }
 
 //  ▄▄▄▄▄▄                ▄▄         ▄▄▄▄▄                                ▄▄
@@ -2902,190 +2898,190 @@ void OutPipeConvertUnicode::flush(bool to_device) {
 TextFormat get_default_utf8_format() {
     TextFormat tff;
 #if defined(PLY_WINDOWS)
-    tff.new_line = TextFormat::NewLine::CRLF;
+    tff.newLine = TextFormat::NewLine::CRLF;
 #endif
     return tff;
 }
 
 struct TextFileStats {
-    u32 num_points = 0;
-    u32 num_valid_points = 0;
-    u32 total_point_value = 0; // This value won't be accurate if byte encoding is detected
-    u32 num_lines = 0;
-    u32 num_crlf = 0;
-    u32 num_control = 0; // non-whitespace points < 32, including nulls
-    u32 num_null = 0;
-    u32 num_plain_ascii = 0; // includes whitespace, excludes control characters < 32
-    u32 num_whitespace = 0;
-    u32 num_extended = 0;
-    float oo_num_points = 0.f;
+    u32 numPoints = 0;
+    u32 numValidPoints = 0;
+    u32 totalPointValue = 0; // This value won't be accurate if byte encoding is detected
+    u32 numLines = 0;
+    u32 numCrlf = 0;
+    u32 numControl = 0; // non-whitespace points < 32, including nulls
+    u32 numNull = 0;
+    u32 numPlainAscii = 0; // includes whitespace, excludes control characters < 32
+    u32 numWhitespace = 0;
+    u32 numExtended = 0;
+    float ooNumPoints = 0.f;
 
-    u32 num_invalid_points() const {
-        return this->num_points - this->num_valid_points;
+    u32 numInvalidPoints() const {
+        return this->numPoints - this->numValidPoints;
     }
-    TextFormat::NewLine get_new_line_type() const {
-        PLY_ASSERT(this->num_crlf <= this->num_lines);
-        if (this->num_crlf == 0 || this->num_crlf * 2 < this->num_lines) {
+    TextFormat::NewLine getNewLineType() const {
+        PLY_ASSERT(this->numCrlf <= this->numLines);
+        if (this->numCrlf == 0 || this->numCrlf * 2 < this->numLines) {
             return TextFormat::NewLine::LF;
         } else {
             return TextFormat::NewLine::CRLF;
         }
     }
-    float get_score() const {
-        return (2.5f * this->num_whitespace + this->num_plain_ascii - 100.f * this->num_invalid_points() -
-                50.f * this->num_control + 5.f * this->num_extended) *
-               this->oo_num_points;
+    float getScore() const {
+        return (2.5f * this->numWhitespace + this->numPlainAscii - 100.f * this->numInvalidPoints() -
+                50.f * this->numControl + 5.f * this->numExtended) *
+               this->ooNumPoints;
     }
 };
 
-u32 scan_text_file(TextFileStats* stats, Stream& in, UnicodeType unicode_type, u32 max_bytes) {
-    bool prev_was_cr = false;
-    while (in.get_seek_pos() < max_bytes) {
-        DecodeResult decoded = decode_unicode(in, unicode_type, nullptr);
+u32 scanTextFile(TextFileStats* stats, Stream& in, UnicodeType unicodeType, u32 maxBytes) {
+    bool prevWasCr = false;
+    while (in.getSeekPos() < maxBytes) {
+        DecodeResult decoded = decodeUnicode(in, unicodeType, nullptr);
         if (decoded.point < 0)
             break; // EOF/error
-        stats->num_points++;
+        stats->numPoints++;
         if (decoded.status == DS_OK) {
-            stats->num_valid_points++;
-            stats->total_point_value += decoded.point;
+            stats->numValidPoints++;
+            stats->totalPointValue += decoded.point;
             if (decoded.point < 32) {
                 if (decoded.point == '\n') {
-                    stats->num_plain_ascii++;
-                    stats->num_lines++;
-                    stats->num_whitespace++;
-                    if (prev_was_cr) {
-                        stats->num_crlf++;
+                    stats->numPlainAscii++;
+                    stats->numLines++;
+                    stats->numWhitespace++;
+                    if (prevWasCr) {
+                        stats->numCrlf++;
                     }
                 } else if (decoded.point == '\t') {
-                    stats->num_plain_ascii++;
-                    stats->num_whitespace++;
+                    stats->numPlainAscii++;
+                    stats->numWhitespace++;
                 } else if (decoded.point == '\r') {
-                    stats->num_plain_ascii++;
+                    stats->numPlainAscii++;
                 } else {
-                    stats->num_control++;
+                    stats->numControl++;
                     if (decoded.point == 0) {
-                        stats->num_null++;
+                        stats->numNull++;
                     }
                 }
             } else if (decoded.point < 127) {
-                stats->num_plain_ascii++;
+                stats->numPlainAscii++;
                 if (decoded.point == ' ') {
-                    stats->num_whitespace++;
+                    stats->numWhitespace++;
                 }
             } else if (decoded.point >= 65536) {
-                stats->num_extended++;
+                stats->numExtended++;
             }
         }
-        prev_was_cr = (decoded.point == '\r');
+        prevWasCr = (decoded.point == '\r');
     }
-    if (stats->num_points > 0) {
-        stats->oo_num_points = 1.f / stats->num_points;
+    if (stats->numPoints > 0) {
+        stats->ooNumPoints = 1.f / stats->numPoints;
     }
-    return numeric_cast<u32>(in.get_seek_pos());
+    return numericCast<u32>(in.getSeekPos());
 }
 
 static constexpr u32 NumBytesForTextFormatDetection = 100000;
 
-TextFormat guess_file_encoding(Stream& in) {
+TextFormat guessFileEncoding(Stream& in) {
     TextFileStats stats8;
 
     // Try UTF8 first:
-    u32 num_bytes_read = scan_text_file(&stats8, in, UTF8, NumBytesForTextFormatDetection);
-    if (num_bytes_read == 0) {
+    u32 numBytesRead = scanTextFile(&stats8, in, UTF8, NumBytesForTextFormatDetection);
+    if (numBytesRead == 0) {
         // Empty file
         return {UTF8, TextFormat::NewLine::LF, false};
     }
-    in.seek_to(0);
-    if (stats8.num_invalid_points() == 0 && stats8.num_control == 0) {
+    in.seekTo(0);
+    if (stats8.numInvalidPoints() == 0 && stats8.numControl == 0) {
         // No UTF-8 encoding errors, and no weird control characters/nulls. Pick UTF-8.
-        return {UTF8, stats8.get_new_line_type(), false};
+        return {UTF8, stats8.getNewLineType(), false};
     }
 
     // If more than 20% of the high bytes in UTF-8 are encoding errors, reinterpret
     // UTF-8 as just bytes.
     UnicodeType encoding8 = UTF8;
     {
-        u32 num_high_bytes = num_bytes_read - stats8.num_plain_ascii - stats8.num_control;
-        if (stats8.num_invalid_points() >= num_high_bytes * 0.2f) {
+        u32 numHighBytes = numBytesRead - stats8.numPlainAscii - stats8.numControl;
+        if (stats8.numInvalidPoints() >= numHighBytes * 0.2f) {
             // Too many UTF-8 errors. Consider it bytes.
             encoding8 = NOT_UNICODE;
-            stats8.num_points = num_bytes_read;
-            stats8.num_valid_points = num_bytes_read;
+            stats8.numPoints = numBytesRead;
+            stats8.numValidPoints = numBytesRead;
         }
     }
 
     // Examine both UTF16 endianness:
     TextFileStats stats16_le;
-    scan_text_file(&stats16_le, in, UTF16_LE, NumBytesForTextFormatDetection);
-    in.seek_to(0);
+    scanTextFile(&stats16_le, in, UTF16_LE, NumBytesForTextFormatDetection);
+    in.seekTo(0);
 
     TextFileStats stats16_be;
-    scan_text_file(&stats16_be, in, UTF16_BE, NumBytesForTextFormatDetection);
-    in.seek_to(0);
+    scanTextFile(&stats16_be, in, UTF16_BE, NumBytesForTextFormatDetection);
+    in.seekTo(0);
 
     // Choose the better UTF16 candidate:
     TextFileStats* stats = &stats16_le;
     UnicodeType encoding = UTF16_LE;
-    if (stats16_be.get_score() > stats16_le.get_score()) {
+    if (stats16_be.getScore() > stats16_le.getScore()) {
         stats = &stats16_be;
         encoding = UTF16_BE;
     }
 
     // Choose between the UTF16 and 8-bit encoding:
-    if (stats8.get_score() >= stats->get_score()) {
+    if (stats8.getScore() >= stats->getScore()) {
         stats = &stats8;
         encoding = encoding8;
     }
 
     // Return best guess
-    return {encoding, stats->get_new_line_type(), false};
+    return {encoding, stats->getNewLineType(), false};
 }
 
-TextFormat autodetect_text_format(Stream& in) {
+TextFormat autodetectTextFormat(Stream& in) {
     TextFormat tff;
     tff.bom = false;
-    in.make_readable(3);
-    if (in.view_remaining_bytes().left(3) == "\xef\xbb\xbf") {
-        in.cur_byte += 3;
-        tff.unicode_type = UTF8;
+    in.makeReadable(3);
+    if (in.viewRemainingBytes().left(3) == "\xef\xbb\xbf") {
+        in.curByte += 3;
+        tff.unicodeType = UTF8;
         tff.bom = true;
-    } else if (in.view_remaining_bytes().left(2) == "\xff\xfe") {
-        in.cur_byte += 2;
-        tff.unicode_type = UTF16_LE;
+    } else if (in.viewRemainingBytes().left(2) == "\xff\xfe") {
+        in.curByte += 2;
+        tff.unicodeType = UTF16_LE;
         tff.bom = true;
-    } else if (in.view_remaining_bytes().left(2) == "\xfe\xff") {
-        in.cur_byte += 2;
-        tff.unicode_type = UTF16_BE;
+    } else if (in.viewRemainingBytes().left(2) == "\xfe\xff") {
+        in.curByte += 2;
+        tff.unicodeType = UTF16_BE;
         tff.bom = true;
     }
     if (!tff.bom) {
-        return guess_file_encoding(in);
+        return guessFileEncoding(in);
     } else {
         // Detect LF or CRLF
         TextFileStats stats;
-        scan_text_file(&stats, in, tff.unicode_type, NumBytesForTextFormatDetection);
-        in.seek_to(0);
-        tff.new_line = stats.get_new_line_type();
+        scanTextFile(&stats, in, tff.unicodeType, NumBytesForTextFormatDetection);
+        in.seekTo(0);
+        tff.newLine = stats.getNewLineType();
         return tff;
     }
 }
 
 //-----------------------------------------------------------------------
 
-Owned<Pipe> create_importer(Stream&& in, const TextFormat& enc) {
+Owned<Pipe> createImporter(Stream&& in, const TextFormat& enc) {
     if (enc.bom) {
-        in.make_readable(3);
-        if (enc.unicode_type == UTF8) {
-            if (in.view_remaining_bytes().left(3) == "\xef\xbb\xbf") {
-                in.cur_byte += 3;
+        in.makeReadable(3);
+        if (enc.unicodeType == UTF8) {
+            if (in.viewRemainingBytes().left(3) == "\xef\xbb\xbf") {
+                in.curByte += 3;
             }
-        } else if (enc.unicode_type == UTF16_LE) {
-            if (in.view_remaining_bytes().left(2) == "\xff\xfe") {
-                in.cur_byte += 2;
+        } else if (enc.unicodeType == UTF16_LE) {
+            if (in.viewRemainingBytes().left(2) == "\xff\xfe") {
+                in.curByte += 2;
             }
-        } else if (enc.unicode_type == UTF16_BE) {
-            if (in.view_remaining_bytes().left(2) == "\xfe\xff") {
-                in.cur_byte += 2;
+        } else if (enc.unicodeType == UTF16_BE) {
+            if (in.viewRemainingBytes().left(2) == "\xfe\xff") {
+                in.curByte += 2;
             }
         } else {
             PLY_ASSERT(0); // NON_UNICODE shouldn't have a BOM
@@ -3094,20 +3090,20 @@ Owned<Pipe> create_importer(Stream&& in, const TextFormat& enc) {
 
     // Install converter from UTF-16 if needed
     Stream importer;
-    if (enc.unicode_type == UTF8) {
+    if (enc.unicodeType == UTF8) {
         importer = std::move(in);
     } else {
-        importer = Stream{Heap::create<InPipeConvertUnicode>(std::move(in), enc.unicode_type), true};
+        importer = Stream{Heap::create<InPipeConvertUnicode>(std::move(in), enc.unicodeType), true};
     }
 
     // Install newline filter (basically just eats \r)
     return Heap::create<InPipeNewLineFilter>(std::move(importer));
 }
 
-Owned<OutPipeNewLineFilter> create_exporter(Stream&& out, const TextFormat& enc) {
+Owned<OutPipeNewLineFilter> createExporter(Stream&& out, const TextFormat& enc) {
     Stream exporter = std::move(out);
 
-    switch (enc.unicode_type) {
+    switch (enc.unicodeType) {
         case NOT_UNICODE: { // FIXME: Bytes needs to be converted
             break;
         }
@@ -3136,7 +3132,7 @@ Owned<OutPipeNewLineFilter> create_exporter(Stream&& out, const TextFormat& enc)
         }
     }
 
-    return Heap::create<OutPipeNewLineFilter>(std::move(exporter), enc.new_line == TextFormat::CRLF);
+    return Heap::create<OutPipeNewLineFilter>(std::move(exporter), enc.newLine == TextFormat::CRLF);
 }
 
 //-----------------------------------------------------------------------
@@ -3144,18 +3140,18 @@ Owned<OutPipeNewLineFilter> create_exporter(Stream&& out, const TextFormat& enc)
 //-----------------------------------------------------------------------
 struct WStringView {
     const char16_t* units = nullptr;
-    u32 num_units = 0;
+    u32 numUnits = 0;
 
     WStringView() = default;
-    WStringView(const char16_t* units, u32 num_units) : units{units}, num_units{num_units} {
+    WStringView(const char16_t* units, u32 numUnits) : units{units}, numUnits{numUnits} {
     }
-    StringView raw_bytes() const {
-        return {(const char*) this->units, this->num_units << 1};
+    StringView rawBytes() const {
+        return {(const char*) this->units, this->numUnits << 1};
     }
 #if defined(PLY_WINDOWS)
-    WStringView(LPCWSTR units) : units{(const char16_t*) units}, num_units{numeric_cast<u32>(wcslen(units))} {
+    WStringView(LPCWSTR units) : units{(const char16_t*) units}, numUnits{numericCast<u32>(wcslen(units))} {
     }
-    WStringView(LPCWSTR units, u32 num_units) : units{(const char16_t*) units}, num_units{num_units} {
+    WStringView(LPCWSTR units, u32 numUnits) : units{(const char16_t*) units}, numUnits{numUnits} {
     }
 #endif
 };
@@ -3166,12 +3162,12 @@ struct WStringView {
 struct WString {
     using View = WStringView;
     char16_t* units = nullptr;
-    u32 num_units = 0;
+    u32 numUnits = 0;
 
     WString() = default;
-    WString(WString&& other) : units{other.units}, num_units{other.num_units} {
+    WString(WString&& other) : units{other.units}, numUnits{other.numUnits} {
         other.units = nullptr;
-        other.num_units = 0;
+        other.numUnits = 0;
     }
     ~WString() {
         if (units) {
@@ -3182,55 +3178,55 @@ struct WString {
         this->~WString();
         new (this) WString{std::move(other)};
     }
-    static WString move_from_string(String&& other) {
+    static WString moveFromString(String&& other) {
         PLY_ASSERT(is_aligned_to_power_of_2(uptr(other.bytes()), 2));
-        PLY_ASSERT(is_aligned_to_power_of_2(other.num_bytes(), 2));
+        PLY_ASSERT(is_aligned_to_power_of_2(other.numBytes(), 2));
         WString result;
-        result.num_units = other.num_bytes() >> 1;
+        result.numUnits = other.numBytes() >> 1;
         result.units = (char16_t*) other.release();
         return result;
     }
 
-    bool includes_null_terminator() const {
-        return this->num_units > 0 && this->units[this->num_units - 1] == 0;
+    bool includesNullTerminator() const {
+        return this->numUnits > 0 && this->units[this->numUnits - 1] == 0;
     }
-    static WString allocate(u32 num_units) {
+    static WString allocate(u32 numUnits) {
         WString result;
-        result.units = (char16_t*) Heap::alloc(num_units << 1);
-        result.num_units = num_units;
+        result.units = (char16_t*) Heap::alloc(numUnits << 1);
+        result.numUnits = numUnits;
         return result;
     }
 
 #if defined(PLY_WINDOWS)
     operator LPWSTR() const {
-        PLY_ASSERT(this->includes_null_terminator()); // must be null terminated
+        PLY_ASSERT(this->includesNullTerminator()); // must be null terminated
         return (LPWSTR) this->units;
     }
 #endif
 };
 
-WString to_wstring(StringView str) {
+WString toWstring(StringView str) {
     ViewStream string{str};
-    MemStream orig_mem_out;
-    OutPipeConvertUnicode encoder{std::move(orig_mem_out), UTF16_LE};
+    MemStream origMemOut;
+    OutPipeConvertUnicode encoder{std::move(origMemOut), UTF16_LE};
     encoder.write(str);
     encoder.flush(false);
-    MemStream* mem_out = static_cast<MemStream*>(&encoder.child_out);
-    native_write(*mem_out, (u16) 0); // Null terminator
-    return WString::move_from_string(mem_out->move_to_string());
+    MemStream* memOut = static_cast<MemStream*>(&encoder.childOut);
+    nativeWrite(*memOut, (u16) 0); // Null terminator
+    return WString::moveFromString(memOut->moveToString());
 }
 
-String from_wstring(WStringView str) {
-    InPipeConvertUnicode decoder{ViewStream{str.raw_bytes()}, UTF16_LE};
+String fromWstring(WStringView str) {
+    InPipeConvertUnicode decoder{ViewStream{str.rawBytes()}, UTF16_LE};
     MemStream out;
-    while (out.make_writable()) {
-        MutStringView buf{out.cur_byte, out.end_byte};
-        u32 num_bytes = decoder.read(buf);
-        if (num_bytes == 0)
+    while (out.makeWritable()) {
+        MutStringView buf{out.curByte, out.endByte};
+        u32 numBytes = decoder.read(buf);
+        if (numBytes == 0)
             break;
-        out.cur_byte += num_bytes;
+        out.curByte += numBytes;
     }
-    return out.move_to_string();
+    return out.moveToString();
 }
 
 //  ▄▄▄▄▄          ▄▄   ▄▄
@@ -3241,114 +3237,114 @@ String from_wstring(WStringView str) {
 
 #if defined(PLY_WINDOWS)
 
-String get_current_executable_path() {
-    u32 num_units = 1024;
+String getCurrentExecutablePath() {
+    u32 numUnits = 1024;
     for (;;) {
-        WString wstr = WString::allocate(num_units);
-        DWORD rc = GetModuleFileNameW(NULL, (LPWSTR) wstr.units, num_units);
-        if (rc < num_units) {
+        WString wstr = WString::allocate(numUnits);
+        DWORD rc = GetModuleFileNameW(NULL, (LPWSTR) wstr.units, numUnits);
+        if (rc < numUnits) {
             WStringView wsubstr = {wstr, rc};
-            if (wsubstr.num_units >= 4 && wsubstr.raw_bytes().left(8) == StringView{(const char*) L"\\\\?\\", 8}) {
+            if (wsubstr.numUnits >= 4 && wsubstr.rawBytes().left(8) == StringView{(const char*) L"\\\\?\\", 8}) {
                 // Drop leading "\\\\?\\":
                 wsubstr.units += 4;
-                wsubstr.num_units -= 4;
+                wsubstr.numUnits -= 4;
             }
-            return from_wstring(wsubstr);
+            return fromWstring(wsubstr);
         }
-        num_units *= 2;
+        numUnits *= 2;
     }
 }
 
 #elif defined(PLY_LINUX)
 
-String get_current_executable_path() {
-    u32 num_bytes = 1024;
+String getCurrentExecutablePath() {
+    u32 numBytes = 1024;
     for (;;) {
-        String str = String::allocate(num_bytes);
-        ssize_t rc = readlink("/proc/self/exe", str.bytes(), num_bytes);
+        String str = String::allocate(numBytes);
+        ssize_t rc = readlink("/proc/self/exe", str.bytes(), numBytes);
         if (rc < 0) {
             return {};
         }
-        if ((u32) rc < num_bytes) {
+        if ((u32) rc < numBytes) {
             return str.left(rc);
         }
-        num_bytes *= 2;
+        numBytes *= 2;
     }
 }
 
 #elif defined(PLY_APPLE)
 
-String get_current_executable_path() {
-    u32 num_bytes = 1024;
-    String str = String::allocate(num_bytes);
-    if (_NSGetExecutablePath(str.bytes(), &num_bytes) != 0) {
-        // num_bytes now contains the required size
-        str = String::allocate(num_bytes);
-        _NSGetExecutablePath(str.bytes(), &num_bytes);
+String getCurrentExecutablePath() {
+    u32 numBytes = 1024;
+    String str = String::allocate(numBytes);
+    if (_NSGetExecutablePath(str.bytes(), &numBytes) != 0) {
+        // numBytes now contains the required size
+        str = String::allocate(numBytes);
+        _NSGetExecutablePath(str.bytes(), &numBytes);
     }
     return String{str.bytes()}; // Trim to null terminator
 }
 
 #endif
 
-inline bool is_sep_byte(PathFormat fmt, char c) {
+inline bool isSepByte(PathFormat fmt, char c) {
     return c == '/' || (fmt == WindowsPath && c == '\\');
 }
 
-StringView get_drive_letter(PathFormat fmt, StringView path) {
+StringView getDriveLetter(PathFormat fmt, StringView path) {
     if (fmt != WindowsPath)
         return {};
-    if (path.num_bytes() < 2)
+    if (path.numBytes() < 2)
         return {};
     char d = path.bytes()[0];
-    bool drive_is_ascii_letter = (d >= 'A' && d <= 'Z') || (d >= 'a' && d <= 'z');
-    if (drive_is_ascii_letter && path.bytes()[1] == ':') {
+    bool driveIsAsciiLetter = (d >= 'A' && d <= 'Z') || (d >= 'a' && d <= 'z');
+    if (driveIsAsciiLetter && path.bytes()[1] == ':') {
         return path.left(2);
     }
     return {};
 }
 
-bool is_absolute_path(PathFormat fmt, StringView path) {
+bool isAbsolutePath(PathFormat fmt, StringView path) {
     if (fmt == WindowsPath) {
-        return (path.num_bytes() >= 3) && get_drive_letter(fmt, path) && is_sep_byte(fmt, path[2]);
+        return (path.numBytes() >= 3) && getDriveLetter(fmt, path) && isSepByte(fmt, path[2]);
     } else {
-        return (path.num_bytes() >= 1) && is_sep_byte(fmt, path[0]);
+        return (path.numBytes() >= 1) && isSepByte(fmt, path[0]);
     }
 }
-SplitPath split_path(PathFormat fmt, StringView path) {
-    s32 last_sep_index = path.reverse_find([&](char c) { return is_sep_byte(fmt, c); });
-    if (last_sep_index >= 0) {
-        s32 prefix_len = path.reverse_find([&](char c) { return !is_sep_byte(fmt, c); }, last_sep_index) + 1;
-        if (path.left(prefix_len) == get_drive_letter(fmt, path)) {
-            prefix_len++; // If prefix is the root, include a separator character
+SplitPath splitPath(PathFormat fmt, StringView path) {
+    s32 lastSepIndex = path.reverseFind([&](char c) { return isSepByte(fmt, c); });
+    if (lastSepIndex >= 0) {
+        s32 prefixLen = path.reverseFind([&](char c) { return !isSepByte(fmt, c); }, lastSepIndex) + 1;
+        if (path.left(prefixLen) == getDriveLetter(fmt, path)) {
+            prefixLen++; // If prefix is the root, include a separator character
         }
-        return {path.left(prefix_len), path.substr(last_sep_index + 1)};
+        return {path.left(prefixLen), path.substr(lastSepIndex + 1)};
     } else {
         return {String{}, path};
     }
 }
 
-SplitExtension split_file_extension(PathFormat fmt, StringView path) {
-    StringView last_comp = path;
-    s32 slash_pos = last_comp.reverse_find([&](char c) { return is_sep_byte(fmt, c); });
-    if (slash_pos >= 0) {
-        last_comp = last_comp.substr(slash_pos + 1);
+SplitExtension splitFileExtension(PathFormat fmt, StringView path) {
+    StringView lastComp = path;
+    s32 slashPos = lastComp.reverseFind([&](char c) { return isSepByte(fmt, c); });
+    if (slashPos >= 0) {
+        lastComp = lastComp.substr(slashPos + 1);
     }
-    s32 dot_pos = last_comp.reverse_find([](u32 c) { return c == '.'; });
-    if (dot_pos < 0 || dot_pos == 0) {
-        dot_pos = last_comp.num_bytes();
+    s32 dotPos = lastComp.reverseFind([](u32 c) { return c == '.'; });
+    if (dotPos < 0 || dotPos == 0) {
+        dotPos = lastComp.numBytes();
     }
-    return {last_comp.left(dot_pos), last_comp.substr(dot_pos)};
+    return {lastComp.left(dotPos), lastComp.substr(dotPos)};
 }
 
-Array<StringView> split_path_full(PathFormat fmt, StringView path) {
+Array<StringView> splitPathFull(PathFormat fmt, StringView path) {
     Array<StringView> result;
-    if (get_drive_letter(fmt, path)) {
-        if (is_absolute_path(fmt, path)) {
+    if (getDriveLetter(fmt, path)) {
+        if (isAbsolutePath(fmt, path)) {
             // Root with drive letter
             result.append(path.left(3));
             path = path.substr(3);
-            while (path.num_bytes() > 0 && is_sep_byte(fmt, path[0])) {
+            while (path.numBytes() > 0 && isSepByte(fmt, path[0])) {
                 path = path.substr(1);
             }
         } else {
@@ -3356,205 +3352,205 @@ Array<StringView> split_path_full(PathFormat fmt, StringView path) {
             result.append(path.left(2));
             path = path.substr(2);
         }
-    } else if (path.num_bytes() > 0 && is_sep_byte(fmt, path[0])) {
+    } else if (path.numBytes() > 0 && isSepByte(fmt, path[0])) {
         // Starts with path separator
         result.append(path.left(1));
         path = path.substr(1);
-        while (path.num_bytes() > 0 && is_sep_byte(fmt, path[0])) {
+        while (path.numBytes() > 0 && isSepByte(fmt, path[0])) {
             path = path.substr(1);
         }
     }
-    if (path.num_bytes() > 0) {
+    if (path.numBytes() > 0) {
         for (;;) {
-            PLY_ASSERT(path.num_bytes() > 0);
-            PLY_ASSERT(!is_sep_byte(fmt, path[0]));
-            s32 sep_pos = path.find([&](char c) { return is_sep_byte(fmt, c); });
-            if (sep_pos < 0) {
+            PLY_ASSERT(path.numBytes() > 0);
+            PLY_ASSERT(!isSepByte(fmt, path[0]));
+            s32 sepPos = path.find([&](char c) { return isSepByte(fmt, c); });
+            if (sepPos < 0) {
                 result.append(path);
                 break;
             }
-            result.append(path.left(sep_pos));
-            path = path.substr(sep_pos);
-            s32 non_sep_pos = path.find([&](char c) { return !is_sep_byte(fmt, c); });
-            if (non_sep_pos < 0) {
+            result.append(path.left(sepPos));
+            path = path.substr(sepPos);
+            s32 nonSepPos = path.find([&](char c) { return !isSepByte(fmt, c); });
+            if (nonSepPos < 0) {
                 // Empty final component
                 result.append({});
                 break;
             }
-            path = path.substr(non_sep_pos);
+            path = path.substr(nonSepPos);
         }
     }
     return result;
 }
 
 struct PathComponentIterator {
-    char first_comp[3] = {0};
+    char firstComp[3] = {0};
 
-    void iterate_over(PathFormat fmt, ArrayView<const StringView> components,
-                      const Functor<void(StringView)>& callback) {
-        s32 absolute_index = -1;
-        s32 drive_letter_index = -1;
-        for (s32 i = components.num_items() - 1; i >= 0; i--) {
-            if (absolute_index < 0 && is_absolute_path(fmt, components[i])) {
-                absolute_index = i;
+    void iterateOver(PathFormat fmt, ArrayView<const StringView> components,
+                     const Functor<void(StringView)>& callback) {
+        s32 absoluteIndex = -1;
+        s32 driveLetterIndex = -1;
+        for (s32 i = components.numItems() - 1; i >= 0; i--) {
+            if (absoluteIndex < 0 && isAbsolutePath(fmt, components[i])) {
+                absoluteIndex = i;
             }
-            if (get_drive_letter(fmt, components[i])) {
-                drive_letter_index = i;
+            if (getDriveLetter(fmt, components[i])) {
+                driveLetterIndex = i;
                 break;
             }
         }
 
         // Special first component if there's a drive letter and/or absolute component:
-        if (drive_letter_index >= 0) {
-            first_comp[0] = components[drive_letter_index][0];
-            first_comp[1] = ':';
-            if (absolute_index >= 0) {
-                first_comp[2] = get_path_separator(fmt);
-                callback(StringView{first_comp, 3});
+        if (driveLetterIndex >= 0) {
+            firstComp[0] = components[driveLetterIndex][0];
+            firstComp[1] = ':';
+            if (absoluteIndex >= 0) {
+                firstComp[2] = getPathSeparator(fmt);
+                callback(StringView{firstComp, 3});
             } else {
-                callback(StringView{first_comp, 2});
+                callback(StringView{firstComp, 2});
             }
         }
 
         // Choose component to start iterating from:
-        u32 i = drive_letter_index >= 0 ? drive_letter_index : 0;
-        if (absolute_index >= 0) {
-            PLY_ASSERT((u32) absolute_index >= i);
-            i = absolute_index;
-            if (drive_letter_index < 0) {
-                PLY_ASSERT(first_comp[0] == 0);
-                first_comp[0] = get_path_separator(fmt);
-                callback(StringView{first_comp, 1});
+        u32 i = driveLetterIndex >= 0 ? driveLetterIndex : 0;
+        if (absoluteIndex >= 0) {
+            PLY_ASSERT((u32) absoluteIndex >= i);
+            i = absoluteIndex;
+            if (driveLetterIndex < 0) {
+                PLY_ASSERT(firstComp[0] == 0);
+                firstComp[0] = getPathSeparator(fmt);
+                callback(StringView{firstComp, 1});
             }
         }
 
         // Iterate over components. Remember, we've already sent the drive letter and/or
         // initial slash as its own component (if any).
-        for (; i < components.num_items(); i++) {
+        for (; i < components.numItems(); i++) {
             StringView comp = components[i];
-            if ((s32) i == drive_letter_index) {
+            if ((s32) i == driveLetterIndex) {
                 comp = comp.substr(2);
             }
 
-            s32 non_sep = comp.find([fmt](char c) { return !is_sep_byte(fmt, c); });
-            while (non_sep >= 0) {
-                s32 sep = comp.find([fmt](char c) { return is_sep_byte(fmt, c); }, non_sep + 1);
+            s32 nonSep = comp.find([fmt](char c) { return !isSepByte(fmt, c); });
+            while (nonSep >= 0) {
+                s32 sep = comp.find([fmt](char c) { return isSepByte(fmt, c); }, nonSep + 1);
                 if (sep < 0) {
-                    callback(comp.substr(non_sep));
+                    callback(comp.substr(nonSep));
                     break;
                 } else {
-                    callback(comp.substr(non_sep, sep - non_sep));
-                    non_sep = comp.find([fmt](char c) { return !is_sep_byte(fmt, c); }, sep + 1);
+                    callback(comp.substr(nonSep, sep - nonSep));
+                    nonSep = comp.find([fmt](char c) { return !isSepByte(fmt, c); }, sep + 1);
                 }
             }
         }
     }
 
     // Note: Keep the PathComponentIterator alive while using the return value
-    Array<StringView> get_normalized_comps(PathFormat fmt, ArrayView<const StringView> components) {
-        Array<StringView> norm_comps;
-        u32 up_count = 0;
-        this->iterate_over(fmt, components, [&](StringView comp) { //
+    Array<StringView> getNormalizedComps(PathFormat fmt, ArrayView<const StringView> components) {
+        Array<StringView> normComps;
+        u32 upCount = 0;
+        this->iterateOver(fmt, components, [&](StringView comp) { //
             if (comp == "..") {
-                if (norm_comps.num_items() > up_count) {
-                    norm_comps.pop();
+                if (normComps.numItems() > upCount) {
+                    normComps.pop();
                 } else {
-                    PLY_ASSERT(norm_comps.num_items() == up_count);
-                    norm_comps.append("..");
+                    PLY_ASSERT(normComps.numItems() == upCount);
+                    normComps.append("..");
                 }
-            } else if (comp != "." && !comp.is_empty()) {
-                norm_comps.append(comp);
+            } else if (comp != "." && !comp.isEmpty()) {
+                normComps.append(comp);
             }
         });
-        return norm_comps;
+        return normComps;
     }
 };
 
-String join_path_from_array(PathFormat fmt, ArrayView<const StringView> components) {
-    PathComponentIterator comp_iter;
-    Array<StringView> norm_comps = comp_iter.get_normalized_comps(fmt, components);
-    if (norm_comps.is_empty()) {
-        if (components.num_items() > 0 && components.back().is_empty()) {
-            return StringView{"."} + get_path_separator(fmt);
+String joinPathFromArray(PathFormat fmt, ArrayView<const StringView> components) {
+    PathComponentIterator compIter;
+    Array<StringView> normComps = compIter.getNormalizedComps(fmt, components);
+    if (normComps.isEmpty()) {
+        if (components.numItems() > 0 && components.back().isEmpty()) {
+            return StringView{"."} + getPathSeparator(fmt);
         } else {
             return ".";
         }
     } else {
         MemStream out;
-        bool need_sep = false;
-        for (StringView comp : norm_comps) {
-            if (need_sep) {
-                out.write(get_path_separator(fmt));
+        bool needSep = false;
+        for (StringView comp : normComps) {
+            if (needSep) {
+                out.write(getPathSeparator(fmt));
             } else {
-                if (comp.num_bytes() > 0) {
-                    need_sep = !is_sep_byte(fmt, comp[comp.num_bytes() - 1]);
+                if (comp.numBytes() > 0) {
+                    needSep = !isSepByte(fmt, comp[comp.numBytes() - 1]);
                 }
             }
             out.write(comp);
         }
-        if ((components.back().is_empty() || is_sep_byte(fmt, components.back().back())) && need_sep) {
-            out.write(get_path_separator(fmt));
+        if ((components.back().isEmpty() || isSepByte(fmt, components.back().back())) && needSep) {
+            out.write(getPathSeparator(fmt));
         }
-        return out.move_to_string();
+        return out.moveToString();
     }
 }
 
-String make_relative_path(PathFormat fmt, StringView ancestor, StringView descendant) {
+String makeRelativePath(PathFormat fmt, StringView ancestor, StringView descendant) {
     // This function requires either both absolute paths or both relative paths:
-    PLY_ASSERT(is_absolute_path(fmt, ancestor) == is_absolute_path(fmt, descendant));
+    PLY_ASSERT(isAbsolutePath(fmt, ancestor) == isAbsolutePath(fmt, descendant));
 
     // FIXME: Implement fastpath when descendant starts with ancestor and there are no
     // ".", ".." components.
 
-    PathComponentIterator ancestor_comp_iter;
-    Array<StringView> ancestor_comps = ancestor_comp_iter.get_normalized_comps(fmt, {ancestor});
-    PathComponentIterator descendant_comp_iter;
-    Array<StringView> descendant_comps = descendant_comp_iter.get_normalized_comps(fmt, {descendant});
+    PathComponentIterator ancestorCompIter;
+    Array<StringView> ancestorComps = ancestorCompIter.getNormalizedComps(fmt, {ancestor});
+    PathComponentIterator descendantCompIter;
+    Array<StringView> descendantComps = descendantCompIter.getNormalizedComps(fmt, {descendant});
 
     // Determine number of matching components
     u32 mc = 0;
-    while (mc < ancestor_comps.num_items() && mc < descendant_comps.num_items()) {
-        if (ancestor_comps[mc] != descendant_comps[mc])
+    while (mc < ancestorComps.numItems() && mc < descendantComps.numItems()) {
+        if (ancestorComps[mc] != descendantComps[mc])
             break;
         mc++;
     }
 
     // Determine number of ".." to output (will be 0 if drive letters mismatch)
-    u32 up_folders = 0;
-    if (!is_absolute_path(fmt, ancestor) || mc > 0) {
-        up_folders = ancestor_comps.num_items() - mc;
+    u32 upFolders = 0;
+    if (!isAbsolutePath(fmt, ancestor) || mc > 0) {
+        upFolders = ancestorComps.numItems() - mc;
     }
 
     // Form relative path (or absolute path if drive letters mismatch)
     MemStream out;
-    bool need_sep = false;
-    for (u32 i = 0; i < up_folders; i++) {
-        if (need_sep) {
-            out.write(get_path_separator(fmt));
+    bool needSep = false;
+    for (u32 i = 0; i < upFolders; i++) {
+        if (needSep) {
+            out.write(getPathSeparator(fmt));
         }
         out.write("..");
-        need_sep = true;
+        needSep = true;
     }
-    for (u32 i = mc; i < descendant_comps.num_items(); i++) {
-        if (need_sep) {
-            out.write(get_path_separator(fmt));
+    for (u32 i = mc; i < descendantComps.numItems(); i++) {
+        if (needSep) {
+            out.write(getPathSeparator(fmt));
         }
-        out.write(descendant_comps[i]);
-        need_sep = !is_sep_byte(fmt, descendant_comps[i].back());
+        out.write(descendantComps[i]);
+        needSep = !isSepByte(fmt, descendantComps[i].back());
     }
 
     // .
-    if (out.get_seek_pos() == 0) {
+    if (out.getSeekPos() == 0) {
         out.write(".");
-        need_sep = true;
+        needSep = true;
     }
 
     // Trailing slash
-    if (descendant.num_bytes() > 0 && is_sep_byte(fmt, descendant.back()) && need_sep) {
-        out.write(get_path_separator(fmt));
+    if (descendant.numBytes() > 0 && isSepByte(fmt, descendant.back()) && needSep) {
+        out.write(getPathSeparator(fmt));
     }
 
-    return out.move_to_string();
+    return out.moveToString();
 }
 
 //  ▄▄▄▄▄ ▄▄ ▄▄▄                               ▄▄
@@ -3563,34 +3559,34 @@ String make_relative_path(PathFormat fmt, StringView ancestor, StringView descen
 //  ██    ██ ▄██▄ ▀█▄▄▄   ▄▄▄█▀ ▀█▄▄██  ▄▄▄█▀  ▀█▄▄ ▀█▄▄▄  ██ ██ ██
 //                               ▄▄▄█▀
 
-WString win32_path_arg(StringView path, bool allow_extended = true) {
-    ViewStream path_in{path};
+WString win32_path_arg(StringView path, bool allowExtended = true) {
+    ViewStream pathIn{path};
     MemStream out;
-    if (allow_extended && is_absolute_path(WindowsPath, path)) {
-        out.write(ArrayView<const char16_t>{u"\\\\?\\", 4}.string_view());
+    if (allowExtended && isAbsolutePath(WindowsPath, path)) {
+        out.write(ArrayView<const char16_t>{u"\\\\?\\", 4}.stringView());
     }
     while (true) {
-        s32 codepoint = decode_unicode(path_in, UTF8).point;
+        s32 codepoint = decodeUnicode(pathIn, UTF8).point;
         if (codepoint < 0)
             break;
         if (codepoint == '/') {
             codepoint = '\\'; // Fix slashes.
         }
-        encode_unicode(out, UTF16_LE, codepoint);
+        encodeUnicode(out, UTF16_LE, codepoint);
     }
-    native_write(out, (u16) 0); // Null terminator.
-    return WString::move_from_string(out.move_to_string());
+    nativeWrite(out, (u16) 0); // Null terminator.
+    return WString::moveFromString(out.moveToString());
 }
 
-ThreadLocal<FSResult> Filesystem::last_result_;
+ThreadLocal<FSResult> Filesystem::lastResult_;
 
-void DirectoryWalker::visit(StringView dir_path) {
-    this->triple.dir_path = dir_path;
-    this->triple.dir_names.clear();
+void DirectoryWalker::visit(StringView dirPath) {
+    this->triple.dirPath = dirPath;
+    this->triple.dirNames.clear();
     this->triple.files.clear();
-    for (DirectoryEntry& entry : Filesystem::list_dir(dir_path)) {
-        if (entry.is_dir) {
-            this->triple.dir_names.append(std::move(entry.name));
+    for (DirectoryEntry& entry : Filesystem::listDir(dirPath)) {
+        if (entry.isDir) {
+            this->triple.dirNames.append(std::move(entry.name));
         } else {
             this->triple.files.append(std::move(entry));
         }
@@ -3598,46 +3594,46 @@ void DirectoryWalker::visit(StringView dir_path) {
 }
 
 void DirectoryWalker::Iterator::operator++() {
-    if (!this->walker->triple.dir_names.is_empty()) {
+    if (!this->walker->triple.dirNames.isEmpty()) {
         StackItem& item = this->walker->stack.append();
-        item.path = std::move(this->walker->triple.dir_path);
-        item.dir_names = std::move(this->walker->triple.dir_names);
-        item.dir_index = 0;
+        item.path = std::move(this->walker->triple.dirPath);
+        item.dirNames = std::move(this->walker->triple.dirNames);
+        item.dirIndex = 0;
     } else {
-        this->walker->triple.dir_path.clear();
-        this->walker->triple.dir_names.clear();
+        this->walker->triple.dirPath.clear();
+        this->walker->triple.dirNames.clear();
         this->walker->triple.files.clear();
     }
-    while (!this->walker->stack.is_empty()) {
+    while (!this->walker->stack.isEmpty()) {
         StackItem& item = this->walker->stack.back();
-        if (item.dir_index < item.dir_names.num_items()) {
-            this->walker->visit(join_path(item.path, item.dir_names[item.dir_index]));
-            item.dir_index++;
+        if (item.dirIndex < item.dirNames.numItems()) {
+            this->walker->visit(joinPath(item.path, item.dirNames[item.dirIndex]));
+            item.dirIndex++;
             return;
         }
         this->walker->stack.pop();
     }
     // End of walk
-    PLY_ASSERT(this->walker->triple.dir_path.is_empty());
+    PLY_ASSERT(this->walker->triple.dirPath.isEmpty());
 }
 
-FSResult Filesystem::copy_file(StringView src_path, StringView dst_path) {
-    Owned<Pipe> in = Filesystem::open_pipe_for_read(src_path);
-    if (Filesystem::last_result() != FS_OK)
-        return Filesystem::last_result();
+FSResult Filesystem::copyFile(StringView srcPath, StringView dstPath) {
+    Owned<Pipe> in = Filesystem::openPipeForRead(srcPath);
+    if (Filesystem::lastResult() != FS_OK)
+        return Filesystem::lastResult();
     PLY_ASSERT(in);
 
-    Stream out = Filesystem::open_binary_for_write(dst_path);
-    if (Filesystem::last_result() != FS_OK)
-        return Filesystem::last_result();
-    PLY_ASSERT(out.is_open());
+    Stream out = Filesystem::openBinaryForWrite(dstPath);
+    if (Filesystem::lastResult() != FS_OK)
+        return Filesystem::lastResult();
+    PLY_ASSERT(out.isOpen());
 
     for (;;) {
-        out.make_writable();
-        u32 num_bytes_read = in->read(out.view_remaining_bytes_mut());
-        if (num_bytes_read == 0)
+        out.makeWritable();
+        u32 numBytesRead = in->read(out.viewRemainingBytesMut());
+        if (numBytesRead == 0)
             break;
-        out.cur_byte += num_bytes_read;
+        out.curByte += numBytesRead;
     }
 
     // FIXME: More robust, detect bad copies
@@ -3650,119 +3646,119 @@ DirectoryWalker Filesystem::walk(StringView top) {
     return walker;
 }
 
-FSResult Filesystem::make_dirs(StringView path) {
-    if (path == get_drive_letter(path)) {
-        return Filesystem::set_last_result(FS_OK);
+FSResult Filesystem::makeDirs(StringView path) {
+    if (path == getDriveLetter(path)) {
+        return Filesystem::setLastResult(FS_OK);
     }
     ExistsResult er = Filesystem::exists(path);
     if (er == ER_DIRECTORY) {
-        return Filesystem::set_last_result(FS_ALREADY_EXISTS);
+        return Filesystem::setLastResult(FS_ALREADY_EXISTS);
     } else if (er == ER_FILE) {
-        return Filesystem::set_last_result(FS_ACCESS_DENIED);
+        return Filesystem::setLastResult(FS_ACCESS_DENIED);
     } else {
-        SplitPath split = split_path(path);
-        if (!split.directory.is_empty() && !split.filename.is_empty()) {
-            FSResult r = make_dirs(split.directory);
+        SplitPath split = splitPath(path);
+        if (!split.directory.isEmpty() && !split.filename.isEmpty()) {
+            FSResult r = makeDirs(split.directory);
             if (r != FS_OK && r != FS_ALREADY_EXISTS)
                 return r;
         }
-        return Filesystem::make_dir(path);
+        return Filesystem::makeDir(path);
     }
 }
 
-Stream Filesystem::open_binary_for_read(StringView path) {
-    return {Filesystem::open_pipe_for_read(path).release(), true};
+Stream Filesystem::openBinaryForRead(StringView path) {
+    return {Filesystem::openPipeForRead(path).release(), true};
 }
 
-Stream Filesystem::open_binary_for_write(StringView path) {
-    return {Filesystem::open_pipe_for_write(path).release(), true};
+Stream Filesystem::openBinaryForWrite(StringView path) {
+    return {Filesystem::openPipeForWrite(path).release(), true};
 }
 
-Stream Filesystem::open_text_for_read(StringView path, const TextFormat& text_format) {
-    if (Stream in = Filesystem::open_binary_for_read(path))
-        return {create_importer(std::move(in), text_format).release(), true};
+Stream Filesystem::openTextForRead(StringView path, const TextFormat& textFormat) {
+    if (Stream in = Filesystem::openBinaryForRead(path))
+        return {createImporter(std::move(in), textFormat).release(), true};
     return {};
 }
 
-Stream Filesystem::open_text_for_read_autodetect(StringView path, TextFormat* out_format) {
-    if (Stream in = Filesystem::open_binary_for_read(path)) {
-        TextFormat text_format = autodetect_text_format(in);
-        if (out_format) {
-            *out_format = text_format;
+Stream Filesystem::openTextForReadAutodetect(StringView path, TextFormat* outFormat) {
+    if (Stream in = Filesystem::openBinaryForRead(path)) {
+        TextFormat textFormat = autodetectTextFormat(in);
+        if (outFormat) {
+            *outFormat = textFormat;
         }
-        return {create_importer(std::move(in), text_format).release(), true};
+        return {createImporter(std::move(in), textFormat).release(), true};
     }
     return {};
 }
 
-String Filesystem::load_binary(StringView path) {
+String Filesystem::loadBinary(StringView path) {
     String result;
-    Owned<Pipe> in_pipe = Filesystem::open_pipe_for_read(path);
-    if (in_pipe) {
-        u64 file_size = in_pipe->get_file_size();
+    Owned<Pipe> inPipe = Filesystem::openPipeForRead(path);
+    if (inPipe) {
+        u64 fileSize = inPipe->getFileSize();
         // Files >= 4GB cannot be loaded this way:
-        result.resize(numeric_cast<u32>(file_size));
-        in_pipe->read({result.bytes(), result.num_bytes()});
+        result.resize(numericCast<u32>(fileSize));
+        inPipe->read({result.bytes(), result.numBytes()});
     }
     return result;
 }
 
-String read_all_remaining_bytes(Pipe* in_pipe) {
+String readAllRemainingBytes(Pipe* inPipe) {
     MemStream mem;
     for (;;) {
-        mem.make_writable();
-        u32 num_bytes_read = in_pipe->read(mem.view_remaining_bytes_mut());
-        if (num_bytes_read == 0)
+        mem.makeWritable();
+        u32 numBytesRead = inPipe->read(mem.viewRemainingBytesMut());
+        if (numBytesRead == 0)
             break;
-        mem.cur_byte += num_bytes_read;
+        mem.curByte += numBytesRead;
     }
-    return mem.move_to_string();
+    return mem.moveToString();
 }
 
-String Filesystem::load_text(StringView path, const TextFormat& text_format) {
-    if (Stream in = Filesystem::open_binary_for_read(path)) {
-        Owned<Pipe> importer = create_importer(std::move(in), text_format);
-        return read_all_remaining_bytes(importer);
+String Filesystem::loadText(StringView path, const TextFormat& textFormat) {
+    if (Stream in = Filesystem::openBinaryForRead(path)) {
+        Owned<Pipe> importer = createImporter(std::move(in), textFormat);
+        return readAllRemainingBytes(importer);
     }
     return {};
 }
 
-String Filesystem::load_text_autodetect(StringView path, TextFormat* out_format) {
-    if (Stream in = Filesystem::open_binary_for_read(path)) {
-        TextFormat text_format = autodetect_text_format(in);
-        if (out_format) {
-            *out_format = text_format;
+String Filesystem::loadTextAutodetect(StringView path, TextFormat* outFormat) {
+    if (Stream in = Filesystem::openBinaryForRead(path)) {
+        TextFormat textFormat = autodetectTextFormat(in);
+        if (outFormat) {
+            *outFormat = textFormat;
         }
 
-        Owned<Pipe> importer = create_importer(std::move(in), text_format);
-        return read_all_remaining_bytes(importer);
+        Owned<Pipe> importer = createImporter(std::move(in), textFormat);
+        return readAllRemainingBytes(importer);
     }
     return {};
 }
 
-Stream Filesystem::open_text_for_write(StringView path, const TextFormat& text_format) {
-    if (Stream out = Filesystem::open_binary_for_write(path))
-        return {create_exporter(std::move(out), text_format).release(), true};
+Stream Filesystem::openTextForWrite(StringView path, const TextFormat& textFormat) {
+    if (Stream out = Filesystem::openBinaryForWrite(path))
+        return {createExporter(std::move(out), textFormat).release(), true};
     return {};
 }
 
-FSResult Filesystem::save_binary(StringView path, StringView view) {
+FSResult Filesystem::saveBinary(StringView path, StringView view) {
     // FIXME: Write to temporary file first, then rename atomically
-    Owned<Pipe> out_pipe = Filesystem::open_pipe_for_write(path);
-    FSResult result = Filesystem::last_result();
+    Owned<Pipe> outPipe = Filesystem::openPipeForWrite(path);
+    FSResult result = Filesystem::lastResult();
     if (result != FS_OK) {
         return result;
     }
-    out_pipe->write(view);
+    outPipe->write(view);
     return result;
 }
 
-FSResult Filesystem::save_text(StringView path, StringView str_contents, const TextFormat& enc) {
-    Owned<OutPipeNewLineFilter> exporter = create_exporter(MemStream{}, enc);
-    exporter->write(str_contents);
+FSResult Filesystem::saveText(StringView path, StringView strContents, const TextFormat& enc) {
+    Owned<OutPipeNewLineFilter> exporter = createExporter(MemStream{}, enc);
+    exporter->write(strContents);
     exporter->flush(false);
-    String raw_data = static_cast<MemStream*>(&exporter->out)->move_to_string();
-    return Filesystem::save_binary(path, raw_data);
+    String rawData = static_cast<MemStream*>(&exporter->out)->moveToString();
+    return Filesystem::saveBinary(path, rawData);
 }
 
 #if defined(PLY_WINDOWS)
@@ -3773,44 +3769,44 @@ FSResult Filesystem::save_text(StringView path, StringView str_contents, const T
 
 #define PLY_FSWIN32_ALLOW_UNKNOWN_ERRORS 0
 
-ReadWriteLock Filesystem::working_dir_lock;
+ReadWriteLock Filesystem::workingDirLock;
 
-inline double windows_to_posix_time(const FILETIME& file_time) {
-    return (u64(file_time.dwHighDateTime) << 32 | file_time.dwLowDateTime) / 10000000.0 - 11644473600.0;
+inline double windowsToPosixTime(const FILETIME& fileTime) {
+    return (u64(fileTime.dwHighDateTime) << 32 | fileTime.dwLowDateTime) / 10000000.0 - 11644473600.0;
 }
 
-void dir_entry_from_data(DirectoryEntry* entry, WIN32_FIND_DATAW find_data) {
-    entry->name = from_wstring(find_data.cFileName);
-    entry->is_dir = (find_data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
-    entry->file_size = u64(find_data.nFileSizeHigh) << 32 | find_data.nFileSizeLow;
-    entry->creation_time = windows_to_posix_time(find_data.ftCreationTime);
-    entry->access_time = windows_to_posix_time(find_data.ftLastAccessTime);
-    entry->modification_time = windows_to_posix_time(find_data.ftLastWriteTime);
+void dirEntryFromData(DirectoryEntry* entry, WIN32_FIND_DATAW findData) {
+    entry->name = fromWstring(findData.cFileName);
+    entry->isDir = (findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
+    entry->fileSize = u64(findData.nFileSizeHigh) << 32 | findData.nFileSizeLow;
+    entry->creationTime = windowsToPosixTime(findData.ftCreationTime);
+    entry->accessTime = windowsToPosixTime(findData.ftLastAccessTime);
+    entry->modificationTime = windowsToPosixTime(findData.ftLastWriteTime);
 }
 
-Array<DirectoryEntry> Filesystem::list_dir(StringView path) {
+Array<DirectoryEntry> Filesystem::listDir(StringView path) {
     Array<DirectoryEntry> result;
     HANDLE hfind = INVALID_HANDLE_VALUE;
-    WIN32_FIND_DATAW find_data;
+    WIN32_FIND_DATAW findData;
 
-    String pattern = join_path(WindowsPath, path, "*");
-    hfind = FindFirstFileW(win32_path_arg(pattern), &find_data);
+    String pattern = joinPath(WindowsPath, path, "*");
+    hfind = FindFirstFileW(win32_path_arg(pattern), &findData);
     if (hfind == INVALID_HANDLE_VALUE) {
         DWORD err = GetLastError();
         switch (err) {
             case ERROR_FILE_NOT_FOUND:
             case ERROR_PATH_NOT_FOUND:
             case ERROR_INVALID_NAME: {
-                Filesystem::set_last_result(FS_NOT_FOUND);
+                Filesystem::setLastResult(FS_NOT_FOUND);
                 return result;
             }
             case ERROR_ACCESS_DENIED: {
-                Filesystem::set_last_result(FS_ACCESS_DENIED);
+                Filesystem::setLastResult(FS_ACCESS_DENIED);
                 return result;
             }
             default: {
                 PLY_ASSERT(PLY_FSWIN32_ALLOW_UNKNOWN_ERRORS);
-                Filesystem::set_last_result(FS_UNKNOWN);
+                Filesystem::setLastResult(FS_UNKNOWN);
                 return result;
             }
         }
@@ -3818,26 +3814,26 @@ Array<DirectoryEntry> Filesystem::list_dir(StringView path) {
 
     while (true) {
         DirectoryEntry entry;
-        dir_entry_from_data(&entry, find_data);
+        dirEntryFromData(&entry, findData);
         if (entry.name != "." && entry.name != "..") {
             result.append(std::move(entry));
         }
 
-        BOOL rc = FindNextFileW(hfind, &find_data);
+        BOOL rc = FindNextFileW(hfind, &findData);
         if (!rc) {
             DWORD err = GetLastError();
             switch (err) {
                 case ERROR_NO_MORE_FILES: {
-                    Filesystem::set_last_result(FS_OK);
+                    Filesystem::setLastResult(FS_OK);
                     return result;
                 }
                 case ERROR_FILE_INVALID: {
-                    Filesystem::set_last_result(FS_NOT_FOUND);
+                    Filesystem::setLastResult(FS_NOT_FOUND);
                     return result;
                 }
                 default: {
                     PLY_ASSERT(PLY_FSWIN32_ALLOW_UNKNOWN_ERRORS);
-                    Filesystem::set_last_result(FS_UNKNOWN);
+                    Filesystem::setLastResult(FS_UNKNOWN);
                     return result;
                 }
             }
@@ -3845,89 +3841,89 @@ Array<DirectoryEntry> Filesystem::list_dir(StringView path) {
     }
 }
 
-FSResult Filesystem::make_dir(StringView path) {
+FSResult Filesystem::makeDir(StringView path) {
     BOOL rc = CreateDirectoryW(win32_path_arg(path), NULL);
     if (rc) {
-        return Filesystem::set_last_result(FS_OK);
+        return Filesystem::setLastResult(FS_OK);
     } else {
         DWORD err = GetLastError();
         switch (err) {
             case ERROR_ALREADY_EXISTS:
-                return Filesystem::set_last_result(FS_ALREADY_EXISTS);
+                return Filesystem::setLastResult(FS_ALREADY_EXISTS);
             case ERROR_ACCESS_DENIED:
-                return Filesystem::set_last_result(FS_ACCESS_DENIED);
+                return Filesystem::setLastResult(FS_ACCESS_DENIED);
             case ERROR_INVALID_NAME:
-                return Filesystem::set_last_result(FS_NOT_FOUND);
+                return Filesystem::setLastResult(FS_NOT_FOUND);
             default: {
                 PLY_ASSERT(PLY_FSWIN32_ALLOW_UNKNOWN_ERRORS);
-                return Filesystem::set_last_result(FS_UNKNOWN);
+                return Filesystem::setLastResult(FS_UNKNOWN);
             }
         }
     }
 }
 
-FSResult Filesystem::set_working_directory(StringView path) {
+FSResult Filesystem::setWorkingDirectory(StringView path) {
     BOOL rc;
     {
         // This ReadWriteLock is used to mitigate data race issues with
         // SetCurrentDirectoryW:
         // https://docs.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-setcurrentdirectory
-        Filesystem::working_dir_lock.lock_exclusive();
+        Filesystem::workingDirLock.lockExclusive();
         rc = SetCurrentDirectoryW(win32_path_arg(path));
-        Filesystem::working_dir_lock.unlock_exclusive();
+        Filesystem::workingDirLock.unlockExclusive();
     }
     if (rc) {
-        return Filesystem::set_last_result(FS_OK);
+        return Filesystem::setLastResult(FS_OK);
     } else {
         DWORD err = GetLastError();
         switch (err) {
             case ERROR_PATH_NOT_FOUND:
-                return Filesystem::set_last_result(FS_NOT_FOUND);
+                return Filesystem::setLastResult(FS_NOT_FOUND);
             default: {
                 PLY_ASSERT(PLY_FSWIN32_ALLOW_UNKNOWN_ERRORS);
-                return Filesystem::set_last_result(FS_UNKNOWN);
+                return Filesystem::setLastResult(FS_UNKNOWN);
             }
         }
     }
 }
 
-String Filesystem::get_working_directory() {
-    u32 num_units_with_null_term = MAX_PATH + 1;
+String Filesystem::getWorkingDirectory() {
+    u32 numUnitsWithNullTerm = MAX_PATH + 1;
     for (;;) {
-        WString win32_path = WString::allocate(num_units_with_null_term);
+        WString win32_path = WString::allocate(numUnitsWithNullTerm);
         DWORD rc;
         {
             // This ReadWriteLock is used to mitigate data race issues with
             // SetCurrentDirectoryW:
             // https://docs.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-setcurrentdirectory
-            Filesystem::working_dir_lock.lock_shared();
-            rc = GetCurrentDirectoryW(num_units_with_null_term, (LPWSTR) win32_path.units);
-            Filesystem::working_dir_lock.unlock_shared();
+            Filesystem::workingDirLock.lockShared();
+            rc = GetCurrentDirectoryW(numUnitsWithNullTerm, (LPWSTR) win32_path.units);
+            Filesystem::workingDirLock.unlockShared();
         }
         if (rc == 0) {
             PLY_ASSERT(PLY_FSWIN32_ALLOW_UNKNOWN_ERRORS);
-            Filesystem::set_last_result(FS_UNKNOWN);
+            Filesystem::setLastResult(FS_UNKNOWN);
             return {};
         }
-        PLY_ASSERT(rc != num_units_with_null_term);
-        if (rc < num_units_with_null_term) {
+        PLY_ASSERT(rc != numUnitsWithNullTerm);
+        if (rc < numUnitsWithNullTerm) {
             // GetCurrentDirectoryW: If the function succeeds, the return value
             // specifies the number of characters that are written to the buffer, not
             // including the terminating null character.
             WStringView truncated_win32_path = {win32_path.units, rc};
-            if (truncated_win32_path.num_units >= 4 &&
-                truncated_win32_path.raw_bytes().left(8) == StringView{(const char*) L"\\\\?\\", 8}) {
+            if (truncated_win32_path.numUnits >= 4 &&
+                truncated_win32_path.rawBytes().left(8) == StringView{(const char*) L"\\\\?\\", 8}) {
                 // Drop leading "\\\\?\\":
                 truncated_win32_path.units += 4;
-                truncated_win32_path.num_units -= 4;
+                truncated_win32_path.numUnits -= 4;
             }
-            Filesystem::set_last_result(FS_OK);
-            return from_wstring(truncated_win32_path);
+            Filesystem::setLastResult(FS_OK);
+            return fromWstring(truncated_win32_path);
         }
-        // GetCurrentDirectoryW: If the buffer that is pointed to by lp_buffer is not
+        // GetCurrentDirectoryW: If the buffer that is pointed to by lpBuffer is not
         // large enough, the return value specifies the required size of the buffer, in
         // characters, including the null-terminating character.
-        num_units_with_null_term = rc;
+        numUnitsWithNullTerm = rc;
     }
 }
 
@@ -3956,117 +3952,117 @@ ExistsResult Filesystem::exists(StringView path) {
     }
 }
 
-HANDLE Filesystem::open_handle_for_read(StringView path) {
+HANDLE Filesystem::openHandleForRead(StringView path) {
     // Should this use FILE_SHARE_DELETE or FILE_SHARE_WRITE?
     HANDLE handle = CreateFileW(win32_path_arg(path), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING,
                                 FILE_ATTRIBUTE_NORMAL, NULL);
     if (handle != INVALID_HANDLE_VALUE) {
-        Filesystem::set_last_result(FS_OK);
+        Filesystem::setLastResult(FS_OK);
     } else {
         DWORD error = GetLastError();
         switch (error) {
             case ERROR_FILE_NOT_FOUND:
             case ERROR_PATH_NOT_FOUND:
             case ERROR_INVALID_NAME:
-                Filesystem::set_last_result(FS_NOT_FOUND);
+                Filesystem::setLastResult(FS_NOT_FOUND);
                 break;
 
             case ERROR_SHARING_VIOLATION:
-                Filesystem::set_last_result(FS_LOCKED);
+                Filesystem::setLastResult(FS_LOCKED);
                 break;
 
             case ERROR_ACCESS_DENIED:
-                Filesystem::set_last_result(FS_ACCESS_DENIED);
+                Filesystem::setLastResult(FS_ACCESS_DENIED);
                 break;
 
             default:
                 PLY_ASSERT(PLY_FSWIN32_ALLOW_UNKNOWN_ERRORS);
-                Filesystem::set_last_result(FS_UNKNOWN);
+                Filesystem::setLastResult(FS_UNKNOWN);
                 break;
         }
     }
     return handle;
 }
 
-Owned<Pipe> Filesystem::open_pipe_for_read(StringView path) {
-    HANDLE handle = open_handle_for_read(path);
+Owned<Pipe> Filesystem::openPipeForRead(StringView path) {
+    HANDLE handle = openHandleForRead(path);
     if (handle == INVALID_HANDLE_VALUE)
         return nullptr;
     return Heap::create<PipeHandle>(handle, Pipe::HAS_READ_PERMISSION | Pipe::CAN_SEEK);
 }
 
-HANDLE Filesystem::open_handle_for_write(StringView path) {
+HANDLE Filesystem::openHandleForWrite(StringView path) {
     // FIXME: Needs graceful handling of ERROR_SHARING_VIOLATION
     // Should this use FILE_SHARE_DELETE | FILE_SHARE_READ | FILE_SHARE_WRITE?
     HANDLE handle =
         CreateFileW(win32_path_arg(path), GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
     if (handle != INVALID_HANDLE_VALUE) {
-        Filesystem::set_last_result(FS_OK);
+        Filesystem::setLastResult(FS_OK);
     } else {
         DWORD error = GetLastError();
         switch (error) {
             case ERROR_FILE_NOT_FOUND:
             case ERROR_PATH_NOT_FOUND:
             case ERROR_INVALID_NAME:
-                Filesystem::set_last_result(FS_NOT_FOUND);
+                Filesystem::setLastResult(FS_NOT_FOUND);
                 break;
 
             case ERROR_SHARING_VIOLATION:
-                Filesystem::set_last_result(FS_LOCKED);
+                Filesystem::setLastResult(FS_LOCKED);
                 break;
 
             case ERROR_ACCESS_DENIED:
-                Filesystem::set_last_result(FS_ACCESS_DENIED);
+                Filesystem::setLastResult(FS_ACCESS_DENIED);
                 break;
 
             default:
                 PLY_ASSERT(PLY_FSWIN32_ALLOW_UNKNOWN_ERRORS);
-                Filesystem::set_last_result(FS_UNKNOWN);
+                Filesystem::setLastResult(FS_UNKNOWN);
                 break;
         }
     }
     return handle;
 }
 
-Owned<Pipe> Filesystem::open_pipe_for_write(StringView path) {
-    HANDLE handle = open_handle_for_write(path);
+Owned<Pipe> Filesystem::openPipeForWrite(StringView path) {
+    HANDLE handle = openHandleForWrite(path);
     if (handle == INVALID_HANDLE_VALUE)
         return nullptr;
     return Heap::create<PipeHandle>(handle, Pipe::HAS_WRITE_PERMISSION | Pipe::CAN_SEEK);
 }
 
-FSResult Filesystem::move_file(StringView src_path, StringView dst_path) {
-    BOOL rc = MoveFileExW(win32_path_arg(src_path), win32_path_arg(dst_path), MOVEFILE_REPLACE_EXISTING);
+FSResult Filesystem::moveFile(StringView srcPath, StringView dstPath) {
+    BOOL rc = MoveFileExW(win32_path_arg(srcPath), win32_path_arg(dstPath), MOVEFILE_REPLACE_EXISTING);
     if (rc) {
-        return Filesystem::set_last_result(FS_OK);
+        return Filesystem::setLastResult(FS_OK);
     } else {
         DWORD error = GetLastError();
         PLY_ASSERT(PLY_FSWIN32_ALLOW_UNKNOWN_ERRORS);
-        return Filesystem::set_last_result(FS_UNKNOWN);
+        return Filesystem::setLastResult(FS_UNKNOWN);
     }
 }
 
-FSResult Filesystem::delete_file(StringView path) {
+FSResult Filesystem::deleteFile(StringView path) {
     BOOL rc = DeleteFileW(win32_path_arg(path));
     if (rc) {
-        return Filesystem::set_last_result(FS_OK);
+        return Filesystem::setLastResult(FS_OK);
     } else {
         DWORD err = GetLastError();
         PLY_ASSERT(PLY_FSWIN32_ALLOW_UNKNOWN_ERRORS);
-        return Filesystem::set_last_result(FS_UNKNOWN);
+        return Filesystem::setLastResult(FS_UNKNOWN);
     }
 }
 
-FSResult Filesystem::remove_dir_tree(StringView dir_path) {
-    String abs_path = dir_path;
-    if (!is_absolute_path(WindowsPath, dir_path)) {
-        abs_path = join_path(WindowsPath, Filesystem::get_working_directory(), dir_path);
+FSResult Filesystem::removeDirTree(StringView dirPath) {
+    String absPath = dirPath;
+    if (!isAbsolutePath(WindowsPath, dirPath)) {
+        absPath = joinPath(WindowsPath, Filesystem::getWorkingDirectory(), dirPath);
     }
     OutPipeConvertUnicode out{MemStream{}, UTF16_LE};
-    out.write(abs_path);
-    out.child_out.write({"\0\0\0\0", 4}); // double null terminated
-    MemStream* mem_out = static_cast<MemStream*>(&out.child_out);
-    WString wstr = WString::move_from_string(mem_out->move_to_string());
+    out.write(absPath);
+    out.childOut.write({"\0\0\0\0", 4}); // double null terminated
+    MemStream* memOut = static_cast<MemStream*>(&out.childOut);
+    WString wstr = WString::moveFromString(memOut->moveToString());
     SHFILEOPSTRUCTW shfo;
     memset(&shfo, 0, sizeof(shfo));
     shfo.hwnd = NULL;
@@ -4081,44 +4077,44 @@ FSResult Filesystem::remove_dir_tree(StringView dir_path) {
     return (rc == 0) ? FS_OK : FS_ACCESS_DENIED;
 }
 
-DirectoryEntry Filesystem::get_file_info(HANDLE handle) {
+DirectoryEntry Filesystem::getFileInfo(HANDLE handle) {
     DirectoryEntry entry;
-    FILETIME creation_time = {0, 0};
-    FILETIME last_access_time = {0, 0};
-    FILETIME last_write_time = {0, 0};
-    BOOL rc = GetFileTime(handle, &creation_time, &last_access_time, &last_write_time);
+    FILETIME creationTime = {0, 0};
+    FILETIME lastAccessTime = {0, 0};
+    FILETIME lastWriteTime = {0, 0};
+    BOOL rc = GetFileTime(handle, &creationTime, &lastAccessTime, &lastWriteTime);
     if (rc) {
-        entry.creation_time = windows_to_posix_time(creation_time);
-        entry.access_time = windows_to_posix_time(last_access_time);
-        entry.modification_time = windows_to_posix_time(last_write_time);
+        entry.creationTime = windowsToPosixTime(creationTime);
+        entry.accessTime = windowsToPosixTime(lastAccessTime);
+        entry.modificationTime = windowsToPosixTime(lastWriteTime);
     } else {
         PLY_ASSERT(PLY_FSWIN32_ALLOW_UNKNOWN_ERRORS);
         entry.result = FS_UNKNOWN;
     }
 
-    LARGE_INTEGER file_size;
-    rc = GetFileSizeEx(handle, &file_size);
+    LARGE_INTEGER fileSize;
+    rc = GetFileSizeEx(handle, &fileSize);
     if (rc) {
-        entry.file_size = file_size.QuadPart;
+        entry.fileSize = fileSize.QuadPart;
     } else {
         PLY_ASSERT(PLY_FSWIN32_ALLOW_UNKNOWN_ERRORS);
         entry.result = FS_UNKNOWN;
     }
 
     entry.result = FS_OK;
-    Filesystem::set_last_result(FS_OK);
+    Filesystem::setLastResult(FS_OK);
     return entry;
 }
 
-DirectoryEntry Filesystem::get_file_info(StringView path) {
-    HANDLE handle = Filesystem::open_handle_for_read(path);
+DirectoryEntry Filesystem::getFileInfo(StringView path) {
+    HANDLE handle = Filesystem::openHandleForRead(path);
     if (handle == INVALID_HANDLE_VALUE) {
         DirectoryEntry entry;
-        entry.result = Filesystem::last_result();
+        entry.result = Filesystem::lastResult();
         return entry;
     }
 
-    DirectoryEntry entry = Filesystem::get_file_info(handle);
+    DirectoryEntry entry = Filesystem::getFileInfo(handle);
     CloseHandle(handle);
     return entry;
 }
@@ -4131,23 +4127,23 @@ DirectoryEntry Filesystem::get_file_info(StringView path) {
 
 #define PLY_FSPOSIX_ALLOW_UNKNOWN_ERRORS 0
 
-Array<DirectoryEntry> Filesystem::list_dir(StringView path) {
+Array<DirectoryEntry> Filesystem::listDir(StringView path) {
     Array<DirectoryEntry> result;
 
     DIR* dir = opendir((path + '\0').bytes());
     if (!dir) {
         switch (errno) {
             case ENOENT: {
-                Filesystem::set_last_result(FS_NOT_FOUND);
+                Filesystem::setLastResult(FS_NOT_FOUND);
                 return result;
             }
             case EACCES: {
-                Filesystem::set_last_result(FS_ACCESS_DENIED);
+                Filesystem::setLastResult(FS_ACCESS_DENIED);
                 return result;
             }
             default: {
                 PLY_ASSERT(PLY_FSPOSIX_ALLOW_UNKNOWN_ERRORS);
-                Filesystem::set_last_result(FS_UNKNOWN);
+                Filesystem::setLastResult(FS_UNKNOWN);
                 return result;
             }
         }
@@ -4158,10 +4154,10 @@ Array<DirectoryEntry> Filesystem::list_dir(StringView path) {
         struct dirent* rde = readdir(dir);
         if (!rde) {
             if (errno == 0) {
-                Filesystem::set_last_result(FS_OK);
+                Filesystem::setLastResult(FS_OK);
             } else {
                 PLY_ASSERT(PLY_FSPOSIX_ALLOW_UNKNOWN_ERRORS);
-                Filesystem::set_last_result(FS_UNKNOWN);
+                Filesystem::setLastResult(FS_UNKNOWN);
             }
             break;
         }
@@ -4171,33 +4167,33 @@ Array<DirectoryEntry> Filesystem::list_dir(StringView path) {
 
         // d_type is not POSIX, but it exists on OSX and Linux.
         if (rde->d_type == DT_REG) {
-            entry.is_dir = false;
+            entry.isDir = false;
         } else if (rde->d_type == DT_DIR) {
             if (rde->d_name[0] == '.') {
                 if (rde->d_name[1] == 0 || (rde->d_name[1] == '.' && rde->d_name[2] == 0))
                     continue;
             }
-            entry.is_dir = true;
+            entry.isDir = true;
         }
 
         // Get additional file information
-        String joined_path = join_path(POSIXPath, path, entry.name);
+        String joinedPath = joinPath(POSIXPath, path, entry.name);
         struct stat buf;
-        int rc = stat((joined_path + '\0').bytes(), &buf);
+        int rc = stat((joinedPath + '\0').bytes(), &buf);
         if (rc != 0) {
             if (errno == ENOENT)
                 continue;
             PLY_ASSERT(PLY_FSPOSIX_ALLOW_UNKNOWN_ERRORS);
-            Filesystem::set_last_result(FS_UNKNOWN);
+            Filesystem::setLastResult(FS_UNKNOWN);
             break;
         }
 
-        if (!entry.is_dir) {
-            entry.file_size = buf.st_size;
+        if (!entry.isDir) {
+            entry.fileSize = buf.st_size;
         }
-        entry.creation_time = buf.st_ctime;
-        entry.access_time = buf.st_atime;
-        entry.modification_time = buf.st_mtime;
+        entry.creationTime = buf.st_ctime;
+        entry.accessTime = buf.st_atime;
+        entry.modificationTime = buf.st_mtime;
 
         result.append(std::move(entry));
     }
@@ -4206,61 +4202,61 @@ Array<DirectoryEntry> Filesystem::list_dir(StringView path) {
     return result;
 }
 
-FSResult Filesystem::make_dir(StringView path) {
+FSResult Filesystem::makeDir(StringView path) {
     int rc = mkdir((path + '\0').bytes(), mode_t(0755));
     if (rc == 0) {
-        return Filesystem::set_last_result(FS_OK);
+        return Filesystem::setLastResult(FS_OK);
     } else {
         switch (errno) {
             case EEXIST:
             case EISDIR: {
-                return Filesystem::set_last_result(FS_ALREADY_EXISTS);
+                return Filesystem::setLastResult(FS_ALREADY_EXISTS);
             }
             default: {
                 PLY_ASSERT(PLY_FSPOSIX_ALLOW_UNKNOWN_ERRORS);
-                return Filesystem::set_last_result(FS_UNKNOWN);
+                return Filesystem::setLastResult(FS_UNKNOWN);
             }
         }
     }
 }
 
-FSResult Filesystem::set_working_directory(StringView path) {
+FSResult Filesystem::setWorkingDirectory(StringView path) {
     int rc = chdir((path + '\0').bytes());
     if (rc == 0) {
-        return Filesystem::set_last_result(FS_OK);
+        return Filesystem::setLastResult(FS_OK);
     } else {
         switch (errno) {
             case ENOENT:
-                return Filesystem::set_last_result(FS_NOT_FOUND);
+                return Filesystem::setLastResult(FS_NOT_FOUND);
             default: {
                 PLY_ASSERT(PLY_FSPOSIX_ALLOW_UNKNOWN_ERRORS);
-                return Filesystem::set_last_result(FS_UNKNOWN);
+                return Filesystem::setLastResult(FS_UNKNOWN);
             }
         }
     }
 }
 
-String Filesystem::get_working_directory() {
-    u32 num_units_with_null_term = PATH_MAX + 1;
-    String path = String::allocate(num_units_with_null_term);
+String Filesystem::getWorkingDirectory() {
+    u32 numUnitsWithNullTerm = PATH_MAX + 1;
+    String path = String::allocate(numUnitsWithNullTerm);
     for (;;) {
-        char* rs = getcwd(path.bytes(), num_units_with_null_term);
+        char* rs = getcwd(path.bytes(), numUnitsWithNullTerm);
         if (rs) {
             s32 len = path.find('\0');
             PLY_ASSERT(len >= 0);
             path.resize(len);
-            Filesystem::set_last_result(FS_OK);
+            Filesystem::setLastResult(FS_OK);
             return path;
         } else {
             switch (errno) {
                 case ERANGE: {
-                    num_units_with_null_term *= 2;
-                    path.resize(num_units_with_null_term);
+                    numUnitsWithNullTerm *= 2;
+                    path.resize(numUnitsWithNullTerm);
                     break;
                 }
                 default: {
                     PLY_ASSERT(PLY_FSPOSIX_ALLOW_UNKNOWN_ERRORS);
-                    Filesystem::set_last_result(FS_UNKNOWN);
+                    Filesystem::setLastResult(FS_UNKNOWN);
                     return {};
                 }
             }
@@ -4279,130 +4275,130 @@ ExistsResult Filesystem::exists(StringView path) {
     return ER_NOT_FOUND;
 }
 
-int Filesystem::open_fd_for_read(StringView path) {
+int Filesystem::openFdForRead(StringView path) {
     int fd = open((path + '\0').bytes(), O_RDONLY | O_CLOEXEC);
     if (fd != -1) {
-        Filesystem::set_last_result(FS_OK);
+        Filesystem::setLastResult(FS_OK);
     } else {
         switch (errno) {
             case ENOENT:
-                Filesystem::set_last_result(FS_NOT_FOUND);
+                Filesystem::setLastResult(FS_NOT_FOUND);
                 break;
 
             case EACCES:
-                Filesystem::set_last_result(FS_ACCESS_DENIED);
+                Filesystem::setLastResult(FS_ACCESS_DENIED);
                 break;
 
             default:
                 PLY_ASSERT(PLY_FSPOSIX_ALLOW_UNKNOWN_ERRORS);
-                Filesystem::set_last_result(FS_UNKNOWN);
+                Filesystem::setLastResult(FS_UNKNOWN);
                 break;
         }
     }
     return fd;
 }
 
-Owned<Pipe> Filesystem::open_pipe_for_read(StringView path) {
-    int fd = open_fd_for_read(path);
+Owned<Pipe> Filesystem::openPipeForRead(StringView path) {
+    int fd = openFdForRead(path);
     if (fd == -1)
         return nullptr;
     return Heap::create<Pipe_FD>(fd, Pipe::HAS_READ_PERMISSION | Pipe::CAN_SEEK);
 }
 
-int Filesystem::open_fd_for_write(StringView path) {
+int Filesystem::openFdForWrite(StringView path) {
     int fd = open((path + '\0').bytes(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, mode_t(0644));
     if (fd != -1) {
-        Filesystem::set_last_result(FS_OK);
+        Filesystem::setLastResult(FS_OK);
     } else {
         switch (errno) {
             case ENOENT:
-                Filesystem::set_last_result(FS_NOT_FOUND);
+                Filesystem::setLastResult(FS_NOT_FOUND);
                 break;
 
             case EACCES:
-                Filesystem::set_last_result(FS_ACCESS_DENIED);
+                Filesystem::setLastResult(FS_ACCESS_DENIED);
                 break;
 
             default:
                 PLY_ASSERT(PLY_FSPOSIX_ALLOW_UNKNOWN_ERRORS);
-                Filesystem::set_last_result(FS_UNKNOWN);
+                Filesystem::setLastResult(FS_UNKNOWN);
                 break;
         }
     }
     return fd;
 }
 
-Owned<Pipe> Filesystem::open_pipe_for_write(StringView path) {
-    int fd = open_fd_for_write(path);
+Owned<Pipe> Filesystem::openPipeForWrite(StringView path) {
+    int fd = openFdForWrite(path);
     if (fd == -1)
         return nullptr;
     return Heap::create<Pipe_FD>(fd, Pipe::HAS_WRITE_PERMISSION | Pipe::CAN_SEEK);
 }
 
-FSResult Filesystem::move_file(StringView src_path, StringView dst_path) {
-    int rc = rename((src_path + '\0').bytes(), (dst_path + '\0').bytes());
+FSResult Filesystem::moveFile(StringView srcPath, StringView dstPath) {
+    int rc = rename((srcPath + '\0').bytes(), (dstPath + '\0').bytes());
     if (rc != 0) {
         PLY_ASSERT(PLY_FSPOSIX_ALLOW_UNKNOWN_ERRORS);
-        return Filesystem::set_last_result(FS_UNKNOWN);
+        return Filesystem::setLastResult(FS_UNKNOWN);
     }
-    return Filesystem::set_last_result(FS_OK);
+    return Filesystem::setLastResult(FS_OK);
 }
 
-FSResult Filesystem::delete_file(StringView path) {
+FSResult Filesystem::deleteFile(StringView path) {
     int rc = unlink((path + '\0').bytes());
     if (rc != 0) {
         PLY_ASSERT(PLY_FSPOSIX_ALLOW_UNKNOWN_ERRORS);
-        return Filesystem::set_last_result(FS_UNKNOWN);
+        return Filesystem::setLastResult(FS_UNKNOWN);
     }
-    return Filesystem::set_last_result(FS_OK);
+    return Filesystem::setLastResult(FS_OK);
 }
 
-FSResult Filesystem::remove_dir_tree(StringView dir_path) {
-    for (const DirectoryEntry& entry : Filesystem::list_dir(dir_path)) {
-        String joined = join_path(POSIXPath, dir_path, entry.name);
-        if (entry.is_dir) {
-            FSResult fs_result = Filesystem::remove_dir_tree(joined);
-            if (fs_result != FS_OK) {
-                return fs_result;
+FSResult Filesystem::removeDirTree(StringView dirPath) {
+    for (const DirectoryEntry& entry : Filesystem::listDir(dirPath)) {
+        String joined = joinPath(POSIXPath, dirPath, entry.name);
+        if (entry.isDir) {
+            FSResult fsResult = Filesystem::removeDirTree(joined);
+            if (fsResult != FS_OK) {
+                return fsResult;
             }
         } else {
             int rc = unlink((joined + '\0').bytes());
             if (rc != 0) {
                 PLY_ASSERT(PLY_FSPOSIX_ALLOW_UNKNOWN_ERRORS);
-                return Filesystem::set_last_result(FS_UNKNOWN);
+                return Filesystem::setLastResult(FS_UNKNOWN);
             }
         }
     }
-    int rc = rmdir((dir_path + '\0').bytes());
+    int rc = rmdir((dirPath + '\0').bytes());
     if (rc != 0) {
         PLY_ASSERT(PLY_FSPOSIX_ALLOW_UNKNOWN_ERRORS);
-        return Filesystem::set_last_result(FS_UNKNOWN);
+        return Filesystem::setLastResult(FS_UNKNOWN);
     }
-    return Filesystem::set_last_result(FS_OK);
+    return Filesystem::setLastResult(FS_OK);
 }
 
-DirectoryEntry Filesystem::get_file_info(StringView path) {
+DirectoryEntry Filesystem::getFileInfo(StringView path) {
     DirectoryEntry entry;
     struct stat buf;
     int rc = stat((path + '\0').bytes(), &buf);
     if (rc != 0) {
         switch (errno) {
             case ENOENT: {
-                entry.result = Filesystem::set_last_result(FS_NOT_FOUND);
+                entry.result = Filesystem::setLastResult(FS_NOT_FOUND);
                 break;
             }
             default: {
                 PLY_ASSERT(PLY_FSPOSIX_ALLOW_UNKNOWN_ERRORS);
-                Filesystem::set_last_result(FS_UNKNOWN);
+                Filesystem::setLastResult(FS_UNKNOWN);
                 break;
             }
         }
     } else {
-        entry.result = Filesystem::set_last_result(FS_OK);
-        entry.file_size = buf.st_size;
-        entry.creation_time = buf.st_ctime;
-        entry.access_time = buf.st_atime;
-        entry.modification_time = buf.st_mtime;
+        entry.result = Filesystem::setLastResult(FS_OK);
+        entry.fileSize = buf.st_size;
+        entry.creationTime = buf.st_ctime;
+        entry.accessTime = buf.st_atime;
+        entry.modificationTime = buf.st_mtime;
     }
     return entry;
 }
@@ -4418,112 +4414,112 @@ DirectoryEntry Filesystem::get_file_info(StringView path) {
 #if PLY_WITH_DIRECTORY_WATCHER
 #if defined(PLY_WINDOWS)
 
-void DirectoryWatcher::run_watcher() {
+void DirectoryWatcher::runWatcher() {
     // FIXME: prepend \\?\ to the path to get past MAX_PATH limitation
-    HANDLE h_directory = CreateFileW(win32_path_arg(this->root), FILE_LIST_DIRECTORY,
-                                     FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, OPEN_EXISTING,
-                                     FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OVERLAPPED, NULL);
-    PLY_ASSERT(h_directory != INVALID_HANDLE_VALUE);
-    HANDLE h_change_event = CreateEvent(NULL, TRUE, FALSE, NULL);
-    PLY_ASSERT(h_change_event != INVALID_HANDLE_VALUE);
-    static const DWORD notify_info_size = 65536;
-    FILE_NOTIFY_INFORMATION* notify_info = (FILE_NOTIFY_INFORMATION*) Heap::alloc(notify_info_size);
+    HANDLE hDirectory = CreateFileW(win32_path_arg(this->root), FILE_LIST_DIRECTORY,
+                                    FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, OPEN_EXISTING,
+                                    FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OVERLAPPED, NULL);
+    PLY_ASSERT(hDirectory != INVALID_HANDLE_VALUE);
+    HANDLE hChangeEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
+    PLY_ASSERT(hChangeEvent != INVALID_HANDLE_VALUE);
+    static const DWORD notifyInfoSize = 65536;
+    FILE_NOTIFY_INFORMATION* notifyInfo = (FILE_NOTIFY_INFORMATION*) Heap::alloc(notifyInfoSize);
     for (;;) {
         OVERLAPPED overlapped;
         memset(&overlapped, 0, sizeof(overlapped));
-        overlapped.hEvent = h_change_event;
+        overlapped.hEvent = hChangeEvent;
         BOOL rc =
-            ReadDirectoryChangesW(h_directory, notify_info, notify_info_size, TRUE,
+            ReadDirectoryChangesW(hDirectory, notifyInfo, notifyInfoSize, TRUE,
                                   FILE_NOTIFY_CHANGE_FILE_NAME | FILE_NOTIFY_CHANGE_DIR_NAME | FILE_NOTIFY_CHANGE_SIZE |
                                       FILE_NOTIFY_CHANGE_CREATION | FILE_NOTIFY_CHANGE_LAST_WRITE,
                                   NULL, &overlapped, NULL);
         // FIXME: Handle ERROR_NOTIFY_ENUM_DIR
-        HANDLE events[2] = {this->end_event, h_change_event};
-        DWORD wait_result = WaitForMultipleObjects(2, events, FALSE, INFINITE);
-        PLY_ASSERT(wait_result >= WAIT_OBJECT_0 && wait_result <= WAIT_OBJECT_0 + 1);
-        if (wait_result == WAIT_OBJECT_0)
+        HANDLE events[2] = {this->endEvent, hChangeEvent};
+        DWORD waitResult = WaitForMultipleObjects(2, events, FALSE, INFINITE);
+        PLY_ASSERT(waitResult >= WAIT_OBJECT_0 && waitResult <= WAIT_OBJECT_0 + 1);
+        if (waitResult == WAIT_OBJECT_0)
             break;
-        FILE_NOTIFY_INFORMATION* r = notify_info;
+        FILE_NOTIFY_INFORMATION* r = notifyInfo;
         for (;;) {
             // "The file name is in the Unicode character format and is not
             // null-terminated."
             // https://docs.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-_file_notify_information
-            String path = from_wstring({r->FileName, u32(r->FileNameLength / sizeof(WCHAR))});
-            bool is_directory = false;
+            String path = fromWstring({r->FileName, u32(r->FileNameLength / sizeof(WCHAR))});
+            bool isDirectory = false;
             DWORD attribs;
             {
                 // FIXME: Avoid some of the UTF-8 <--> UTF-16 conversions done here
-                String full_path = join_path(WindowsPath, this->root, path);
-                attribs = GetFileAttributesW(win32_path_arg(full_path));
+                String fullPath = joinPath(WindowsPath, this->root, path);
+                attribs = GetFileAttributesW(win32_path_arg(fullPath));
             }
             if (attribs != INVALID_FILE_ATTRIBUTES) {
-                is_directory = (attribs & FILE_ATTRIBUTE_DIRECTORY) != 0;
+                isDirectory = (attribs & FILE_ATTRIBUTE_DIRECTORY) != 0;
             }
-            this->callback(path, is_directory);
+            this->callback(path, isDirectory);
             if (r->NextEntryOffset == 0)
                 break;
             r = (FILE_NOTIFY_INFORMATION*) PLY_PTR_OFFSET(r, r->NextEntryOffset);
         }
     }
-    Heap::free(notify_info);
-    CloseHandle(h_change_event);
-    CloseHandle(h_directory);
+    Heap::free(notifyInfo);
+    CloseHandle(hChangeEvent);
+    CloseHandle(hDirectory);
 }
 
 DirectoryWatcher::DirectoryWatcher() {
 }
 
-void DirectoryWatcher::start(StringView root, Functor<void(StringView path, bool must_recurse)>&& callback) {
-    PLY_ASSERT(this->root.is_empty());
+void DirectoryWatcher::start(StringView root, Functor<void(StringView path, bool mustRecurse)>&& callback) {
+    PLY_ASSERT(this->root.isEmpty());
     PLY_ASSERT(!this->callback);
-    PLY_ASSERT(this->end_event == INVALID_HANDLE_VALUE);
-    PLY_ASSERT(!this->watcher_thread.is_valid());
+    PLY_ASSERT(this->endEvent == INVALID_HANDLE_VALUE);
+    PLY_ASSERT(!this->watcherThread.isValid());
     this->root = root;
     this->callback = std::move(callback);
-    this->end_event = CreateEvent(NULL, TRUE, FALSE, NULL);
-    this->watcher_thread.run([this]() { run_watcher(); });
+    this->endEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
+    this->watcherThread.run([this]() { runWatcher(); });
 }
 
 void DirectoryWatcher::stop() {
-    if (this->watcher_thread.is_valid()) {
-        SetEvent(this->end_event);
-        this->watcher_thread.join();
-        CloseHandle(this->end_event);
-        this->end_event = INVALID_HANDLE_VALUE;
+    if (this->watcherThread.isValid()) {
+        SetEvent(this->endEvent);
+        this->watcherThread.join();
+        CloseHandle(this->endEvent);
+        this->endEvent = INVALID_HANDLE_VALUE;
     }
 }
 
 #elif defined(PLY_MACOS)
 
-void my_callback(ConstFSEventStreamRef stream_ref, void* client_call_back_info, size_t num_events, void* event_paths,
-                 const FSEventStreamEventFlags event_flags[], const FSEventStreamEventId event_ids[]) {
-    DirectoryWatcher* watcher = (DirectoryWatcher*) client_call_back_info;
-    char** paths = (char**) event_paths;
-    for (size_t i = 0; i < num_events; i++) {
+void myCallback(ConstFSEventStreamRef streamRef, void* clientCallBackInfo, size_t numEvents, void* eventPaths,
+                const FSEventStreamEventFlags eventFlags[], const FSEventStreamEventId eventIds[]) {
+    DirectoryWatcher* watcher = (DirectoryWatcher*) clientCallBackInfo;
+    char** paths = (char**) eventPaths;
+    for (size_t i = 0; i < numEvents; i++) {
         /* flags are unsigned long, IDs are uint64_t */
         StringView p = paths[i];
-        FSEventStreamEventFlags flags = event_flags[i];
-        PLY_ASSERT(p.starts_with(watcher->root));
-        p = p.substr(watcher->root.num_bytes);
+        FSEventStreamEventFlags flags = eventFlags[i];
+        PLY_ASSERT(p.startsWith(watcher->root));
+        p = p.substr(watcher->root.numBytes);
 
-        // puts(String::format("change {} in {}, flags {}/0x{}", event_ids[i],
-        // String::convert(p), flags, String::to_hex(flags)).bytes());
-        bool must_recurse = false;
+        // puts(String::format("change {} in {}, flags {}/0x{}", eventIds[i],
+        // String::convert(p), flags, String::toHex(flags)).bytes());
+        bool mustRecurse = false;
         if ((flags & kFSEventStreamEventFlagMustScanSubDirs) != 0) {
-            must_recurse = true;
+            mustRecurse = true;
         }
         if ((flags & kFSEventStreamEventFlagItemIsDir) != 0) {
-            must_recurse = true;
+            mustRecurse = true;
         }
         // FIXME: check kFSEventStreamEventFlagEventIdsWrapped
-        watcher->callback(p, must_recurse);
+        watcher->callback(p, mustRecurse);
     }
 }
 
-void DirectoryWatcher::run_watcher() {
-    this->run_loop = CFRunLoopGetCurrent();
-    CFStringRef root_path = CFStringCreateWithCString(NULL, this->root.bytes(), kCFStringEncodingASCII);
-    CFArrayRef paths_to_watch = CFArrayCreate(NULL, (const void**) &root_path, 1, NULL);
+void DirectoryWatcher::runWatcher() {
+    this->runLoop = CFRunLoopGetCurrent();
+    CFStringRef rootPath = CFStringCreateWithCString(NULL, this->root.bytes(), kCFStringEncodingASCII);
+    CFArrayRef pathsToWatch = CFArrayCreate(NULL, (const void**) &rootPath, 1, NULL);
     FSEventStreamContext context;
     context.version = 0;
     context.info = this;
@@ -4533,13 +4529,13 @@ void DirectoryWatcher::run_watcher() {
     // FIXME: should use kFSEventStreamCreateFlagWatchRoot to check if the folder being
     // watched gets moved?
     FSEventStreamRef stream =
-        FSEventStreamCreate(NULL, my_callback, &context, paths_to_watch, kFSEventStreamEventIdSinceNow,
+        FSEventStreamCreate(NULL, myCallback, &context, pathsToWatch, kFSEventStreamEventIdSinceNow,
                             0.15, // latency
                             kFSEventStreamCreateFlagFileEvents);
-    CFRelease(paths_to_watch);
-    CFRelease(root_path);
+    CFRelease(pathsToWatch);
+    CFRelease(rootPath);
     // FIXME: Replace with FSEventStreamSetDispatchQueue as per compiler deprecation warnings.
-    FSEventStreamScheduleWithRunLoop(stream, (CFRunLoopRef) this->run_loop, kCFRunLoopDefaultMode);
+    FSEventStreamScheduleWithRunLoop(stream, (CFRunLoopRef) this->runLoop, kCFRunLoopDefaultMode);
     Boolean rc = FSEventStreamStart(stream);
     PLY_ASSERT(rc == TRUE);
     PLY_UNUSED(rc);
@@ -4548,7 +4544,7 @@ void DirectoryWatcher::run_watcher() {
 
     FSEventStreamStop(stream);
     // FIXME: Replace with FSEventStreamSetDispatchQueue as per compiler deprecation warnings.
-    FSEventStreamUnscheduleFromRunLoop(stream, (CFRunLoopRef) this->run_loop, kCFRunLoopDefaultMode);
+    FSEventStreamUnscheduleFromRunLoop(stream, (CFRunLoopRef) this->runLoop, kCFRunLoopDefaultMode);
     FSEventStreamInvalidate(stream);
     FSEventStreamRelease(stream);
 }
@@ -4556,19 +4552,19 @@ void DirectoryWatcher::run_watcher() {
 DirectoryWatcher::DirectoryWatcher() {
 }
 
-void DirectoryWatcher::start(StringView root, Functor<void(StringView path, bool must_recurse)>&& callback) {
-    PLY_ASSERT(this->root.is_empty());
+void DirectoryWatcher::start(StringView root, Functor<void(StringView path, bool mustRecurse)>&& callback) {
+    PLY_ASSERT(this->root.isEmpty());
     PLY_ASSERT(!this->callback);
-    PLY_ASSERT(!this->watcher_thread.is_valid());
+    PLY_ASSERT(!this->watcherThread.isValid());
     this->root = root;
     this->callback = std::move(callback);
-    this->watcher_thread.run([this]() { run_watcher(); });
+    this->watcherThread.run([this]() { runWatcher(); });
 }
 
 void DirectoryWatcher::stop() {
-    if (this->watcher_thread.is_valid()) {
-        CFRunLoopStop((CFRunLoopRef) this->run_loop);
-        this->watcher_thread.join();
+    if (this->watcherThread.isValid()) {
+        CFRunLoopStop((CFRunLoopRef) this->runLoop);
+        this->watcherThread.join();
     }
 }
 

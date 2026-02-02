@@ -2,7 +2,7 @@
        ____
       ╱   ╱╲    Plywood C++ Base Library
      ╱___╱╭╮╲   https://plywood.dev/
-      └──┴┴┴┘   
+      └──┴┴┴┘
 ========================================================*/
 
 #include "test-suite.h"
@@ -18,44 +18,44 @@
 #undef TEST_CASE_PREFIX
 #define TEST_CASE_PREFIX Numeric_
 
-TEST_CASE("is_representable") {
+TEST_CASE("isRepresentable") {
     // Integer ranges
-    check(is_representable<u32>(0));
-    check(is_representable<u32>(123));
-    check(!is_representable<u32>(-5));
-    check(is_representable<s32>(-5));
-    check(!is_representable<s8>(200));
-    check(is_representable<u8>(200));
-    check(!is_representable<s8>(u8(200)));
-    check(is_representable<u16>(get_max_value<s16>()));
-    check(!is_representable<s16>(get_max_value<u16>()));
-    check(!is_representable<s32>(get_min_value<s64>()));
-    check(!is_representable<s32>(get_max_value<s64>()));
-    check(!is_representable<s32>(get_max_value<u64>()));
-    check(!is_representable<u32>(get_min_value<s64>()));
-    check(!is_representable<u32>(get_max_value<s64>()));
-    check(!is_representable<u32>(get_max_value<u64>()));
-    check(is_representable<s64>(get_min_value<s32>()));
-    check(is_representable<s64>(get_max_value<s32>()));
-    check(is_representable<s64>(get_max_value<u32>()));
-    check(!is_representable<s64>(get_max_value<u64>()));
-    check(!is_representable<u64>(get_min_value<s32>()));
-    check(is_representable<u64>(get_max_value<s32>()));
-    check(is_representable<u64>(get_max_value<u32>()));
-    check(is_representable<u64>(get_max_value<s64>()));
+    check(isRepresentable<u32>(0));
+    check(isRepresentable<u32>(123));
+    check(!isRepresentable<u32>(-5));
+    check(isRepresentable<s32>(-5));
+    check(!isRepresentable<s8>(200));
+    check(isRepresentable<u8>(200));
+    check(!isRepresentable<s8>(u8(200)));
+    check(isRepresentable<u16>(getMaxValue<s16>()));
+    check(!isRepresentable<s16>(getMaxValue<u16>()));
+    check(!isRepresentable<s32>(getMinValue<s64>()));
+    check(!isRepresentable<s32>(getMaxValue<s64>()));
+    check(!isRepresentable<s32>(getMaxValue<u64>()));
+    check(!isRepresentable<u32>(getMinValue<s64>()));
+    check(!isRepresentable<u32>(getMaxValue<s64>()));
+    check(!isRepresentable<u32>(getMaxValue<u64>()));
+    check(isRepresentable<s64>(getMinValue<s32>()));
+    check(isRepresentable<s64>(getMaxValue<s32>()));
+    check(isRepresentable<s64>(getMaxValue<u32>()));
+    check(!isRepresentable<s64>(getMaxValue<u64>()));
+    check(!isRepresentable<u64>(getMinValue<s32>()));
+    check(isRepresentable<u64>(getMaxValue<s32>()));
+    check(isRepresentable<u64>(getMaxValue<u32>()));
+    check(isRepresentable<u64>(getMaxValue<s64>()));
 
     // float to int
-    check(is_representable<u32>(123.0f));
-    check(!is_representable<u32>(123.25f));
-    check(is_representable<s32>(-2147483648.0f));
+    check(isRepresentable<u32>(123.0f));
+    check(!isRepresentable<u32>(123.25f));
+    check(isRepresentable<s32>(-2147483648.0f));
 
     // int to float
-    check(is_representable<float>(16777216));
-    check(!is_representable<float>(16777217));
+    check(isRepresentable<float>(16777216));
+    check(!isRepresentable<float>(16777217));
 
     // float to float
-    check(is_representable<double>(16777216.f));
-    check(!is_representable<float>(16777217.0));
+    check(isRepresentable<double>(16777216.f));
+    check(!isRepresentable<float>(16777217.0));
 }
 
 //  ▄▄▄▄▄▄ ▄▄                      ▄▄▄        ▄▄▄▄▄          ▄▄
@@ -64,23 +64,23 @@ TEST_CASE("is_representable") {
 //    ██   ██ ██ ██ ██ ▀█▄▄▄      ▀█▄▄▀█▄     ██▄▄█▀ ▀█▄▄██  ▀█▄▄ ▀█▄▄▄
 //
 
-TEST_CASE("String::from_date_time") {
-    DateTime date_time;
-    date_time.year = 2025;
-    date_time.month = 12;
-    date_time.day = 1;
-    date_time.weekday = 1; // Monday
-    date_time.hour = 19;
-    date_time.minute = 0;
-    date_time.second = 1;
-    date_time.time_zone_offset_in_minutes = -300;
-    date_time.microsecond = 234000;
+TEST_CASE("String::fromDateTime") {
+    DateTime dateTime;
+    dateTime.year = 2025;
+    dateTime.month = 12;
+    dateTime.day = 1;
+    dateTime.weekday = 1; // Monday
+    dateTime.hour = 19;
+    dateTime.minute = 0;
+    dateTime.second = 1;
+    dateTime.timeZoneOffsetInMinutes = -300;
+    dateTime.microsecond = 234000;
 
-    check(String::from_date_time("%Y-%m-%d", date_time) == "2025-12-01");
-    check(String::from_date_time("%H:%M:%S", date_time) == "19:00:01");
-    check(String::from_date_time("%A, %B %e, %Y", date_time) == "Monday, December 1, 2025");
-    check(String::from_date_time("%l:%M %p (UTC%Z)", date_time) == "7:00 PM (UTC-05:00)");
-    check(String::from_date_time("[%Y:%m:%d %H:%M:%S.%L]", date_time) == "[2025:12:01 19:00:01.234]");
+    check(String::fromDateTime("%Y-%m-%d", dateTime) == "2025-12-01");
+    check(String::fromDateTime("%H:%M:%S", dateTime) == "19:00:01");
+    check(String::fromDateTime("%A, %B %e, %Y", dateTime) == "Monday, December 1, 2025");
+    check(String::fromDateTime("%l:%M %p (UTC%Z)", dateTime) == "7:00 PM (UTC-05:00)");
+    check(String::fromDateTime("[%Y:%m:%d %H:%M:%S.%L]", dateTime) == "[2025:12:01 19:00:01.234]");
 }
 
 //  ▄▄▄▄▄▄ ▄▄                              ▄▄
@@ -94,9 +94,7 @@ TEST_CASE("String::from_date_time") {
 
 TEST_CASE("Thread join") {
     int value = 0;
-    Thread thread([&]() {
-        value = 42;
-    });
+    Thread thread([&]() { value = 42; });
     thread.join();
     check(value == 42);
 }
@@ -114,8 +112,8 @@ TEST_CASE("shuffle_bits() 32") {
     Random rand;
     for (u32 i = 0; i < 1000; i++) {
         u32 value = rand.generate_u32();
-        u32 shuffled = shuffle_bits(value);
-        u32 unshuffled = unshuffle_bits(shuffled);
+        u32 shuffled = shuffleBits(value);
+        u32 unshuffled = unshuffleBits(shuffled);
         check(value == unshuffled);
     }
 }
@@ -124,8 +122,8 @@ TEST_CASE("shuffle_bits() 64") {
     Random rand;
     for (u32 i = 0; i < 1000; i++) {
         u64 value = rand.generate_u32();
-        u64 shuffled = shuffle_bits(value);
-        u64 unshuffled = unshuffle_bits(shuffled);
+        u64 shuffled = shuffleBits(value);
+        u64 unshuffled = unshuffleBits(shuffled);
         check(value == unshuffled);
     }
 }
@@ -141,7 +139,7 @@ TEST_CASE("shuffle_bits() 64") {
 
 TEST_CASE("String self-assignment") {
     String str = "How now brown cow?";
-    str = str.shortened_by(1);
+    str = str.shortenedBy(1);
     check(str == "How now brown cow");
 }
 
@@ -153,12 +151,12 @@ TEST_CASE("String find") {
     check(str.find('z') < 0);
 }
 
-TEST_CASE("String reverse_find") {
+TEST_CASE("String reverseFind") {
     String str = "abcdefgh";
-    check(str.reverse_find([](char x) { return x == 'c'; }) == 2);
-    check(str.reverse_find([](char x) { return x == 'z'; }) < 0);
-    check(str.reverse_find('c') == 2);
-    check(str.reverse_find('z') < 0);
+    check(str.reverseFind([](char x) { return x == 'c'; }) == 2);
+    check(str.reverseFind([](char x) { return x == 'z'; }) < 0);
+    check(str.reverseFind('c') == 2);
+    check(str.reverseFind('z') < 0);
 }
 
 TEST_CASE("String split") {
@@ -166,7 +164,7 @@ TEST_CASE("String split") {
     {
         String str = "apple,banana,cherry";
         Array<StringView> parts = str.split(",");
-        check(parts.num_items() == 3);
+        check(parts.numItems() == 3);
         check(parts[0] == "apple");
         check(parts[1] == "banana");
         check(parts[2] == "cherry");
@@ -175,7 +173,7 @@ TEST_CASE("String split") {
     {
         String str = "apple::banana::cherry";
         Array<StringView> parts = str.split("::");
-        check(parts.num_items() == 3);
+        check(parts.numItems() == 3);
         check(parts[0] == "apple");
         check(parts[1] == "banana");
         check(parts[2] == "cherry");
@@ -184,7 +182,7 @@ TEST_CASE("String split") {
     {
         String str = "apple::banana:cherry::date";
         Array<StringView> parts = str.split("::");
-        check(parts.num_items() == 3);
+        check(parts.numItems() == 3);
         check(parts[0] == "apple");
         check(parts[1] == "banana:cherry");
         check(parts[2] == "date");
@@ -193,7 +191,7 @@ TEST_CASE("String split") {
     {
         String str = "apple,,banana";
         Array<StringView> parts = str.split(",");
-        check(parts.num_items() == 2);
+        check(parts.numItems() == 2);
         check(parts[0] == "apple");
         check(parts[1] == "banana");
     }
@@ -201,21 +199,21 @@ TEST_CASE("String split") {
     {
         String str = "hello world";
         Array<StringView> parts = str.split(",");
-        check(parts.num_items() == 1);
+        check(parts.numItems() == 1);
         check(parts[0] == "hello world");
     }
     // Empty string
     {
         String str = "";
         Array<StringView> parts = str.split(",");
-        check(parts.num_items() == 1);
+        check(parts.numItems() == 1);
         check(parts[0] == "");
     }
     // Separator at ends
     {
         String str = ",apple,banana,";
         Array<StringView> parts = str.split(",");
-        check(parts.num_items() == 2);
+        check(parts.numItems() == 2);
         check(parts[0] == "apple");
         check(parts[1] == "banana");
     }
@@ -351,7 +349,7 @@ TEST_CASE("String match multiple captures") {
 TEST_CASE("String match optional format specifier") {
     s32 value = -1;
     check(StringView{"item"}.match("item%d?$", &value));
-    check(value == -1);  // Unchanged since no number present
+    check(value == -1); // Unchanged since no number present
     check(StringView{"item42"}.match("item%d?$", &value));
     check(value == 42);
     check(!StringView{"item42extra"}.match("item%d?$", &value));
@@ -362,8 +360,8 @@ TEST_CASE("String match optional group with format specifier") {
     String text;
     // Test optional group with alternation containing format specifiers
     check(StringView{"start end"}.match("start (num=%d|text=%q)? ?end$", &num, &text));
-    check(num == -1);  // Unchanged
-    check(text.is_empty());
+    check(num == -1); // Unchanged
+    check(text.isEmpty());
     num = -1;
     check(StringView{"start num=42 end"}.match("start (num=%d|text=%q)? ?end$", &num, &text));
     check(num == 42);
@@ -429,7 +427,7 @@ TEST_CASE("Copy construct Array<String>") {
     check(b == ArrayView<const StringView>{"hello", "there"});
 }
 
-TEST_CASE("Array construct from Fixed_Array") {
+TEST_CASE("Array construct from FixedArray") {
     FixedArray<String, 2> a = {"hello", "there"};
     Array<String> b = a;
     check(a == ArrayView<const StringView>{"hello", "there"});
@@ -439,7 +437,7 @@ TEST_CASE("Array construct from Fixed_Array") {
 TEST_CASE("Move construct Array<String>") {
     Array<String> a = {"hello", "there"};
     Array<String> b = std::move(a);
-    check(a.is_empty());
+    check(a.isEmpty());
     check(b == ArrayView<const StringView>{"hello", "there"});
 }
 
@@ -476,7 +474,7 @@ TEST_CASE("Array assign, no move semantics") {
     check(b == ArrayView<const StringView>{"hello", "there"});
 }
 
-TEST_CASE("Array assign from Fixed_Array") {
+TEST_CASE("Array assign from FixedArray") {
     FixedArray<String, 2> a = {"hello", "there"};
     Array<String> b;
     b = a;
@@ -488,11 +486,11 @@ TEST_CASE("Move assign Array<String>") {
     Array<String> a = {"hello", "there"};
     Array<String> b;
     b = std::move(a);
-    check(a.is_empty());
+    check(a.isEmpty());
     check(b == ArrayView<const StringView>{"hello", "there"});
 }
 
-TEST_CASE("Array move assign from Fixed_Array") {
+TEST_CASE("Array move assign from FixedArray") {
     FixedArray<String, 2> a = {"hello", "there"};
     Array<String> b;
     b = std::move(a);
@@ -562,18 +560,18 @@ TEST_CASE("Array operator bool") {
     check((bool) a);
 }
 
-TEST_CASE("Array is_empty") {
+TEST_CASE("Array isEmpty") {
     Array<u32> a;
-    check(a.is_empty());
+    check(a.isEmpty());
     a = {4, 5, 6};
-    check(!a.is_empty());
+    check(!a.isEmpty());
 }
 
-TEST_CASE("Array num_items") {
+TEST_CASE("Array numItems") {
     Array<u32> a;
-    check(a.num_items() == 0);
+    check(a.numItems() == 0);
     a = {4, 5, 6};
-    check(a.num_items() == 3);
+    check(a.numItems() == 3);
 }
 
 //--------------------------------
@@ -591,7 +589,7 @@ TEST_CASE("Array clear") {
 TEST_CASE("Array resize") {
     Array<u32> a;
     a.resize(3);
-    check(a.num_items() == 3);
+    check(a.numItems() == 3);
 }
 
 TEST_CASE("Array resize 2") {
@@ -724,11 +722,11 @@ TEST_CASE("Array erase") {
 
 TEST_CASE("Array erase_quick") {
     Array<u32> a = {4, 5, 6};
-    a.erase_quick(0);
+    a.eraseQuick(0);
     check(a == ArrayView<const u32>{6, 5});
 
     Array<u32> b = {4, 5, 6, 7, 8, 9, 10};
-    b.erase_quick(1, 2);
+    b.eraseQuick(1, 2);
     check(b == ArrayView<const u32>{4, 9, 10, 7, 8});
 }
 
@@ -743,23 +741,13 @@ TEST_CASE("Array erase_quick") {
 
 struct TestHistogramBucket {
     u32 population = 0;
-    u32 num_times_occurred = 0;
+    u32 numTimesOccurred = 0;
 };
 
 TEST_CASE("Set stress test u32") {
     // Metrics collection.
-    Array<TestHistogramBucket> histogram = {
-        {0, 0},
-        {1, 0},
-        {2, 0},
-        {4, 0},
-        {8, 0},
-        {16, 0},
-        {32, 0},
-        {64, 0},
-        {128, 0},
-        {256, 0},
-    };
+    Array<TestHistogramBucket> histogram = {{0, 0},  {1, 0},  {2, 0},  {4, 0},   {8, 0},
+                                            {16, 0}, {32, 0}, {64, 0}, {128, 0}, {256, 0}};
 
     // Test setup.
     Set<u32> set;
@@ -769,55 +757,55 @@ TEST_CASE("Set stress test u32") {
     // Main test loop.
     for (u32 iters = 0; iters < 2500; iters++) {
         // Ensure the set and mirror array have the same number of items.
-        PLY_ASSERT(set.items().num_items() == arr.num_items());
+        PLY_ASSERT(set.items().numItems() == arr.numItems());
 
         // Decide what population size the set should have next.
         // We'll generate a random number using a Poisson distribution.
-        float exp = 1.f - r.generate_float();
-        PLY_ASSERT(exp > 0); // Guaranteed because generate_float returns numbers < 1.
-        float random_population = -logf(exp) * 40; // A Poisson distribution yielding an average value of 40.
+        float exp = 1.f - r.generateFloat();
+        PLY_ASSERT(exp > 0);                      // Guaranteed because generateFloat returns numbers < 1.
+        float randomPopulation = -logf(exp) * 40; // A Poisson distribution yielding an average value of 40.
         // Convert to integer and skew the distribution downwards so that the zero population occurs more often.
-        u32 desired_population = (u32) clamp(random_population - 4.f, 0.f, 512.f);
+        u32 desiredPopulation = (u32) clamp(randomPopulation - 4.f, 0.f, 512.f);
 
         // Add items to the set if needed.
-        while (desired_population > set.items().num_items()) {
-            u32 value_to_insert = r.generate_u32() % 1000;
-            if (set.insert(value_to_insert).was_found) {
-                check(find(arr, value_to_insert) >= 0);
+        while (desiredPopulation > set.items().numItems()) {
+            u32 valueToInsert = r.generate_u32() % 1000;
+            if (set.insert(valueToInsert).wasFound) {
+                check(find(arr, valueToInsert) >= 0);
             } else {
-                arr.append(value_to_insert);
+                arr.append(valueToInsert);
             }
         }
 
         // Remove items from the set if needed.
-        while (desired_population < arr.num_items()) {
-            u32 index_to_remove = r.generate_u32() % arr.num_items();
-            u32 value_to_remove = arr[index_to_remove];
-            bool was_found = set.erase(value_to_remove);
-            check(was_found);
-            arr.erase_quick(index_to_remove);
+        while (desiredPopulation < arr.numItems()) {
+            u32 indexToRemove = r.generate_u32() % arr.numItems();
+            u32 valueToRemove = arr[indexToRemove];
+            bool wasFound = set.erase(valueToRemove);
+            check(wasFound);
+            arr.eraseQuick(indexToRemove);
         }
 
         // Check its population.
-        check(desired_population == set.items().num_items());
-        check(desired_population == arr.num_items());
-        for (s32 i = histogram.num_items() - 1; i >= 0; i--) {
-            if (desired_population >= histogram[i].population) {
-                histogram[i].num_times_occurred++;
+        check(desiredPopulation == set.items().numItems());
+        check(desiredPopulation == arr.numItems());
+        for (s32 i = histogram.numItems() - 1; i >= 0; i--) {
+            if (desiredPopulation >= histogram[i].population) {
+                histogram[i].numTimesOccurred++;
                 break;
             }
         }
 
         // Test find.
         sort(arr);
-        for (u32 i = 0; i < arr.num_items(); i++) {
+        for (u32 i = 0; i < arr.numItems(); i++) {
             check(set.find(arr[i]));
             if (i > 0) {
                 check(arr[i] > arr[i - 1]); // No duplicates.
                 u32 delta = arr[i] - arr[i - 1];
                 if (delta > 1) {
-                    u32 absent_key = arr[i - 1] + 1 + (r.generate_u32() % (delta - 1));
-                    check(!set.find(absent_key));
+                    u32 absentKey = arr[i - 1] + 1 + (r.generate_u32() % (delta - 1));
+                    check(!set.find(absentKey));
                 }
             }
         }
@@ -835,19 +823,19 @@ TEST_CASE("Set stress test u32") {
 
 TEST_CASE("Map with String keys") {
     Map<String, u32> map;
-    
+
     auto result1 = map.insert("apple");
-    check(!result1.was_found);
+    check(!result1.wasFound);
     *result1.value = 1;
-    
+
     auto result2 = map.insert("banana");
-    check(!result2.was_found);
+    check(!result2.wasFound);
     *result2.value = 2;
-    
+
     auto result3 = map.insert("cherry");
-    check(!result3.was_found);
+    check(!result3.wasFound);
     *result3.value = 3;
-    
+
     // Find by string
     check(map.find("apple") != nullptr);
     check(*map.find("apple") == 1);
@@ -855,7 +843,7 @@ TEST_CASE("Map with String keys") {
     check(*map.find("banana") == 2);
     check(map.find("cherry") != nullptr);
     check(*map.find("cherry") == 3);
-    
+
     // Find non-existing
     check(map.find("durian") == nullptr);
 }
@@ -863,16 +851,7 @@ TEST_CASE("Map with String keys") {
 TEST_CASE("Map stress test") {
     // Metrics collection.
     Array<TestHistogramBucket> histogram = {
-        {0, 0},
-        {1, 0},
-        {2, 0},
-        {4, 0},
-        {8, 0},
-        {16, 0},
-        {32, 0},
-        {64, 0},
-        {128, 0},
-        {256, 0},
+        {0, 0}, {1, 0}, {2, 0}, {4, 0}, {8, 0}, {16, 0}, {32, 0}, {64, 0}, {128, 0}, {256, 0},
     };
 
     // Test setup.
@@ -883,49 +862,49 @@ TEST_CASE("Map stress test") {
     // Main test loop.
     for (u32 iters = 0; iters < 500; iters++) {
         // Ensure the map and mirror array have the same number of items.
-        PLY_ASSERT(map.items().num_items() == arr.num_items());
+        PLY_ASSERT(map.items().numItems() == arr.numItems());
 
         // Decide what population size the map should have next.
         // We'll generate a random number using a Poisson distribution.
-        float exp = 1.f - r.generate_float();
-        PLY_ASSERT(exp > 0); // Guaranteed because generate_float returns numbers < 1.
-        float random_population = -logf(exp) * 40; // A Poisson distribution yielding an average value of 40.
+        float exp = 1.f - r.generateFloat();
+        PLY_ASSERT(exp > 0);                      // Guaranteed because generateFloat returns numbers < 1.
+        float randomPopulation = -logf(exp) * 40; // A Poisson distribution yielding an average value of 40.
         // Convert to integer and skew the distribution downwards so that the zero population occurs more often.
-        u32 desired_population = (u32) clamp(random_population - 4.f, 0.f, 512.f);
+        u32 desiredPopulation = (u32) clamp(randomPopulation - 4.f, 0.f, 512.f);
 
         // Add items to the map if needed.
-        while (desired_population > map.items().num_items()) {
-            u32 key_to_insert = r.generate_u32() % 1000;
-            auto result = map.insert(key_to_insert);
-            if (result.was_found) {
-                check(find(arr, key_to_insert) >= 0);
+        while (desiredPopulation > map.items().numItems()) {
+            u32 keyToInsert = r.generate_u32() % 1000;
+            auto result = map.insert(keyToInsert);
+            if (result.wasFound) {
+                check(find(arr, keyToInsert) >= 0);
             } else {
-                *result.value = String::format("{}", key_to_insert);
-                arr.append(key_to_insert);
+                *result.value = String::format("{}", keyToInsert);
+                arr.append(keyToInsert);
             }
         }
 
         // Remove items from the map if needed.
-        while (desired_population < arr.num_items()) {
-            u32 index_to_remove = r.generate_u32() % arr.num_items();
-            u32 key_to_remove = arr[index_to_remove];
-            map.erase(key_to_remove);
-            arr.erase_quick(index_to_remove);
+        while (desiredPopulation < arr.numItems()) {
+            u32 indexToRemove = r.generate_u32() % arr.numItems();
+            u32 keyToRemove = arr[indexToRemove];
+            map.erase(keyToRemove);
+            arr.eraseQuick(indexToRemove);
         }
 
         // Check its population.
-        check(desired_population == map.items().num_items());
-        check(desired_population == arr.num_items());
-        for (s32 i = histogram.num_items() - 1; i >= 0; i--) {
-            if (desired_population >= histogram[i].population) {
-                histogram[i].num_times_occurred++;
+        check(desiredPopulation == map.items().numItems());
+        check(desiredPopulation == arr.numItems());
+        for (s32 i = histogram.numItems() - 1; i >= 0; i--) {
+            if (desiredPopulation >= histogram[i].population) {
+                histogram[i].numTimesOccurred++;
                 break;
             }
         }
 
         // Test find.
         sort(arr);
-        for (u32 i = 0; i < arr.num_items(); i++) {
+        for (u32 i = 0; i < arr.numItems(); i++) {
             String* found = map.find(arr[i]);
             check(found);
             check(*found == String::format("{}", arr[i]));
@@ -933,8 +912,8 @@ TEST_CASE("Map stress test") {
                 check(arr[i] > arr[i - 1]); // No duplicates.
                 u32 delta = arr[i] - arr[i - 1];
                 if (delta > 1) {
-                    u32 absent_key = arr[i - 1] + 1 + (r.generate_u32() % (delta - 1));
-                    check(!map.find(absent_key));
+                    u32 absentKey = arr[i - 1] + 1 + (r.generate_u32() % (delta - 1));
+                    check(!map.find(absentKey));
                 }
             }
         }
@@ -952,18 +931,8 @@ TEST_CASE("Map stress test") {
 
 TEST_CASE("BTree stress test u32") {
     // Metrics collection.
-    Array<TestHistogramBucket> histogram = {
-        {0, 0},
-        {1, 0},
-        {2, 0},
-        {4, 0},
-        {8, 0},
-        {16, 0},
-        {32, 0},
-        {64, 0},
-        {128, 0},
-        {256, 0},
-    };
+    Array<TestHistogramBucket> histogram = {{0, 0},  {1, 0},  {2, 0},  {4, 0},   {8, 0},
+                                            {16, 0}, {32, 0}, {64, 0}, {128, 0}, {256, 0}};
 
     // Test setup.
     BTree<u32> btree;
@@ -973,51 +942,51 @@ TEST_CASE("BTree stress test u32") {
     // Main test loop.
     for (u32 iters = 0; iters < 2500; iters++) {
         // Ensure the B-tree and mirror array have the same number of items.
-        PLY_ASSERT(btree.num_items == arr.num_items());
+        PLY_ASSERT(btree.numItems == arr.numItems());
 
         // Decide what population size the B-tree should have next.
         // We'll generate a random number using a Poisson distribution.
-        float exp = 1.f - r.generate_float();
-        PLY_ASSERT(exp > 0); // Guaranteed because generate_float returns numbers < 1.
-        float random_population = -logf(exp) * 40; // A Poisson distribution yielding an average value of 40.
+        float exp = 1.f - r.generateFloat();
+        PLY_ASSERT(exp > 0);                      // Guaranteed because generateFloat returns numbers < 1.
+        float randomPopulation = -logf(exp) * 40; // A Poisson distribution yielding an average value of 40.
         // Convert to integer and skew the distribution downwards so that the zero population occurs more often.
-        u32 desired_population = (u32) clamp(random_population - 4.f, 0.f, 512.f);
+        u32 desiredPopulation = (u32) clamp(randomPopulation - 4.f, 0.f, 512.f);
 
         // Add items to the B-tree if needed.
-        while (desired_population > arr.num_items()) {
-            u32 value_to_insert = r.generate_u32() % 1000;
-            arr.append(value_to_insert);
-            btree.insert(value_to_insert);
+        while (desiredPopulation > arr.numItems()) {
+            u32 valueToInsert = r.generate_u32() % 1000;
+            arr.append(valueToInsert);
+            btree.insert(valueToInsert);
 #if defined(PLY_WITH_ASSERTS)
             btree.validate();
 #endif
         }
 
         // Remove items from the B-tree if needed.
-        while (desired_population < arr.num_items()) {
-            u32 index_to_remove = r.generate_u32() % arr.num_items();
-            u32 value_to_remove = arr[index_to_remove];
-            bool was_found = btree.erase(value_to_remove);
+        while (desiredPopulation < arr.numItems()) {
+            u32 indexToRemove = r.generate_u32() % arr.numItems();
+            u32 valueToRemove = arr[indexToRemove];
+            bool wasFound = btree.erase(valueToRemove);
 #if defined(PLY_WITH_ASSERTS)
             btree.validate();
 #endif
-            check(was_found);
-            arr.erase_quick(index_to_remove);
+            check(wasFound);
+            arr.eraseQuick(indexToRemove);
         }
 
         // Check its population.
-        check(desired_population == arr.num_items());
-        for (s32 i = histogram.num_items() - 1; i >= 0; i--) {
-            if (desired_population >= histogram[i].population) {
-                histogram[i].num_times_occurred++;
+        check(desiredPopulation == arr.numItems());
+        for (s32 i = histogram.numItems() - 1; i >= 0; i--) {
+            if (desiredPopulation >= histogram[i].population) {
+                histogram[i].numTimesOccurred++;
                 break;
             }
         }
 
         // Test iteration.
         sort(arr);
-        auto iter = btree.get_first_item();
-        for (u32 i = 0; i < arr.num_items(); i++) {
+        auto iter = btree.getFirstItem();
+        for (u32 i = 0; i < arr.numItems(); i++) {
             check(iter);
             check(*iter == arr[i]);
             iter++;
@@ -1025,8 +994,8 @@ TEST_CASE("BTree stress test u32") {
         check(!iter);
 
         // Test reverse iteration.
-        iter = btree.get_last_item();
-        for (s32 i = arr.num_items() - 1; i >= 0; i--) {
+        iter = btree.getLastItem();
+        for (s32 i = arr.numItems() - 1; i >= 0; i--) {
             check(iter);
             check(*iter == arr[i]);
             iter--;
@@ -1034,7 +1003,7 @@ TEST_CASE("BTree stress test u32") {
         check(!iter);
 
         // Test find.
-        for (u32 i = 0; i < arr.num_items(); i++) {
+        for (u32 i = 0; i < arr.numItems(); i++) {
             check(btree.find(arr[i]));
         }
     }
@@ -1057,10 +1026,9 @@ struct FruitBowl {
         bool peeled = false;
     };
     struct Cherry {
-        u32 num_on_stem = 1;
+        u32 numOnStem = 1;
     };
-    struct Date {
-    };
+    struct Date {};
 
     Variant<Apple, Banana, Cherry, Date> fruit;
 };
@@ -1091,7 +1059,7 @@ TEST_CASE("Variant template") {
 
     FruitBowl bowl3 = {FruitBowl::Cherry{}};
     check(bowl3.fruit.is<FruitBowl::Cherry>());
-    check(bowl3.fruit.as<FruitBowl::Cherry>()->num_on_stem == 1);
+    check(bowl3.fruit.as<FruitBowl::Cherry>()->numOnStem == 1);
 }
 
 //   ▄▄▄▄  ▄▄▄                       ▄▄  ▄▄   ▄▄
@@ -1103,182 +1071,176 @@ TEST_CASE("Variant template") {
 #undef TEST_CASE_PREFIX
 #define TEST_CASE_PREFIX Algorithm_
 
-TEST_CASE("binary_search() basic functionality") {
+TEST_CASE("binarySearch() basic functionality") {
     Array<u32> arr = {1, 3, 5, 7, 9, 11, 13, 15};
-    
+
     // Test finding existing elements with Find_Greater_Than_Or_Equal
-    check(binary_search(arr, 5, FindGreaterThanOrEqual) == 2);
-    check(binary_search(arr, 7, FindGreaterThanOrEqual) == 3);
-    check(binary_search(arr, 1, FindGreaterThanOrEqual) == 0);
-    check(binary_search(arr, 15, FindGreaterThanOrEqual) == 7);
-    
+    check(binarySearch(arr, 5, FindGreaterThanOrEqual) == 2);
+    check(binarySearch(arr, 7, FindGreaterThanOrEqual) == 3);
+    check(binarySearch(arr, 1, FindGreaterThanOrEqual) == 0);
+    check(binarySearch(arr, 15, FindGreaterThanOrEqual) == 7);
+
     // Test finding non-existing elements with Find_Greater_Than_Or_Equal
-    check(binary_search(arr, 4, FindGreaterThanOrEqual) == 2);
-    check(binary_search(arr, 6, FindGreaterThanOrEqual) == 3);
-    check(binary_search(arr, 0, FindGreaterThanOrEqual) == 0);
-    check(binary_search(arr, 20, FindGreaterThanOrEqual) == 8);
+    check(binarySearch(arr, 4, FindGreaterThanOrEqual) == 2);
+    check(binarySearch(arr, 6, FindGreaterThanOrEqual) == 3);
+    check(binarySearch(arr, 0, FindGreaterThanOrEqual) == 0);
+    check(binarySearch(arr, 20, FindGreaterThanOrEqual) == 8);
 }
 
-TEST_CASE("binary_search() with FindGreaterThan condition") {
+TEST_CASE("binarySearch() with FindGreaterThan condition") {
     Array<u32> arr = {1, 3, 5, 7, 9, 11, 13, 15};
-    
+
     // Test finding existing elements with Find_Greater_Than
-    check(binary_search(arr, 5, FindGreaterThan) == 3);
-    check(binary_search(arr, 7, FindGreaterThan) == 4);
-    check(binary_search(arr, 1, FindGreaterThan) == 1);
-    check(binary_search(arr, 15, FindGreaterThan) == 8);
-    
+    check(binarySearch(arr, 5, FindGreaterThan) == 3);
+    check(binarySearch(arr, 7, FindGreaterThan) == 4);
+    check(binarySearch(arr, 1, FindGreaterThan) == 1);
+    check(binarySearch(arr, 15, FindGreaterThan) == 8);
+
     // Test finding non-existing elements with Find_Greater_Than
-    check(binary_search(arr, 4, FindGreaterThan) == 2);
-    check(binary_search(arr, 6, FindGreaterThan) == 3);
-    check(binary_search(arr, 0, FindGreaterThan) == 0);
-    check(binary_search(arr, 20, FindGreaterThan) == 8);
+    check(binarySearch(arr, 4, FindGreaterThan) == 2);
+    check(binarySearch(arr, 6, FindGreaterThan) == 3);
+    check(binarySearch(arr, 0, FindGreaterThan) == 0);
+    check(binarySearch(arr, 20, FindGreaterThan) == 8);
 }
 
-TEST_CASE("binary_search() empty array") {
-    Array<u32> empty_arr;
-    
+TEST_CASE("binarySearch() empty array") {
+    Array<u32> emptyArr;
+
     // Empty array should always return 0 for any search
-    check(binary_search(empty_arr, 5, FindGreaterThanOrEqual) == 0);
-    check(binary_search(empty_arr, 5, FindGreaterThan) == 0);
-    check(binary_search(empty_arr, 0, FindGreaterThanOrEqual) == 0);
-    check(binary_search(empty_arr, 100, FindGreaterThan) == 0);
+    check(binarySearch(emptyArr, 5, FindGreaterThanOrEqual) == 0);
+    check(binarySearch(emptyArr, 5, FindGreaterThan) == 0);
+    check(binarySearch(emptyArr, 0, FindGreaterThanOrEqual) == 0);
+    check(binarySearch(emptyArr, 100, FindGreaterThan) == 0);
 }
 
-TEST_CASE("binary_search() single element") {
-    Array<u32> single_arr = {42};
-    
+TEST_CASE("binarySearch() single element") {
+    Array<u32> singleArr = {42};
+
     // Test with single element array
-    check(binary_search(single_arr, 42, FindGreaterThanOrEqual) == 0);
-    check(binary_search(single_arr, 42, FindGreaterThan) == 1);
-    check(binary_search(single_arr, 40, FindGreaterThanOrEqual) == 0);
-    check(binary_search(single_arr, 40, FindGreaterThan) == 0);
-    check(binary_search(single_arr, 50, FindGreaterThanOrEqual) == 1);
-    check(binary_search(single_arr, 50, FindGreaterThan) == 1);
+    check(binarySearch(singleArr, 42, FindGreaterThanOrEqual) == 0);
+    check(binarySearch(singleArr, 42, FindGreaterThan) == 1);
+    check(binarySearch(singleArr, 40, FindGreaterThanOrEqual) == 0);
+    check(binarySearch(singleArr, 40, FindGreaterThan) == 0);
+    check(binarySearch(singleArr, 50, FindGreaterThanOrEqual) == 1);
+    check(binarySearch(singleArr, 50, FindGreaterThan) == 1);
 }
 
-TEST_CASE("binary_search() with duplicates") {
+TEST_CASE("binarySearch() with duplicates") {
     Array<u32> arr = {1, 3, 3, 3, 5, 7, 7, 9};
-    
+
     // Test finding duplicates with Find_Greater_Than_Or_Equal (should find first occurrence)
-    check(binary_search(arr, 3, FindGreaterThanOrEqual) == 1);
-    check(binary_search(arr, 7, FindGreaterThanOrEqual) == 5);
-    
+    check(binarySearch(arr, 3, FindGreaterThanOrEqual) == 1);
+    check(binarySearch(arr, 7, FindGreaterThanOrEqual) == 5);
+
     // Test finding duplicates with Find_Greater_Than (should find first element after duplicates)
-    check(binary_search(arr, 3, FindGreaterThan) == 4);
-    check(binary_search(arr, 7, FindGreaterThan) == 7);
-    
+    check(binarySearch(arr, 3, FindGreaterThan) == 4);
+    check(binarySearch(arr, 7, FindGreaterThan) == 7);
+
     // Test finding elements between duplicates
-    check(binary_search(arr, 4, FindGreaterThanOrEqual) == 4);
-    check(binary_search(arr, 4, FindGreaterThan) == 4);
-    check(binary_search(arr, 6, FindGreaterThanOrEqual) == 5);
-    check(binary_search(arr, 6, FindGreaterThan) == 5);
+    check(binarySearch(arr, 4, FindGreaterThanOrEqual) == 4);
+    check(binarySearch(arr, 4, FindGreaterThan) == 4);
+    check(binarySearch(arr, 6, FindGreaterThanOrEqual) == 5);
+    check(binarySearch(arr, 6, FindGreaterThan) == 5);
 }
 
-TEST_CASE("binary_search() all same elements") {
+TEST_CASE("binarySearch() all same elements") {
     Array<u32> arr = {5, 5, 5, 5, 5};
-    
+
     // Test with all same elements
-    check(binary_search(arr, 5, FindGreaterThanOrEqual) == 0);
-    check(binary_search(arr, 5, FindGreaterThan) == 5);
-    check(binary_search(arr, 3, FindGreaterThanOrEqual) == 0);
-    check(binary_search(arr, 3, FindGreaterThan) == 0);
-    check(binary_search(arr, 7, FindGreaterThanOrEqual) == 5);
-    check(binary_search(arr, 7, FindGreaterThan) == 5);
+    check(binarySearch(arr, 5, FindGreaterThanOrEqual) == 0);
+    check(binarySearch(arr, 5, FindGreaterThan) == 5);
+    check(binarySearch(arr, 3, FindGreaterThanOrEqual) == 0);
+    check(binarySearch(arr, 3, FindGreaterThan) == 0);
+    check(binarySearch(arr, 7, FindGreaterThanOrEqual) == 5);
+    check(binarySearch(arr, 7, FindGreaterThan) == 5);
 }
 
-TEST_CASE("binary_search() with custom type") {
+TEST_CASE("binarySearch() with custom type") {
     struct TestItem {
         u32 value;
         String name;
-    
-        u32 get_lookup_key() const {
+
+        u32 getLookupKey() const {
             return value;
         }
     };
 
-    Array<TestItem> arr = {
-        {10, "ten"},
-        {20, "twenty"},
-        {30, "thirty"},
-        {40, "forty"},
-        {50, "fifty"},
-    };
-    
+    Array<TestItem> arr = {{10, "ten"}, {20, "twenty"}, {30, "thirty"}, {40, "forty"}, {50, "fifty"}};
+
     // Test finding existing elements with Find_Greater_Than_Or_Equal
-    check(binary_search(arr, 30, FindGreaterThanOrEqual) == 2);
-    check(binary_search(arr, 40, FindGreaterThanOrEqual) == 3);
-    check(binary_search(arr, 10, FindGreaterThanOrEqual) == 0);
-    check(binary_search(arr, 50, FindGreaterThanOrEqual) == 4);
-    
+    check(binarySearch(arr, 30, FindGreaterThanOrEqual) == 2);
+    check(binarySearch(arr, 40, FindGreaterThanOrEqual) == 3);
+    check(binarySearch(arr, 10, FindGreaterThanOrEqual) == 0);
+    check(binarySearch(arr, 50, FindGreaterThanOrEqual) == 4);
+
     // Test finding non-existing elements with Find_Greater_Than_Or_Equal
-    check(binary_search(arr, 25, FindGreaterThanOrEqual) == 2);
-    check(binary_search(arr, 35, FindGreaterThanOrEqual) == 3);
-    check(binary_search(arr, 5, FindGreaterThanOrEqual) == 0);
-    check(binary_search(arr, 60, FindGreaterThanOrEqual) == 5);
-    
+    check(binarySearch(arr, 25, FindGreaterThanOrEqual) == 2);
+    check(binarySearch(arr, 35, FindGreaterThanOrEqual) == 3);
+    check(binarySearch(arr, 5, FindGreaterThanOrEqual) == 0);
+    check(binarySearch(arr, 60, FindGreaterThanOrEqual) == 5);
+
     // Test finding existing elements with Find_Greater_Than
-    check(binary_search(arr, 30, FindGreaterThan) == 3);
-    check(binary_search(arr, 40, FindGreaterThan) == 4);
-    check(binary_search(arr, 10, FindGreaterThan) == 1);
-    check(binary_search(arr, 50, FindGreaterThan) == 5);
-    
+    check(binarySearch(arr, 30, FindGreaterThan) == 3);
+    check(binarySearch(arr, 40, FindGreaterThan) == 4);
+    check(binarySearch(arr, 10, FindGreaterThan) == 1);
+    check(binarySearch(arr, 50, FindGreaterThan) == 5);
+
     // Test finding non-existing elements with Find_Greater_Than
-    check(binary_search(arr, 25, FindGreaterThan) == 2);
-    check(binary_search(arr, 35, FindGreaterThan) == 3);
-    check(binary_search(arr, 5, FindGreaterThan) == 0);
-    check(binary_search(arr, 60, FindGreaterThan) == 5);
+    check(binarySearch(arr, 25, FindGreaterThan) == 2);
+    check(binarySearch(arr, 35, FindGreaterThan) == 3);
+    check(binarySearch(arr, 5, FindGreaterThan) == 0);
+    check(binarySearch(arr, 60, FindGreaterThan) == 5);
 }
 
-TEST_CASE("binary_search() with String type") {
+TEST_CASE("binarySearch() with String type") {
     Array<String> arr = {"apple", "banana", "cherry", "date", "elderberry"};
-    
+
     // Test finding existing elements with Find_Greater_Than_Or_Equal
-    check(binary_search(arr, "cherry", FindGreaterThanOrEqual) == 2);
-    check(binary_search(arr, "date", FindGreaterThanOrEqual) == 3);
-    check(binary_search(arr, "apple", FindGreaterThanOrEqual) == 0);
-    check(binary_search(arr, "elderberry", FindGreaterThanOrEqual) == 4);
-    
+    check(binarySearch(arr, "cherry", FindGreaterThanOrEqual) == 2);
+    check(binarySearch(arr, "date", FindGreaterThanOrEqual) == 3);
+    check(binarySearch(arr, "apple", FindGreaterThanOrEqual) == 0);
+    check(binarySearch(arr, "elderberry", FindGreaterThanOrEqual) == 4);
+
     // Test finding non-existing elements with Find_Greater_Than_Or_Equal
-    check(binary_search(arr, "blueberry", FindGreaterThanOrEqual) == 2);
-    check(binary_search(arr, "coconut", FindGreaterThanOrEqual) == 3);
-    check(binary_search(arr, "apricot", FindGreaterThanOrEqual) == 1);
-    check(binary_search(arr, "fig", FindGreaterThanOrEqual) == 5);
-    
+    check(binarySearch(arr, "blueberry", FindGreaterThanOrEqual) == 2);
+    check(binarySearch(arr, "coconut", FindGreaterThanOrEqual) == 3);
+    check(binarySearch(arr, "apricot", FindGreaterThanOrEqual) == 1);
+    check(binarySearch(arr, "fig", FindGreaterThanOrEqual) == 5);
+
     // Test finding existing elements with Find_Greater_Than
-    check(binary_search(arr, "cherry", FindGreaterThan) == 3);
-    check(binary_search(arr, "date", FindGreaterThan) == 4);
-    check(binary_search(arr, "apple", FindGreaterThan) == 1);
-    check(binary_search(arr, "elderberry", FindGreaterThan) == 5);
-    
+    check(binarySearch(arr, "cherry", FindGreaterThan) == 3);
+    check(binarySearch(arr, "date", FindGreaterThan) == 4);
+    check(binarySearch(arr, "apple", FindGreaterThan) == 1);
+    check(binarySearch(arr, "elderberry", FindGreaterThan) == 5);
+
     // Test finding non-existing elements with Find_Greater_Than
-    check(binary_search(arr, "blueberry", FindGreaterThan) == 2);
-    check(binary_search(arr, "coconut", FindGreaterThan) == 3);
-    check(binary_search(arr, "apricot", FindGreaterThan) == 1);
-    check(binary_search(arr, "fig", FindGreaterThan) == 5);
+    check(binarySearch(arr, "blueberry", FindGreaterThan) == 2);
+    check(binarySearch(arr, "coconut", FindGreaterThan) == 3);
+    check(binarySearch(arr, "apricot", FindGreaterThan) == 1);
+    check(binarySearch(arr, "fig", FindGreaterThan) == 5);
 }
 
-TEST_CASE("binary_search() with different numeric types") {
+TEST_CASE("binarySearch() with different numeric types") {
     // Test with float array
-    Array<float> float_arr = {1.1f, 2.2f, 3.3f, 4.4f, 5.5f};
-    check(binary_search(float_arr, 3.3f, FindGreaterThanOrEqual) == 2);
-    check(binary_search(float_arr, 3.0f, FindGreaterThanOrEqual) == 2);
-    check(binary_search(float_arr, 3.3f, FindGreaterThan) == 3);
-    check(binary_search(float_arr, 6.0f, FindGreaterThanOrEqual) == 5);
-    
+    Array<float> floatArr = {1.1f, 2.2f, 3.3f, 4.4f, 5.5f};
+    check(binarySearch(floatArr, 3.3f, FindGreaterThanOrEqual) == 2);
+    check(binarySearch(floatArr, 3.0f, FindGreaterThanOrEqual) == 2);
+    check(binarySearch(floatArr, 3.3f, FindGreaterThan) == 3);
+    check(binarySearch(floatArr, 6.0f, FindGreaterThanOrEqual) == 5);
+
     // Test with double array
-    Array<double> double_arr = {1.1, 2.2, 3.3, 4.4, 5.5};
-    check(binary_search(double_arr, 3.3, FindGreaterThanOrEqual) == 2);
-    check(binary_search(double_arr, 3.0, FindGreaterThanOrEqual) == 2);
-    check(binary_search(double_arr, 3.3, FindGreaterThan) == 3);
-    check(binary_search(double_arr, 6.0, FindGreaterThanOrEqual) == 5);
-    
+    Array<double> doubleArr = {1.1, 2.2, 3.3, 4.4, 5.5};
+    check(binarySearch(doubleArr, 3.3, FindGreaterThanOrEqual) == 2);
+    check(binarySearch(doubleArr, 3.0, FindGreaterThanOrEqual) == 2);
+    check(binarySearch(doubleArr, 3.3, FindGreaterThan) == 3);
+    check(binarySearch(doubleArr, 6.0, FindGreaterThanOrEqual) == 5);
+
     // Test with s32 array
     Array<s32> s32_arr = {-5, -3, -1, 1, 3, 5};
-    check(binary_search(s32_arr, -1, FindGreaterThanOrEqual) == 2);
-    check(binary_search(s32_arr, 0, FindGreaterThanOrEqual) == 3);
-    check(binary_search(s32_arr, -1, FindGreaterThan) == 3);
-    check(binary_search(s32_arr, 10, FindGreaterThanOrEqual) == 6);
+    check(binarySearch(s32_arr, -1, FindGreaterThanOrEqual) == 2);
+    check(binarySearch(s32_arr, 0, FindGreaterThanOrEqual) == 3);
+    check(binarySearch(s32_arr, -1, FindGreaterThan) == 3);
+    check(binarySearch(s32_arr, 10, FindGreaterThanOrEqual) == 6);
 }
 
 //  ▄▄  ▄▄        ▄▄                  ▄▄
@@ -1291,14 +1253,14 @@ TEST_CASE("binary_search() with different numeric types") {
 #define TEST_CASE_PREFIX Unicode_
 
 TEST_CASE("Decode truncated UTF-8") {
-  // e3 80 82 is the valid UTF-8 encoding of U+3002
-  // e3 80 is the truncated version of it
-  // As such, it should be decoded as two 8-bit characters
-  OutPipeConvertUnicode conv{MemStream{}, UTF16_LE};
-  conv.write("\xe3\x80");
-  conv.flush(false);
-  String result = static_cast<MemStream&>(conv.child_out).move_to_string();
-  check(result == StringView{"\xe3\x00\x80\x00", 4});
+    // e3 80 82 is the valid UTF-8 encoding of U+3002
+    // e3 80 is the truncated version of it
+    // As such, it should be decoded as two 8-bit characters
+    OutPipeConvertUnicode conv{MemStream{}, UTF16_LE};
+    conv.write("\xe3\x80");
+    conv.flush(false);
+    String result = static_cast<MemStream&>(conv.childOut).moveToString();
+    check(result == StringView{"\xe3\x00\x80\x00", 4});
 }
 
 //  ▄▄▄▄▄▄                ▄▄   ▄▄▄▄▄                                ▄▄
@@ -1311,33 +1273,33 @@ TEST_CASE("Decode truncated UTF-8") {
 #define TEST_CASE_PREFIX Text_Format_
 
 struct ExtractedFormat {
-    bool is_valid = false;
+    bool isValid = false;
     TextFormat format;
 };
 
-ExtractedFormat extract_format_from_name(StringView name) {
+ExtractedFormat extractFormatFromName(StringView name) {
     TextFormat tf;
 
     Array<StringView> components = name.split(".");
-    if (components.num_items() != 4)
+    if (components.numItems() != 4)
         return {false, {}};
 
     if (components[1] == "utf8") {
-        tf.unicode_type = UTF8;
+        tf.unicodeType = UTF8;
     } else if (components[1] == "utf16le") {
-        tf.unicode_type = UTF16_LE;
+        tf.unicodeType = UTF16_LE;
     } else if (components[1] == "utf16be") {
-        tf.unicode_type = UTF16_BE;
+        tf.unicodeType = UTF16_BE;
     } else if (components[1] == "win1252") {
-        tf.unicode_type = NOT_UNICODE;
+        tf.unicodeType = NOT_UNICODE;
     } else {
         return {false, {}};
     }
 
     if (components[2] == "lf") {
-        tf.new_line = TextFormat::LF;
+        tf.newLine = TextFormat::LF;
     } else if (components[2] == "crlf") {
-        tf.new_line = TextFormat::CRLF;
+        tf.newLine = TextFormat::CRLF;
     } else {
         return {false, {}};
     }
@@ -1354,25 +1316,26 @@ ExtractedFormat extract_format_from_name(StringView name) {
 }
 
 TEST_CASE("Autodetect file encodings") {
-    String tests_folder = join_path(BASE_LIBRARY_TESTS_PATH, "text-files");
-    u32 entry_count = 0;
-    for (const DirectoryEntry& entry : Filesystem::list_dir(tests_folder)) {
-        if (!entry.is_dir && entry.name.ends_with(".txt")) {
-            ExtractedFormat expected_format = extract_format_from_name(entry.name.shortened_by(4));
-            check(expected_format.is_valid);
+    String testsFolder = joinPath(BASE_LIBRARY_TESTS_PATH, "text-files");
+    u32 entryCount = 0;
+    for (const DirectoryEntry& entry : Filesystem::listDir(testsFolder)) {
+        if (!entry.isDir && entry.name.endsWith(".txt")) {
+            ExtractedFormat expectedFormat = extractFormatFromName(entry.name.shortenedBy(4));
+            check(expectedFormat.isValid);
 
-            TextFormat detected_format;
-            String contents = Filesystem::load_text_autodetect(join_path(tests_folder, entry.name), &detected_format);
-            check(detected_format.unicode_type == expected_format.format.unicode_type);
-            check(detected_format.new_line == expected_format.format.new_line);
-            check(detected_format.bom == expected_format.format.bom);
+            TextFormat detectedFormat;
+            String contents = Filesystem::loadTextAutodetect(joinPath(testsFolder, entry.name), &detectedFormat);
+            check(detectedFormat.unicodeType == expectedFormat.format.unicodeType);
+            check(detectedFormat.newLine == expectedFormat.format.newLine);
+            check(detectedFormat.bom == expectedFormat.format.bom);
 
-            auto compare_to = Filesystem::load_binary(join_path(tests_folder, entry.name.split(".")[0] + ".utf8.lf.nobom.txt"));
-            check(contents == compare_to);
-            entry_count++;
+            auto compareTo =
+                Filesystem::loadBinary(joinPath(testsFolder, entry.name.split(".")[0] + ".utf8.lf.nobom.txt"));
+            check(contents == compareTo);
+            entryCount++;
         }
     }
-    check(entry_count == 50);
+    check(entryCount == 50);
 }
 
 //   ▄▄▄▄   ▄▄
@@ -1385,34 +1348,36 @@ TEST_CASE("Mem stream temp buffer") {
     Random random{0};
     for (u32 i = 0; i < 100; i++) {
         MemStream mem;
-        u32 file_size = Stream::BUFFER_SIZE * 10;
+        u32 fileSize = Stream::BUFFER_SIZE * 10;
         u32 offset = 0;
-        while (offset < file_size) {
-            check(offset == mem.get_seek_pos());
-            u32 num_consecutive_bytes = (random.generate_u32() % (Stream::MAX_CONSECUTIVE_BYTES / 2)) + (Stream::MAX_CONSECUTIVE_BYTES / 2);
-            check(mem.make_writable(min(num_consecutive_bytes, file_size - offset)));
-            while (mem.cur_byte < mem.end_byte) {
-                *mem.cur_byte++ = (u8) shuffle_bits(offset++);
-                if (--num_consecutive_bytes == 0)
+        while (offset < fileSize) {
+            check(offset == mem.getSeekPos());
+            u32 numConsecutiveBytes =
+                (random.generate_u32() % (Stream::MAX_CONSECUTIVE_BYTES / 2)) + (Stream::MAX_CONSECUTIVE_BYTES / 2);
+            check(mem.makeWritable(min(numConsecutiveBytes, fileSize - offset)));
+            while (mem.curByte < mem.endByte) {
+                *mem.curByte++ = (u8) shuffleBits(offset++);
+                if (--numConsecutiveBytes == 0)
                     break;
             }
         }
-        mem.seek_to(0);
+        mem.seekTo(0);
         offset = 0;
-        while (offset < file_size) {
-            check(offset == mem.get_seek_pos());
-            u32 num_consecutive_bytes = (random.generate_u32() % (Stream::MAX_CONSECUTIVE_BYTES / 2)) + (Stream::MAX_CONSECUTIVE_BYTES / 2);
-            mem.make_readable(num_consecutive_bytes);
-            check(mem.at_eof == (mem.num_remaining_bytes() == 0));
-            if (mem.at_eof)
+        while (offset < fileSize) {
+            check(offset == mem.getSeekPos());
+            u32 numConsecutiveBytes =
+                (random.generate_u32() % (Stream::MAX_CONSECUTIVE_BYTES / 2)) + (Stream::MAX_CONSECUTIVE_BYTES / 2);
+            mem.makeReadable(numConsecutiveBytes);
+            check(mem.atEof == (mem.numRemainingBytes() == 0));
+            if (mem.atEof)
                 break;
-            while (mem.cur_byte < mem.end_byte) {
-                check((u8) *mem.cur_byte++ == (u8) shuffle_bits(offset++));
-                if (--num_consecutive_bytes == 0)
+            while (mem.curByte < mem.endByte) {
+                check((u8) *mem.curByte++ == (u8) shuffleBits(offset++));
+                if (--numConsecutiveBytes == 0)
                     break;
             }
         }
-        check(offset == file_size);
+        check(offset == fileSize);
     }
 }
 
@@ -1426,51 +1391,51 @@ TEST_CASE("Mem stream temp buffer") {
 #define TEST_CASE_PREFIX VirtualMemory_
 
 TEST_CASE("Usage stats with reserve/commit/decommit/unreserve") {
-    VirtualMemory::Properties props = VirtualMemory::get_properties();
-    uptr region_size = max(props.page_size * 4, props.region_alignment);
+    VirtualMemory::Properties props = VirtualMemory::getProperties();
+    uptr regionSize = max(props.pageSize * 4, props.regionAlignment);
 
-    uptr initial_reserved = VirtualMemory::total_reserved_bytes.load_relaxed();
-    uptr initial_committed = VirtualMemory::total_committed_bytes.load_relaxed();
+    uptr initialReserved = VirtualMemory::totalReservedBytes.loadRelaxed();
+    uptr initialCommitted = VirtualMemory::totalCommittedBytes.loadRelaxed();
 
     // Reserve region
-    void* addr = VirtualMemory::reserve_region(region_size);
+    void* addr = VirtualMemory::reserveRegion(regionSize);
     check(addr != nullptr);
-    check(VirtualMemory::total_reserved_bytes.load_relaxed() == initial_reserved + region_size);
-    check(VirtualMemory::total_committed_bytes.load_relaxed() == initial_committed);
+    check(VirtualMemory::totalReservedBytes.loadRelaxed() == initialReserved + regionSize);
+    check(VirtualMemory::totalCommittedBytes.loadRelaxed() == initialCommitted);
 
     // Commit 3 pages
-    VirtualMemory::commit_pages(addr, props.page_size * 3);
-    check(VirtualMemory::total_reserved_bytes.load_relaxed() == initial_reserved + region_size);
-    check(VirtualMemory::total_committed_bytes.load_relaxed() == initial_committed + props.page_size * 3);
+    VirtualMemory::commitPages(addr, props.pageSize * 3);
+    check(VirtualMemory::totalReservedBytes.loadRelaxed() == initialReserved + regionSize);
+    check(VirtualMemory::totalCommittedBytes.loadRelaxed() == initialCommitted + props.pageSize * 3);
 
     // Decommit 1 page
-    VirtualMemory::decommit_pages(addr, props.page_size);
-    check(VirtualMemory::total_reserved_bytes.load_relaxed() == initial_reserved + region_size);
-    check(VirtualMemory::total_committed_bytes.load_relaxed() == initial_committed + props.page_size * 2);
+    VirtualMemory::decommitPages(addr, props.pageSize);
+    check(VirtualMemory::totalReservedBytes.loadRelaxed() == initialReserved + regionSize);
+    check(VirtualMemory::totalCommittedBytes.loadRelaxed() == initialCommitted + props.pageSize * 2);
 
     // Unreserve region (with 2 pages still committed)
-    VirtualMemory::unreserve_region(addr, region_size, props.page_size * 2);
-    check(VirtualMemory::total_reserved_bytes.load_relaxed() == initial_reserved);
-    check(VirtualMemory::total_committed_bytes.load_relaxed() == initial_committed);
+    VirtualMemory::unreserveRegion(addr, regionSize, props.pageSize * 2);
+    check(VirtualMemory::totalReservedBytes.loadRelaxed() == initialReserved);
+    check(VirtualMemory::totalCommittedBytes.loadRelaxed() == initialCommitted);
 }
 
 TEST_CASE("Usage stats with alloc/free") {
-    VirtualMemory::Properties props = VirtualMemory::get_properties();
-    uptr region_size = props.region_alignment * 2;
+    VirtualMemory::Properties props = VirtualMemory::getProperties();
+    uptr regionSize = props.regionAlignment * 2;
 
-    uptr initial_reserved = VirtualMemory::total_reserved_bytes.load_relaxed();
-    uptr initial_committed = VirtualMemory::total_committed_bytes.load_relaxed();
+    uptr initialReserved = VirtualMemory::totalReservedBytes.loadRelaxed();
+    uptr initialCommitted = VirtualMemory::totalCommittedBytes.loadRelaxed();
 
     // Alloc region (reserves and commits)
-    void* addr = VirtualMemory::alloc_region(region_size);
+    void* addr = VirtualMemory::allocRegion(regionSize);
     check(addr != nullptr);
-    check(VirtualMemory::total_reserved_bytes.load_relaxed() == initial_reserved + region_size);
-    check(VirtualMemory::total_committed_bytes.load_relaxed() == initial_committed + region_size);
+    check(VirtualMemory::totalReservedBytes.loadRelaxed() == initialReserved + regionSize);
+    check(VirtualMemory::totalCommittedBytes.loadRelaxed() == initialCommitted + regionSize);
 
     // Free region (decommits and unreserves)
-    VirtualMemory::free_region(addr, region_size);
-    check(VirtualMemory::total_reserved_bytes.load_relaxed() == initial_reserved);
-    check(VirtualMemory::total_committed_bytes.load_relaxed() == initial_committed);
+    VirtualMemory::freeRegion(addr, regionSize);
+    check(VirtualMemory::totalReservedBytes.loadRelaxed() == initialReserved);
+    check(VirtualMemory::totalCommittedBytes.loadRelaxed() == initialCommitted);
 }
 
 //  ▄▄▄▄▄  ▄▄                      ▄▄                        ▄▄    ▄▄         ▄▄         ▄▄
@@ -1493,17 +1458,17 @@ public:
     void push(Item&& item) {
         LockGuard<Mutex> lock{mutex};
         items.append(std::move(item));
-        cv.wake_one();
+        cv.wakeOne();
     }
-    bool pop(Item& item, u32 timeout_ms = 2000) {
-        u64 time_limit = get_cpu_ticks() + (u64) (timeout_ms * get_cpu_ticks_per_second() / 1000.f);
+    bool pop(Item& item, u32 timeoutMs = 2000) {
+        u64 timeLimit = getCpuTicks() + (u64) (timeoutMs * getCpuTicksPerSecond() / 1000.f);
         LockGuard<Mutex> lock{mutex};
-        while (items.is_empty()) {
-            u64 now = get_cpu_ticks();
-            s32 remaining_ms = (s32) ((time_limit - now) * (1000.f / get_cpu_ticks_per_second()));
-            if (remaining_ms <= 0)
+        while (items.isEmpty()) {
+            u64 now = getCpuTicks();
+            s32 remainingMs = (s32) ((timeLimit - now) * (1000.f / getCpuTicksPerSecond()));
+            if (remainingMs <= 0)
                 return false;
-            cv.timed_wait(lock, remaining_ms);
+            cv.timedWait(lock, remainingMs);
         }
         item = std::move(items[0]);
         items.erase(0);
@@ -1514,53 +1479,52 @@ public:
 TEST_CASE("DirectoryWatcher") {
     struct Event {
         String path;
-        bool must_recurse;
+        bool mustRecurse;
     };
-    MessageQueue<Event> message_queue;
+    MessageQueue<Event> messageQueue;
 
-    auto wait_for_event = [&](const Event& expected_event) -> bool {
+    auto waitForEvent = [&](const Event& expectedEvent) -> bool {
         for (;;) {
             Event event;
-            if (!message_queue.pop(event))
+            if (!messageQueue.pop(event))
                 return false;
-            if (event.path == expected_event.path && event.must_recurse == expected_event.must_recurse)
+            if (event.path == expectedEvent.path && event.mustRecurse == expectedEvent.mustRecurse)
                 return true;
         }
     };
 
     // Set up temp directory.
-    String temp_dir = join_path(BUILD_DIR, "temp-dir-watcher");
-    Filesystem::remove_dir_tree(temp_dir); // Clean up from any previous run
-    Filesystem::make_dir(temp_dir);
+    String tempDir = joinPath(BUILD_DIR, "temp-dir-watcher");
+    Filesystem::removeDirTree(tempDir); // Clean up from any previous run
+    Filesystem::makeDir(tempDir);
 
     // Start the watcher.
     DirectoryWatcher watcher;
-    watcher.start(temp_dir, [&](StringView path, bool must_recurse) {
-        message_queue.push({path, must_recurse});
+    watcher.start(tempDir, [&](StringView path, bool mustRecurse) {
+        messageQueue.push({path, mustRecurse});
     });
 
     // Create a file in the temp directory.
-    Filesystem::save_text(join_path(temp_dir, "first_file.txt"), "Hello, world!\n");
-    check(wait_for_event({"first_file.txt", false}));
+    Filesystem::saveText(joinPath(tempDir, "first_file.txt"), "Hello, world!\n");
+    check(waitForEvent({"first_file.txt", false}));
 
     // Create a subdirectory.
-    Filesystem::make_dir(join_path(temp_dir, "subdir"));
-    check(wait_for_event({"subdir", true}));
+    Filesystem::makeDir(joinPath(tempDir, "subdir"));
+    check(waitForEvent({"subdir", true}));
 
     // Modify the first file.
-    Filesystem::save_text(join_path(temp_dir, "first_file.txt"), "Modified content!\n");
-    check(wait_for_event({"first_file.txt", false}));
+    Filesystem::saveText(joinPath(tempDir, "first_file.txt"), "Modified content!\n");
+    check(waitForEvent({"first_file.txt", false}));
 
     // Create a file in the subdirectory.
-    Filesystem::save_text(join_path(temp_dir, "subdir", "second_file.txt"), "Another file\n");
-    check(wait_for_event({join_path("subdir", "second_file.txt"), false}));
+    Filesystem::saveText(joinPath(tempDir, "subdir", "second_file.txt"), "Another file\n");
+    check(waitForEvent({joinPath("subdir", "second_file.txt"), false}));
 
     // Delete the first file.
-    Filesystem::delete_file(join_path(temp_dir, "first_file.txt"));
-    check(wait_for_event({"first_file.txt", false}));
+    Filesystem::deleteFile(joinPath(tempDir, "first_file.txt"));
+    check(waitForEvent({"first_file.txt", false}));
 
     watcher.stop();
-    Filesystem::remove_dir_tree(temp_dir);
+    Filesystem::removeDirTree(tempDir);
 }
 #endif
-

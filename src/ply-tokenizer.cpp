@@ -2,7 +2,7 @@
        ____
       ╱   ╱╲    Plywood C++ Base Library
      ╱___╱╭╮╲   https://plywood.dev/
-      └──┴┴┴┘   
+      └──┴┴┴┘
 ========================================================*/
 
 #include "ply-tokenizer.h"
@@ -15,74 +15,74 @@ namespace ply {
 //  ██    ██ ▄██▄ ▀█▄▄▄  ▄▄▄▄▄ ██▄▄▄ ▀█▄▄█▀ ▀█▄▄▄ ▀█▄▄██  ▀█▄▄ ██ ▀█▄▄█▀ ██  ██ ▄▄▄▄▄ ██   ██ ▀█▄▄██ ██▄▄█▀
 //                                                                                                   ██
 
-inline void update_line_and_column(u32& line_number, u32& column_number, u32 code_point) {
-    if (code_point == '\n') {
-        line_number++;
-        column_number = 1;
-    } else if (code_point == '\t') {
-        u32 tab_size = 4;
-        column_number += tab_size - (column_number % tab_size);
-    } else if (code_point >= 32) {
-        column_number++;
+inline void updateLineAndColumn(u32& lineNumber, u32& columnNumber, u32 codePoint) {
+    if (codePoint == '\n') {
+        lineNumber++;
+        columnNumber = 1;
+    } else if (codePoint == '\t') {
+        u32 tabSize = 4;
+        columnNumber += tabSize - (columnNumber % tabSize);
+    } else if (codePoint >= 32) {
+        columnNumber++;
     }
 }
 
-TokenLocationMap TokenLocationMap::create_from_string(StringView src) {
+TokenLocationMap TokenLocationMap::createFromString(StringView src) {
     ViewStream in{src};
     TokenLocationMap result;
     result.view = src;
-    u32 line_number = 1;
-    u32 column_number = 1;
-    u32 line_start_ofs = 0;
+    u32 lineNumber = 1;
+    u32 columnNumber = 1;
+    u32 lineStartOfs = 0;
 
     u32 ofs = 0;
-    u32 next_chunk_ofs = 256;
+    u32 nextChunkOfs = 256;
     result.table.append({1, 0, 1, 0});
     for (;;) {
-        DecodeResult decoded = decode_unicode(in, UTF8);
-        if (decoded.num_bytes == 0)
+        DecodeResult decoded = decodeUnicode(in, UTF8);
+        if (decoded.numBytes == 0)
             break;
 
-        u32 next_ofs = ofs + decoded.num_bytes;
-        if (next_ofs > next_chunk_ofs) {
-            result.table.append({line_number, next_chunk_ofs - line_start_ofs, column_number, ofs - next_chunk_ofs});
-            next_chunk_ofs += 256;
+        u32 nextOfs = ofs + decoded.numBytes;
+        if (nextOfs > nextChunkOfs) {
+            result.table.append({lineNumber, nextChunkOfs - lineStartOfs, columnNumber, ofs - nextChunkOfs});
+            nextChunkOfs += 256;
         }
-        ofs = next_ofs;
+        ofs = nextOfs;
 
-        update_line_and_column(line_number, column_number, decoded.point);
+        updateLineAndColumn(lineNumber, columnNumber, decoded.point);
         if (decoded.point == '\n') {
-            line_start_ofs = ofs;
+            lineStartOfs = ofs;
         }
     }
-    if (ofs == next_chunk_ofs) {
-        result.table.append({line_number, next_chunk_ofs - line_start_ofs, column_number, ofs - next_chunk_ofs});
+    if (ofs == nextChunkOfs) {
+        result.table.append({lineNumber, nextChunkOfs - lineStartOfs, columnNumber, ofs - nextChunkOfs});
     }
     return result;
 }
 
-TokenLocation TokenLocationMap::get_location_from_offset(u32 file_offset) const {
-    PLY_ASSERT(file_offset <= this->view.num_bytes());
-    const TokenLocation& file_location = this->table[file_offset >> 8];
-    u32 chunk_ofs = file_offset & ~0xff;
-    const char* line_start = this->view.bytes() + (chunk_ofs - file_location.num_bytes_into_line);
+TokenLocation TokenLocationMap::getLocationFromOffset(u32 fileOffset) const {
+    PLY_ASSERT(fileOffset <= this->view.numBytes());
+    const TokenLocation& fileLocation = this->table[fileOffset >> 8];
+    u32 chunkOfs = fileOffset & ~0xff;
+    const char* lineStart = this->view.bytes() + (chunkOfs - fileLocation.numBytesIntoLine);
     StringView src = this->view;
-    src = src.substr(chunk_ofs - file_location.num_bytes_into_column);
-    const char* target = this->view.bytes() + file_offset;
-    u32 line_number = file_location.line_number;
-    u32 column_number = file_location.column_number;
+    src = src.substr(chunkOfs - fileLocation.numBytesIntoColumn);
+    const char* target = this->view.bytes() + fileOffset;
+    u32 lineNumber = fileLocation.lineNumber;
+    u32 columnNumber = fileLocation.columnNumber;
 
     for (;;) {
         if (src.bytes() >= target) {
-            u32 nb = numeric_cast<u32>(target - src.bytes());
-            // FIXME: num_bytes_into_line is incorrect here:
-            return {line_number, numeric_cast<u32>(target - line_start), column_number, nb};
+            u32 nb = numericCast<u32>(target - src.bytes());
+            // FIXME: numBytesIntoLine is incorrect here:
+            return {lineNumber, numericCast<u32>(target - lineStart), columnNumber, nb};
         }
 
-        DecodeResult decoded = decode_unicode(src, UTF8);
-        src = src.substr(decoded.num_bytes);
+        DecodeResult decoded = decodeUnicode(src, UTF8);
+        src = src.substr(decoded.numBytes);
 
-        update_line_and_column(line_number, column_number, decoded.point);
+        updateLineAndColumn(lineNumber, columnNumber, decoded.point);
     }
 }
 
@@ -92,7 +92,7 @@ TokenLocation TokenLocationMap::get_location_from_offset(u32 file_offset) const 
 //    ██   ▀█▄▄█▀ ██ ▀█▄ ▀█▄▄▄  ██  ██
 //
 
-StringView get_punctuation_string(Token::Type tok) {
+StringView getPunctuationString(Token::Type tok) {
     switch (tok) {
         case Token::OpenCurly:
             return "{";
@@ -191,7 +191,7 @@ StringView get_punctuation_string(Token::Type tok) {
     }
 }
 
-StringView Token::to_string() const {
+StringView Token::toString() const {
     switch (this->type) {
         case Token::Unrecognized:
         case Token::Whitespace:
@@ -204,7 +204,7 @@ StringView Token::to_string() const {
             return "end-of-file";
         }
         default: {
-            return get_punctuation_string(this->type);
+            return getPunctuationString(this->type);
         }
     }
 }
@@ -216,123 +216,123 @@ StringView Token::to_string() const {
 //
 
 inline void error(Tokenizer& tkr, const char* pos, String&& message) {
-    if (tkr.error_callback) {
-        tkr.error_callback(tkr.input_offset + numeric_cast<u32>(pos - tkr.start_byte), std::move(message));
+    if (tkr.errorCallback) {
+        tkr.errorCallback(tkr.inputOffset + numericCast<u32>(pos - tkr.startByte), std::move(message));
     }
 }
 
-void read_numeric_literal(ViewStream& in) {
+void readNumericLiteral(ViewStream& in) {
     // FIXME: Optionally skip line continuations inside numeric literals.
-    if (in.make_readable() && (*in.cur_byte == '0')) {
-        in.cur_byte++;
-        if (in.make_readable() && (*in.cur_byte == 'x')) {
-            in.cur_byte++;
+    if (in.makeReadable() && (*in.curByte == '0')) {
+        in.curByte++;
+        if (in.makeReadable() && (*in.curByte == 'x')) {
+            in.curByte++;
             read_u64_from_text(in, 16); // FIXME: Wasteful to compute the number and not use it
             goto suffix;
         }
     }
 
-    read_double_from_text(in);
+    readDoubleFromText(in);
 suffix:
-    if (in.make_readable() && (*in.cur_byte == 'f')) {
-        in.cur_byte++;
+    if (in.makeReadable() && (*in.curByte == 'f')) {
+        in.curByte++;
     } else {
-        if (in.make_readable() && (*in.cur_byte == 'U')) {
-            in.cur_byte++;
+        if (in.makeReadable() && (*in.curByte == 'U')) {
+            in.curByte++;
         }
-        if (in.make_readable() && (*in.cur_byte == 'L')) {
-            in.cur_byte++;
-            if (in.make_readable() && (*in.cur_byte == 'L')) {
-                in.cur_byte++;
+        if (in.makeReadable() && (*in.curByte == 'L')) {
+            in.curByte++;
+            if (in.makeReadable() && (*in.curByte == 'L')) {
+                in.curByte++;
             }
         }
     }
 }
 
-void read_string_literal(Tokenizer& tkr, ViewStream& in, char quote_punc) {
-    PLY_ASSERT((quote_punc == '"') || (quote_punc = '\''));
+void readStringLiteral(Tokenizer& tkr, ViewStream& in, char quotePunc) {
+    PLY_ASSERT((quotePunc == '"') || (quotePunc = '\''));
     for (;;) {
-        if (!in.make_readable()) {
-            error(tkr, in.cur_byte, "unexpected end-of-file in string literal");
+        if (!in.makeReadable()) {
+            error(tkr, in.curByte, "unexpected end-of-file in string literal");
             break;
         }
-        char c = *in.cur_byte;
-        in.cur_byte++;
+        char c = *in.curByte;
+        in.curByte++;
         if (c == '\\') {
-            if (!in.make_readable()) {
-                error(tkr, in.cur_byte, "unexpected end-of-file in string literal");
+            if (!in.makeReadable()) {
+                error(tkr, in.curByte, "unexpected end-of-file in string literal");
                 break;
             }
-            in.cur_byte++;
+            in.curByte++;
         } else if (c == '\n') {
-            error(tkr, in.cur_byte, "unexpected end-of-line in string literal");
+            error(tkr, in.curByte, "unexpected end-of-line in string literal");
             break;
-        } else if (c == quote_punc)
+        } else if (c == quotePunc)
             break;
     }
 }
 
-bool read_delimiter_and_raw_string_literal(Tokenizer& tkr, ViewStream& in) {
-    PLY_ASSERT((in.num_remaining_bytes() > 0) && (*in.cur_byte == '"'));
-    in.cur_byte++;
+bool readDelimiterAndRawStringLiteral(Tokenizer& tkr, ViewStream& in) {
+    PLY_ASSERT((in.numRemainingBytes() > 0) && (*in.curByte == '"'));
+    in.curByte++;
 
     // read delimiter
-    const char* delimiter_start = in.cur_byte;
+    const char* delimiterStart = in.curByte;
     for (;;) {
-        if (!in.make_readable()) {
+        if (!in.makeReadable()) {
             // End of file while reading raw string delimiter
-            error(tkr, in.cur_byte, "unexpected end-of-file in raw string delimiter");
+            error(tkr, in.curByte, "unexpected end-of-file in raw string delimiter");
             return false;
         }
-        char c = *in.cur_byte;
+        char c = *in.curByte;
         if (c == '(')
             break;
         // FIXME: Recognize more whitespace characters
-        if (is_whitespace(c) || c == ')' || c == '\\') {
+        if (isWhitespace(c) || c == ')' || c == '\\') {
             // Invalid character in delimiter
-            error(tkr, in.cur_byte, "invalid character in raw string delimiter");
+            error(tkr, in.curByte, "invalid character in raw string delimiter");
             return false;
         }
-        in.cur_byte++;
+        in.curByte++;
     }
 
     // FIXME: Enforce maximum length of delimiter (at most 16 characters)
-    const char* delimiter_end = in.cur_byte;
-    in.cur_byte++;
+    const char* delimiterEnd = in.curByte;
+    in.curByte++;
 
     // Read remainder of string
     for (;;) {
-        if (!in.make_readable()) {
+        if (!in.makeReadable()) {
             // End of file in string literal
-            error(tkr, in.cur_byte, "unexpected end-of-file in string literal");
+            error(tkr, in.curByte, "unexpected end-of-file in string literal");
             return false;
         }
-        char c = *in.cur_byte;
-        in.cur_byte++;
+        char c = *in.curByte;
+        in.curByte++;
         if (c == ')') {
             // Try to match delimiter
-            const char* d = delimiter_start;
+            const char* d = delimiterStart;
             for (;;) {
-                if (d == delimiter_end) {
-                    if (!in.make_readable()) {
+                if (d == delimiterEnd) {
+                    if (!in.makeReadable()) {
                         // End of file while matching closing "
-                        error(tkr, in.cur_byte, "unexpected end-of-file in string literal");
+                        error(tkr, in.curByte, "unexpected end-of-file in string literal");
                         return false;
                     }
-                    c = *in.cur_byte;
+                    c = *in.curByte;
                     if (c == '"') {
                         // End of string literal
-                        in.cur_byte++;
+                        in.curByte++;
                         return true;
                     }
                 }
-                if (!in.make_readable()) {
+                if (!in.makeReadable()) {
                     // End of file while matching delimiter
-                    error(tkr, in.cur_byte, "unexpected end-of-file in string literal");
+                    error(tkr, in.curByte, "unexpected end-of-file in string literal");
                     return false;
                 }
-                c = *in.cur_byte;
-                in.cur_byte++;
+                c = *in.curByte;
+                in.curByte++;
                 if (c != *d)
                     break; // No match here
                 d++;
@@ -341,68 +341,69 @@ bool read_delimiter_and_raw_string_literal(Tokenizer& tkr, ViewStream& in) {
     }
 }
 
-Token::Type read_identifier_or_literal(Tokenizer& tkr, ViewStream& in) {
+Token::Type readIdentifierOrLiteral(Tokenizer& tkr, ViewStream& in) {
     // FIXME: Optionally skip line continuations inside here.
     // This implementation is a little too obfuscated anyway.
-    PLY_ASSERT(in.num_remaining_bytes() > 0);
+    PLY_ASSERT(in.numRemainingBytes() > 0);
 
     u32 mask[8] = {0, 0, 0x87fffffe, 0x7fffffe, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff};
     mask[1] |= 0x10;      // '$'
     mask[1] |= 0x3ff0000; // accept digits (we already know the first character is non-digit)
 
-    const char* start_byte = in.cur_byte;
+    const char* startByte = in.curByte;
     for (;;) {
-        if (!in.make_readable()) {
-            PLY_ASSERT(in.cur_byte != start_byte);
+        if (!in.makeReadable()) {
+            PLY_ASSERT(in.curByte != startByte);
             return Token::Identifier;
         }
-        char c = *in.cur_byte;
+        char c = *in.curByte;
         if ((mask[(u8) c >> 5] & (1 << ((u8) c & 31))) == 0) {
             if (c == '"') {
-                if (in.cur_byte == start_byte + 1 && *start_byte == 'R') {
-                    read_delimiter_and_raw_string_literal(tkr, in);
+                if (in.curByte == startByte + 1 && *startByte == 'R') {
+                    readDelimiterAndRawStringLiteral(tkr, in);
                 } else {
                     // Treat it as a string prefix
-                    in.cur_byte++;
-                    read_string_literal(tkr, in, c);
+                    in.curByte++;
+                    readStringLiteral(tkr, in, c);
                 }
                 return Token::StringLiteral;
             } else {
-                if (start_byte == in.cur_byte) {
+                if (startByte == in.curByte) {
                     // Garbage token
-                    error(tkr, in.cur_byte, "garbage characters encountered");
-                    in.cur_byte++;
+                    error(tkr, in.curByte, "garbage characters encountered");
+                    in.curByte++;
                     return Token::Unrecognized;
                 } else {
                     return Token::Identifier;
                 }
             }
         }
-        in.cur_byte++;
+        in.curByte++;
     }
 }
 
-Token read_token(Tokenizer& tkr, ViewStream& in) {
+Token readToken(Tokenizer& tkr, ViewStream& in) {
     Token token;
-    token.input_offset = tkr.input_offset;
+    token.inputOffset = tkr.inputOffset;
     token.type = Token::Unrecognized;
-    if (!in.make_readable()) {
+    if (!in.makeReadable()) {
         token.type = Token::EOF;
         return token;
     }
 
-    tkr.start_byte = in.cur_byte;
-    bool was_at_start_of_line = tkr.state.at_start_of_line;
-    tkr.state.at_start_of_line = false;
+    tkr.startByte = in.curByte;
+    bool wasAtStartOfLine = tkr.state.atStartOfLine;
+    tkr.state.atStartOfLine = false;
     auto can_read_2nd_char = [&]() {
-        if (tkr.config.allow_line_continuations_in_all_tokens && (in.num_remaining_bytes() >= 2) && (*in.cur_byte == '\\') && (*(in.cur_byte + 1) == '\n')) {
-            in.cur_byte += 2;
+        if (tkr.config.allowLineContinuationsInAllTokens && (in.numRemainingBytes() >= 2) && (*in.curByte == '\\') &&
+            (*(in.curByte + 1) == '\n')) {
+            in.curByte += 2;
         }
-        return in.make_readable();
+        return in.makeReadable();
     };
 
 retry:
-    char c = *in.cur_byte;
+    char c = *in.curByte;
     switch (c) {
         case '\n':
         case '\r':
@@ -410,50 +411,50 @@ retry:
         case ' ': {
             // Skip whitespace while keeping track of start of line
             token.type = Token::Whitespace;
-            tkr.state.at_start_of_line = was_at_start_of_line;
-            while (in.make_readable()) {
-                switch (*in.cur_byte) {
+            tkr.state.atStartOfLine = wasAtStartOfLine;
+            while (in.makeReadable()) {
+                switch (*in.curByte) {
                     case '\n':
-                        tkr.state.at_start_of_line = true;
+                        tkr.state.atStartOfLine = true;
                     case '\r':
                     case '\t':
                     case ' ':
-                        in.cur_byte++;
+                        in.curByte++;
                         break;
                     case '\\':
-                        if (tkr.config.allow_line_continuations_in_all_tokens && (in.num_remaining_bytes() >= 2) &&
-                            (in.cur_byte[1] == '\n')) {
-                            in.cur_byte += 2;
+                        if (tkr.config.allowLineContinuationsInAllTokens && (in.numRemainingBytes() >= 2) &&
+                            (in.curByte[1] == '\n')) {
+                            in.curByte += 2;
                             break;
                         }
                     default:
-                        goto end_of_white;
+                        goto endOfWhite;
                 }
             }
-        end_of_white:
+        endOfWhite:
             break;
         }
 
         case '#': {
-            in.cur_byte++;
-            if (was_at_start_of_line && tkr.config.tokenize_preprocessor_directives) {
+            in.curByte++;
+            if (wasAtStartOfLine && tkr.config.tokenizePreprocessorDirectives) {
                 token.type = Token::PreprocessorDirective;
                 // Read directive up to its terminating newline.
                 for (;;) {
-                    if (!in.make_readable())
+                    if (!in.makeReadable())
                         break;
-                    char c = *in.cur_byte++;
+                    char c = *in.curByte++;
                     if (c == '\n')
                         break;
                     // Skip \ newline escapes.
-                    if (c == '\\' && (in.num_remaining_bytes() > 0) && (*in.cur_byte == '\n')) {
-                        in.cur_byte++;
+                    if (c == '\\' && (in.numRemainingBytes() > 0) && (*in.curByte == '\n')) {
+                        in.curByte++;
                     }
                 }
-                tkr.state.at_start_of_line = true;
+                tkr.state.atStartOfLine = true;
             } else {
-                if (can_read_2nd_char() && (*in.cur_byte == '#')) {
-                    in.cur_byte++;
+                if (can_read_2nd_char() && (*in.curByte == '#')) {
+                    in.curByte++;
                     token.type = Token::DoubleHash;
                 } else {
                     token.type = Token::Hash;
@@ -463,37 +464,37 @@ retry:
         }
 
         case '/': {
-            in.cur_byte++;
+            in.curByte++;
             token.type = Token::ForwardSlash;
             if (can_read_2nd_char()) {
-                if ((*in.cur_byte == '/') && tkr.config.tokenize_line_comments) {
-                    in.cur_byte++;
+                if ((*in.curByte == '/') && tkr.config.tokenizeLineComments) {
+                    in.curByte++;
                     token.type = Token::LineComment;
-                    read_line(in);
-                    tkr.state.at_start_of_line = true;
-                } else if ((*in.cur_byte == '*') && tkr.config.tokenize_c_style_comments) {
+                    readLine(in);
+                    tkr.state.atStartOfLine = true;
+                } else if ((*in.curByte == '*') && tkr.config.tokenizeCStyleComments) {
                     token.type = Token::CStyleComment;
-                    in.cur_byte++;
+                    in.curByte++;
                     for (;;) {
-                        if (!in.make_readable()) {
-                            error(tkr, in.cur_byte, "unexpected end-of-file in C-style comment");
+                        if (!in.makeReadable()) {
+                            error(tkr, in.curByte, "unexpected end-of-file in C-style comment");
                             break;
-                        } else if (*in.cur_byte == '*') {
-                            in.cur_byte++;
-                            if (!in.make_readable()) {
-                                error(tkr, in.cur_byte, "unexpected end-of-file in C-style comment");
+                        } else if (*in.curByte == '*') {
+                            in.curByte++;
+                            if (!in.makeReadable()) {
+                                error(tkr, in.curByte, "unexpected end-of-file in C-style comment");
                                 break;
-                            } else if (*in.cur_byte == '/') {
-                                in.cur_byte++;
+                            } else if (*in.curByte == '/') {
+                                in.curByte++;
                                 break;
                             }
                         } else {
-                            in.cur_byte++;
+                            in.curByte++;
                         }
                     }
-                } else if (*in.cur_byte == '=') {
+                } else if (*in.curByte == '=') {
                     token.type = Token::SlashEqual;
-                    in.cur_byte++;
+                    in.curByte++;
                 }
             }
             break;
@@ -501,44 +502,44 @@ retry:
 
         case '{': {
             token.type = Token::OpenCurly;
-            in.cur_byte++;
+            in.curByte++;
             break;
         }
 
         case '}': {
             token.type = Token::CloseCurly;
-            in.cur_byte++;
+            in.curByte++;
             break;
         }
 
         case ';': {
             token.type = Token::Semicolon;
-            in.cur_byte++;
+            in.curByte++;
             break;
         }
 
         case '(': {
             token.type = Token::OpenParen;
-            in.cur_byte++;
+            in.curByte++;
             break;
         }
 
         case ')': {
             token.type = Token::CloseParen;
-            in.cur_byte++;
+            in.curByte++;
             break;
         }
 
         case '<': {
             token.type = Token::OpenAngle;
-            in.cur_byte++;
+            in.curByte++;
             if (can_read_2nd_char()) {
-                if (*in.cur_byte == '<') {
+                if (*in.curByte == '<') {
                     token.type = Token::LeftShift;
-                    in.cur_byte++;
-                } else if (*in.cur_byte == '=') {
+                    in.curByte++;
+                } else if (*in.curByte == '=') {
                     token.type = Token::LessThanOrEqual;
-                    in.cur_byte++;
+                    in.curByte++;
                 }
             }
             break;
@@ -546,14 +547,14 @@ retry:
 
         case '>': {
             token.type = Token::CloseAngle;
-            in.cur_byte++;
+            in.curByte++;
             if (can_read_2nd_char()) {
-                if (tkr.config.tokenize_right_shift && (*in.cur_byte == '>')) {
+                if (tkr.config.tokenizeRightShift && (*in.curByte == '>')) {
                     token.type = Token::RightShift;
-                    in.cur_byte++;
-                } else if (*in.cur_byte == '=') {
+                    in.curByte++;
+                } else if (*in.curByte == '=') {
                     token.type = Token::GreaterThanOrEqual;
-                    in.cur_byte++;
+                    in.curByte++;
                 }
             }
             break;
@@ -561,23 +562,23 @@ retry:
 
         case '[': {
             token.type = Token::OpenSquare;
-            in.cur_byte++;
+            in.curByte++;
             break;
         }
 
         case ']': {
             token.type = Token::CloseSquare;
-            in.cur_byte++;
+            in.curByte++;
             break;
         }
 
         case ':': {
             token.type = Token::SingleColon;
-            in.cur_byte++;
+            in.curByte++;
             if (can_read_2nd_char()) {
-                if (*in.cur_byte == ':') {
+                if (*in.curByte == ':') {
                     token.type = Token::DoubleColon;
-                    in.cur_byte++;
+                    in.curByte++;
                 }
             }
             break;
@@ -585,35 +586,35 @@ retry:
 
         case ',': {
             token.type = Token::Comma;
-            in.cur_byte++;
+            in.curByte++;
             break;
         }
 
         case '?': {
             token.type = Token::QuestionMark;
-            in.cur_byte++;
+            in.curByte++;
             break;
         }
 
         case '=': {
             token.type = Token::SingleEqual;
-            in.cur_byte++;
+            in.curByte++;
             if (can_read_2nd_char()) {
-                if (*in.cur_byte == '=') {
+                if (*in.curByte == '=') {
                     token.type = Token::DoubleEqual;
-                    in.cur_byte++;
+                    in.curByte++;
                 }
             }
             break;
         }
 
         case '*': {
-            in.cur_byte++;
+            in.curByte++;
             token.type = Token::Star;
             if (can_read_2nd_char()) {
-                if (*in.cur_byte == '=') {
+                if (*in.curByte == '=') {
                     token.type = Token::StarEqual;
-                    in.cur_byte++;
+                    in.curByte++;
                 }
             }
             break;
@@ -621,17 +622,17 @@ retry:
 
         case '%': {
             token.type = Token::Percent;
-            in.cur_byte++;
+            in.curByte++;
             break;
         }
 
         case '&': {
             token.type = Token::SingleAmpersand;
-            in.cur_byte++;
+            in.curByte++;
             if (can_read_2nd_char()) {
-                if (*in.cur_byte == '&') {
+                if (*in.curByte == '&') {
                     token.type = Token::DoubleAmpersand;
-                    in.cur_byte++;
+                    in.curByte++;
                 }
             }
             break;
@@ -639,11 +640,11 @@ retry:
 
         case '|': {
             token.type = Token::SingleVerticalBar;
-            in.cur_byte++;
+            in.curByte++;
             if (can_read_2nd_char()) {
-                if (*in.cur_byte == '|') {
+                if (*in.curByte == '|') {
                     token.type = Token::DoubleVerticalBar;
-                    in.cur_byte++;
+                    in.curByte++;
                 }
             }
             break;
@@ -651,14 +652,14 @@ retry:
 
         case '+': {
             token.type = Token::SinglePlus;
-            in.cur_byte++;
+            in.curByte++;
             if (can_read_2nd_char()) {
-                if (*in.cur_byte == '+') {
+                if (*in.curByte == '+') {
                     token.type = Token::DoublePlus;
-                    in.cur_byte++;
-                } else if (*in.cur_byte == '=') {
+                    in.curByte++;
+                } else if (*in.curByte == '=') {
                     token.type = Token::PlusEqual;
-                    in.cur_byte++;
+                    in.curByte++;
                 }
             }
             break;
@@ -666,17 +667,17 @@ retry:
 
         case '-': {
             token.type = Token::SingleMinus;
-            in.cur_byte++;
+            in.curByte++;
             if (can_read_2nd_char()) {
-                if (*in.cur_byte == '-') {
+                if (*in.curByte == '-') {
                     token.type = Token::DoubleMinus;
-                    in.cur_byte++;
-                } else if (*in.cur_byte == '=') {
+                    in.curByte++;
+                } else if (*in.curByte == '=') {
                     token.type = Token::MinusEqual;
-                    in.cur_byte++;
-                } else if (*in.cur_byte == '>') {
+                    in.curByte++;
+                } else if (*in.curByte == '>') {
                     token.type = Token::Arrow;
-                    in.cur_byte++;
+                    in.curByte++;
                 }
             }
             break;
@@ -684,11 +685,11 @@ retry:
 
         case '.': {
             token.type = Token::Dot;
-            in.cur_byte++;
+            in.curByte++;
             if (can_read_2nd_char()) {
-                if (in.cur_byte[0] == '.' && in.cur_byte[1] == '.') {
+                if (in.curByte[0] == '.' && in.curByte[1] == '.') {
                     token.type = Token::Ellipsis;
-                    in.cur_byte += 2;
+                    in.curByte += 2;
                 }
             }
             break;
@@ -696,49 +697,50 @@ retry:
 
         case '~': {
             token.type = Token::Tilde;
-            in.cur_byte++;
+            in.curByte++;
             break;
         }
 
         case '^': {
             token.type = Token::Caret;
-            in.cur_byte++;
+            in.curByte++;
             break;
         }
 
         case '!': {
             token.type = Token::Bang;
-            in.cur_byte++;
+            in.curByte++;
             if (can_read_2nd_char()) {
-                if (*in.cur_byte == '=') {
+                if (*in.curByte == '=') {
                     token.type = Token::NotEqual;
-                    in.cur_byte++;
+                    in.curByte++;
                 }
             }
             break;
         }
 
         case '\'': {
-            if (tkr.config.tokenize_single_quoted_strings) {
+            if (tkr.config.tokenizeSingleQuotedStrings) {
                 token.type = Token::StringLiteral;
-                in.cur_byte++;
-                read_string_literal(tkr, in, '\'');
+                in.curByte++;
+                readStringLiteral(tkr, in, '\'');
             }
             break;
         }
 
         case '"': {
-            if (tkr.config.tokenize_double_quoted_strings) {
+            if (tkr.config.tokenizeDoubleQuotedStrings) {
                 token.type = Token::StringLiteral;
-                in.cur_byte++;
-                read_string_literal(tkr, in, '"');
+                in.curByte++;
+                readStringLiteral(tkr, in, '"');
             }
             break;
         }
 
         case '\\': {
-            if (tkr.config.allow_line_continuations_in_all_tokens && (in.num_remaining_bytes() >= 2) && (in.cur_byte[1] == '\n')) {
-                in.cur_byte += 2;
+            if (tkr.config.allowLineContinuationsInAllTokens && (in.numRemainingBytes() >= 2) &&
+                (in.curByte[1] == '\n')) {
+                in.curByte += 2;
                 goto retry;
             }
             break;
@@ -748,19 +750,19 @@ retry:
     if (token.type == Token::Unrecognized) {
         if (c >= '0' && c <= '9') {
             token.type = Token::NumericLiteral;
-            read_numeric_literal(in);
+            readNumericLiteral(in);
         } else {
-            token.type = read_identifier_or_literal(tkr, in);
+            token.type = readIdentifierOrLiteral(tkr, in);
         }
     } else if (token.type >= Token::Punctuation) {
         // Get hardcoded punctuation string in case there was a mid-token line continuation.
-        token.text = get_punctuation_string(token.type);
+        token.text = getPunctuationString(token.type);
     }
 
-    token.text = {tkr.start_byte, in.cur_byte};
-    PLY_ASSERT(token.text.num_bytes() > 0);
-    tkr.input_offset += token.text.num_bytes();
-    tkr.start_byte = nullptr;
+    token.text = {tkr.startByte, in.curByte};
+    PLY_ASSERT(token.text.numBytes() > 0);
+    tkr.inputOffset += token.text.numBytes();
+    tkr.startByte = nullptr;
     return token;
 }
 

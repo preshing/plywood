@@ -2,7 +2,7 @@
        ____
       ╱   ╱╲    Plywood C++ Base Library
      ╱___╱╭╮╲   https://plywood.dev/
-      └──┴┴┴┘   
+      └──┴┴┴┘
 ========================================================*/
 
 #include <ply-cpp.h>
@@ -10,14 +10,14 @@
 using namespace ply;
 using namespace ply::cpp;
 
-void run_parser_tests() {
-    String test_suite_path = join_path(CPP_TESTS_PATH, "parser-tests.txt");
-    Stream in = Filesystem::open_text_for_read_autodetect(test_suite_path);
+void runParserTests() {
+    String testSuitePath = joinPath(CPP_TESTS_PATH, "parser-tests.txt");
+    Stream in = Filesystem::openTextForReadAutodetect(testSuitePath);
     MemStream out;
     for (;;) {
         String line;
-        while (line = read_line(in)) {
-            if (line.starts_with(">>"))
+        while (line = readLine(in)) {
+            if (line.startsWith(">>"))
                 break;
         }
         if (!line)
@@ -25,8 +25,8 @@ void run_parser_tests() {
 
         out.write(line);
         MemStream src;
-        while (line = read_line(in)) {
-            if (line.starts_with("--"))
+        while (line = readLine(in)) {
+            if (line.startsWith("--"))
                 break;
             src.write(line);
             out.write(line);
@@ -34,7 +34,7 @@ void run_parser_tests() {
         out.write("--\n");
 
         Owned<Parser> parser = Parser::create();
-        ParseResult result = parser->parse_file({}, src.move_to_string());
+        ParseResult result = parser->parseFile({}, src.moveToString());
         if (result.diagnostics) {
             for (StringView diag : result.diagnostics) {
                 out.write(diag);
@@ -44,17 +44,17 @@ void run_parser_tests() {
     }
     in.close();
 
-    Filesystem::save_text(test_suite_path, out.move_to_string());
+    Filesystem::saveText(testSuitePath, out.moveToString());
 }
 
-void run_preprocessor_tests() {
-    String test_suite_path = join_path(CPP_TESTS_PATH, "preprocessor-tests.txt");
-    Stream in = Filesystem::open_text_for_read_autodetect(test_suite_path);
+void runPreprocessorTests() {
+    String testSuitePath = joinPath(CPP_TESTS_PATH, "preprocessor-tests.txt");
+    Stream in = Filesystem::openTextForReadAutodetect(testSuitePath);
     MemStream out;
     for (;;) {
         String line;
-        while (line = read_line(in)) {
-            if (line.starts_with(">>"))
+        while (line = readLine(in)) {
+            if (line.startsWith(">>"))
                 break;
         }
         if (!line)
@@ -62,8 +62,8 @@ void run_preprocessor_tests() {
 
         out.write(line);
         MemStream src;
-        while (line = read_line(in)) {
-            if (line.starts_with("--"))
+        while (line = readLine(in)) {
+            if (line.startsWith("--"))
                 break;
             src.write(line);
             out.write(line);
@@ -71,7 +71,7 @@ void run_preprocessor_tests() {
         out.write("--\n");
 
         Owned<Parser> parser = Parser::create();
-        PreprocessResult result = parser->preprocess("<test file>", src.move_to_string());
+        PreprocessResult result = parser->preprocess("<test file>", src.moveToString());
         if (result.diagnostics) {
             for (StringView diag : result.diagnostics) {
                 out.write(diag);
@@ -83,32 +83,32 @@ void run_preprocessor_tests() {
     }
     in.close();
 
-    Filesystem::save_text(test_suite_path, out.move_to_string());
+    Filesystem::saveText(testSuitePath, out.moveToString());
 }
 
-void parse_plywood_source() {
-    String src_folder = join_path(CPP_TESTS_PATH, "../../src");
-    String file_path = join_path(src_folder, "ply-base.h");
-    String src = Filesystem::load_text_autodetect(file_path);
+void parsePlywoodSource() {
+    String srcFolder = joinPath(CPP_TESTS_PATH, "../../src");
+    String filePath = joinPath(srcFolder, "ply-base.h");
+    String src = Filesystem::loadTextAutodetect(filePath);
     Owned<Parser> parser = Parser::create();
-    parser->include_paths.append(src_folder);
-    ParseResult result = parser->parse_file(file_path, src);
-    Stream out = get_stdout();
+    parser->includePaths.append(srcFolder);
+    ParseResult result = parser->parseFile(filePath, src);
+    Stream out = getStdout();
     for (StringView diagnostic : result.diagnostics) {
         out.write(diagnostic);
     }
     out.close();
     for (const Declaration& decl : result.declarations) {
-        parser->dump_declaration(decl);
+        parser->dumpDeclaration(decl);
     }
 }
 
-void parse_this_file() {
-    String src = Filesystem::load_text_autodetect(__FILE__);
+void parseThisFile() {
+    String src = Filesystem::loadTextAutodetect(__FILE__);
     Owned<Parser> parser = Parser::create();
-    ParseResult result = parser->parse_file(__FILE__, src);
+    ParseResult result = parser->parseFile(__FILE__, src);
     for (const Declaration& decl : result.declarations) {
-        parser->dump_declaration(decl);
+        parser->dumpDeclaration(decl);
     }
 }
 
@@ -117,10 +117,10 @@ int main(int argc, const char* argv[]) {
     SetConsoleOutputCP(CP_UTF8);
 #endif
 
-    //run_parser_tests();
-    run_preprocessor_tests();
-    //parse_plywood_source();
-    //parse_this_file();
+    // runParserTests();
+    runPreprocessorTests();
+    // parsePlywoodSource();
+    // parseThisFile();
 
     return 0;
 }

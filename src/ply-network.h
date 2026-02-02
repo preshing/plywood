@@ -2,14 +2,14 @@
        ____
       ╱   ╱╲    Plywood C++ Base Library
      ╱___╱╭╮╲   https://plywood.dev/
-      └──┴┴┴┘   
+      └──┴┴┴┘
 ========================================================*/
 
 #pragma once
 
 #include "ply-base.h"
 
-#if defined(PLY_WINDOWS)  // Windows
+#if defined(PLY_WINDOWS) // Windows
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #endif
@@ -28,27 +28,27 @@ enum IPVersion {
 };
 
 struct IPAddress {
-    u32 net_ordered[4]; // big endian
+    u32 netOrdered[4]; // big endian
 
     IPVersion version() const {
-        return (this->net_ordered[0] == 0 && this->net_ordered[1] == 0 &&
-                this->net_ordered[2] == convert_big_endian(0xffffu))
+        return (this->netOrdered[0] == 0 && this->netOrdered[1] == 0 &&
+                this->netOrdered[2] == convertBigEndian(0xffffu))
                    ? IPV4
                    : IPV6;
     }
-    bool is_null() const {
-        return this->net_ordered[0] == 0 && this->net_ordered[1] == 0 && this->net_ordered[2] == 0 &&
-               this->net_ordered[3] == 0;
+    bool isNull() const {
+        return this->netOrdered[0] == 0 && this->netOrdered[1] == 0 && this->netOrdered[2] == 0 &&
+               this->netOrdered[3] == 0;
     }
-    static constexpr IPAddress local_host(IPVersion ip_version) {
-        return (ip_version == IPV4) ? IPAddress{{0, 0, convert_big_endian(0xffffu), convert_big_endian(0x7f000001u)}}
-                                    : IPAddress{{0, 0, 0, convert_big_endian(1u)}};
+    static constexpr IPAddress localHost(IPVersion ipVersion) {
+        return (ipVersion == IPV4) ? IPAddress{{0, 0, convertBigEndian(0xffffu), convertBigEndian(0x7f000001u)}}
+                                   : IPAddress{{0, 0, 0, convertBigEndian(1u)}};
     }
-    static constexpr IPAddress from_ipv4(u32 net_ordered) {
-        return {{0, 0, convert_big_endian(0xffffu), net_ordered}};
+    static constexpr IPAddress from_ipv4(u32 netOrdered) {
+        return {{0, 0, convertBigEndian(0xffffu), netOrdered}};
     }
-    String to_string() const;
-    static IPAddress from_string();
+    String toString() const;
+    static IPAddress fromString();
 };
 
 //  ▄▄  ▄▄         ▄▄                          ▄▄
@@ -100,15 +100,15 @@ private:
 public:
     static bool IsInit;
     static bool HasIPv6;
-    static ThreadLocal<IPResult> last_result_;
+    static ThreadLocal<IPResult> lastResult_;
 
-    static void initialize(IPVersion ip_version);
+    static void initialize(IPVersion ipVersion);
     static void shutdown();
-    static TCPListener bind_tcp(u16 port);
-    static Owned<TCPConnection> connect_tcp(const IPAddress& address, u16 port);
-    static IPAddress resolve_host_name(StringView host_name, IPVersion ip_version);
-    static IPResult last_result() {
-        return Network::last_result_.load();
+    static TCPListener bindTcp(u16 port);
+    static Owned<TCPConnection> connectTcp(const IPAddress& address, u16 port);
+    static IPAddress resolveHostName(StringView hostName, IPVersion ipVersion);
+    static IPResult lastResult() {
+        return Network::lastResult_.load();
     }
 };
 
@@ -121,56 +121,56 @@ public:
 #if defined(PLY_WINDOWS)
 
 struct TCPConnection {
-    IPAddress remote_addr_;
-    u16 remote_port_ = 0;
-    Owned<PipeWinsock> in_pipe;
-    Owned<PipeWinsock> out_pipe;
+    IPAddress remoteAddr_;
+    u16 remotePort_ = 0;
+    Owned<PipeWinsock> inPipe;
+    Owned<PipeWinsock> outPipe;
 
     TCPConnection() {
     }
     ~TCPConnection();
-    const IPAddress& remote_address() const {
-        return this->remote_addr_;
+    const IPAddress& remoteAddress() const {
+        return this->remoteAddr_;
     }
-    u16 remote_port() const {
-        return this->remote_port_;
+    u16 remotePort() const {
+        return this->remotePort_;
     }
-    SOCKET get_handle() const {
-        return in_pipe->socket;
+    SOCKET getHandle() const {
+        return inPipe->socket;
     }
-    Stream create_in_stream() {
-        return Stream{this->in_pipe, false};
+    Stream createInStream() {
+        return Stream{this->inPipe, false};
     }
-    Stream create_out_stream() {
-        return Stream{this->out_pipe, false};
+    Stream createOutStream() {
+        return Stream{this->outPipe, false};
     }
 };
 
 #elif defined(PLY_POSIX)
 
 struct TCPConnection {
-    IPAddress remote_addr_;
-    u16 remote_port_ = 0;
-    Owned<Pipe_FD> in_pipe;
-    Owned<Pipe_FD> out_pipe;
+    IPAddress remoteAddr_;
+    u16 remotePort_ = 0;
+    Owned<Pipe_FD> inPipe;
+    Owned<Pipe_FD> outPipe;
 
     TCPConnection() {
     }
     ~TCPConnection();
-    const IPAddress& remote_address() const {
-        return this->remote_addr_;
+    const IPAddress& remoteAddress() const {
+        return this->remoteAddr_;
     }
-    u16 remote_port() const {
-        return this->remote_port_;
+    u16 remotePort() const {
+        return this->remotePort_;
     }
-    int get_socket() const {
-        return in_pipe->fd;
+    int getSocket() const {
+        return inPipe->fd;
     }
-    Stream create_in_stream() {
-        return Stream{this->in_pipe, false};
+    Stream createInStream() {
+        return Stream{this->inPipe, false};
     }
-    Stream create_out_stream() {
-        return Stream{this->out_pipe, false};
+    Stream createOutStream() {
+        return Stream{this->outPipe, false};
     }
 };
 
@@ -186,37 +186,37 @@ struct TCPConnection {
 
 struct TCPListener {
 public:
-    SOCKET listen_socket = INVALID_SOCKET;
+    SOCKET listenSocket = INVALID_SOCKET;
 
-    TCPListener(SOCKET listen_socket = INVALID_SOCKET) : listen_socket{listen_socket} {
+    TCPListener(SOCKET listenSocket = INVALID_SOCKET) : listenSocket{listenSocket} {
     }
     TCPListener(TCPListener&& other) {
-        this->listen_socket = other.listen_socket;
-        other.listen_socket = INVALID_SOCKET;
+        this->listenSocket = other.listenSocket;
+        other.listenSocket = INVALID_SOCKET;
     }
     ~TCPListener() {
-        if (this->listen_socket >= 0) {
-            closesocket(this->listen_socket);
+        if (this->listenSocket >= 0) {
+            closesocket(this->listenSocket);
         }
     }
     TCPListener& operator=(TCPListener&& other) {
-        if (this->listen_socket >= 0) {
-            closesocket(this->listen_socket);
+        if (this->listenSocket >= 0) {
+            closesocket(this->listenSocket);
         }
-        this->listen_socket = other.listen_socket;
-        other.listen_socket = INVALID_SOCKET;
+        this->listenSocket = other.listenSocket;
+        other.listenSocket = INVALID_SOCKET;
         return *this;
     }
-    bool is_valid() {
-        return this->listen_socket >= 0;
+    bool isValid() {
+        return this->listenSocket >= 0;
     }
-    void end_comm() {
-        shutdown(this->listen_socket, SD_BOTH);
+    void endComm() {
+        shutdown(this->listenSocket, SD_BOTH);
     }
     void close() {
-        if (this->listen_socket >= 0) {
-            closesocket(this->listen_socket);
-            this->listen_socket = INVALID_SOCKET;
+        if (this->listenSocket >= 0) {
+            closesocket(this->listenSocket);
+            this->listenSocket = INVALID_SOCKET;
         }
     }
 
@@ -227,37 +227,37 @@ public:
 
 struct TCPListener {
 public:
-    int listen_socket = -1;
+    int listenSocket = -1;
 
-    TCPListener(int listen_socket = -1) : listen_socket{listen_socket} {
+    TCPListener(int listenSocket = -1) : listenSocket{listenSocket} {
     }
     TCPListener(TCPListener&& other) {
-        this->listen_socket = other.listen_socket;
-        other.listen_socket = -1;
+        this->listenSocket = other.listenSocket;
+        other.listenSocket = -1;
     }
     ~TCPListener() {
-        if (this->listen_socket >= 0) {
-            ::close(this->listen_socket);
+        if (this->listenSocket >= 0) {
+            ::close(this->listenSocket);
         }
     }
     TCPListener& operator=(TCPListener&& other) {
-        if (this->listen_socket >= 0) {
-            ::close(this->listen_socket);
+        if (this->listenSocket >= 0) {
+            ::close(this->listenSocket);
         }
-        this->listen_socket = other.listen_socket;
-        other.listen_socket = -1;
+        this->listenSocket = other.listenSocket;
+        other.listenSocket = -1;
         return *this;
     }
-    bool is_valid() {
-        return this->listen_socket >= 0;
+    bool isValid() {
+        return this->listenSocket >= 0;
     }
-    void end_comm() {
-        shutdown(this->listen_socket, SHUT_RDWR);
+    void endComm() {
+        shutdown(this->listenSocket, SHUT_RDWR);
     }
     void close() {
-        if (this->listen_socket >= 0) {
-            ::close(this->listen_socket);
-            this->listen_socket = -1;
+        if (this->listenSocket >= 0) {
+            ::close(this->listenSocket);
+            this->listenSocket = -1;
         }
     }
 

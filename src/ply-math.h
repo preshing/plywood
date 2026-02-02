@@ -28,13 +28,13 @@ static constexpr double DPi = 3.14159265358979323846;
 inline float square(float v) {
     return v * v;
 }
-inline float round_nearest(float x) {
+inline float roundNearest(float x) {
 #if PLY_CPU_ARM64
     return roundf(x);
 #elif PLY_CPU_X86 || PLY_CPU_X64
     // Intrinsic version
-    __m128 sign_bit = _mm_and_ps(_mm_set_ss(x), _mm_castsi128_ps(_mm_cvtsi32_si128(0x80000000u)));
-    __m128 added = _mm_add_ss(_mm_set_ss(x), _mm_or_ps(sign_bit, _mm_castsi128_ps(_mm_cvtsi32_si128(0x3f000000u))));
+    __m128 signBit = _mm_and_ps(_mm_set_ss(x), _mm_castsi128_ps(_mm_cvtsi32_si128(0x80000000u)));
+    __m128 added = _mm_add_ss(_mm_set_ss(x), _mm_or_ps(signBit, _mm_castsi128_ps(_mm_cvtsi32_si128(0x3f000000u))));
     return (float) _mm_cvtt_ss2si(added);
 #else
     // Non-intrinsic version
@@ -45,10 +45,10 @@ inline float round_nearest(float x) {
     return (float) (s32) (x + *(float*) &c);
 #endif
 }
-inline float round_up(float value) {
+inline float roundUp(float value) {
     return ceilf(value);
 }
-inline float round_down(float value) {
+inline float roundDown(float value) {
     return floorf(value);
 }
 inline float wrap(float value, float range) {
@@ -56,13 +56,13 @@ inline float wrap(float value, float range) {
     float t = floorf(value / range);
     return value - t * range;
 }
-inline u16 float_to_half(const char* src_float) {
-    u32 single = *(const u32*) src_float;
+inline u16 floatToHalf(const char* srcFloat) {
+    u32 single = *(const u32*) srcFloat;
     // If exponent is less than -14, this will force the result to zero.
-    u16 zero_mask = -(single + single >= 0x71000000);
+    u16 zeroMask = -(single + single >= 0x71000000);
     // Exponent and mantissa. Just assume exponent is small enough to avoid wrap around.
     u16 half = ((single >> 16) & 0x8000) | (((single >> 13) - 0x1c000) & 0x7fff);
-    return half & zero_mask;
+    return half & zeroMask;
 }
 inline float mix(float a, float b, float t) {
     return a * (1 - t) + b * t;
@@ -70,7 +70,7 @@ inline float mix(float a, float b, float t) {
 inline float unmix(float a, float b, float mixed) {
     return (mixed - a) / (b - a);
 }
-inline float step_towards(float start, float target, float amount) {
+inline float stepTowards(float start, float target, float amount) {
     return start < target ? min(start + amount, target) : max(start - amount, target);
 }
 
@@ -174,17 +174,17 @@ struct Float2 {
         PLY_PUN_GUARD;
         return ((const float*) this)[index];
     }
-    float length_squared() const {
+    float lengthSquared() const {
         return x * x + y * y;
     }
     float length() const {
-        return sqrtf(length_squared());
+        return sqrtf(lengthSquared());
     }
-    bool is_unit_length() const {
-        return ply::abs(length_squared() - 1.f) < 0.001f;
+    bool isUnitLength() const {
+        return ply::abs(lengthSquared() - 1.f) < 0.001f;
     }
     PLY_NO_DISCARD Float2 normalized() const;
-    PLY_NO_DISCARD Float2 safe_normalized(const Float2& fallback = {1, 0}, float epsilon = 1e-6f) const;
+    PLY_NO_DISCARD Float2 safeNormalized(const Float2& fallback = {1, 0}, float epsilon = 1e-6f) const;
     float& r() {
         return x;
     }
@@ -281,16 +281,16 @@ inline Float2 min(const Float2& a, const Float2& b) {
 inline Float2 max(const Float2& a, const Float2& b) {
     return {max(a.x, b.x), max(a.y, b.y)};
 }
-Float2 round_up(const Float2& value);
-Float2 round_down(const Float2& value);
-Float2 round_nearest(const Float2& value);
+Float2 roundUp(const Float2& value);
+Float2 roundDown(const Float2& value);
+Float2 roundNearest(const Float2& value);
 inline Float2 mix(const Float2& a, const Float2& b, const Float2& t) {
     return a * (1 - t) + b * t;
 }
 inline Float2 unmix(const Float2& a, const Float2& b, const Float2& mixed) {
     return (mixed - a) / (b - a);
 }
-Float2 step_towards(const Float2& start, const Float2& target, float amount);
+Float2 stepTowards(const Float2& start, const Float2& target, float amount);
 
 //                        ▄▄▄▄
 //  ▄▄   ▄▄  ▄▄▄▄   ▄▄▄▄ ▀▀  ██
@@ -327,17 +327,17 @@ struct Float3 {
         PLY_PUN_GUARD;
         return ((const float*) this)[index];
     }
-    float length_squared() const {
+    float lengthSquared() const {
         return x * x + y * y + z * z;
     }
     float length() const {
-        return sqrtf(length_squared());
+        return sqrtf(lengthSquared());
     }
-    bool is_unit_length() const {
-        return abs(length_squared() - 1.f) < 0.001f;
+    bool isUnitLength() const {
+        return abs(lengthSquared() - 1.f) < 0.001f;
     }
     PLY_NO_DISCARD Float3 normalized() const;
-    PLY_NO_DISCARD Float3 safe_normalized(const Float3& fallback = {1, 0, 0}, float epsilon = 1e-9f) const;
+    PLY_NO_DISCARD Float3 safeNormalized(const Float3& fallback = {1, 0, 0}, float epsilon = 1e-9f) const;
     float& r() {
         return x;
     }
@@ -443,18 +443,18 @@ inline Float3 min(const Float3& a, const Float3& b) {
 inline Float3 max(const Float3& a, const Float3& b) {
     return {max(a.x, b.x), max(a.y, b.y), max(a.z, b.z)};
 }
-Float3 round_up(const Float3& value);
-Float3 round_down(const Float3& value);
-Float3 round_nearest(const Float3& value);
+Float3 roundUp(const Float3& value);
+Float3 roundDown(const Float3& value);
+Float3 roundNearest(const Float3& value);
 inline Float3 mix(const Float3& a, const Float3& b, const Float3& t) {
     return a * (1 - t) + b * t;
 }
 inline Float3 unmix(const Float3& a, const Float3& b, const Float3& mixed) {
     return (mixed - a) / (b - a);
 }
-Float3 step_towards(const Float3& start, const Float3& target, float amount);
-inline Float3 get_noncollinear(const Float3& unit_vec) {
-    return square(unit_vec.z) < 0.9f ? Float3{0, 0, 1} : Float3{0, -1, 0};
+Float3 stepTowards(const Float3& start, const Float3& target, float amount);
+inline Float3 getNoncollinear(const Float3& unitVec) {
+    return square(unitVec.z) < 0.9f ? Float3{0, 0, 1} : Float3{0, -1, 0};
 }
 
 //                          ▄▄▄
@@ -501,17 +501,17 @@ struct Float4 {
         PLY_PUN_GUARD;
         return ((const float*) this)[index];
     }
-    float length_squared() const {
+    float lengthSquared() const {
         return x * x + y * y + z * z + w * w;
     }
     float length() const {
-        return sqrtf(length_squared());
+        return sqrtf(lengthSquared());
     }
-    bool is_unit_length() const {
-        return abs(length_squared() - 1.f) < 0.001f;
+    bool isUnitLength() const {
+        return abs(lengthSquared() - 1.f) < 0.001f;
     }
     PLY_NO_DISCARD Float4 normalized() const;
-    PLY_NO_DISCARD Float4 safe_normalized(const Float4& fallback = {1, 0, 0, 0}, float epsilon = 1e-9f) const;
+    PLY_NO_DISCARD Float4 safeNormalized(const Float4& fallback = {1, 0, 0, 0}, float epsilon = 1e-9f) const;
     float& r() {
         return x;
     }
@@ -626,16 +626,16 @@ inline Float4 min(const Float4& a, const Float4& b) {
 inline Float4 max(const Float4& a, const Float4& b) {
     return {max(a.x, b.x), max(a.y, b.y), max(a.z, b.z), max(a.w, b.w)};
 }
-Float4 round_up(const Float4& vec);
-Float4 round_down(const Float4& vec);
-Float4 round_nearest(const Float4& vec);
+Float4 roundUp(const Float4& vec);
+Float4 roundDown(const Float4& vec);
+Float4 roundNearest(const Float4& vec);
 inline Float4 mix(const Float4& a, const Float4& b, const Float4& t) {
     return a * (1 - t) + b * t;
 }
 inline Float4 unmix(const Float4& a, const Float4& b, const Float4& mixed) {
     return (mixed - a) / (b - a);
 }
-Float4 step_towards(const Float4& start, const Float4& target, float amount);
+Float4 stepTowards(const Float4& start, const Float4& target, float amount);
 
 // Swizzle functions
 
@@ -700,19 +700,19 @@ inline PLY_NO_DISCARD Float4 Float4::swizzle(u32 i0, u32 i1, u32 i2, u32 i3) con
 //   ▀█▄▄ ██     ██ ▀█▄▄██
 //                   ▄▄▄█▀
 
-inline float fast_sin_part(float x) {
+inline float fastSinPart(float x) {
     float val = 4 * x * (abs(x) - 1);
     return val * (0.225f * abs(val) + 0.775f);
 }
-inline float fast_sin(float rad) {
+inline float fastSin(float rad) {
     float frac = rad * (0.5f / Pi);
-    return fast_sin_part((frac - floorf(frac)) * 2 - 1);
+    return fastSinPart((frac - floorf(frac)) * 2 - 1);
 }
-inline float fast_cos(float rad) {
-    return fast_sin(rad + (Pi * 0.5f));
+inline float fastCos(float rad) {
+    return fastSin(rad + (Pi * 0.5f));
 }
-inline Float2 fast_cos_sin(float rad) {
-    return {fast_cos(rad), fast_sin(rad)};
+inline Float2 fastCosSin(float rad) {
+    return {fastCos(rad), fastSin(rad)};
 }
 
 //  ▄▄▄▄▄                ▄▄
@@ -734,23 +734,23 @@ struct Rect {
     }
     Rect(const Float2& mins, const Float2& maxs) : mins{mins}, maxs{maxs} {
     }
-    Rect(float min_x, float min_y, float max_x, float max_y) : mins{min_x, min_y}, maxs{max_x, max_y} {
+    Rect(float minX, float minY, float maxX, float maxY) : mins{minX, minY}, maxs{maxX, maxY} {
     }
-    static Rect from_size(const Float2& mins, const Float2& size) {
+    static Rect fromSize(const Float2& mins, const Float2& size) {
         return {mins, mins + size};
     }
     static Rect empty() {
-        return {get_max_value<float>(), get_min_value<float>()};
+        return {getMaxValue<float>(), getMinValue<float>()};
     }
     static Rect full() {
-        return {get_min_value<float>(), get_max_value<float>()};
+        return {getMinValue<float>(), getMaxValue<float>()};
     }
 
     explicit operator IntRect() const;
     Float2 size() const {
         return maxs - mins;
     }
-    bool is_empty() const {
+    bool isEmpty() const {
         return any(maxs <= mins);
     }
     float width() const {
@@ -777,10 +777,10 @@ struct Rect {
     Float2 clamp(const Float2& arg) const {
         return ply::clamp(arg, mins, maxs);
     }
-    Float2 xmin_ymax() const {
+    Float2 xminYmax() const {
         return Float2{mins.x, maxs.y};
     }
-    Float2 xmax_ymin() const {
+    Float2 xmaxYmin() const {
         return Float2{maxs.x, mins.y};
     }
     bool contains(const Float2& arg) const {
@@ -826,22 +826,22 @@ inline void operator/=(Rect& a, const Rect& b) {
     a.mins /= b.mins;
     a.maxs /= b.maxs;
 }
-inline Rect make_union(const Rect& a, const Rect& b) {
+inline Rect makeUnion(const Rect& a, const Rect& b) {
     return {min(a.mins, b.mins), max(a.maxs, b.maxs)};
 }
 inline Rect intersect(const Rect& a, const Rect& b) {
     return {max(a.mins, b.mins), min(a.maxs, b.maxs)};
 }
 inline bool Rect::intersects(const Rect& arg) const {
-    return !intersect(*this, arg).is_empty();
+    return !intersect(*this, arg).isEmpty();
 }
 inline Rect inflate(const Rect& a, const Float2& b) {
     return {a.mins - b, a.maxs + b};
 }
-inline Rect round_nearest(const Rect& a) {
-    return {round_nearest(a.mins), round_nearest(a.maxs)};
+inline Rect roundNearest(const Rect& a) {
+    return {roundNearest(a.mins), roundNearest(a.maxs)};
 }
-Rect rect_from_fov(float fov_y, float aspect);
+Rect rectFromFov(float fovY, float aspect);
 
 //  ▄▄▄▄▄                 ▄▄▄▄  ▄▄▄▄▄
 //  ██  ██  ▄▄▄▄  ▄▄  ▄▄ ▀▀  ██ ██  ██
@@ -858,22 +858,22 @@ struct AABB {
     }
     AABB(const Float3& mins, const Float3& maxs) : mins{mins}, maxs{maxs} {
     }
-    AABB(float min_x, float min_y, float max_x, float max_y) : mins{min_x, min_y}, maxs{max_x, max_y} {
+    AABB(float minX, float minY, float maxX, float maxY) : mins{minX, minY}, maxs{maxX, maxY} {
     }
     static AABB empty() {
-        return {get_max_value<float>(), get_min_value<float>()};
+        return {getMaxValue<float>(), getMinValue<float>()};
     }
     static AABB full() {
-        return {get_min_value<float>(), get_max_value<float>()};
+        return {getMinValue<float>(), getMaxValue<float>()};
     }
-    static AABB from_size(const Float3& mins, const Float3& size) {
+    static AABB fromSize(const Float3& mins, const Float3& size) {
         return {mins, mins + size};
     }
 
     Float3 size() const {
         return maxs - mins;
     }
-    bool is_empty() const {
+    bool isEmpty() const {
         return any(maxs <= mins);
     }
     float width() const {
@@ -903,10 +903,10 @@ struct AABB {
     Float3 clamp(const Float3& arg) const {
         return ply::clamp(arg, mins, maxs);
     }
-    Float3 xmin_ymax() const {
+    Float3 xminYmax() const {
         return Float3{mins.x, maxs.y};
     }
-    Float3 xmax_ymin() const {
+    Float3 xmaxYmin() const {
         return Float3{maxs.x, mins.y};
     }
     bool contains(const Float3& arg) const {
@@ -952,20 +952,20 @@ inline void operator/=(AABB& a, const AABB& b) {
     a.mins /= b.mins;
     a.maxs /= b.maxs;
 }
-inline AABB make_union(const AABB& a, const AABB& b) {
+inline AABB makeUnion(const AABB& a, const AABB& b) {
     return {min(a.mins, b.mins), max(a.maxs, b.maxs)};
 }
 inline AABB intersect(const AABB& a, const AABB& b) {
     return {max(a.mins, b.mins), min(a.maxs, b.maxs)};
 }
 inline bool AABB::intersects(const AABB& arg) const {
-    return !intersect(*this, arg).is_empty();
+    return !intersect(*this, arg).isEmpty();
 }
 inline AABB inflate(const AABB& a, const Float3& b) {
     return {a.mins - b, a.maxs + b};
 }
-inline AABB round_nearest(const AABB& a) {
-    return {round_nearest(a.mins), round_nearest(a.maxs)};
+inline AABB roundNearest(const AABB& a) {
+    return {roundNearest(a.mins), roundNearest(a.maxs)};
 }
 
 //  ▄▄         ▄▄    ▄▄▄▄
@@ -1282,16 +1282,16 @@ struct IntRect {
     }
     IntRect(const Int2& mins, const Int2& maxs) : mins{mins}, maxs{maxs} {
     }
-    IntRect(int min_x, int min_y, int max_x, int max_y) : mins{min_x, min_y}, maxs{max_x, max_y} {
+    IntRect(int minX, int minY, int maxX, int maxY) : mins{minX, minY}, maxs{maxX, maxY} {
     }
-    static IntRect from_size(const Int2& mins, const Int2& size) {
+    static IntRect fromSize(const Int2& mins, const Int2& size) {
         return {mins, mins + size};
     }
     static IntRect empty() {
-        return {get_max_value<int>(), get_min_value<int>()};
+        return {getMaxValue<int>(), getMinValue<int>()};
     }
     static IntRect full() {
-        return {get_min_value<int>(), get_max_value<int>()};
+        return {getMinValue<int>(), getMaxValue<int>()};
     }
 
     explicit operator Rect() const {
@@ -1300,7 +1300,7 @@ struct IntRect {
     Int2 size() const {
         return maxs - mins;
     }
-    bool is_empty() const {
+    bool isEmpty() const {
         return any(maxs <= mins);
     }
     int width() const {
@@ -1315,10 +1315,10 @@ struct IntRect {
     Int2 clamp(const Int2& arg) const {
         return ply::clamp(arg, mins, maxs);
     }
-    Int2 xmin_ymax() const {
+    Int2 xminYmax() const {
         return Int2{mins.x, maxs.y};
     }
-    Int2 xmax_ymin() const {
+    Int2 xmaxYmin() const {
         return Int2{maxs.x, mins.y};
     }
     bool contains(const Int2& arg) const {
@@ -1367,14 +1367,14 @@ inline void operator/=(IntRect& a, const IntRect& b) {
     a.mins /= b.mins;
     a.maxs /= b.maxs;
 }
-inline IntRect make_union(const IntRect& a, const IntRect& b) {
+inline IntRect makeUnion(const IntRect& a, const IntRect& b) {
     return {min(a.mins, b.mins), max(a.maxs, b.maxs)};
 }
 inline IntRect intersect(const IntRect& a, const IntRect& b) {
     return {max(a.mins, b.mins), min(a.maxs, b.maxs)};
 }
 inline bool IntRect::intersects(const IntRect& arg) const {
-    return !intersect(*this, arg).is_empty();
+    return !intersect(*this, arg).isEmpty();
 }
 inline IntRect inflate(const IntRect& a, const Int2& b) {
     return {a.mins - b, a.maxs + b};
@@ -1385,8 +1385,6 @@ inline IntRect inflate(const IntRect& a, const Int2& b) {
 //  ██     ██  ██  ██  ██  ██ ██  ▀▀
 //  ▀█▄▄█▀ ▀█▄▄█▀ ▄██▄ ▀█▄▄█▀ ██
 //
-
-struct StringView;
 
 struct Color {
     u8 r = 0;
@@ -1408,12 +1406,12 @@ inline Float4::operator Color() const {
     return {u8(x * 255.99f), u8(y * 255.99f), u8(z * 255.99f), u8(w * 255.99f)};
 }
 
-float srgb_to_linear(float s);
-float linear_to_srgb(float l);
-Float3 srgb_to_linear(const Float3& vec);
-Float4 srgb_to_linear(const Float4& vec);
-Float3 linear_to_srgb(const Float3& vec);
-Float4 linear_to_srgb(const Float4& vec);
+float srgbToLinear(float s);
+float linearToSrgb(float l);
+Float3 srgbToLinear(const Float3& vec);
+Float4 srgbToLinear(const Float4& vec);
+Float3 linearToSrgb(const Float3& vec);
+Float4 linearToSrgb(const Float4& vec);
 
 //                   ▄▄    ▄▄▄▄
 //  ▄▄▄▄▄▄▄   ▄▄▄▄  ▄██▄▄ ▀▀  ██
@@ -1439,7 +1437,7 @@ struct Mat2x2 {
     static Mat2x2 identity();
     static Mat2x2 scale(const Float2& scale);
     static Mat2x2 rotate(float radians);
-    static Mat2x2 from_complex(const Float2& c);
+    static Mat2x2 fromComplex(const Float2& c);
     Mat2x2 transposed() const;
 };
 
@@ -1469,8 +1467,8 @@ struct Mat3x3 {
     explicit Mat3x3(const Mat4x4& m);
     static Mat3x3 identity();
     static Mat3x3 scale(const Float3& arg);
-    static Mat3x3 rotate(const Float3& unit_axis, float radians);
-    static Mat3x3 from_quaternion(const Quaternion& q);
+    static Mat3x3 rotate(const Float3& unitAxis, float radians);
+    static Mat3x3 fromQuaternion(const Quaternion& q);
 
     Float3& operator[](u32 i) {
         PLY_ASSERT(i < 3);
@@ -1480,7 +1478,7 @@ struct Mat3x3 {
         PLY_ASSERT(i < 3);
         return col[i];
     }
-    bool has_scale() const;
+    bool hasScale() const;
     Mat3x3 transposed() const;
 };
 
@@ -1490,10 +1488,9 @@ inline bool operator!=(const Mat3x3& a, const Mat3x3& b) {
 }
 Float3 operator*(const Mat3x3& m, const Float3& v);
 Mat3x3 operator*(const Mat3x3& a, const Mat3x3& b);
-Mat3x3 make_basis(const Float3& dst_unit_fwd, const Float3& dst_up, const Float3& src_unit_fwd,
-                  const Float3& src_unit_up);
-inline Mat3x3 make_basis(const Float3& dst_unit_fwd, const Float3& src_fwd) {
-    return make_basis(dst_unit_fwd, get_noncollinear(dst_unit_fwd), src_fwd, get_noncollinear(src_fwd));
+Mat3x3 makeBasis(const Float3& dstUnitFwd, const Float3& dstUp, const Float3& srcUnitFwd, const Float3& srcUnitUp);
+inline Mat3x3 makeBasis(const Float3& dstUnitFwd, const Float3& srcFwd) {
+    return makeBasis(dstUnitFwd, getNoncollinear(dstUnitFwd), srcFwd, getNoncollinear(srcFwd));
 }
 
 //                   ▄▄    ▄▄▄▄            ▄▄▄
@@ -1516,10 +1513,10 @@ struct Mat3x4 {
     explicit Mat3x4(const Mat4x4& m);
     static Mat3x4 identity();
     static Mat3x4 scale(const Float3& arg);
-    static Mat3x4 rotate(const Float3& unit_axis, float radians);
+    static Mat3x4 rotate(const Float3& unitAxis, float radians);
     static Mat3x4 translate(const Float3& pos);
-    static Mat3x4 from_quaternion(const Quaternion& q, const Float3& pos = 0);
-    static Mat3x4 from_quat_pos(const QuatPos& qp);
+    static Mat3x4 fromQuaternion(const Quaternion& q, const Float3& pos = 0);
+    static Mat3x4 fromQuatPos(const QuatPos& qp);
 
     Float3& operator[](u32 i) {
         PLY_ASSERT(i < 4);
@@ -1533,10 +1530,10 @@ struct Mat3x4 {
         PLY_PUN_GUARD;
         return (const Mat3x3&) *this;
     }
-    bool has_scale() const {
-        return ((Mat3x3*) this)->has_scale();
+    bool hasScale() const {
+        return ((Mat3x3*) this)->hasScale();
     }
-    Mat3x4 inverted_ortho() const;
+    Mat3x4 invertedOrtho() const;
 };
 
 bool operator==(const Mat3x4& a, const Mat3x4& b);
@@ -1571,23 +1568,23 @@ struct Mat4x4 {
     explicit Mat4x4(const Mat3x4& m);
     static Mat4x4 identity();
     static Mat4x4 scale(const Float3& arg);
-    static Mat4x4 rotate(const Float3& unit_axis, float radians);
+    static Mat4x4 rotate(const Float3& unitAxis, float radians);
     static Mat4x4 translate(const Float3& pos);
-    static Mat4x4 from_quaternion(const Quaternion& q, const Float3& pos = 0);
-    static Mat4x4 from_quat_pos(const QuatPos& qp);
+    static Mat4x4 fromQuaternion(const Quaternion& q, const Float3& pos = 0);
+    static Mat4x4 fromQuatPos(const QuatPos& qp);
 
     // Returns a perspective projection matrix that maps the given view frustum to normalized device coordinate (NDC)
     // space. The `frustum` rectangle sits on the z = -1 plane and is viewed from the origin. NDC space extends from -1
-    // to +1 along both x and y axes. `z_near` and `z_far` must be positive values. If `clip_near` is `CLIP_NEAR_TO_0`,
-    // the projection matrix maps the z = `-z_near` plane to z = 0 (suitable for Metal); otherwise it maps to z = -1
-    // (suitable for OpenGL). The z = `-z_far` plane is mapped to z = +1.
-    static Mat4x4 perspective_projection(const Rect& frustum, float z_near, float z_far, ClipNearType clip_near);
+    // to +1 along both x and y axes. `zNear` and `zFar` must be positive values. If `clipNear` is `CLIP_NEAR_TO_0`,
+    // the projection matrix maps the z = `-zNear` plane to z = 0 (suitable for Metal); otherwise it maps to z = -1
+    // (suitable for OpenGL). The z = `-zFar` plane is mapped to z = +1.
+    static Mat4x4 perspectiveProjection(const Rect& frustum, float zNear, float zFar, ClipNearType clipNear);
 
     // Returns an orthographic projection matrix that maps the given view frustum to normalized device coordinate (NDC)
     // space. The `frustum` rectangle sits on the z = -1 plane. NDC space extends from -1 to +1 along both x and y axes.
-    // If `clip_near` is `CLIP_NEAR_TO_0`, the projection matrix maps the z = `-z_near` plane to z = 0 (suitable for
-    // Metal); otherwise it maps to z = -1 (suitable for OpenGL). The z = `-z_far` plane is mapped to z = +1.
-    static Mat4x4 orthographic_projection(const Rect& rect, float z_near, float z_far, ClipNearType clip_near);
+    // If `clipNear` is `CLIP_NEAR_TO_0`, the projection matrix maps the z = `-zNear` plane to z = 0 (suitable for
+    // Metal); otherwise it maps to z = -1 (suitable for OpenGL). The z = `-zFar` plane is mapped to z = +1.
+    static Mat4x4 orthographicProjection(const Rect& rect, float zNear, float zFar, ClipNearType clipNear);
 
     Float4& operator[](u32 i) {
         PLY_ASSERT(i < 4);
@@ -1598,7 +1595,7 @@ struct Mat4x4 {
         return col[i];
     }
     Mat4x4 transposed() const;
-    Mat4x4 inverted_ortho() const;
+    Mat4x4 invertedOrtho() const;
 };
 
 bool operator==(const Mat4x4& a, const Mat4x4& b);
@@ -1620,12 +1617,12 @@ struct Complex {
     static Float2 identity() {
         return Float2{1, 0};
     }
-    static Float2 from_angle(float radians) {
+    static Float2 fromAngle(float radians) {
         float c = cosf(radians);
         float s = sinf(radians);
         return Float2{c, s};
     }
-    static float get_angle(const Float2& v) {
+    static float getAngle(const Float2& v) {
         return atan2f(v.y, v.x);
     }
     static Float2 mul(const Float2& a, const Float2& b) {
@@ -1653,10 +1650,10 @@ struct Quaternion {
     static Quaternion identity() {
         return {0, 0, 0, 1};
     }
-    static Quaternion from_axis_angle(const Float3& unit_axis, float radians);
-    static Quaternion from_unit_vectors(const Float3& start, const Float3& end);
-    static Quaternion from_ortho(const Mat3x3& m);
-    static Quaternion from_ortho(const Mat4x4& m);
+    static Quaternion fromAxisAngle(const Float3& unitAxis, float radians);
+    static Quaternion fromUnitVectors(const Float3& start, const Float3& end);
+    static Quaternion fromOrtho(const Mat3x3& m);
+    static Quaternion fromOrtho(const Mat4x4& m);
 
     explicit operator Float3() const {
         return {x, y, z};
@@ -1674,11 +1671,11 @@ struct Quaternion {
         PLY_PUN_GUARD;
         return (const Quaternion&) value;
     }
-    bool is_unit_length() const {
+    bool isUnitLength() const {
         PLY_PUN_GUARD;
-        return abs(((Float4*) this)->length_squared() - 1.f) < 0.001f;
+        return abs(((Float4*) this)->lengthSquared() - 1.f) < 0.001f;
     }
-    Quaternion negated_if_closer_to(const Quaternion& other) const;
+    Quaternion negatedIfCloserTo(const Quaternion& other) const;
 };
 
 inline Float4::operator Quaternion() const {
@@ -1706,9 +1703,9 @@ struct QuatPos {
     }
     static QuatPos identity();
     static QuatPos translate(const Float3& pos);
-    static QuatPos rotate(const Float3& unit_axis, float radians);
-    static QuatPos from_ortho(const Mat3x4& m);
-    static QuatPos from_ortho(const Mat4x4& m);
+    static QuatPos rotate(const Float3& unitAxis, float radians);
+    static QuatPos fromOrtho(const Mat3x4& m);
+    static QuatPos fromOrtho(const Mat4x4& m);
 
     QuatPos inverted() const;
 };
@@ -1725,22 +1722,22 @@ inline QuatPos operator*(const QuatPos& a, const Quaternion& b) {
 inline QuatPos operator*(const Quaternion& a, const QuatPos& b) {
     return {a * b.quat, a * b.pos};
 }
-inline Mat3x4 Mat3x4::from_quat_pos(const QuatPos& qp) {
-    return from_quaternion(qp.quat, qp.pos);
+inline Mat3x4 Mat3x4::fromQuatPos(const QuatPos& qp) {
+    return fromQuaternion(qp.quat, qp.pos);
 }
-inline Mat4x4 Mat4x4::from_quat_pos(const QuatPos& qp) {
-    return from_quaternion(qp.quat, qp.pos);
+inline Mat4x4 Mat4x4::fromQuatPos(const QuatPos& qp) {
+    return fromQuaternion(qp.quat, qp.pos);
 }
 
 // Cubic Bezier curves
 
 template <typename T>
-T sample_cubic_bezier(const T& p0, const T& p1, const T& p2, const T& p3, float t) {
+T sampleCubicBezier(const T& p0, const T& p1, const T& p2, const T& p3, float t) {
     float omt = 1.f - t;
     return p0 * (omt * omt * omt) + p1 * (3 * omt * omt * t) + p2 * (3 * omt * t * t) + p3 * (t * t * t);
 }
 template <typename T>
-T sample_cubic_bezier_derivative(const T& p0, const T& p1, const T& p2, const T& p3, float t) {
+T sampleCubicBezierDerivative(const T& p0, const T& p1, const T& p2, const T& p3, float t) {
     T q0 = p1 - p0;
     T q1 = p2 - p1;
     T q2 = p3 - p2;
@@ -1749,7 +1746,7 @@ T sample_cubic_bezier_derivative(const T& p0, const T& p1, const T& p2, const T&
     T p = mix(r0, r1, t);
     return p;
 }
-inline float ease_in_and_out(float t) {
+inline float easeInAndOut(float t) {
     return (3.f - 2.f * t) * t * t;
 }
 

@@ -2,7 +2,7 @@
        ____
       ╱   ╱╲    Plywood C++ Base Library
      ╱___╱╭╮╲   https://plywood.dev/
-      └──┴┴┴┘   
+      └──┴┴┴┘
 ========================================================*/
 
 #pragma once
@@ -14,7 +14,7 @@ namespace cpp {
 
 //-----------------------------------------------------------
 // The classes are designed to represent the contents of a C++ source code document.
-// They're the nodes in the tree you get back when you call `parse_file`.
+// They're the nodes in the tree you get back when you call `parseFile`.
 // The tree is built using Plywood container classes, which is definitely not the most memory-efficient approach to
 // representing a C++ document, especially given the number of `Variant` and `Owned` objects that are created, but it's
 // still more memory-efficient than a Python implementation would be. C++ has a formal grammar specified in the ISO
@@ -49,8 +49,8 @@ struct Statement;
 //-----------------------------------------------------------
 
 struct TypeID {
-    Array<Owned<DeclSpecifier>> decl_specifiers;
-    Owned<DeclProduction> abstract_dcor;
+    Array<Owned<DeclSpecifier>> declSpecifiers;
+    Owned<DeclProduction> abstractDcor;
 };
 
 struct QualifiedID {
@@ -64,15 +64,15 @@ struct QualifiedID {
         };
 
         Token name;
-        Token open_angle;
+        Token openAngle;
         Array<Arg> args;
-        Token close_angle;
+        Token closeAngle;
     };
     struct Decltype {
         Token keyword;
-        Token open_paren;
+        Token openParen;
         Owned<Expression> expr;
-        Token close_paren;
+        Token closeParen;
     };
     struct Destructor {
         Token tilde;
@@ -84,21 +84,21 @@ struct QualifiedID {
         Token punc2;
     };
     struct ConversionFunc {
-        Token operator_keyword;
-        Array<Owned<DeclSpecifier>> decl_specifiers;
-        Owned<DeclProduction> abstract_dcor;
+        Token operatorKeyword;
+        Array<Owned<DeclSpecifier>> declSpecifiers;
+        Owned<DeclProduction> abstractDcor;
     };
 
     struct Prefix {
         Variant<Identifier, TemplateID, Decltype> var;
-        Token double_colon;
+        Token doubleColon;
     };
 
     Array<Prefix> prefix;
     Variant<Identifier, TemplateID, Decltype, Destructor, OperatorFunc, ConversionFunc> var;
 
-    bool is_empty() const {
-        return this->prefix.is_empty() && this->var.is_empty();
+    bool isEmpty() const {
+        return this->prefix.isEmpty() && this->var.isEmpty();
     }
 };
 
@@ -130,22 +130,22 @@ struct QualifiedID {
 
 struct Initializer {
     struct Assignment {
-        Token equal_sign;
+        Token equalSign;
         Variant<Owned<Expression>, TypeID> var;
     };
     struct FunctionBody {
         struct MemberInitializer {
             QualifiedID qid;
-            Token open_curly;
+            Token openCurly;
             Owned<Expression> expr;
-            Token close_curly;
+            Token closeCurly;
             Token comma;
         };
         Token colon;
-        Array<MemberInitializer> member_inits;
-        Token open_curly;
+        Array<MemberInitializer> memberInits;
+        Token openCurly;
         Array<Statement> statements;
-        Token close_curly;
+        Token closeCurly;
     };
     struct BitField {
         Token colon;
@@ -160,7 +160,7 @@ struct DeclSpecifier {
         Token token;
     };
     struct Linkage {
-        Token extern_keyword;
+        Token externKeyword;
         Token literal;
     };
     struct Enum {
@@ -170,33 +170,33 @@ struct DeclSpecifier {
             Token comma;
         };
         Token keyword;
-        Token class_keyword;
+        Token classKeyword;
         QualifiedID qid;
         Token colon;
         QualifiedID base;
-        Token open_curly;
+        Token openCurly;
         Array<Item> enumerators;
-        Token close_curly;
+        Token closeCurly;
     };
     struct Class {
         struct BaseSpecifier {
-            Token access_spec;
-            QualifiedID base_qid;
+            Token accessSpec;
+            QualifiedID baseQid;
             Token comma;
         };
         Token keyword;
         QualifiedID qid;
-        Array<Token> virt_specifiers;
+        Array<Token> virtSpecifiers;
         Token colon;
-        Array<BaseSpecifier> base_specifiers;
-        Token open_curly;
-        Array<Declaration> member_decls;
-        Token close_curly;
+        Array<BaseSpecifier> baseSpecifiers;
+        Token openCurly;
+        Array<Declaration> memberDecls;
+        Token closeCurly;
     };
     struct TypeSpecifier {
-        Token elaborate_keyword; // Could be typename, class, struct, union or enum
+        Token elaborateKeyword; // Could be typename, class, struct, union or enum
         QualifiedID qid;
-        // was_assumed will be true whenever the parser makes a (possibly wrong) assumption due to
+        // wasAssumed will be true whenever the parser makes a (possibly wrong) assumption due to
         // lack of type knowledge. For example:
         //      void func(int(A));
         //                    ^
@@ -205,7 +205,7 @@ struct DeclSpecifier {
         // an unnamed function that takes an unnamed parameter of type A and returns int, instead of
         // as an integer named A, which is how it would have been parsed if A did not identify a
         // type.
-        bool was_assumed = false;
+        bool wasAssumed = false;
     };
     struct TypeParameter {
         Token keyword; // typename or class
@@ -219,7 +219,7 @@ struct DeclSpecifier {
 };
 
 struct Parameter {
-    Array<Owned<DeclSpecifier>> decl_specifiers; // Do these have to be Owned?
+    Array<Owned<DeclSpecifier>> declSpecifiers; // Do these have to be Owned?
     Token identifier;
     Owned<DeclProduction> prod;
     Initializer init;
@@ -228,25 +228,25 @@ struct Parameter {
 
 struct DeclProduction {
     struct Parenthesized {
-        Token open_paren;
-        Token close_paren;
+        Token openParen;
+        Token closeParen;
     };
     struct Indirection {
         Array<QualifiedID::Prefix> prefix;
         Token punc;
     };
     struct ArrayOf {
-        Token open_square;
+        Token openSquare;
         Owned<Expression> size;
-        Token close_square;
+        Token closeSquare;
     };
     struct Function {
-        Token open_paren;
+        Token openParen;
         Array<Parameter> params;
-        Token close_paren;
+        Token closeParen;
         Array<Token> qualifiers;
         Token arrow;
-        TypeID trailing_ret_type;
+        TypeID trailingRetType;
     };
     struct Qualifier {
         Token keyword;
@@ -271,46 +271,46 @@ struct InitDeclarator {
 
 struct Declaration {
     struct Linkage {
-        Token extern_keyword;
+        Token externKeyword;
         Token literal;
-        Token open_curly;
-        Array<Declaration> child_decls;
-        Token close_curly;
+        Token openCurly;
+        Array<Declaration> childDecls;
+        Token closeCurly;
     };
     struct Namespace {
         Token keyword;
         QualifiedID qid;
-        Token open_curly;
-        Array<Declaration> child_decls;
-        Token close_curly;
+        Token openCurly;
+        Array<Declaration> childDecls;
+        Token closeCurly;
     };
     struct Entity {
-        Array<Owned<DeclSpecifier>> decl_specifiers;
-        Array<InitDeclarator> init_declarators;
+        Array<Owned<DeclSpecifier>> declSpecifiers;
+        Array<InitDeclarator> initDeclarators;
     };
     struct Template {
         Token keyword;
-        Token open_angle;
+        Token openAngle;
         Array<Parameter> params;
-        Token close_angle;
-        Owned<Declaration> child_decl;
+        Token closeAngle;
+        Owned<Declaration> childDecl;
     };
     struct TypeAlias {
-        Token using_keyword;
+        Token usingKeyword;
         Token name;
         Token equals;
-        TypeID type_id;
+        TypeID typeId;
     };
     struct UsingNamespace {
-        Token using_keyword;
-        Token namespace_keyword;
+        Token usingKeyword;
+        Token namespaceKeyword;
         QualifiedID qid;
     };
     struct StaticAssert {
         Token keyword;
-        Token open_paren;
+        Token openParen;
         Array<Owned<Expression>> args;
-        Token close_paren;
+        Token closeParen;
     };
     struct AccessSpecifier {
         Token keyword;
@@ -320,7 +320,7 @@ struct Declaration {
     Variant<Linkage, Namespace, Entity, Template, TypeAlias, UsingNamespace, StaticAssert, AccessSpecifier> var;
     Token semicolon;
 
-    Token get_first_token() const;
+    Token getFirstToken() const;
 };
 
 //-----------------------------------------------------------
@@ -341,9 +341,9 @@ struct Expression {
     };
     struct FunctionCall {
         Owned<Expression> callee;
-        Token open_paren;
+        Token openParen;
         Array<Owned<Expression>> arguments;
-        Token close_paren;
+        Token closeParen;
     };
     struct Lambda {};
 
@@ -389,13 +389,13 @@ struct ParseResult {
 };
 
 struct FileLocation {
-    StringView abs_path;
+    StringView absPath;
     u32 line = 0;
     u32 column = 0;
 };
 
 // Each TokenSpan object represents either a single token or a space.
-// The spaces are inserted automatically by Parser::syntax_highlight according to Plywood's
+// The spaces are inserted automatically by Parser::syntaxHighlight according to Plywood's
 // formatting rules.
 struct TokenSpan {
     enum Color {
@@ -406,28 +406,28 @@ struct TokenSpan {
     };
 
     Color color = None;
-    bool is_space = false;
+    bool isSpace = false;
     const QualifiedID* qid = nullptr; // The QualifiedID that the token is part of, if any.
-    Token token;                      // Only valid if is_space is false.
+    Token token;                      // Only valid if isSpace is false.
 };
 
 struct Parser {
-    Array<String> include_paths;
-    Array<PreprocessorDefinition> predefined_defs;
+    Array<String> includePaths;
+    Array<PreprocessorDefinition> predefinedDefs;
 
     // Preprocessing:
-    PreprocessResult preprocess(StringView abs_path, StringView src);
+    PreprocessResult preprocess(StringView absPath, StringView src);
 
     // Parsing:
-    ParseResult parse_file(StringView abs_path, StringView src);
-    Declaration parse_declaration(StringView input, StringView enclosing_class_name = {});
-    FileLocation get_file_location(u32 input_offset) const;
+    ParseResult parseFile(StringView absPath, StringView src);
+    Declaration parseDeclaration(StringView input, StringView enclosingClassName = {});
+    FileLocation getFileLocation(u32 inputOffset) const;
 
     // Syntax highlighting:
-    Array<TokenSpan> syntax_highlight(const Declaration& decl) const;
+    Array<TokenSpan> syntaxHighlight(const Declaration& decl) const;
 
     // Debug output:
-    void dump_declaration(const Declaration& decl) const;
+    void dumpDeclaration(const Declaration& decl) const;
 
     // Create & destroy:
     static Owned<Parser> create();

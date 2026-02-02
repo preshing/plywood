@@ -1,46 +1,46 @@
 ﻿{title text="Processes" include="ply-base.h" namespace="ply"}
 
-{api_summary}
-PID get_current_process_id()
-String get_current_executable_path()
-{/api_summary}
+{apiSummary}
+PID getCurrentProcessId()
+String getCurrentExecutablePath()
+{/apiSummary}
 
-{api_descriptions}
-PID get_current_process_id()
+{apiDescriptions}
+PID getCurrentProcessId()
 --
-Returns the operating system's process ID for the current process. See also `get_current_thread_id`.
+Returns the operating system's process ID for the current process. See also `getCurrentThreadId`.
 
 >>
-String get_current_executable_path()
+String getCurrentExecutablePath()
 --
 Returns the path to the executable file for the current process.
-{/api_descriptions}
+{/apiDescriptions}
 
 ## `Subprocess`
 
 The `Subprocess` class represents a child process. You can spawn processes, redirect their I/O, and wait for them to complete.
 
-{api_summary class=Subprocess}
+{apiSummary class=Subprocess}
 s32 join()
-static Owned<Subprocess> exec(StringView exe_path, ArrayView<const StringView> args, StringView initial_dir, const Output& output, const Input& input = Input::open())
-static Owned<Subprocess> exec_arg_str(StringView exe_path, StringView arg_str, StringView initial_dir, const Output& output, const Input& input = Input::open())
-{/api_summary}
+static Owned<Subprocess> exec(StringView exePath, ArrayView<const StringView> args, StringView initialDir, const Output& output, const Input& input = Input::open())
+static Owned<Subprocess> execArgStr(StringView exePath, StringView argStr, StringView initialDir, const Output& output, const Input& input = Input::open())
+{/apiSummary}
 
-{api_descriptions class=Subprocess}
+{apiDescriptions class=Subprocess}
 s32 join()
 --
 Waits for the subprocess to finish and returns its exit code. Must be called before the `Subprocess` object is destroyed.
 
 >>
-static Owned<Subprocess> exec(StringView exe_path, ArrayView<const StringView> args, StringView initial_dir, const Output& output, const Input& input = Input::open())
+static Owned<Subprocess> exec(StringView exePath, ArrayView<const StringView> args, StringView initialDir, const Output& output, const Input& input = Input::open())
 --
-Spawns a new process. `exe_path` is the path to the executable. `args` is an array of command-line arguments. `initial_dir` is the working directory for the new process. `output` specifies how to handle stdout/stderr. `input` specifies how to handle stdin.
+Spawns a new process. `exePath` is the path to the executable. `args` is an array of command-line arguments. `initialDir` is the working directory for the new process. `output` specifies how to handle stdout/stderr. `input` specifies how to handle stdin.
 
 >>
-static Owned<Subprocess> exec_arg_str(StringView exe_path, StringView arg_str, StringView initial_dir, const Output& output, const Input& input = Input::open())
+static Owned<Subprocess> execArgStr(StringView exePath, StringView argStr, StringView initialDir, const Output& output, const Input& input = Input::open())
 --
 Like `exec`, but takes the arguments as a single string that will be parsed into individual arguments.
-{/api_descriptions}
+{/apiDescriptions}
 
 The `Output` and `Input` parameters control I/O redirection:
 
@@ -52,12 +52,12 @@ The `Output` and `Input` parameters control I/O redirection:
 
 {example}
 // Run a command and capture its output
-Stream output_stream;
+Stream outputStream;
 Owned<Subprocess> proc = Subprocess::exec(
     "/bin/ls", {"-la"},
     "/home/user",
-    Subprocess::Output::pipe(output_stream)
+    Subprocess::Output::pipe(outputStream)
 );
-String output = output_stream.read_remaining();
-s32 exit_code = proc->join();
+String output = outputStream.readRemaining();
+s32 exitCode = proc->join();
 {/example}

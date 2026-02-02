@@ -27,7 +27,7 @@ Plywood is a low-level C++ base library for building cross-platform native softw
 ## Coding Conventions
 
 - Follow the style of existing code such as `src/ply-base.cpp`
-- Types use CamelCase; functions/variables use snake_case
+- Types use CamelCase; functions/variables use camelCase
 - C++14 features only
 - `.clang-format`: 120 character line limit, 4-space indentation, Attach-style braces
 - All library types/functions are defined in the `ply` namespace; dependent apps use `using namespace ply`
@@ -54,23 +54,23 @@ Plywood is a low-level C++ base library for building cross-platform native softw
 **Integer types**: `s8 s16 s32 s64 u8 u16 u32 u64 sptr uptr`
 
 **Numeric helpers**:
-- `get_min_value<T>()`/`get_max_value<T>` - Numeric limits
+- `getMinValue<T>()`/`getMaxValue<T>` - Numeric limits
 - `abs min max clamp` - Function templates
 - Alignment functions end with `_power_of_2`
-- `numeric_cast` - Asserts if conversion doesn't fit
+- `numericCast` - Asserts if conversion doesn't fit
 
 **Time & date**:
 - `struct DateTime`
-- `get_unix_timestamp`
-- `convert_to_date_time`
-- `convert_to_unix_timestamp`
+- `getUnixTimestamp`
+- `convertToDateTime`
+- `convertToUnixTimestamp`
 
 **CPU profiling**:
-- `get_cpu_ticks`
-- `get_cpu_ticks_per_second`
+- `getCpuTicks`
+- `getCpuTicksPerSecond`
 
 **`Heap`**: Memory allocator
-- Call `Heap::alloc/realloc/free/alloc_aligned` instead of `malloc/free`
+- Call `Heap::alloc/realloc/free/allocAligned` instead of `malloc/free`
 - `Heap::create/destroy` are direct wrappers that invoke constructors/destructors
 - `operator new/delete` are globally overridden to use `Heap` unless `PLY_OVERRIDE_NEW=0` is defined
 
@@ -82,9 +82,9 @@ Plywood is a low-level C++ base library for building cross-platform native softw
 - These classes typically hold UTF-8 text, but can also store binary data
 - Strings aren't null-terminated unless done explicitly, eg. `(str + '\0').bytes()`
 - Member functions common to `String` and `StringView`:
-    - Accessing string bytes: `bytes/num_bytes/[]/back/begin/end`; `[]` performs bounds checking
-    - Examining contents: `is_empty/operator bool/starts_with/ends_with/find/reverse_find`
-    - Creating subviews: `substr/left/shortened_by/right/trim/trim_left/trim_right`
+    - Accessing string bytes: `bytes/numBytes/[]/back/begin/end`; `[]` performs bounds checking
+    - Examining contents: `isEmpty/operator bool/startsWith/endsWith/find/reverseFind`
+    - Creating subviews: `substr/left/shortenedBy/right/trim/trimLeft/trimRight`
     - Creating new strings: `upper/lower/split/join/operator+`
     - Pattern matching: Use `match` instead of `sscanf` when possible
 - `String`-specific member functions:
@@ -97,10 +97,10 @@ Plywood is a low-level C++ base library for building cross-platform native softw
 - `Stream` - Buffered input/output over `Pipe`; can be created on the stack; gets flushed in the destructor
 - `MemStream` - Specialization of `Stream` that uses a dynamic memory buffer
 - `ViewStream` - Read-only `Stream` specialization that reads from a `StringView`
-- `get_stdin get_stdout get_stderr` - Returns temporary `Stream`s over standard handles
+- `getStdin getStdout getStderr` - Returns temporary `Stream`s over standard handles
 
 **Threads and processes**:
-- `get_current_thread_id get_current_process_id get_current_executable_path`
+- `getCurrentThreadId getCurrentProcessId getCurrentExecutablePath`
 - `Thread` - Spawn and join threads
 - `Atomic<T>` - 32 and 64-bit atomic types with relaxed, acquire and release semantics
 - `ThreadLocal<T>` - Shared library-compatible thread local storage
@@ -124,11 +124,11 @@ Plywood is a low-level C++ base library for building cross-platform native softw
 - `RefCounted<Subclass>` - Mixin class
 - `Functor<Return(Args...)>` - Can store and invoke callback functions or lambda expressions
 - `Variant<Types...>` - Can hold one of several predefined types, like a type-checked tagged union
-- Generic algorithms: `find reverse_find sort binary_search`
-- Reading text: `read_line read_whitespace skip_whitespace read_identifier read_u64_from_text read_s64_from_text read_double_from_text read_quoted_string`
-- Writing text: `print_number print_escaped_string print_xml_escaped_string`
-- Unicode conversion: `encode_unicode decode_unicode`
+- Generic algorithms: `find reverseFind sort binarySearch`
+- Reading text: `readLine readWhitespace skipWhitespace readIdentifier read_u64_from_text read_s64_from_text readDoubleFromText readQuotedString`
+- Writing text: `printNumber printEscapedString printXmlEscapedString`
+- Unicode conversion: `encodeUnicode decodeUnicode`
 - `Filesystem` - Filesystem operations, opening files, text format detection
-- Path manipulation: `get_path_separator get_drive_letter is_absolute_path is_relative_path make_absolute_path make_relative_path split_path split_file_extension split_path_full join_path`
+- Path manipulation: `getPathSeparator getDriveLetter isAbsolutePath isRelativePath makeAbsolutePath makeRelativePath splitPath splitFileExtension splitPathFull joinPath`
 - `DirectoryWatcher` - Watches a directory for changes
 

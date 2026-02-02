@@ -2,7 +2,7 @@
        ____
       ╱   ╱╲    Plywood C++ Base Library
      ╱___╱╭╮╲   https://plywood.dev/
-      └──┴┴┴┘   
+      └──┴┴┴┘
 ========================================================*/
 
 #include "ply-cpp.h"
@@ -19,68 +19,68 @@ namespace cpp {
 struct Preprocessor {
     // All the files opened by the preprocessor (eg. through #include directives).
     struct File {
-        String abs_path;
+        String absPath;
         StringView contents;
-        String contents_storage;
-        TokenLocationMap token_loc_map;
+        String contentsStorage;
+        TokenLocationMap tokenLocMap;
     };
     Array<File> files;
 
     // This B-tree lets us map any token to the chain of includes & macros that it came from.
     struct InputRange {
-        // For each InputRange entry whose file_offset is 0, the location of the enclosing include directive or macro
-        // invocation can be found by looking at the preceding InputRange in the BTree and calculating the file_offset
+        // For each InputRange entry whose fileOffset is 0, the location of the enclosing include directive or macro
+        // invocation can be found by looking at the preceding InputRange in the BTree and calculating the fileOffset
         // at the end of that range.
-        // parent_start_offset tells us the input offset at the *start* of the enclosing file or macro expansion. There
-        // should be an InputRange entry at this offset whose file_offset is 0 and whose file_or_macro_index matches the
+        // parentStartOffset tells us the input offset at the *start* of the enclosing file or macro expansion. There
+        // should be an InputRange entry at this offset whose fileOffset is 0 and whose fileOrMacroIndex matches the
         // InputRange entry preceding this one.
-        u32 input_offset = 0;
-        u32 is_macro_expansion : 1;
-        u32 file_or_macro_index : 32;
-        u32 file_offset = 0;
-        s32 parent_range_index = -1;
+        u32 inputOffset = 0;
+        u32 isMacroExpansion : 1;
+        u32 fileOrMacroIndex : 32;
+        u32 fileOffset = 0;
+        s32 parentRangeIndex = -1;
 
-        InputRange() : is_macro_expansion{0}, file_or_macro_index{0} {
+        InputRange() : isMacroExpansion{0}, fileOrMacroIndex{0} {
         }
-        u32 get_lookup_key() const {
-            return this->input_offset;
+        u32 getLookupKey() const {
+            return this->inputOffset;
         }
     };
-    Array<InputRange> input_ranges;
+    Array<InputRange> inputRanges;
 
     // The current include stack. Macro expansions are also pushed here when they are parsed.
     struct IncludedItem {
-        u32 input_range_index = 0; // InputRange lookup key of enclosing directive or macro invocation.
+        u32 inputRangeIndex = 0; // InputRange lookup key of enclosing directive or macro invocation.
         ViewStream vin;
     };
-    Array<IncludedItem> include_stack;
+    Array<IncludedItem> includeStack;
 
     // All the preprocessor definitions that have been defined.
     struct Macro {
         StringView name;
         Map<StringView, u32> args;
         StringView expansion;
-        u32 expansion_input_offset = u32(-1); // -1 means predefined.
-        bool takes_arguments = false;
+        u32 expansionInputOffset = u32(-1); // -1 means predefined.
+        bool takesArguments = false;
 
-        StringView get_lookup_key() const {
+        StringView getLookupKey() const {
             return this->name;
         }
     };
     Array<Macro> macros; // No item is ever erased, only replaced with a later item.
-    Map<StringView, u32> macro_map;
+    Map<StringView, u32> macroMap;
 
     // This array holds string storage for:
     // - tokens joined by ## token pasting
     // - tokens joined  by \ line continuation
-    Array<String> joined_token_storage;
+    Array<String> joinedTokenStorage;
 
     // Flags that influence tokenizer behavior.
-    bool at_start_of_line = true;
+    bool atStartOfLine = true;
 
     // This member is only valid when a token type of Macro is returned.
-    // It'll remain valid until the next call to read_token.
-    Array<Token> macro_args;
+    // It'll remain valid until the next call to readToken.
+    Array<Token> macroArgs;
 };
 
 //  ▄▄▄▄▄                                     ▄▄▄▄                 ▄▄▄
@@ -99,22 +99,22 @@ struct ParserImpl : Parser {
     Tokenizer tkr;
     Preprocessor pp;
     Array<String> diagnostics;
-    bool is_only_preprocessing = false;
+    bool isOnlyPreprocessing = false;
     bool success = true;
 
     // Backtracking and pushback
     struct PackedToken {
         Token::Type type = Token::EOF;
-        u32 input_offset = 0;
+        u32 inputOffset = 0;
     };
     static constexpr u32 NumTokensPerPage = 2048;
     Array<FixedArray<PackedToken, NumTokensPerPage + 1>> tokens;
-    u32 token_index = 0;
-    u32 num_tokens = 0;
-    bool restore_point_enabled = false;
+    u32 tokenIndex = 0;
+    u32 numTokens = 0;
+    bool restorePointEnabled = false;
 
     // Status
-    u32 pass_number = 1;
+    u32 passNumber = 1;
 
     //---------------------------
     // Error recovery
@@ -126,22 +126,22 @@ struct ParserImpl : Parser {
     static constexpr u32 AcceptComma = 0x20;
     static constexpr u32 AcceptSemicolon = 0x40;
 
-    u32 raw_error_count = 0; // Increments even when errors are muted.
-    bool mute_errors = false;
-    u32 outer_accept_flags = 0;
+    u32 rawErrorCount = 0; // Increments even when errors are muted.
+    bool muteErrors = false;
+    u32 outerAcceptFlags = 0;
 
     //---------------------------
 
     ParserImpl();
-    void error_no_mute(ErrorType type, u32 input_offset, StringView message);
-    void error(ErrorType type, u32 input_offset, StringView message);
+    void errorNoMute(ErrorType type, u32 inputOffset, StringView message);
+    void error(ErrorType type, u32 inputOffset, StringView message);
 };
 
 struct RestorePoint {
     ParserImpl* parser = nullptr;
-    bool was_previously_enabled = false;
-    u32 saved_token_index = 0;
-    u32 saved_error_count = 0;
+    bool wasPreviouslyEnabled = false;
+    u32 savedTokenIndex = 0;
+    u32 savedErrorCount = 0;
 
     RestorePoint(ParserImpl* parser) : parser{parser} {
         // Restore points can be nested. For example, when parsing the parameters of the
@@ -153,28 +153,28 @@ struct RestorePoint {
         //          ^                ^
         //          |                `---- second restore point
         //          `---- first restore point
-        this->was_previously_enabled = parser->restore_point_enabled;
-        parser->restore_point_enabled = true;
-        this->saved_token_index = parser->token_index;
-        this->saved_error_count = parser->raw_error_count;
+        this->wasPreviouslyEnabled = parser->restorePointEnabled;
+        parser->restorePointEnabled = true;
+        this->savedTokenIndex = parser->tokenIndex;
+        this->savedErrorCount = parser->rawErrorCount;
     }
     ~RestorePoint() {
         if (this->parser) {
             this->cancel();
         }
     }
-    bool error_occurred() const {
-        return this->parser->raw_error_count != this->saved_error_count;
+    bool errorOccurred() const {
+        return this->parser->rawErrorCount != this->savedErrorCount;
     }
     void backtrack() {
         PLY_ASSERT(this->parser); // Must not have been canceled
-        this->parser->token_index = this->saved_token_index;
-        this->parser->raw_error_count = this->saved_error_count;
+        this->parser->tokenIndex = this->savedTokenIndex;
+        this->parser->rawErrorCount = this->savedErrorCount;
     }
     void cancel() {
-        PLY_ASSERT(this->parser);            // Must not have been canceled
-        PLY_ASSERT(!this->error_occurred()); // no errors occurred
-        this->parser->restore_point_enabled = this->was_previously_enabled;
+        PLY_ASSERT(this->parser);           // Must not have been canceled
+        PLY_ASSERT(!this->errorOccurred()); // no errors occurred
+        this->parser->restorePointEnabled = this->wasPreviouslyEnabled;
         this->parser = nullptr;
     }
 };
@@ -183,246 +183,249 @@ struct RestorePoint {
 // Error handling
 //---------------------------------------------------------------------------
 
-FileLocation get_file_location(const Preprocessor* pp, u32 input_offset) {
-    s32 input_range_index = binary_search(pp->input_ranges, input_offset, FindGreaterThan) - 1;
-    PLY_ASSERT(input_range_index >= 0);
-    const Preprocessor::InputRange* input_range = &pp->input_ranges[input_range_index];
-    while (input_range->is_macro_expansion) {
-        input_range_index = input_range->parent_range_index;
-        PLY_ASSERT(input_range_index >= 0);
-        PLY_ASSERT(input_range_index + 1 < numeric_cast<s32>(pp->input_ranges.num_items()));
-        PLY_ASSERT(pp->input_ranges[input_range_index + 1].parent_range_index == input_range_index);
-        input_range = &pp->input_ranges[input_range_index];
-        input_offset = pp->input_ranges[input_range_index + 1].input_offset;
+FileLocation getFileLocation(const Preprocessor* pp, u32 inputOffset) {
+    s32 inputRangeIndex = binarySearch(pp->inputRanges, inputOffset, FindGreaterThan) - 1;
+    PLY_ASSERT(inputRangeIndex >= 0);
+    const Preprocessor::InputRange* inputRange = &pp->inputRanges[inputRangeIndex];
+    while (inputRange->isMacroExpansion) {
+        inputRangeIndex = inputRange->parentRangeIndex;
+        PLY_ASSERT(inputRangeIndex >= 0);
+        PLY_ASSERT(inputRangeIndex + 1 < numericCast<s32>(pp->inputRanges.numItems()));
+        PLY_ASSERT(pp->inputRanges[inputRangeIndex + 1].parentRangeIndex == inputRangeIndex);
+        inputRange = &pp->inputRanges[inputRangeIndex];
+        inputOffset = pp->inputRanges[inputRangeIndex + 1].inputOffset;
     }
-    const Preprocessor::File* file = &pp->files[input_range->file_or_macro_index];
-    TokenLocation token_loc = file->token_loc_map.get_location_from_offset(
-        numeric_cast<u32>(input_offset - input_range->input_offset + input_range->file_offset));
-    return {file->abs_path, token_loc.line_number, token_loc.column_number};
+    const Preprocessor::File* file = &pp->files[inputRange->fileOrMacroIndex];
+    TokenLocation tokenLoc = file->tokenLocMap.getLocationFromOffset(
+        numericCast<u32>(inputOffset - inputRange->inputOffset + inputRange->fileOffset));
+    return {file->absPath, tokenLoc.lineNumber, tokenLoc.columnNumber};
 }
 
-String get_file_location_string(const Preprocessor* pp, u32 input_offset) {
-    FileLocation file_location = get_file_location(pp, input_offset);
-    return String::format("{}({}, {})", file_location.abs_path, file_location.line, file_location.column);
+String getFileLocationString(const Preprocessor* pp, u32 inputOffset) {
+    FileLocation fileLocation = getFileLocation(pp, inputOffset);
+    return String::format("{}({}, {})", fileLocation.absPath, fileLocation.line, fileLocation.column);
 }
 
 ParserImpl::ParserImpl() {
-    this->tkr.config.tokenize_preprocessor_directives = true;
-    this->tkr.error_callback = [this](u32 input_offset, String&& message) {
+    this->tkr.config.tokenizePreprocessorDirectives = true;
+    this->tkr.errorCallback = [this](u32 inputOffset, String&& message) {
         // Tokenizer errors don't affect the raw error count.
         this->diagnostics.append(
-            String::format("{}: error: {}\n", get_file_location_string(&this->pp, input_offset), message));
+            String::format("{}: error: {}\n", getFileLocationString(&this->pp, inputOffset), message));
         this->success = false;
     };
 }
 
-void ParserImpl::error_no_mute(ErrorType type, u32 input_offset, StringView message) {
+void ParserImpl::errorNoMute(ErrorType type, u32 inputOffset, StringView message) {
     if (type == Error) {
-        this->raw_error_count++;
+        this->rawErrorCount++;
     }
-    if (!this->restore_point_enabled && !this->mute_errors) {
-        StringView type_str = "error";
+    if (!this->restorePointEnabled && !this->muteErrors) {
+        StringView typeStr = "error";
         if (type == Warning) {
-            type_str = "warning";
+            typeStr = "warning";
         } else if (type == Note) {
-            type_str = "note";
+            typeStr = "note";
         }
         this->diagnostics.append(
-            String::format("{}: {}: {}\n", get_file_location_string(&this->pp, input_offset), type_str, message));
+            String::format("{}: {}: {}\n", getFileLocationString(&this->pp, inputOffset), typeStr, message));
         if (type == Error) {
             this->success = false;
         }
     }
 }
 
-inline void ParserImpl::error(ErrorType type, u32 input_offset, StringView message) {
-    this->error_no_mute(type, input_offset, message);
-    this->mute_errors = true;
+inline void ParserImpl::error(ErrorType type, u32 inputOffset, StringView message) {
+    this->errorNoMute(type, inputOffset, message);
+    this->muteErrors = true;
 }
 
-#define FMT_MSG(...) ((!parser->restore_point_enabled && !parser->mute_errors) ? String::format(__VA_ARGS__) : String{})
+#define FMT_MSG(...) ((!parser->restorePointEnabled && !parser->muteErrors) ? String::format(__VA_ARGS__) : String{})
 
 //---------------------------------------------------------
 // Helpers
 //---------------------------------------------------------
-StringView get_text_at_offset(const Preprocessor* pp, u32 input_offset, u32 num_bytes) {
-    s32 input_range_index = binary_search(pp->input_ranges, input_offset, FindGreaterThan) - 1;
-    PLY_ASSERT(input_range_index >= 0);
-    const Preprocessor::InputRange* input_range = &pp->input_ranges[input_range_index];
-    if (input_range->is_macro_expansion) {
-        const Preprocessor::Macro& macro = pp->macros[input_range->file_or_macro_index];
-        return macro.expansion.substr(input_offset - input_range->input_offset + input_range->file_offset, num_bytes);
+StringView getTextAtOffset(const Preprocessor* pp, u32 inputOffset, u32 numBytes) {
+    s32 inputRangeIndex = binarySearch(pp->inputRanges, inputOffset, FindGreaterThan) - 1;
+    PLY_ASSERT(inputRangeIndex >= 0);
+    const Preprocessor::InputRange* inputRange = &pp->inputRanges[inputRangeIndex];
+    if (inputRange->isMacroExpansion) {
+        const Preprocessor::Macro& macro = pp->macros[inputRange->fileOrMacroIndex];
+        return macro.expansion.substr(inputOffset - inputRange->inputOffset + inputRange->fileOffset, numBytes);
     } else {
-        const Preprocessor::File& file = pp->files[input_range->file_or_macro_index];
-        return file.contents.substr(input_offset - input_range->input_offset + input_range->file_offset, num_bytes);
+        const Preprocessor::File& file = pp->files[inputRange->fileOrMacroIndex];
+        return file.contents.substr(inputOffset - inputRange->inputOffset + inputRange->fileOffset, numBytes);
     }
 }
 
-void include_file(ParserImpl* parser, StringView filename, u32 input_offset) {
-    for (StringView include_path : parser->include_paths) {
-        String full_path = join_path(include_path, filename);
-        if (Filesystem::exists(full_path) == ER_FILE) {
-            u32 file_index = parser->pp.files.num_items();
+void includeFile(ParserImpl* parser, StringView filename, u32 inputOffset) {
+    for (StringView includePath : parser->includePaths) {
+        String fullPath = joinPath(includePath, filename);
+        if (Filesystem::exists(fullPath) == ER_FILE) {
+            u32 fileIndex = parser->pp.files.numItems();
             Preprocessor::File& file = parser->pp.files.append();
-            file.abs_path = full_path;
-            file.contents_storage = Filesystem::load_text_autodetect(full_path);
-            file.contents = file.contents_storage;
-            file.token_loc_map = TokenLocationMap::create_from_string(file.contents);
+            file.absPath = fullPath;
+            file.contentsStorage = Filesystem::loadTextAutodetect(fullPath);
+            file.contents = file.contentsStorage;
+            file.tokenLocMap = TokenLocationMap::createFromString(file.contents);
 
             // Add to the include stack.
-            Preprocessor::IncludedItem& item = parser->pp.include_stack.append();
-            item.input_range_index = parser->pp.input_ranges.num_items();
+            Preprocessor::IncludedItem& item = parser->pp.includeStack.append();
+            item.inputRangeIndex = parser->pp.inputRanges.numItems();
             item.vin = ViewStream{file.contents};
 
             // Begin a new range of input.
-            Preprocessor::InputRange& new_input_range = parser->pp.input_ranges.append();
-            new_input_range.input_offset = input_offset;
-            new_input_range.is_macro_expansion = 0;
-            new_input_range.file_or_macro_index = file_index;
-            new_input_range.parent_range_index = parser->pp.include_stack.back(-2).input_range_index;
+            Preprocessor::InputRange& newInputRange = parser->pp.inputRanges.append();
+            newInputRange.inputOffset = inputOffset;
+            newInputRange.isMacroExpansion = 0;
+            newInputRange.fileOrMacroIndex = fileIndex;
+            newInputRange.parentRangeIndex = parser->pp.includeStack.back(-2).inputRangeIndex;
         }
     }
 }
 
-void handle_preprocessor_directive(ParserImpl* parser, StringView directive, u32 input_offset) {
+void handlePreprocessorDirective(ParserImpl* parser, StringView directive, u32 inputOffset) {
     ViewStream in{directive};
-    StringView cmd = read_identifier(in);
+    StringView cmd = readIdentifier(in);
     if (cmd == "include") {
-        skip_whitespace(in);
-        StringView rest = read_line(in);
+        skipWhitespace(in);
+        StringView rest = readLine(in);
         // FIXME: Do proper parsing of < > vs " "
-        include_file(parser, rest.substr(1, rest.num_bytes() - 2), input_offset);
+        includeFile(parser, rest.substr(1, rest.numBytes() - 2), inputOffset);
     } else if (cmd == "define") {
         // Parse macro name.
-        skip_whitespace(in);
-        StringView name = read_identifier(in);
-        if (name.num_bytes() > 0) {
+        skipWhitespace(in);
+        StringView name = readIdentifier(in);
+        if (name.numBytes() > 0) {
             // Parse macro expansion (may be empty).
-            StringView expansion = in.view_remaining_bytes().trim();
+            StringView expansion = in.viewRemainingBytes().trim();
 
             // Append new macro; don't erase old ones because existing InputRanges may still
-            // reference them. Instead, update macro_map to point to the newest definition.
-            u32 macro_idx = parser->pp.macros.num_items();
+            // reference them. Instead, update macroMap to point to the newest definition.
+            u32 macroIdx = parser->pp.macros.numItems();
             Preprocessor::Macro& macro = parser->pp.macros.append();
             macro.name = name;
             macro.expansion = expansion;
-            *parser->pp.macro_map.insert(name).value = macro_idx;
+            *parser->pp.macroMap.insert(name).value = macroIdx;
         }
     }
 }
 
-Token peek_token(ParserImpl* parser) {
+Token peekToken(ParserImpl* parser) {
     Token token;
     for (;;) {
-        if (parser->token_index >= parser->num_tokens) {
-            token = read_token(parser->tkr, parser->pp.include_stack.back().vin);
+        if (parser->tokenIndex >= parser->numTokens) {
+            token = readToken(parser->tkr, parser->pp.includeStack.back().vin);
             if (token.type == Token::Identifier) {
-                if (u32* macro_idx = parser->pp.macro_map.find(token.text)) {
+                if (u32* macroIdx = parser->pp.macroMap.find(token.text)) {
                     // A preprocessor definition was found.
-                    const Preprocessor::Macro& macro = parser->pp.macros[*macro_idx];
+                    const Preprocessor::Macro& macro = parser->pp.macros[*macroIdx];
 
                     // We don't want the macro invocation itself to contribute to the logical input
                     // stream length. Rewind the tokenizer's logical offset so that the macro
                     // expansion logically starts at the beginning of the invocation token.
-                    parser->tkr.input_offset = token.input_offset;
+                    parser->tkr.inputOffset = token.inputOffset;
 
                     // Add to the include stack, which actually contains both includes and macros.
-                    Preprocessor::IncludedItem& top = parser->pp.include_stack.append();
-                    top.input_range_index = parser->pp.input_ranges.num_items();
+                    Preprocessor::IncludedItem& top = parser->pp.includeStack.append();
+                    top.inputRangeIndex = parser->pp.inputRanges.numItems();
                     top.vin = ViewStream{macro.expansion};
 
                     // Begin a new range of input.
-                    Preprocessor::InputRange& new_input_range = parser->pp.input_ranges.append();
+                    Preprocessor::InputRange& newInputRange = parser->pp.inputRanges.append();
                     // The macro expansion occupies the same logical position as the invocation,
                     // so its InputRange starts at the invocation's input offset.
-                    new_input_range.input_offset = token.input_offset;
-                    new_input_range.is_macro_expansion = 1;
-                    new_input_range.file_or_macro_index = *macro_idx;
-                    new_input_range.parent_range_index = parser->pp.include_stack.back(-2).input_range_index;
+                    newInputRange.inputOffset = token.inputOffset;
+                    newInputRange.isMacroExpansion = 1;
+                    newInputRange.fileOrMacroIndex = *macroIdx;
+                    newInputRange.parentRangeIndex = parser->pp.includeStack.back(-2).inputRangeIndex;
 
                     // Macro invocations are *not* added to the parser's token list.
                     continue;
                 }
             } else if (token.type == Token::EOF) {
-                if (parser->pp.include_stack.num_items() > 1) {
+                if (parser->pp.includeStack.numItems() > 1) {
                     // The last item in the include stack should correspond to the last input range.
-                    PLY_ASSERT(parser->pp.include_stack.back().input_range_index ==
-                               parser->pp.input_ranges.num_items() - 1);
+                    PLY_ASSERT(parser->pp.includeStack.back().inputRangeIndex == parser->pp.inputRanges.numItems() - 1);
 
                     // Begin a new input range for the remainder of the parent file or macro.
-                    Preprocessor::InputRange& new_input_range = parser->pp.input_ranges.append();
+                    Preprocessor::InputRange& newInputRange = parser->pp.inputRanges.append();
 
                     // Sanity check the input offset of the EOF token.
-                    const Preprocessor::InputRange& ending_input_range = parser->pp.input_ranges.back(-2);
-                    PLY_ASSERT(ending_input_range.input_offset + (parser->pp.include_stack.back().vin.get_seek_pos() - ending_input_range.file_offset) == token.input_offset);
+                    const Preprocessor::InputRange& endingInputRange = parser->pp.inputRanges.back(-2);
+                    PLY_ASSERT(endingInputRange.inputOffset +
+                                   (parser->pp.includeStack.back().vin.getSeekPos() - endingInputRange.fileOffset) ==
+                               token.inputOffset);
 
                     // Get the file offset where we are resuming the parent file or macro.
-                    PLY_ASSERT(ending_input_range.parent_range_index ==
-                               numeric_cast<s32>(parser->pp.include_stack.back(-2).input_range_index));
-                    const Preprocessor::InputRange* old_parent_range = &parser->pp.input_ranges[ending_input_range.parent_range_index];
-                    u32 old_parent_range_length = old_parent_range[1].input_offset - old_parent_range[0].input_offset;
-                    u32 parent_file_seek = numeric_cast<u32>(parser->pp.include_stack.back(-2).vin.get_seek_pos());
+                    PLY_ASSERT(endingInputRange.parentRangeIndex ==
+                               numericCast<s32>(parser->pp.includeStack.back(-2).inputRangeIndex));
+                    const Preprocessor::InputRange* oldParentRange =
+                        &parser->pp.inputRanges[endingInputRange.parentRangeIndex];
+                    u32 oldParentRangeLength = oldParentRange[1].inputOffset - oldParentRange[0].inputOffset;
+                    u32 parentFileSeek = numericCast<u32>(parser->pp.includeStack.back(-2).vin.getSeekPos());
                     // For includes (not macro expansions), the logical length of the parent
                     // segment should exactly match how far we've advanced in the parent file.
-                    if (!ending_input_range.is_macro_expansion) {
-                        PLY_ASSERT(old_parent_range->file_offset + old_parent_range_length == parent_file_seek);
+                    if (!endingInputRange.isMacroExpansion) {
+                        PLY_ASSERT(oldParentRange->fileOffset + oldParentRangeLength == parentFileSeek);
                     }
-                    
+
                     // Fill in the new input range.
-                    new_input_range.input_offset = token.input_offset;
-                    new_input_range.is_macro_expansion = old_parent_range->is_macro_expansion;
-                    new_input_range.file_or_macro_index = old_parent_range->file_or_macro_index;
+                    newInputRange.inputOffset = token.inputOffset;
+                    newInputRange.isMacroExpansion = oldParentRange->isMacroExpansion;
+                    newInputRange.fileOrMacroIndex = oldParentRange->fileOrMacroIndex;
                     // Resume the parent at its current file (or macro) position.
-                    new_input_range.file_offset = parent_file_seek;
-                    new_input_range.parent_range_index = old_parent_range->parent_range_index;
+                    newInputRange.fileOffset = parentFileSeek;
+                    newInputRange.parentRangeIndex = oldParentRange->parentRangeIndex;
 
                     // Pop the last item from the include stack.
-                    parser->pp.include_stack.pop();
-                    parser->pp.include_stack.back().input_range_index = parser->pp.input_ranges.num_items() - 1;
+                    parser->pp.includeStack.pop();
+                    parser->pp.includeStack.back().inputRangeIndex = parser->pp.inputRanges.numItems() - 1;
                 }
             }
 
             // Add this token to the parser's token list. Preprocessor directives, comments and whitespace are added to
             // the token list, but not returned to the parser.
-            u32 page_index = parser->token_index / ParserImpl::NumTokensPerPage;
-            if (page_index >= parser->tokens.num_items()) {
+            u32 pageIndex = parser->tokenIndex / ParserImpl::NumTokensPerPage;
+            if (pageIndex >= parser->tokens.numItems()) {
                 parser->tokens.append();
             }
             ParserImpl::PackedToken* packed =
-                &parser->tokens[page_index][parser->token_index - page_index * ParserImpl::NumTokensPerPage];
+                &parser->tokens[pageIndex][parser->tokenIndex - pageIndex * ParserImpl::NumTokensPerPage];
             packed[0].type = token.type;
-            packed[0].input_offset = token.input_offset;
-            packed[1].input_offset = token.input_offset + token.text.num_bytes();
-            parser->num_tokens++;
+            packed[0].inputOffset = token.inputOffset;
+            packed[1].inputOffset = token.inputOffset + token.text.numBytes();
+            parser->numTokens++;
 
             // If it's a preprocessor directive, handle it.
             if (token.type == Token::PreprocessorDirective) {
-                handle_preprocessor_directive(parser, token.text.substr(1).trim(), token.input_offset + token.text.num_bytes());
+                handlePreprocessorDirective(parser, token.text.substr(1).trim(),
+                                            token.inputOffset + token.text.numBytes());
                 // The directive may modify the include stack, so restart the loop to read the next token.
-                parser->token_index++;
+                parser->tokenIndex++;
                 continue;
             }
         } else {
-            u32 page_index = parser->token_index / ParserImpl::NumTokensPerPage;
-            u32 index_in_page = parser->token_index - page_index * ParserImpl::NumTokensPerPage;
-            ParserImpl::PackedToken* packed = &parser->tokens[page_index][index_in_page];
+            u32 pageIndex = parser->tokenIndex / ParserImpl::NumTokensPerPage;
+            u32 indexInPage = parser->tokenIndex - pageIndex * ParserImpl::NumTokensPerPage;
+            ParserImpl::PackedToken* packed = &parser->tokens[pageIndex][indexInPage];
             token.type = packed[0].type;
-            token.input_offset = packed[0].input_offset;
-            token.text = get_text_at_offset(&parser->pp, packed[0].input_offset,
-                                            packed[1].input_offset - packed[0].input_offset);
+            token.inputOffset = packed[0].inputOffset;
+            token.text =
+                getTextAtOffset(&parser->pp, packed[0].inputOffset, packed[1].inputOffset - packed[0].inputOffset);
         }
 
         switch (token.type) {
             case Token::PreprocessorDirective:
             case Token::CStyleComment:
             case Token::LineComment:
-                parser->token_index++;
+                parser->tokenIndex++;
                 break;
 
             case Token::Whitespace:
-                if (parser->is_only_preprocessing)
+                if (parser->isOnlyPreprocessing)
                     return token;
-                parser->token_index++;
+                parser->tokenIndex++;
                 break;
 
             default:
@@ -431,45 +434,45 @@ Token peek_token(ParserImpl* parser) {
     }
 }
 
-inline Token read_token(ParserImpl* parser) {
-    Token token = peek_token(parser);
-    parser->token_index++;
+inline Token readToken(ParserImpl* parser) {
+    Token token = peekToken(parser);
+    parser->tokenIndex++;
     return token;
 }
 
-bool ok_to_stay_in_scope(ParserImpl* parser, const Token& token) {
+bool okToStayInScope(ParserImpl* parser, const Token& token) {
     switch (token.type) {
         case Token::OpenCurly: {
-            if (parser->outer_accept_flags & ParserImpl::AcceptOpenCurly) {
-                parser->token_index--;
+            if (parser->outerAcceptFlags & ParserImpl::AcceptOpenCurly) {
+                parser->tokenIndex--;
                 return false;
             }
             break;
         }
         case Token::CloseCurly: {
-            if (parser->outer_accept_flags & ParserImpl::AcceptCloseCurly) {
-                parser->token_index--;
+            if (parser->outerAcceptFlags & ParserImpl::AcceptCloseCurly) {
+                parser->tokenIndex--;
                 return false;
             }
             break;
         }
         case Token::CloseParen: {
-            if (parser->outer_accept_flags & ParserImpl::AcceptCloseParen) {
-                parser->token_index--;
+            if (parser->outerAcceptFlags & ParserImpl::AcceptCloseParen) {
+                parser->tokenIndex--;
                 return false;
             }
             break;
         }
         case Token::CloseAngle: {
-            if (parser->outer_accept_flags & ParserImpl::AcceptCloseAngle) {
-                parser->token_index--;
+            if (parser->outerAcceptFlags & ParserImpl::AcceptCloseAngle) {
+                parser->tokenIndex--;
                 return false;
             }
             break;
         }
         case Token::CloseSquare: {
-            if (parser->outer_accept_flags & ParserImpl::AcceptCloseSquare) {
-                parser->token_index--;
+            if (parser->outerAcceptFlags & ParserImpl::AcceptCloseSquare) {
+                parser->tokenIndex--;
                 return false;
             }
             break;
@@ -484,34 +487,34 @@ bool ok_to_stay_in_scope(ParserImpl* parser, const Token& token) {
 
 struct SetAcceptFlagsInScope {
     ParserImpl* parser;
-    u32 prev_accept_flags = 0;
-    bool prev_tokenize_right_shift = false;
+    u32 prevAcceptFlags = 0;
+    bool prevTokenizeRightShift = false;
 
-    SetAcceptFlagsInScope(ParserImpl* parser, Token::Type open_token_type) : parser{parser} {
-        this->prev_accept_flags = parser->outer_accept_flags;
-        this->prev_tokenize_right_shift = parser->tkr.config.tokenize_right_shift;
+    SetAcceptFlagsInScope(ParserImpl* parser, Token::Type openTokenType) : parser{parser} {
+        this->prevAcceptFlags = parser->outerAcceptFlags;
+        this->prevTokenizeRightShift = parser->tkr.config.tokenizeRightShift;
 
-        switch (open_token_type) {
+        switch (openTokenType) {
             case Token::OpenCurly: {
-                parser->outer_accept_flags = ParserImpl::AcceptCloseCurly;
-                parser->tkr.config.tokenize_right_shift = true;
+                parser->outerAcceptFlags = ParserImpl::AcceptCloseCurly;
+                parser->tkr.config.tokenizeRightShift = true;
                 break;
             }
             case Token::OpenParen: {
-                parser->outer_accept_flags =
-                    (parser->outer_accept_flags | ParserImpl::AcceptCloseParen) & ~ParserImpl::AcceptCloseAngle;
-                parser->tkr.config.tokenize_right_shift = true;
+                parser->outerAcceptFlags =
+                    (parser->outerAcceptFlags | ParserImpl::AcceptCloseParen) & ~ParserImpl::AcceptCloseAngle;
+                parser->tkr.config.tokenizeRightShift = true;
                 break;
             }
             case Token::OpenAngle: {
-                parser->outer_accept_flags = (parser->outer_accept_flags | ParserImpl::AcceptCloseAngle);
-                parser->tkr.config.tokenize_right_shift = false;
+                parser->outerAcceptFlags = (parser->outerAcceptFlags | ParserImpl::AcceptCloseAngle);
+                parser->tkr.config.tokenizeRightShift = false;
                 break;
             }
             case Token::OpenSquare: {
-                parser->outer_accept_flags =
-                    (parser->outer_accept_flags | ParserImpl::AcceptCloseSquare) & ~ParserImpl::AcceptCloseAngle;
-                parser->tkr.config.tokenize_right_shift = true;
+                parser->outerAcceptFlags =
+                    (parser->outerAcceptFlags | ParserImpl::AcceptCloseSquare) & ~ParserImpl::AcceptCloseAngle;
+                parser->tkr.config.tokenizeRightShift = true;
                 break;
             }
             default: {
@@ -522,44 +525,44 @@ struct SetAcceptFlagsInScope {
     }
 
     ~SetAcceptFlagsInScope() {
-        parser->outer_accept_flags = this->prev_accept_flags;
-        parser->tkr.config.tokenize_right_shift = this->prev_tokenize_right_shift;
+        parser->outerAcceptFlags = this->prevAcceptFlags;
+        parser->tkr.config.tokenizeRightShift = this->prevTokenizeRightShift;
     }
 };
 
 //-------------------------------------------------------------------------------------
-// skip_any_scope
+// skipAnyScope
 //
 // Returns false if an unexpected token is encountered and an outer scope is expected
-// to handle it, as determined by parser->outer_accept_flags.
+// to handle it, as determined by parser->outerAcceptFlags.
 //-------------------------------------------------------------------------------------
-bool skip_any_scope(ParserImpl* parser, Token* out_close_token, const Token& open_token) {
-    SetAcceptFlagsInScope accept_scope{parser, open_token.type};
-    Token::Type close_punc = (Token::Type) ((u32) open_token.type + 1);
+bool skipAnyScope(ParserImpl* parser, Token* outCloseToken, const Token& openToken) {
+    SetAcceptFlagsInScope acceptScope{parser, openToken.type};
+    Token::Type closePunc = (Token::Type)((u32) openToken.type + 1);
     for (;;) {
-        Token token = read_token(parser);
-        if (token.type == close_punc) {
-            if (out_close_token) {
-                *out_close_token = token;
+        Token token = readToken(parser);
+        if (token.type == closePunc) {
+            if (outCloseToken) {
+                *outCloseToken = token;
             }
             return true;
         }
 
-        if (!ok_to_stay_in_scope(parser, token)) {
-            parser->error_no_mute(
-                Error, token.input_offset,
-                FMT_MSG("expected '{}'", get_punctuation_string((Token::Type) ((u32) open_token.type + 1))));
-            parser->error_no_mute(Note, open_token.input_offset, FMT_MSG("to match this '{}'", open_token.to_string()));
-            parser->mute_errors = true;
+        if (!okToStayInScope(parser, token)) {
+            parser->errorNoMute(
+                Error, token.inputOffset,
+                FMT_MSG("expected '{}'", getPunctuationString((Token::Type)((u32) openToken.type + 1))));
+            parser->errorNoMute(Note, openToken.inputOffset, FMT_MSG("to match this '{}'", openToken.toString()));
+            parser->muteErrors = true;
             return false;
         }
 
         switch (token.type) {
             case Token::OpenAngle: {
-                if (!parser->tkr.config.tokenize_right_shift) {
+                if (!parser->tkr.config.tokenizeRightShift) {
                     // If we were immediately inside a template-parameter/argument scope < >, treat
                     // < as a nested scope, because we now need to encounter two CloseAngle tokens:
-                    skip_any_scope(parser, nullptr, token);
+                    skipAnyScope(parser, nullptr, token);
                 }
                 // If we are not immediately inside a template-parameter/argument scope < >, don't
                 // treat < as the beginning of a scope, since it might just be a less-than operator.
@@ -568,7 +571,7 @@ bool skip_any_scope(ParserImpl* parser, Token* out_close_token, const Token& ope
             case Token::OpenCurly:
             case Token::OpenParen:
             case Token::OpenSquare: {
-                skip_any_scope(parser, nullptr, token);
+                skipAnyScope(parser, nullptr, token);
                 break;
             }
             default: {
@@ -580,21 +583,21 @@ bool skip_any_scope(ParserImpl* parser, Token* out_close_token, const Token& ope
 // Returns false if the given token was pushed back and ends an outer scope. Otherwise, it consumes
 // the given token. If the given token begins a new scope, it consumes tokens until either the inner
 // scope is closed, or until the inner scope is "canceled" by a closing token that closes an outer
-// scope, as determined by parser->outer_accept_flags. In that case, the closing token is pushed
+// scope, as determined by parser->outerAcceptFlags. In that case, the closing token is pushed
 // back so that the caller can read it next. In each of those cases, it returns true to indicate to
 // the caller that the given token was consumed and a new token is available to read.
-bool handle_unexpected_token(ParserImpl* parser, Token* out_close_token, const Token& token) {
-    // FIXME: Merge this with the second half of skip_any_scope:
-    if (!ok_to_stay_in_scope(parser, token))
+bool handleUnexpectedToken(ParserImpl* parser, Token* outCloseToken, const Token& token) {
+    // FIXME: Merge this with the second half of skipAnyScope:
+    if (!okToStayInScope(parser, token))
         return false;
 
     switch (token.type) {
         case Token::OpenAngle: {
-            if (!parser->tkr.config.tokenize_right_shift) {
+            if (!parser->tkr.config.tokenizeRightShift) {
                 // If we were immediately inside a template-parameter/argument scope < >, treat
                 // < as a nested scope, because we now need to encounter two Close_Angle tokens:
-                skip_any_scope(parser, out_close_token, token);
-                // Ignore the return value of skip_any_scope. If it's false, that means some token
+                skipAnyScope(parser, outCloseToken, token);
+                // Ignore the return value of skipAnyScope. If it's false, that means some token
                 // canceled the inner scope and was pushed back. We want the caller to read that
                 // token next.
             }
@@ -605,8 +608,8 @@ bool handle_unexpected_token(ParserImpl* parser, Token* out_close_token, const T
         case Token::OpenCurly:
         case Token::OpenParen:
         case Token::OpenSquare: {
-            skip_any_scope(parser, out_close_token, token);
-            // Ignore the return value of skip_any_scope. If it's false, that means some token
+            skipAnyScope(parser, outCloseToken, token);
+            // Ignore the return value of skipAnyScope. If it's false, that means some token
             // canceled the inner scope and was pushed back. We want the caller to read that token
             // next.
             return true;
@@ -618,23 +621,23 @@ bool handle_unexpected_token(ParserImpl* parser, Token* out_close_token, const T
     }
 }
 
-bool close_scope(ParserImpl* parser, Token* out_close_token, const Token& open_token) {
-    Token close_token = peek_token(parser);
-    if (close_token.type == open_token.type + 1) {
-        parser->token_index++;
-        *out_close_token = close_token;
+bool closeScope(ParserImpl* parser, Token* outCloseToken, const Token& openToken) {
+    Token closeToken = peekToken(parser);
+    if (closeToken.type == openToken.type + 1) {
+        parser->tokenIndex++;
+        *outCloseToken = closeToken;
     } else {
-        parser->error(Error, close_token.input_offset,
-                      FMT_MSG("expected '{}' before '{}'", (open_token.type == Token::OpenSquare ? ']' : ')'),
-                              close_token.to_string()));
+        parser->error(Error, closeToken.inputOffset,
+                      FMT_MSG("expected '{}' before '{}'", (openToken.type == Token::OpenSquare ? ']' : ')'),
+                              closeToken.toString()));
         // Consume tokens up to the closing )
-        if (!skip_any_scope(parser, nullptr, open_token)) {
+        if (!skipAnyScope(parser, nullptr, openToken)) {
             // We didn't get a closing ), but an outer scope will handle it
-            PLY_ASSERT(parser->mute_errors);
+            PLY_ASSERT(parser->muteErrors);
             return false;
         }
         // Got closing )
-        parser->mute_errors = false;
+        parser->muteErrors = false;
     }
     return true;
 }
@@ -643,35 +646,35 @@ bool close_scope(ParserImpl* parser, Token* out_close_token, const Token& open_t
 // Helpers
 //----------------------------------------------
 
-StringView get_class_name(const QualifiedID& qid) {
+StringView getClassName(const QualifiedID& qid) {
     if (auto* identifier = qid.var.as<QualifiedID::Identifier>()) {
         return identifier->name.text;
-    } else if (auto* template_id = qid.var.as<QualifiedID::TemplateID>()) {
-        return template_id->name.text;
+    } else if (auto* templateId = qid.var.as<QualifiedID::TemplateID>()) {
+        return templateId->name.text;
     } else {
         return {};
     }
 }
 
-StringView get_ctor_dtor_name(const QualifiedID& qid) {
+StringView getCtorDtorName(const QualifiedID& qid) {
     if (auto* identifier = qid.var.as<QualifiedID::Identifier>()) {
         return identifier->name.text;
     } else if (auto* destructor = qid.var.as<QualifiedID::Destructor>()) {
         return destructor->name.text;
-    } else if (auto* tmpl_spec = qid.var.as<QualifiedID::TemplateID>()) {
-        return tmpl_spec->name.text;
+    } else if (auto* tmplSpec = qid.var.as<QualifiedID::TemplateID>()) {
+        return tmplSpec->name.text;
     }
     return {};
 }
 
-String to_string(const QualifiedID& qid) {
+String toString(const QualifiedID& qid) {
     MemStream out;
 
     for (const QualifiedID::Prefix& comp : qid.prefix) {
         if (auto* ident = comp.var.as<QualifiedID::Identifier>()) {
             out.write(ident->name.text);
-        } else if (auto* tmpl_spec = comp.var.as<QualifiedID::TemplateID>()) {
-            out.format("{}<>", tmpl_spec->name.text);
+        } else if (auto* tmplSpec = comp.var.as<QualifiedID::TemplateID>()) {
+            out.format("{}<>", tmplSpec->name.text);
         } else if (comp.var.is<QualifiedID::Decltype>()) {
             out.write("decltype()");
         } else {
@@ -682,106 +685,106 @@ String to_string(const QualifiedID& qid) {
 
     if (auto* identifier = qid.var.as<QualifiedID::Identifier>()) {
         out.write(identifier->name.text);
-    } else if (auto* tmpl_spec = qid.var.as<QualifiedID::TemplateID>()) {
-        out.format("{}<>", tmpl_spec->name.text);
+    } else if (auto* tmplSpec = qid.var.as<QualifiedID::TemplateID>()) {
+        out.format("{}<>", tmplSpec->name.text);
     } else if (qid.var.is<QualifiedID::Decltype>()) {
         out.write("decltype()");
     } else if (auto* dtor = qid.var.as<QualifiedID::Destructor>()) {
         out.format("~{}", dtor->name.text);
-    } else if (auto* op_func = qid.var.as<QualifiedID::OperatorFunc>()) {
-        out.format("operator{}{}", op_func->punc.text, op_func->punc2.text);
+    } else if (auto* opFunc = qid.var.as<QualifiedID::OperatorFunc>()) {
+        out.format("operator{}{}", opFunc->punc.text, opFunc->punc2.text);
     } else if (qid.var.is<QualifiedID::ConversionFunc>()) {
         // FIXME: improve this
         out.write("(conversion)");
-    } else if (qid.var.is_empty()) {
+    } else if (qid.var.isEmpty()) {
         out.write("(empty)");
     } else {
         PLY_ASSERT(0);
     }
 
-    return out.move_to_string();
+    return out.moveToString();
 }
 
 // Used when logging errors
-Token get_first_token(const QualifiedID& qid) {
-    if (qid.prefix.num_items() > 0) {
+Token getFirstToken(const QualifiedID& qid) {
+    if (qid.prefix.numItems() > 0) {
         if (auto* identifier = qid.prefix[0].var.as<QualifiedID::Identifier>()) {
             return identifier->name;
-        } else if (auto* tmpl_spec = qid.prefix[0].var.as<QualifiedID::TemplateID>()) {
-            return tmpl_spec->name;
+        } else if (auto* tmplSpec = qid.prefix[0].var.as<QualifiedID::TemplateID>()) {
+            return tmplSpec->name;
         } else if (auto* dt = qid.prefix[0].var.as<QualifiedID::Decltype>()) {
             return dt->keyword;
         }
         PLY_ASSERT(0); // Shouldn't be possible
     }
 
-    if (qid.var.is_empty()) {
+    if (qid.var.isEmpty()) {
         return {};
     } else if (auto* identifier = qid.var.as<QualifiedID::Identifier>()) {
         return identifier->name;
-    } else if (auto* tmpl_spec = qid.var.as<QualifiedID::TemplateID>()) {
-        return tmpl_spec->name;
+    } else if (auto* tmplSpec = qid.var.as<QualifiedID::TemplateID>()) {
+        return tmplSpec->name;
     } else if (auto* dt = qid.var.as<QualifiedID::Decltype>()) {
         return dt->keyword;
     } else if (auto* destructor = qid.var.as<QualifiedID::Destructor>()) {
         return destructor->tilde;
-    } else if (auto* op_func = qid.var.as<QualifiedID::OperatorFunc>()) {
-        return op_func->keyword;
-    } else if (auto* conv_func = qid.var.as<QualifiedID::ConversionFunc>()) {
-        return conv_func->operator_keyword;
+    } else if (auto* opFunc = qid.var.as<QualifiedID::OperatorFunc>()) {
+        return opFunc->keyword;
+    } else if (auto* convFunc = qid.var.as<QualifiedID::ConversionFunc>()) {
+        return convFunc->operatorKeyword;
     }
     PLY_ASSERT(0); // Shouldn't be possible
     return {};
 }
 
-Token get_first_token(const Declaration::Entity& entity) {
-    if (!entity.decl_specifiers.is_empty()) {
-        const DeclSpecifier& decl_spec = *entity.decl_specifiers[0];
-        if (auto* keyword = decl_spec.var.as<DeclSpecifier::Keyword>()) {
+Token getFirstToken(const Declaration::Entity& entity) {
+    if (!entity.declSpecifiers.isEmpty()) {
+        const DeclSpecifier& declSpec = *entity.declSpecifiers[0];
+        if (auto* keyword = declSpec.var.as<DeclSpecifier::Keyword>()) {
             return keyword->token;
-        } else if (auto* linkage = decl_spec.var.as<DeclSpecifier::Linkage>()) {
-            return linkage->extern_keyword;
-        } else if (auto* enum_ = decl_spec.var.as<DeclSpecifier::Enum>()) {
+        } else if (auto* linkage = declSpec.var.as<DeclSpecifier::Linkage>()) {
+            return linkage->externKeyword;
+        } else if (auto* enum_ = declSpec.var.as<DeclSpecifier::Enum>()) {
             return enum_->keyword;
-        } else if (auto* class_ = decl_spec.var.as<DeclSpecifier::Class>()) {
+        } else if (auto* class_ = declSpec.var.as<DeclSpecifier::Class>()) {
             return class_->keyword;
-        } else if (auto* type_spec = decl_spec.var.as<DeclSpecifier::TypeSpecifier>()) {
-            if (type_spec->elaborate_keyword.is_valid())
-                return type_spec->elaborate_keyword;
-            return get_first_token(type_spec->qid);
-        } else if (auto* type_param = decl_spec.var.as<DeclSpecifier::TypeParameter>()) {
-            return type_param->keyword;
-        } else if (auto* ellipsis = decl_spec.var.as<DeclSpecifier::Ellipsis>()) {
+        } else if (auto* typeSpec = declSpec.var.as<DeclSpecifier::TypeSpecifier>()) {
+            if (typeSpec->elaborateKeyword.isValid())
+                return typeSpec->elaborateKeyword;
+            return getFirstToken(typeSpec->qid);
+        } else if (auto* typeParam = declSpec.var.as<DeclSpecifier::TypeParameter>()) {
+            return typeParam->keyword;
+        } else if (auto* ellipsis = declSpec.var.as<DeclSpecifier::Ellipsis>()) {
             return ellipsis->token;
         }
     }
-    if (!entity.init_declarators.is_empty()) {
-        const InitDeclarator& init_decl = entity.init_declarators[0];
-        if (!init_decl.qid.is_empty()) {
-            return get_first_token(init_decl.qid);
+    if (!entity.initDeclarators.isEmpty()) {
+        const InitDeclarator& initDecl = entity.initDeclarators[0];
+        if (!initDecl.qid.isEmpty()) {
+            return getFirstToken(initDecl.qid);
         }
     }
     PLY_ASSERT(0);
     return {};
 }
 
-Token Declaration::get_first_token() const {
+Token Declaration::getFirstToken() const {
     if (auto* linkage = this->var.as<Declaration::Linkage>()) {
-        return linkage->extern_keyword;
+        return linkage->externKeyword;
     } else if (auto* namespace_ = this->var.as<Declaration::Namespace>()) {
         return namespace_->keyword;
     } else if (auto* entity = this->var.as<Declaration::Entity>()) {
-        return cpp::get_first_token(*entity);
+        return cpp::getFirstToken(*entity);
     } else if (auto* template_ = this->var.as<Declaration::Template>()) {
         return template_->keyword;
-    } else if (auto* type_alias = this->var.as<Declaration::TypeAlias>()) {
-        return type_alias->using_keyword;
-    } else if (auto* using_namespace = this->var.as<Declaration::UsingNamespace>()) {
-        return using_namespace->using_keyword;
-    } else if (auto* static_assert_ = this->var.as<Declaration::StaticAssert>()) {
-        return static_assert_->keyword;
-    } else if (auto* access_spec = this->var.as<Declaration::AccessSpecifier>()) {
-        return access_spec->keyword;
+    } else if (auto* typeAlias = this->var.as<Declaration::TypeAlias>()) {
+        return typeAlias->usingKeyword;
+    } else if (auto* usingNamespace = this->var.as<Declaration::UsingNamespace>()) {
+        return usingNamespace->usingKeyword;
+    } else if (auto* staticAssert = this->var.as<Declaration::StaticAssert>()) {
+        return staticAssert->keyword;
+    } else if (auto* accessSpec = this->var.as<Declaration::AccessSpecifier>()) {
+        return accessSpec->keyword;
     }
     PLY_ASSERT(0);
     return {};
@@ -807,16 +810,16 @@ struct DeclaratorFlags {
 };
 
 struct ParsedExpression {
-    Token start_token;
-    Token end_token;
+    Token startToken;
+    Token endToken;
 };
 
-QualifiedID parse_qualified_id(ParserImpl* parser, ParseQualifiedMode mode);
-void parse_declarator(ParserImpl* parser, Declarator& dcor, DeclProduction* nested, u32 dcor_flags);
-void parse_optional_type_id_initializer(ParserImpl* parser, Initializer& result);
-void parse_optional_variable_initializer(ParserImpl* parser, Initializer& result, bool allow_braced_init);
-ParsedExpression parse_expression(ParserImpl* parser, bool optional = false);
-Array<Declaration> parse_declaration_list(ParserImpl* parser, Token* out_close_curly, StringView enclosing_class_name);
+QualifiedID parseQualifiedId(ParserImpl* parser, ParseQualifiedMode mode);
+void parseDeclarator(ParserImpl* parser, Declarator& dcor, DeclProduction* nested, u32 dcorFlags);
+void parseOptionalTypeIdInitializer(ParserImpl* parser, Initializer& result);
+void parseOptionalVariableInitializer(ParserImpl* parser, Initializer& result, bool allowBracedInit);
+ParsedExpression parseExpression(ParserImpl* parser, bool optional = false);
+Array<Declaration> parseDeclarationList(ParserImpl* parser, Token* outCloseCurly, StringView enclosingClassName);
 
 //  ▄▄▄▄▄                       ▄▄
 //  ██  ██  ▄▄▄▄  ▄▄▄▄▄   ▄▄▄▄  ▄▄ ▄▄▄▄▄   ▄▄▄▄▄
@@ -829,37 +832,37 @@ Array<Declaration> parse_declaration_list(ParserImpl* parser, Token* out_close_c
 //  ▀█▄▄█▀ ▀█▄▄██ ▀█▄▄██ ▄██▄ ██  ██   ██ ▀█▄▄▄  ▀█▄▄██     ▄██▄ ██▄▄█▀  ▄▄▄█▀
 //      ▀▀
 
-TypeID parse_type_id(ParserImpl* parser) {
+TypeID parseTypeId(ParserImpl* parser) {
     TypeID result;
-    s32 type_specifier_index = -1;
+    s32 typeSpecifierIndex = -1;
     for (;;) {
-        Token token = peek_token(parser);
+        Token token = peekToken(parser);
         if (token.type == Token::Identifier) {
             if (token.text == "const" || token.text == "volatile") {
-                parser->mute_errors = false;
-                parser->token_index++;
-                result.decl_specifiers.append(Heap::create<DeclSpecifier>(DeclSpecifier::Keyword{token}));
+                parser->muteErrors = false;
+                parser->tokenIndex++;
+                result.declSpecifiers.append(Heap::create<DeclSpecifier>(DeclSpecifier::Keyword{token}));
             } else {
-                if (type_specifier_index < 0) {
-                    parser->mute_errors = false;
+                if (typeSpecifierIndex < 0) {
+                    parser->muteErrors = false;
                 } else {
-                    parser->error(Error, token.input_offset, "type-id cannot have a name");
+                    parser->error(Error, token.inputOffset, "type-id cannot have a name");
                 }
-                type_specifier_index = result.decl_specifiers.num_items();
-                DeclSpecifier* decl_spec = result.decl_specifiers.append(Heap::create<DeclSpecifier>());
-                auto& type_spec = decl_spec->var.switch_to<DeclSpecifier::TypeSpecifier>();
+                typeSpecifierIndex = result.declSpecifiers.numItems();
+                DeclSpecifier* declSpec = result.declSpecifiers.append(Heap::create<DeclSpecifier>());
+                auto& typeSpec = declSpec->var.switchTo<DeclSpecifier::TypeSpecifier>();
                 if (token.text == "typename" || token.text == "struct" || token.text == "class" ||
                     token.text == "union" || token.text == "enum") {
-                    type_spec.elaborate_keyword = token;
-                    parser->token_index++;
+                    typeSpec.elaborateKeyword = token;
+                    parser->tokenIndex++;
                 }
-                type_spec.qid = parse_qualified_id(parser, ParseQualifiedMode::RequireComplete);
+                typeSpec.qid = parseQualifiedId(parser, ParseQualifiedMode::RequireComplete);
             }
         } else {
             // Not an identifier. We should have parsed a type specifier by now.
-            if (type_specifier_index < 0) {
-                parser->error(Error, token.input_offset,
-                              FMT_MSG("expected type specifier before '{}'", token.to_string()));
+            if (typeSpecifierIndex < 0) {
+                parser->error(Error, token.inputOffset,
+                              FMT_MSG("expected type specifier before '{}'", token.toString()));
             }
             break;
         }
@@ -867,20 +870,20 @@ TypeID parse_type_id(ParserImpl* parser) {
 
     // Parse optional abstract declarator.
     Declarator dcor;
-    parse_declarator(parser, dcor, nullptr, DeclaratorFlags::AllowAbstract);
-    PLY_ASSERT(dcor.qid.is_empty());
-    result.abstract_dcor = std::move(dcor.prod);
+    parseDeclarator(parser, dcor, nullptr, DeclaratorFlags::AllowAbstract);
+    PLY_ASSERT(dcor.qid.isEmpty());
+    result.abstractDcor = std::move(dcor.prod);
     return result;
 }
 
 // Consumes as much as it can; unrecognized tokens are returned to caller without logging an error
-Array<QualifiedID::Prefix> parse_nested_name_specifier(ParserImpl* parser) {
+Array<QualifiedID::Prefix> parseNestedNameSpecifier(ParserImpl* parser) {
     // FIXME: Support leading ::
     Array<QualifiedID::Prefix> prefix;
     for (;;) {
         QualifiedID::Prefix* comp = nullptr;
 
-        Token token = peek_token(parser);
+        Token token = peekToken(parser);
         if (token.type != Token::Identifier)
             break;
 
@@ -888,137 +891,136 @@ Array<QualifiedID::Prefix> parse_nested_name_specifier(ParserImpl* parser) {
             token.text == "static" || token.text == "friend")
             break;
 
-        parser->token_index++;
+        parser->tokenIndex++;
         if (token.text == "decltype") {
             comp = &prefix.append();
-            auto& dt = comp->var.switch_to<QualifiedID::Decltype>();
+            auto& dt = comp->var.switchTo<QualifiedID::Decltype>();
             dt.keyword = token;
-            Token punc_token = peek_token(parser);
-            if (punc_token.type == Token::OpenParen) {
-                parser->token_index++;
-                dt.open_paren = punc_token;
-                skip_any_scope(parser, &dt.close_paren, punc_token);
+            Token puncToken = peekToken(parser);
+            if (puncToken.type == Token::OpenParen) {
+                parser->tokenIndex++;
+                dt.openParen = puncToken;
+                skipAnyScope(parser, &dt.closeParen, puncToken);
             } else {
                 // expected (
-                parser->error(Error, punc_token.input_offset,
-                              FMT_MSG("expected '(' before '{}'", punc_token.to_string()));
+                parser->error(Error, puncToken.inputOffset, FMT_MSG("expected '(' before '{}'", puncToken.toString()));
             }
         } else {
             comp = &prefix.append();
-            Token punc_token = peek_token(parser);
-            if (punc_token.type == Token::OpenAngle) {
-                auto& tmpl_spec = comp->var.switch_to<QualifiedID::TemplateID>();
-                tmpl_spec.name = token;
-                parser->token_index++;
+            Token puncToken = peekToken(parser);
+            if (puncToken.type == Token::OpenAngle) {
+                auto& tmplSpec = comp->var.switchTo<QualifiedID::TemplateID>();
+                tmplSpec.name = token;
+                parser->tokenIndex++;
                 // FIXME: We should only parse < as the start of a template-argument list if we know
                 // that the preceding name refers to a template function or type. For now, we assume
                 // it always does. If we ever start parsing function bodies, we won't be able to
                 // assume this.
-                if (parser->pass_number <= 1) {
-                    tmpl_spec.open_angle = punc_token;
+                if (parser->passNumber <= 1) {
+                    tmplSpec.openAngle = puncToken;
 
                     // Parse template-argument-list
-                    SetAcceptFlagsInScope accept_scope{parser, Token::OpenAngle};
-                    PLY_SET_IN_SCOPE(parser->tkr.config.tokenize_right_shift, false);
+                    SetAcceptFlagsInScope acceptScope{parser, Token::OpenAngle};
+                    PLY_SET_IN_SCOPE(parser->tkr.config.tokenizeRightShift, false);
 
                     for (;;) {
                         // FIXME: Parse constant expressions here instead of only allowing type IDs
 
                         // Try to parse a type ID
-                        auto& template_arg = tmpl_spec.args.append();
+                        auto& templateArg = tmplSpec.args.append();
                         RestorePoint rp{parser};
-                        TypeID type_id = parse_type_id(parser);
-                        if (!rp.error_occurred()) {
+                        TypeID typeId = parseTypeId(parser);
+                        if (!rp.errorOccurred()) {
                             // Successfully parsed a type ID
-                            template_arg.var = std::move(type_id);
+                            templateArg.var = std::move(typeId);
                         } else {
                             rp.backtrack();
                             rp.cancel();
                         }
 
                         for (;;) {
-                            Token sep_token = read_token(parser);
-                            if (sep_token.type == Token::CloseAngle) {
+                            Token sepToken = readToken(parser);
+                            if (sepToken.type == Token::CloseAngle) {
                                 // End of template-argument-list
-                                tmpl_spec.close_angle = sep_token;
-                                parser->mute_errors = false;
-                                goto break_args;
-                            } else if (sep_token.type == Token::Comma) {
+                                tmplSpec.closeAngle = sepToken;
+                                parser->muteErrors = false;
+                                goto breakArgs;
+                            } else if (sepToken.type == Token::Comma) {
                                 // Comma
-                                template_arg.comma = sep_token;
-                                parser->mute_errors = false;
+                                templateArg.comma = sepToken;
+                                parser->muteErrors = false;
                                 break;
                             } else {
                                 // Unexpected token
-                                Token end_token;
-                                if (!handle_unexpected_token(parser, &end_token, sep_token))
-                                    goto break_outer;
+                                Token endToken;
+                                if (!handleUnexpectedToken(parser, &endToken, sepToken))
+                                    goto breakOuter;
                             }
                         }
                     }
-                break_args:;
+                breakArgs:;
                 } else {
                     PLY_FORCE_CRASH(); // FIXME: implement this
                 }
             } else {
-                auto& ident = comp->var.switch_to<QualifiedID::Identifier>();
+                auto& ident = comp->var.switchTo<QualifiedID::Identifier>();
                 ident.name = token;
             }
         }
 
         PLY_ASSERT(comp);
 
-        Token sep_token = peek_token(parser);
-        if (sep_token.type != Token::DoubleColon)
+        Token sepToken = peekToken(parser);
+        if (sepToken.type != Token::DoubleColon)
             break;
-        parser->token_index++;
-        comp->double_colon = sep_token;
+        parser->tokenIndex++;
+        comp->doubleColon = sepToken;
     }
 
-break_outer:
+breakOuter:
     return prefix;
 }
 
 // Consumes as much as it can; unrecognized tokens are returned to caller without logging an error
-QualifiedID parse_qualified_id(ParserImpl* parser, ParseQualifiedMode mode) {
+QualifiedID parseQualifiedId(ParserImpl* parser, ParseQualifiedMode mode) {
     QualifiedID qid;
-    qid.prefix = parse_nested_name_specifier(parser);
-    if (qid.prefix.num_items() > 0) {
+    qid.prefix = parseNestedNameSpecifier(parser);
+    if (qid.prefix.numItems() > 0) {
         QualifiedID::Prefix& tail = qid.prefix.back();
-        if (!tail.double_colon.is_valid()) {
+        if (!tail.doubleColon.isValid()) {
             if (auto* ident = tail.var.as<QualifiedID::Identifier>()) {
                 qid.var = std::move(*ident);
-            } else if (auto* tmpl_id = tail.var.as<QualifiedID::TemplateID>()) {
-                qid.var = std::move(*tmpl_id);
+            } else if (auto* tmplId = tail.var.as<QualifiedID::TemplateID>()) {
+                qid.var = std::move(*tmplId);
             } else if (auto* dt = tail.var.as<QualifiedID::Decltype>()) {
                 qid.var = std::move(*dt);
             }
             qid.prefix.pop();
         }
     }
-    if (qid.var.is_empty()) {
-        Token token = peek_token(parser);
+    if (qid.var.isEmpty()) {
+        Token token = peekToken(parser);
         if (token.type == Token::Tilde) {
-            parser->token_index++;
-            Token token2 = peek_token(parser);
+            parser->tokenIndex++;
+            Token token2 = peekToken(parser);
             if (token2.type != Token::Identifier) {
                 // Expected class name after ~
-                parser->error(Error, token2.input_offset,
-                              FMT_MSG("expected destructor name before '{}'", token2.to_string()));
+                parser->error(Error, token2.inputOffset,
+                              FMT_MSG("expected destructor name before '{}'", token2.toString()));
             } else {
-                parser->token_index++;
-                auto& dtor = qid.var.switch_to<QualifiedID::Destructor>();
+                parser->tokenIndex++;
+                auto& dtor = qid.var.switchTo<QualifiedID::Destructor>();
                 PLY_ASSERT(token2.text != "decltype"); // FIXME: Support this
                 dtor.tilde = token;
                 dtor.name = token2;
             }
         } else if (token.type == Token::Identifier) {
             if (token.text == "operator") {
-                parser->token_index++;
-                auto& op_func = qid.var.switch_to<QualifiedID::OperatorFunc>();
-                op_func.keyword = token;
-                Token op_token = read_token(parser);
-                switch (op_token.type) {
+                parser->tokenIndex++;
+                auto& opFunc = qid.var.switchTo<QualifiedID::OperatorFunc>();
+                opFunc.keyword = token;
+                Token opToken = readToken(parser);
+                switch (opToken.type) {
                     case Token::LeftShift:
                     case Token::RightShift:
                     case Token::SinglePlus:
@@ -1041,25 +1043,25 @@ QualifiedID parse_qualified_id(ParserImpl* parser, ParseQualifiedMode mode) {
                     case Token::GreaterThanOrEqual:
                     case Token::OpenParen:
                     case Token::OpenSquare: {
-                        op_func.punc = op_token;
-                        if (op_token.type == Token::OpenParen) {
-                            Token opToken2 = read_token(parser);
+                        opFunc.punc = opToken;
+                        if (opToken.type == Token::OpenParen) {
+                            Token opToken2 = readToken(parser);
                             if (opToken2.type == Token::CloseParen) {
-                                op_func.punc2 = opToken2;
+                                opFunc.punc2 = opToken2;
                             } else {
                                 // Expected ) after (
-                                parser->error(Error, opToken2.input_offset,
-                                              FMT_MSG("expected ')' before '{}'", opToken2.to_string()));
-                                parser->token_index--;
+                                parser->error(Error, opToken2.inputOffset,
+                                              FMT_MSG("expected ')' before '{}'", opToken2.toString()));
+                                parser->tokenIndex--;
                             }
-                        } else if (op_token.type == Token::OpenSquare) {
-                            Token opToken2 = read_token(parser);
+                        } else if (opToken.type == Token::OpenSquare) {
+                            Token opToken2 = readToken(parser);
                             if (opToken2.type == Token::CloseSquare) {
-                                op_func.punc2 = opToken2;
+                                opFunc.punc2 = opToken2;
                             } else {
-                                parser->error(Error, opToken2.input_offset,
-                                              FMT_MSG("expected ']' before '{}'", opToken2.to_string()));
-                                parser->token_index--;
+                                parser->error(Error, opToken2.inputOffset,
+                                              FMT_MSG("expected ']' before '{}'", opToken2.toString()));
+                                parser->tokenIndex--;
                             }
                         }
                         break;
@@ -1067,77 +1069,77 @@ QualifiedID parse_qualified_id(ParserImpl* parser, ParseQualifiedMode mode) {
 
                     default: {
                         // Expected operator token
-                        parser->error(Error, op_token.input_offset,
-                                      FMT_MSG("expected operator token before '{}'", op_token.to_string()));
-                        parser->token_index--;
+                        parser->error(Error, opToken.inputOffset,
+                                      FMT_MSG("expected operator token before '{}'", opToken.toString()));
+                        parser->tokenIndex--;
                         break;
                     };
                 }
             }
         }
     }
-    if (((mode == ParseQualifiedMode::RequireComplete) && qid.var.is_empty()) ||
-        ((mode == ParseQualifiedMode::RequireCompleteOrEmpty) && qid.var.is_empty() && !qid.prefix.is_empty())) {
+    if (((mode == ParseQualifiedMode::RequireComplete) && qid.var.isEmpty()) ||
+        ((mode == ParseQualifiedMode::RequireCompleteOrEmpty) && qid.var.isEmpty() && !qid.prefix.isEmpty())) {
         // FIXME: Improve these error messages
-        Token token = peek_token(parser);
-        parser->error(Error, token.input_offset, FMT_MSG("expected qualified-id before '{}'", token.to_string()));
+        Token token = peekToken(parser);
+        parser->error(Error, token.inputOffset, FMT_MSG("expected qualified-id before '{}'", token.toString()));
     }
     return qid;
 }
 
 // Consumes as much as it can; unrecognized tokens are returned to caller without logging an error:
-void parse_conversion_type_id(ParserImpl* parser, QualifiedID::ConversionFunc* conv) {
-    bool got_type_specifier = false;
+void parseConversionTypeId(ParserImpl* parser, QualifiedID::ConversionFunc* conv) {
+    bool gotTypeSpecifier = false;
     for (;;) {
-        Token token = peek_token(parser);
+        Token token = peekToken(parser);
         if (token.type != Token::Identifier)
             break;
 
         if (token.text == "const" || token.text == "volatile") {
-            parser->token_index++;
-            conv->decl_specifiers.append(Heap::create<DeclSpecifier>(DeclSpecifier::Keyword{token}));
+            parser->tokenIndex++;
+            conv->declSpecifiers.append(Heap::create<DeclSpecifier>(DeclSpecifier::Keyword{token}));
         } else {
-            QualifiedID qid = parse_qualified_id(parser, ParseQualifiedMode::RequireComplete);
-            if (got_type_specifier) {
+            QualifiedID qid = parseQualifiedId(parser, ParseQualifiedMode::RequireComplete);
+            if (gotTypeSpecifier) {
                 // We already got a type specifier.
                 // This is not a breaking error; just ignore it and continue from here.
-                parser->error_no_mute(Error, get_first_token(qid).input_offset, "too many type specifiers");
+                parser->errorNoMute(Error, getFirstToken(qid).inputOffset, "too many type specifiers");
             } else {
-                got_type_specifier = true;
-                PLY_ASSERT(!qid.var.is_empty()); // Shouldn't happen because token was an identifier
-                conv->decl_specifiers.append(
+                gotTypeSpecifier = true;
+                PLY_ASSERT(!qid.var.isEmpty()); // Shouldn't happen because token was an identifier
+                conv->declSpecifiers.append(
                     Heap::create<DeclSpecifier>(DeclSpecifier::TypeSpecifier{{}, std::move(qid)}));
             }
         }
     }
 
     // Parse the optional (limited) abstract declarator part:
-    bool allow_qualifier = false;
+    bool allowQualifier = false;
     for (;;) {
-        Token token = peek_token(parser);
+        Token token = peekToken(parser);
         if (token.type == Token::Star || token.type == Token::SingleAmpersand || token.type == Token::DoubleAmpersand) {
-            parser->token_index++;
+            parser->tokenIndex++;
             auto* prod = Heap::create<DeclProduction>();
-            auto& ptr_to = prod->var.switch_to<DeclProduction::Indirection>();
-            ptr_to.punc = token;
-            prod->child = std::move(conv->abstract_dcor);
-            conv->abstract_dcor = std::move(prod);
-            allow_qualifier = (token.type == Token::Star);
+            auto& ptrTo = prod->var.switchTo<DeclProduction::Indirection>();
+            ptrTo.punc = token;
+            prod->child = std::move(conv->abstractDcor);
+            conv->abstractDcor = std::move(prod);
+            allowQualifier = (token.type == Token::Star);
         } else if (token.type == Token::Identifier) {
             if (token.text == "const" || token.text == "volatile") {
-                parser->token_index++;
-                if (!allow_qualifier) {
+                parser->tokenIndex++;
+                if (!allowQualifier) {
                     // Qualifier not allowed here (eg. immediately after comma in declarator
                     // list). This is not a breaking error; just ignore it and continue from here.
-                    parser->error_no_mute(Error, token.input_offset,
-                                          FMT_MSG("'{}' qualifier not allowed here", token.text));
+                    parser->errorNoMute(Error, token.inputOffset,
+                                        FMT_MSG("'{}' qualifier not allowed here", token.text));
                 }
 
                 auto* prod = Heap::create<DeclProduction>();
-                auto& qualifier = prod->var.switch_to<DeclProduction::Qualifier>();
+                auto& qualifier = prod->var.switchTo<DeclProduction::Qualifier>();
                 qualifier.keyword = token;
-                prod->child = std::move(conv->abstract_dcor);
-                conv->abstract_dcor = std::move(prod);
+                prod->child = std::move(conv->abstractDcor);
+                conv->abstractDcor = std::move(prod);
             } else
                 break;
         } else
@@ -1156,123 +1158,123 @@ void parse_conversion_type_id(ParserImpl* parser, QualifiedID::ConversionFunc* c
 //  ██▄▄█▀ ▀█▄▄▄  ▀█▄▄▄ ▄██▄ ▀█▄▄██ ██     ▀█▄▄██  ▀█▄▄ ▀█▄▄█▀ ██      ▄▄▄█▀
 //
 
-Parameter parse_template_parameter(ParserImpl* parser) {
+Parameter parseTemplateParameter(ParserImpl* parser) {
     Parameter result;
-    s32 type_specifier_index = -1;
+    s32 typeSpecifierIndex = -1;
     for (;;) {
-        Token token = peek_token(parser);
+        Token token = peekToken(parser);
         if (token.type == Token::Identifier) {
             if (token.text == "const" || token.text == "volatile" || token.text == "unsigned") {
-                parser->mute_errors = false;
-                parser->token_index++;
-                result.decl_specifiers.append(Heap::create<DeclSpecifier>(DeclSpecifier::Keyword{token}));
+                parser->muteErrors = false;
+                parser->tokenIndex++;
+                result.declSpecifiers.append(Heap::create<DeclSpecifier>(DeclSpecifier::Keyword{token}));
             } else {
                 if (token.text == "typename" || token.text == "class") {
-                    if (type_specifier_index < 0) {
-                        parser->mute_errors = false;
+                    if (typeSpecifierIndex < 0) {
+                        parser->muteErrors = false;
                     } else {
-                        parser->error(Error, token.input_offset, "too many type specifiers");
+                        parser->error(Error, token.inputOffset, "too many type specifiers");
                     }
-                    parser->token_index++;
-                    DeclSpecifier* decl_spec = result.decl_specifiers.append(Heap::create<DeclSpecifier>());
-                    auto& type_param = decl_spec->var.switch_to<DeclSpecifier::TypeParameter>();
-                    type_param.keyword = token;
+                    parser->tokenIndex++;
+                    DeclSpecifier* declSpec = result.declSpecifiers.append(Heap::create<DeclSpecifier>());
+                    auto& typeParam = declSpec->var.switchTo<DeclSpecifier::TypeParameter>();
+                    typeParam.keyword = token;
 
-                    Token t2 = peek_token(parser);
+                    Token t2 = peekToken(parser);
                     if (t2.type == Token::Ellipsis) {
-                        parser->token_index++;
-                        type_param.ellipsis = t2;
+                        parser->tokenIndex++;
+                        typeParam.ellipsis = t2;
                     }
 
-                    QualifiedID qid = parse_qualified_id(parser, ParseQualifiedMode::RequireCompleteOrEmpty);
-                    if (!qid.prefix.is_empty()) {
+                    QualifiedID qid = parseQualifiedId(parser, ParseQualifiedMode::RequireCompleteOrEmpty);
+                    if (!qid.prefix.isEmpty()) {
                         if (token.text == "typename") {
                             // Treat this qualified name as non-type template parameter.
-                            type_specifier_index = result.decl_specifiers.num_items();
-                            auto& type_spec = decl_spec->var.switch_to<DeclSpecifier::TypeSpecifier>();
-                            type_spec.elaborate_keyword = token;
-                            type_spec.qid = std::move(qid);
+                            typeSpecifierIndex = result.declSpecifiers.numItems();
+                            auto& typeSpec = declSpec->var.switchTo<DeclSpecifier::TypeSpecifier>();
+                            typeSpec.elaborateKeyword = token;
+                            typeSpec.qid = std::move(qid);
                             continue;
                         } else {
-                            parser->error(Error, get_first_token(qid).input_offset,
+                            parser->error(Error, getFirstToken(qid).inputOffset,
                                           "template parameter name cannot have a nested name prefix");
                         }
                     } else if (auto* ident = qid.var.as<QualifiedID::Identifier>()) {
                         result.identifier = ident->name;
-                    } else if (!qid.is_empty()) {
-                        parser->error(Error, get_first_token(qid).input_offset, "expected identifier");
+                    } else if (!qid.isEmpty()) {
+                        parser->error(Error, getFirstToken(qid).inputOffset, "expected identifier");
                     }
-                    parse_optional_type_id_initializer(parser, result.init);
+                    parseOptionalTypeIdInitializer(parser, result.init);
                     return result;
                 }
 
-                parser->mute_errors = false;
-                if (type_specifier_index >= 0)
+                parser->muteErrors = false;
+                if (typeSpecifierIndex >= 0)
                     break; // Parse it as a declarator.
 
-                type_specifier_index = result.decl_specifiers.num_items();
-                DeclSpecifier* decl_spec = result.decl_specifiers.append(Heap::create<DeclSpecifier>());
-                auto& type_spec = decl_spec->var.switch_to<DeclSpecifier::TypeSpecifier>();
-                type_spec.qid = parse_qualified_id(parser, ParseQualifiedMode::RequireComplete);
+                typeSpecifierIndex = result.declSpecifiers.numItems();
+                DeclSpecifier* declSpec = result.declSpecifiers.append(Heap::create<DeclSpecifier>());
+                auto& typeSpec = declSpec->var.switchTo<DeclSpecifier::TypeSpecifier>();
+                typeSpec.qid = parseQualifiedId(parser, ParseQualifiedMode::RequireComplete);
             }
         } else {
             // Not an identifier. We should have parsed a type specifier by now.
-            if (type_specifier_index < 0) {
-                parser->error(Error, token.input_offset,
-                              FMT_MSG("expected template parameter before '{}'", token.to_string()));
+            if (typeSpecifierIndex < 0) {
+                parser->error(Error, token.inputOffset,
+                              FMT_MSG("expected template parameter before '{}'", token.toString()));
             }
             break;
         }
     }
 
     Declarator dcor;
-    parse_declarator(parser, dcor, nullptr, DeclaratorFlags::AllowNamed | DeclaratorFlags::AllowAbstract);
-    if (!dcor.qid.is_empty()) {
-        if (!dcor.qid.prefix.is_empty()) {
-            parser->error(Error, get_first_token(dcor.qid).input_offset,
+    parseDeclarator(parser, dcor, nullptr, DeclaratorFlags::AllowNamed | DeclaratorFlags::AllowAbstract);
+    if (!dcor.qid.isEmpty()) {
+        if (!dcor.qid.prefix.isEmpty()) {
+            parser->error(Error, getFirstToken(dcor.qid).inputOffset,
                           "template parameter name cannot have a nested-name prefix");
         } else if (!dcor.qid.var.is<QualifiedID::Identifier>()) {
-            parser->error(Error, get_first_token(dcor.qid).input_offset, "expected identifier");
+            parser->error(Error, getFirstToken(dcor.qid).inputOffset, "expected identifier");
         } else {
             result.identifier = std::move(dcor.qid.var.as<QualifiedID::Identifier>()->name);
         }
     }
     result.prod = std::move(dcor.prod);
-    parse_optional_variable_initializer(parser, result.init, false);
+    parseOptionalVariableInitializer(parser, result.init, false);
     return result;
 }
 
-Parameter parse_function_parameter(ParserImpl* parser) {
+Parameter parseFunctionParameter(ParserImpl* parser) {
     Parameter result;
-    s32 type_specifier_index = -1;
+    s32 typeSpecifierIndex = -1;
     for (;;) {
-        Token token = peek_token(parser);
+        Token token = peekToken(parser);
         if (token.type == Token::Identifier) {
             if (token.text == "const" || token.text == "volatile" || token.text == "unsigned") {
-                parser->mute_errors = false;
-                parser->token_index++;
-                result.decl_specifiers.append(Heap::create<DeclSpecifier>(DeclSpecifier::Keyword{token}));
+                parser->muteErrors = false;
+                parser->tokenIndex++;
+                result.declSpecifiers.append(Heap::create<DeclSpecifier>(DeclSpecifier::Keyword{token}));
             } else if (token.text == "typename" || token.text == "struct" || token.text == "class" ||
                        token.text == "union" || token.text == "enum") {
-                if (type_specifier_index < 0) {
-                    parser->mute_errors = false;
+                if (typeSpecifierIndex < 0) {
+                    parser->muteErrors = false;
                 } else {
-                    parser->error(Error, token.input_offset, "too many type specifiers");
+                    parser->error(Error, token.inputOffset, "too many type specifiers");
                 }
-                parser->token_index++;
-                DeclSpecifier* decl_spec = result.decl_specifiers.append(Heap::create<DeclSpecifier>());
-                auto& type_spec = decl_spec->var.switch_to<DeclSpecifier::TypeSpecifier>();
-                type_spec.elaborate_keyword = token;
-                type_spec.qid = parse_qualified_id(parser, ParseQualifiedMode::RequireComplete);
+                parser->tokenIndex++;
+                DeclSpecifier* declSpec = result.declSpecifiers.append(Heap::create<DeclSpecifier>());
+                auto& typeSpec = declSpec->var.switchTo<DeclSpecifier::TypeSpecifier>();
+                typeSpec.elaborateKeyword = token;
+                typeSpec.qid = parseQualifiedId(parser, ParseQualifiedMode::RequireComplete);
             } else {
-                parser->mute_errors = false;
-                if (type_specifier_index >= 0)
+                parser->muteErrors = false;
+                if (typeSpecifierIndex >= 0)
                     break; // This must be the declarator part.
 
-                type_specifier_index = result.decl_specifiers.num_items();
-                DeclSpecifier* decl_spec = result.decl_specifiers.append(Heap::create<DeclSpecifier>());
-                auto& type_spec = decl_spec->var.switch_to<DeclSpecifier::TypeSpecifier>();
-                type_spec.qid = parse_qualified_id(parser, ParseQualifiedMode::RequireComplete);
+                typeSpecifierIndex = result.declSpecifiers.numItems();
+                DeclSpecifier* declSpec = result.declSpecifiers.append(Heap::create<DeclSpecifier>());
+                auto& typeSpec = declSpec->var.switchTo<DeclSpecifier::TypeSpecifier>();
+                typeSpec.qid = parseQualifiedId(parser, ParseQualifiedMode::RequireComplete);
                 // We should check at this point that qid actually refers to a type (if possible!). Consider for example
                 // (inside class 'Foo'):
                 //      Foo(baz())
@@ -1283,42 +1285,42 @@ Parameter parse_function_parameter(ParserImpl* parser) {
             }
         } else {
             // Not an identifier. We should have parsed a type specifier by now.
-            if (type_specifier_index < 0) {
-                parser->error(Error, token.input_offset,
-                              FMT_MSG("expected parameter type before '{}'", token.to_string()));
+            if (typeSpecifierIndex < 0) {
+                parser->error(Error, token.inputOffset,
+                              FMT_MSG("expected parameter type before '{}'", token.toString()));
             }
             break;
         }
     }
 
     Declarator dcor;
-    parse_declarator(parser, dcor, nullptr, DeclaratorFlags::AllowNamed | DeclaratorFlags::AllowAbstract);
-    if (!dcor.qid.is_empty()) {
-        if (!dcor.qid.prefix.is_empty()) {
-            parser->error(Error, get_first_token(dcor.qid).input_offset,
+    parseDeclarator(parser, dcor, nullptr, DeclaratorFlags::AllowNamed | DeclaratorFlags::AllowAbstract);
+    if (!dcor.qid.isEmpty()) {
+        if (!dcor.qid.prefix.isEmpty()) {
+            parser->error(Error, getFirstToken(dcor.qid).inputOffset,
                           "parameter name cannot have a nested-name prefix");
         } else if (!dcor.qid.var.is<QualifiedID::Identifier>()) {
-            parser->error(Error, get_first_token(dcor.qid).input_offset, "expected identifier");
+            parser->error(Error, getFirstToken(dcor.qid).inputOffset, "expected identifier");
         } else {
             result.identifier = std::move(dcor.qid.var.as<QualifiedID::Identifier>()->name);
         }
     }
     result.prod = std::move(dcor.prod);
-    parse_optional_variable_initializer(parser, result.init, false);
+    parseOptionalVariableInitializer(parser, result.init, false);
     return result;
 }
 
-Array<Token> parse_function_qualifier_seq(ParserImpl* parser) {
+Array<Token> parseFunctionQualifierSeq(ParserImpl* parser) {
     Array<Token> qualifiers;
 
     // Read trailing qualifiers
     for (;;) {
-        Token token = peek_token(parser);
+        Token token = peekToken(parser);
         if (token.type == Token::Identifier && (token.text == "const" || token.text == "override")) {
-            parser->token_index++;
+            parser->tokenIndex++;
             qualifiers.append(token);
         } else if (token.type == Token::SingleAmpersand || token.type == Token::DoubleAmpersand) {
-            parser->token_index++;
+            parser->tokenIndex++;
             qualifiers.append(token);
         } else {
             break;
@@ -1329,8 +1331,8 @@ Array<Token> parse_function_qualifier_seq(ParserImpl* parser) {
 }
 
 struct ParseParams {
-    Token::Type open_punc = Token::OpenParen;
-    Token::Type close_punc = Token::CloseParen;
+    Token::Type openPunc = Token::OpenParen;
+    Token::Type closePunc = Token::CloseParen;
 
     static ParseParams Func;
     static ParseParams Template;
@@ -1342,121 +1344,121 @@ ParseParams ParseParams::Template = {
     Token::CloseAngle,
 };
 
-void parse_parameter_declaration_list(ParserImpl* parser, Array<Parameter>* params, bool for_template) {
-    const ParseParams* pp = for_template ? &ParseParams::Template : &ParseParams::Func;
+void parseParameterDeclarationList(ParserImpl* parser, Array<Parameter>* params, bool forTemplate) {
+    const ParseParams* pp = forTemplate ? &ParseParams::Template : &ParseParams::Func;
 
-    parser->mute_errors = false;
+    parser->muteErrors = false;
 
-    Token token = peek_token(parser);
-    if (token.type == pp->close_punc)
+    Token token = peekToken(parser);
+    if (token.type == pp->closePunc)
         return; // Empty parameter declaration list
 
-    SetAcceptFlagsInScope accept_scope{parser, pp->open_punc};
+    SetAcceptFlagsInScope acceptScope{parser, pp->openPunc};
 
     for (;;) {
         // A parameter declaration is expected here.
         Parameter* param = nullptr;
-        bool any_tokens_consumed = false;
+        bool anyTokensConsumed = false;
 
-        Token expected_loc = peek_token(parser);
-        if (expected_loc.type == Token::Ellipsis && !for_template) {
-            parser->token_index++;
+        Token expectedLoc = peekToken(parser);
+        if (expectedLoc.type == Token::Ellipsis && !forTemplate) {
+            parser->tokenIndex++;
             // FIXME: Check somewhere that this is the last parameter
             param = &params->append();
-            DeclSpecifier* decl_spec = Heap::create<DeclSpecifier>();
-            auto& ellipsis = decl_spec->var.switch_to<DeclSpecifier::Ellipsis>();
-            ellipsis.token = expected_loc;
-            param->decl_specifiers.append(decl_spec);
-            any_tokens_consumed = true;
+            DeclSpecifier* declSpec = Heap::create<DeclSpecifier>();
+            auto& ellipsis = declSpec->var.switchTo<DeclSpecifier::Ellipsis>();
+            ellipsis.token = expectedLoc;
+            param->declSpecifiers.append(declSpec);
+            anyTokensConsumed = true;
         } else {
-            u32 saved_token_index = parser->token_index;
-            if (for_template) {
-                param = &params->append(parse_template_parameter(parser));
+            u32 savedTokenIndex = parser->tokenIndex;
+            if (forTemplate) {
+                param = &params->append(parseTemplateParameter(parser));
             } else {
-                param = &params->append(parse_function_parameter(parser));
+                param = &params->append(parseFunctionParameter(parser));
             }
-            any_tokens_consumed = (saved_token_index != parser->token_index);
+            anyTokensConsumed = (savedTokenIndex != parser->tokenIndex);
         }
 
-        token = peek_token(parser);
-        if (token.type == pp->close_punc) {
+        token = peekToken(parser);
+        if (token.type == pp->closePunc) {
             // End of parameter declaration list
             break;
         } else if (token.type == Token::Comma) {
-            parser->token_index++;
+            parser->tokenIndex++;
             if (param) {
                 param->comma = token;
             }
         } else {
             // Unexpected token
-            parser->error(Error, token.input_offset,
-                          FMT_MSG("expected ',' or '{}' before '{}'", (for_template ? '>' : ')'), token.to_string()));
-            parser->token_index++;
-            if (any_tokens_consumed) {
-                if (!handle_unexpected_token(parser, nullptr, token))
+            parser->error(Error, token.inputOffset,
+                          FMT_MSG("expected ',' or '{}' before '{}'", (forTemplate ? '>' : ')'), token.toString()));
+            parser->tokenIndex++;
+            if (anyTokensConsumed) {
+                if (!handleUnexpectedToken(parser, nullptr, token))
                     break;
             } else {
-                if (!ok_to_stay_in_scope(parser, token))
+                if (!okToStayInScope(parser, token))
                     break;
             }
         }
     }
 }
 
-DeclProduction* parse_parameter_list(ParserImpl* parser, Owned<DeclProduction>** prod_to_modify) {
-    Token open_paren = peek_token(parser);
-    if (open_paren.type != Token::OpenParen) {
+DeclProduction* parseParameterList(ParserImpl* parser, Owned<DeclProduction>** prodToModify) {
+    Token openParen = peekToken(parser);
+    if (openParen.type != Token::OpenParen) {
         // Currently, we only hit this case when optimistically trying to parse a constructor
-        PLY_ASSERT(parser->restore_point_enabled); // Just a sanity check
-        parser->error(Error, open_paren.input_offset, FMT_MSG("expected '(' before '{}'", open_paren.to_string()));
+        PLY_ASSERT(parser->restorePointEnabled); // Just a sanity check
+        parser->error(Error, openParen.inputOffset, FMT_MSG("expected '(' before '{}'", openParen.toString()));
         return nullptr;
     }
-    parser->mute_errors = false;
+    parser->muteErrors = false;
 
     auto* prod = Heap::create<DeclProduction>();
-    auto& func = prod->var.switch_to<DeclProduction::Function>();
-    func.open_paren = open_paren;
-    parser->token_index++;
-    prod->child = std::move(**prod_to_modify);
-    **prod_to_modify = prod;
-    *prod_to_modify = &prod->child;
+    auto& func = prod->var.switchTo<DeclProduction::Function>();
+    func.openParen = openParen;
+    parser->tokenIndex++;
+    prod->child = std::move(**prodToModify);
+    **prodToModify = prod;
+    *prodToModify = &prod->child;
 
-    parse_parameter_declaration_list(parser, &func.params, false);
-    Token close_paren = peek_token(parser);
-    if (close_paren.type == Token::CloseParen) {
-        func.close_paren = close_paren;
-        parser->token_index++;
-        func.qualifiers = parse_function_qualifier_seq(parser);
+    parseParameterDeclarationList(parser, &func.params, false);
+    Token closeParen = peekToken(parser);
+    if (closeParen.type == Token::CloseParen) {
+        func.closeParen = closeParen;
+        parser->tokenIndex++;
+        func.qualifiers = parseFunctionQualifierSeq(parser);
     }
     return prod;
 }
 
-void parse_optional_trailing_return_type(ParserImpl* parser, DeclProduction* fn_prod) {
-    PLY_ASSERT(fn_prod);
-    PLY_ASSERT(fn_prod->var.is<DeclProduction::Function>());
-    auto& function = *fn_prod->var.as<DeclProduction::Function>();
+void parseOptionalTrailingReturnType(ParserImpl* parser, DeclProduction* fnProd) {
+    PLY_ASSERT(fnProd);
+    PLY_ASSERT(fnProd->var.is<DeclProduction::Function>());
+    auto& function = *fnProd->var.as<DeclProduction::Function>();
 
-    Token arrow_token = peek_token(parser);
-    if (arrow_token.type == Token::Arrow) {
-        parser->token_index++;
-        function.arrow = arrow_token;
+    Token arrowToken = peekToken(parser);
+    if (arrowToken.type == Token::Arrow) {
+        parser->tokenIndex++;
+        function.arrow = arrowToken;
         // FIXME: Should parse a TypeID here, not just a qualified ID:
-        function.trailing_ret_type = parse_type_id(parser);
+        function.trailingRetType = parseTypeId(parser);
     }
 }
 
 // When bad tokens are encountered, it consumes them until it encounters a token that an outer scope
-// is expected to handle, as determined by parser->outer_accept_flags. In that case, it returns
-// early. If the bad token is one of { ( or [, it calls skip_any_scope().
+// is expected to handle, as determined by parser->outerAcceptFlags. In that case, it returns
+// early. If the bad token is one of { ( or [, it calls skipAnyScope().
 //
-// The first bad token sets parser->mute_errors to true. mute_errors remains true until it reaches
-// the next good token. mute_errors may remain true when we return; this can happen, for example,
+// The first bad token sets parser->muteErrors to true. muteErrors remains true until it reaches
+// the next good token. muteErrors may remain true when we return; this can happen, for example,
 // when } is encountered, causing us to return early.
-void parse_declarator(ParserImpl* parser, Declarator& dcor, DeclProduction* nested, u32 dcor_flags) {
+void parseDeclarator(ParserImpl* parser, Declarator& dcor, DeclProduction* nested, u32 dcorFlags) {
     dcor.prod = nested;
-    bool allow_qualifier = false;
-    Owned<DeclProduction>* prod_to_modify = nullptr; // Used in phase two
-    bool expecting_qualified_id = false;
+    bool allowQualifier = false;
+    Owned<DeclProduction>* prodToModify = nullptr; // Used in phase two
+    bool expectingQualifiedId = false;
 
     // This is the first phase of parsing a declarator. It handles everything up to trailing
     // function parameter lists and array subscripts.
@@ -1483,13 +1485,13 @@ void parse_declarator(ParserImpl* parser, Declarator& dcor, DeclProduction* nest
 
     for (;;) {
         // Try to tokenize a qualified ID.
-        QualifiedID qid = parse_qualified_id(parser, ParseQualifiedMode::AllowIncomplete);
-        if (!qid.var.is_empty()) {
-            if ((dcor_flags & DeclaratorFlags::AllowNamed) == 0) {
+        QualifiedID qid = parseQualifiedId(parser, ParseQualifiedMode::AllowIncomplete);
+        if (!qid.var.isEmpty()) {
+            if ((dcorFlags & DeclaratorFlags::AllowNamed) == 0) {
                 // Qualified ID is not allowed here
                 // FIXME: Should rewind instead of consuming the qualified-id????
                 // The caller may log a more informative error at this token! (check test suite)
-                parser->error_no_mute(Error, get_first_token(qid).input_offset, "type-id cannot have a name");
+                parser->errorNoMute(Error, getFirstToken(qid).inputOffset, "type-id cannot have a name");
                 // Don't mute errors
             }
             dcor.qid = std::move(qid);
@@ -1498,111 +1500,110 @@ void parse_declarator(ParserImpl* parser, Declarator& dcor, DeclProduction* nest
         // qid.unqual is empty, but qid.prefix might be a pointer prefix (as in a
         // pointer-to-member).
 
-        Token token = read_token(parser);
+        Token token = readToken(parser);
         if (token.type == Token::OpenParen) {
-            if (!qid.prefix.is_empty()) {
+            if (!qid.prefix.isEmpty()) {
                 // Should not be preceded by nested name specifier
-                parser->error_no_mute(Error, token.input_offset,
-                                      FMT_MSG("'{}' cannot have a nested name prefix", token.to_string()));
+                parser->errorNoMute(Error, token.inputOffset,
+                                    FMT_MSG("'{}' cannot have a nested name prefix", token.toString()));
                 // Don't mute errors
             }
 
-            parser->mute_errors = false;
+            parser->muteErrors = false;
 
-            if ((dcor_flags & DeclaratorFlags::AllowAbstract) != 0) {
+            if ((dcorFlags & DeclaratorFlags::AllowAbstract) != 0) {
                 // If abstract declarators are allowed, try to parse a function parameter list
                 // first.
-                parser->token_index--;
+                parser->tokenIndex--;
                 RestorePoint rp{parser};
-                // FIXME: When a restore point is active, handle_unexpected_token() should always
-                // return false. Otherwise, parse_parameter_list could end up consuming way too many
+                // FIXME: When a restore point is active, handleUnexpectedToken() should always
+                // return false. Otherwise, parseParameterList could end up consuming way too many
                 // tokens, and it might even incorrectly "pre-tokenize" '>>' as a right-shift
                 // operator instead of as two CloseAngles...
-                DeclProduction* saved_prod = dcor.prod;
-                prod_to_modify = &dcor.prod;
-                DeclProduction* fn_prod = parse_parameter_list(parser, &prod_to_modify);
-                if (!rp.error_occurred()) {
+                DeclProduction* savedProd = dcor.prod;
+                prodToModify = &dcor.prod;
+                DeclProduction* fnProd = parseParameterList(parser, &prodToModify);
+                if (!rp.errorOccurred()) {
                     // Success. Parse optional trailing return type. If any parse errors occur while
                     // doing so, we won't backtrack.
-                    PLY_ASSERT(fn_prod);
+                    PLY_ASSERT(fnProd);
                     rp.cancel();
-                    parse_optional_trailing_return_type(parser, fn_prod);
+                    parseOptionalTrailingReturnType(parser, fnProd);
                     // Break out of the loop and continue with the second phase.
                     break;
                 }
 
                 // It didn't parse as a function parameter list.
                 // Roll back any productions that were created:
-                while (dcor.prod != saved_prod) {
+                while (dcor.prod != savedProd) {
                     PLY_ASSERT(dcor.prod);
                     DeclProduction* child = dcor.prod->child.release();
                     dcor.prod = child;
                 }
                 rp.backtrack();
                 rp.cancel();
-                token = read_token(parser);
-                prod_to_modify = nullptr;
+                token = readToken(parser);
+                prodToModify = nullptr;
             }
 
             // Parse it as a nested declarator.
             Declarator target;
-            parse_declarator(parser, target, dcor.prod.release(), dcor_flags);
+            parseDeclarator(parser, target, dcor.prod.release(), dcorFlags);
             dcor.prod = Heap::create<DeclProduction>();
-            auto& parenthesized = dcor.prod->var.switch_to<DeclProduction::Parenthesized>();
-            parenthesized.open_paren = token;
+            auto& parenthesized = dcor.prod->var.switchTo<DeclProduction::Parenthesized>();
+            parenthesized.openParen = token;
             dcor.prod->child = std::move(target.prod);
-            PLY_ASSERT(dcor.qid.is_empty());
+            PLY_ASSERT(dcor.qid.isEmpty());
             dcor.qid = std::move(target.qid);
 
-            if (!close_scope(parser, &parenthesized.close_paren, token))
+            if (!closeScope(parser, &parenthesized.closeParen, token))
                 return;
             break;
         }
 
-        if (!qid.prefix.is_empty()) {
+        if (!qid.prefix.isEmpty()) {
             if (token.type != Token::Star) {
                 // Should not be preceded by nested name specifier
-                parser->error_no_mute(Error, token.input_offset,
-                                      FMT_MSG("'{}' cannot have a nested name prefix", token.to_string()));
+                parser->errorNoMute(Error, token.inputOffset,
+                                    FMT_MSG("'{}' cannot have a nested name prefix", token.toString()));
             }
         }
 
         if (token.type == Token::Star || token.type == Token::SingleAmpersand || token.type == Token::DoubleAmpersand) {
-            parser->mute_errors = false;
+            parser->muteErrors = false;
 
             auto* prod = Heap::create<DeclProduction>();
-            auto& ptr_to = prod->var.switch_to<DeclProduction::Indirection>();
-            ptr_to.prefix = std::move(qid.prefix);
-            ptr_to.punc = token;
+            auto& ptrTo = prod->var.switchTo<DeclProduction::Indirection>();
+            ptrTo.prefix = std::move(qid.prefix);
+            ptrTo.punc = token;
             prod->child = std::move(dcor.prod);
             dcor.prod = prod;
-            allow_qualifier = (token.type == Token::Star);
+            allowQualifier = (token.type == Token::Star);
         } else if (token.type == Token::Ellipsis) {
             // FIXME: Make a Production rule for this
 
-            parser->mute_errors = false;
+            parser->muteErrors = false;
         } else if (token.type == Token::Identifier) {
-            PLY_ASSERT(qid.prefix.is_empty());
+            PLY_ASSERT(qid.prefix.isEmpty());
             PLY_ASSERT(token.text == "const" || token.text == "volatile" || token.text == "inline" ||
                        token.text == "static" || token.text == "friend");
-            if (!allow_qualifier) {
+            if (!allowQualifier) {
                 // Qualifier not allowed here
-                parser->error_no_mute(Error, token.input_offset,
-                                      FMT_MSG("'{}' qualifier not allowed here", token.text));
+                parser->errorNoMute(Error, token.inputOffset, FMT_MSG("'{}' qualifier not allowed here", token.text));
                 // Handle it anyway...
             }
 
-            parser->mute_errors = false;
+            parser->muteErrors = false;
 
             auto* prod = Heap::create<DeclProduction>();
-            auto& qualifier = prod->var.switch_to<DeclProduction::Qualifier>();
+            auto& qualifier = prod->var.switchTo<DeclProduction::Qualifier>();
             qualifier.keyword = token;
             prod->child = std::move(dcor.prod);
             dcor.prod = prod;
         } else {
             // End of first phase of parsing a declarator.
-            PLY_ASSERT(qid.prefix.is_empty());
-            if ((dcor_flags & DeclaratorFlags::AllowAbstract) == 0) {
+            PLY_ASSERT(qid.prefix.isEmpty());
+            if ((dcorFlags & DeclaratorFlags::AllowAbstract) == 0) {
                 // Note that we still allow "empty" declarators (in other words, abstract
                 // declarators with no DeclaratorProductions) even when Allow_Abstract is not
                 // specified, so that class definitions like:
@@ -1617,15 +1618,15 @@ void parse_declarator(ParserImpl* parser, Declarator& dcor, DeclProduction* nest
                 // define a new class/struct/union, such as:
                 //      int;
                 if (dcor.prod) {
-                    parser->error(Error, token.input_offset,
-                                  FMT_MSG("expected qualified-id before '{}'", token.to_string()));
+                    parser->error(Error, token.inputOffset,
+                                  FMT_MSG("expected qualified-id before '{}'", token.toString()));
                 } else {
                     // No DeclaratorProductions have been created yet. We'll log an error if any are
                     // created in the second phase.
-                    expecting_qualified_id = true;
+                    expectingQualifiedId = true;
                 }
             }
-            parser->token_index--;
+            parser->tokenIndex--;
             break;
         }
     }
@@ -1644,41 +1645,40 @@ void parse_declarator(ParserImpl* parser, Declarator& dcor, DeclProduction* nest
     //
     // FIXME: make sure this approach works correctly for things like (*x())()
 
-    if (!prod_to_modify) {
-        prod_to_modify = &dcor.prod;
+    if (!prodToModify) {
+        prodToModify = &dcor.prod;
     }
     for (;;) {
-        Token token = peek_token(parser);
-        auto check_expecting_qualified_id = [&]() {
-            parser->mute_errors = false;
-            if (expecting_qualified_id) {
-                parser->error(Error, token.input_offset,
-                              FMT_MSG("expected qualified-id before '{}'", token.to_string()));
-                expecting_qualified_id = false;
+        Token token = peekToken(parser);
+        auto checkExpectingQualifiedId = [&]() {
+            parser->muteErrors = false;
+            if (expectingQualifiedId) {
+                parser->error(Error, token.inputOffset, FMT_MSG("expected qualified-id before '{}'", token.toString()));
+                expectingQualifiedId = false;
             }
         };
 
         if (token.type == Token::OpenSquare) {
-            parser->token_index++;
-            check_expecting_qualified_id();
+            parser->tokenIndex++;
+            checkExpectingQualifiedId();
 
             auto* prod = Heap::create<DeclProduction>();
-            auto& array_of = prod->var.switch_to<DeclProduction::ArrayOf>();
-            array_of.open_square = token;
-            prod->child = std::move(*prod_to_modify);
-            *prod_to_modify = prod;
-            prod_to_modify = &prod->child;
+            auto& arrayOf = prod->var.switchTo<DeclProduction::ArrayOf>();
+            arrayOf.openSquare = token;
+            prod->child = std::move(*prodToModify);
+            *prodToModify = prod;
+            prodToModify = &prod->child;
 
-            parse_expression(parser, true);
+            parseExpression(parser, true);
 
-            if (!close_scope(parser, &array_of.close_square, token))
+            if (!closeScope(parser, &arrayOf.closeSquare, token))
                 return;
         } else if (token.type == Token::OpenParen) {
-            check_expecting_qualified_id();
+            checkExpectingQualifiedId();
 
-            DeclProduction* fn_prod = parse_parameter_list(parser, &prod_to_modify);
-            if (fn_prod) {
-                parse_optional_trailing_return_type(parser, fn_prod);
+            DeclProduction* fnProd = parseParameterList(parser, &prodToModify);
+            if (fnProd) {
+                parseOptionalTrailingReturnType(parser, fnProd);
             }
         } else
             break;
@@ -1696,162 +1696,160 @@ void parse_declarator(ParserImpl* parser, Declarator& dcor, DeclProduction* nest
 //  ▄██▄ ██  ██ ██  ▀█▄▄ ██ ▀█▄▄██ ▄██▄ ██ ▄██▄▄▄ ▀█▄▄▄  ██      ▄▄▄█▀
 //
 
-void skip_member_initializer_list(ParserImpl* parser) {
+void skipMemberInitializerList(ParserImpl* parser) {
     // Make sure that if { is encountered (even with unexpected placement), we return to caller.
-    PLY_SET_IN_SCOPE(parser->outer_accept_flags, parser->outer_accept_flags | ParserImpl::AcceptOpenCurly);
+    PLY_SET_IN_SCOPE(parser->outerAcceptFlags, parser->outerAcceptFlags | ParserImpl::AcceptOpenCurly);
     // FIXME: Add a scope to declare that we are parsing a member initializer list, and report this
     // scope in any logged errors (?)
 
     for (;;) {
-        QualifiedID qid = parse_qualified_id(parser, ParseQualifiedMode::AllowIncomplete);
-        if (!qid.var.is_empty()) {
-            Token open_brace_token = peek_token(parser);
-            if ((open_brace_token.type == Token::OpenParen) || (open_brace_token.type == Token::OpenCurly)) {
-                parser->token_index++;
-                skip_any_scope(parser, nullptr, open_brace_token);
+        QualifiedID qid = parseQualifiedId(parser, ParseQualifiedMode::AllowIncomplete);
+        if (!qid.var.isEmpty()) {
+            Token openBraceToken = peekToken(parser);
+            if ((openBraceToken.type == Token::OpenParen) || (openBraceToken.type == Token::OpenCurly)) {
+                parser->tokenIndex++;
+                skipAnyScope(parser, nullptr, openBraceToken);
             } else {
                 // expected ( or {
                 // FIXME: should report that it was expected after qualified id
-                parser->error(Error, open_brace_token.input_offset,
-                              FMT_MSG("expected '{{' or '(' before '{}'", open_brace_token.to_string()));
+                parser->error(Error, openBraceToken.inputOffset,
+                              FMT_MSG("expected '{{' or '(' before '{}'", openBraceToken.toString()));
                 continue;
             }
 
-            Token next_token = peek_token(parser);
-            if (next_token.type == Token::OpenCurly) {
+            Token nextToken = peekToken(parser);
+            if (nextToken.type == Token::OpenCurly) {
                 // End of member initializer list.
-                parser->mute_errors = false;
+                parser->muteErrors = false;
                 break;
-            } else if (next_token.type == Token::Comma) {
-                parser->token_index++;
-                parser->mute_errors = false;
+            } else if (nextToken.type == Token::Comma) {
+                parser->tokenIndex++;
+                parser->muteErrors = false;
             } else {
-                parser->error(Error, next_token.input_offset, "expected function body after member initializer list");
+                parser->error(Error, nextToken.inputOffset, "expected function body after member initializer list");
                 break;
             }
         } else {
-            Token token = peek_token(parser);
-            parser->error(Error, token.input_offset,
-                          FMT_MSG("expected class member or base class name before '{}'", token.to_string()));
-            if (qid.prefix.is_empty()) {
-                parser->token_index++;
-                if (!handle_unexpected_token(parser, nullptr, token))
+            Token token = peekToken(parser);
+            parser->error(Error, token.inputOffset,
+                          FMT_MSG("expected class member or base class name before '{}'", token.toString()));
+            if (qid.prefix.isEmpty()) {
+                parser->tokenIndex++;
+                if (!handleUnexpectedToken(parser, nullptr, token))
                     break;
             }
         }
     }
 }
 
-void parse_optional_function_body(ParserImpl* parser, Initializer& result, const Declaration::Entity& entity) {
+void parseOptionalFunctionBody(ParserImpl* parser, Initializer& result, const Declaration::Entity& entity) {
     result.var = {};
-    Token token = peek_token(parser);
+    Token token = peekToken(parser);
     if (token.type == Token::SingleEqual) {
-        parser->token_index++;
-        auto& assign = result.var.switch_to<Initializer::Assignment>();
-        assign.equal_sign = token;
-        parse_expression(parser); // FIXME: Fill in var_init
+        parser->tokenIndex++;
+        auto& assign = result.var.switchTo<Initializer::Assignment>();
+        assign.equalSign = token;
+        parseExpression(parser); // FIXME: Fill in varInit
         return;
     }
     if (token.type == Token::SingleColon) {
-        parser->token_index++;
-        auto& func_body = result.var.switch_to<Initializer::FunctionBody>();
-        func_body.colon = token;
+        parser->tokenIndex++;
+        auto& funcBody = result.var.switchTo<Initializer::FunctionBody>();
+        funcBody.colon = token;
         // FIXME: populate MemberInitializer
-        skip_member_initializer_list(parser);
-        token = peek_token(parser);
+        skipMemberInitializerList(parser);
+        token = peekToken(parser);
     }
     if (token.type == Token::OpenCurly) {
-        parser->token_index++;
-        auto& func_body = result.var.switch_to<Initializer::FunctionBody>();
-        func_body.colon = token;
-        skip_any_scope(parser, &func_body.close_curly, token);
+        parser->tokenIndex++;
+        auto& funcBody = result.var.switchTo<Initializer::FunctionBody>();
+        funcBody.colon = token;
+        skipAnyScope(parser, &funcBody.closeCurly, token);
     }
 }
 
-void parse_optional_type_id_initializer(ParserImpl* parser, Initializer& result) {
+void parseOptionalTypeIdInitializer(ParserImpl* parser, Initializer& result) {
     result.var = {};
-    Token token = peek_token(parser);
+    Token token = peekToken(parser);
     if (token.type == Token::SingleEqual) {
-        parser->token_index++;
-        auto& assign = result.var.switch_to<Initializer::Assignment>();
-        assign.equal_sign = token;
-        token = read_token(parser);
+        parser->tokenIndex++;
+        auto& assign = result.var.switchTo<Initializer::Assignment>();
+        assign.equalSign = token;
+        token = readToken(parser);
         if (token.text == "0") {
             // FIXME: Support <typename A::B = 0> correctly!
         } else {
-            parser->token_index--;
-            u32 saved_error_count = parser->raw_error_count;
-            TypeID type_id = parse_type_id(parser);
-            if (saved_error_count == parser->raw_error_count) {
+            parser->tokenIndex--;
+            u32 savedErrorCount = parser->rawErrorCount;
+            TypeID typeId = parseTypeId(parser);
+            if (savedErrorCount == parser->rawErrorCount) {
                 // No errors
-                assign.var = std::move(type_id);
+                assign.var = std::move(typeId);
             }
         }
     }
 }
 
-void parse_optional_variable_initializer(ParserImpl* parser, Initializer& result, bool allow_braced_init) {
-    PLY_ASSERT(result.var.is_empty());
-    Token token = peek_token(parser);
+void parseOptionalVariableInitializer(ParserImpl* parser, Initializer& result, bool allowBracedInit) {
+    PLY_ASSERT(result.var.isEmpty());
+    Token token = peekToken(parser);
     if (token.type == Token::OpenCurly) {
         // It's a variable initializer
-        result.var.switch_to<Initializer::Assignment>();
-        parse_expression(parser); // FIXME: Fill in var_init
+        result.var.switchTo<Initializer::Assignment>();
+        parseExpression(parser); // FIXME: Fill in varInit
     } else if (token.type == Token::SingleEqual) {
-        parser->token_index++;
-        auto& assign = result.var.switch_to<Initializer::Assignment>();
-        assign.equal_sign = token;
-        parse_expression(parser);
-        assign.var.switch_to<Owned<Expression>>();
+        parser->tokenIndex++;
+        auto& assign = result.var.switchTo<Initializer::Assignment>();
+        assign.equalSign = token;
+        parseExpression(parser);
+        assign.var.switchTo<Owned<Expression>>();
         // FIXME: Fill in
     } else if (token.type == Token::SingleColon) {
-        parser->token_index++;
-        auto& bit_field = result.var.switch_to<Initializer::BitField>();
-        bit_field.colon = token;
-        parse_expression(parser);
+        parser->tokenIndex++;
+        auto& bitField = result.var.switchTo<Initializer::BitField>();
+        bitField.colon = token;
+        parseExpression(parser);
     }
 }
 
-void parse_init_declarators(ParserImpl* parser, Declaration::Entity& entity) {
+void parseInitDeclarators(ParserImpl* parser, Declaration::Entity& entity) {
     // A list of zero or more named declarators is accepted here.
     for (;;) {
         Declarator dcor;
-        parse_declarator(parser, dcor, nullptr, DeclaratorFlags::AllowNamed);
-        if (dcor.qid.is_empty())
+        parseDeclarator(parser, dcor, nullptr, DeclaratorFlags::AllowNamed);
+        if (dcor.qid.isEmpty())
             break; // Error was already logged
-        InitDeclarator& init_dcor = entity.init_declarators.append();
-        init_dcor.qid = std::move(dcor.qid);
-        init_dcor.prod = std::move(dcor.prod);
-        if (init_dcor.prod && init_dcor.prod->var.is<DeclProduction::Function>()) {
-            parse_optional_function_body(parser, init_dcor.init, entity);
-            if (init_dcor.init.var.is<Initializer::FunctionBody>()) {
-                if (entity.init_declarators.num_items() > 1) {
+        InitDeclarator& initDcor = entity.initDeclarators.append();
+        initDcor.qid = std::move(dcor.qid);
+        initDcor.prod = std::move(dcor.prod);
+        if (initDcor.prod && initDcor.prod->var.is<DeclProduction::Function>()) {
+            parseOptionalFunctionBody(parser, initDcor.init, entity);
+            if (initDcor.init.var.is<Initializer::FunctionBody>()) {
+                if (entity.initDeclarators.numItems() > 1) {
                     // Note: Mixing function definitions and declarations could be a
                     // higher-level error instead of a parse error.
                     // FIXME: A reference to both declarators should be part of the error
                     // message. For now, we'll just use the open parenthesis token.
-                    parser->error_no_mute(Error,
-                                          init_dcor.prod->var.as<DeclProduction::Function>()->open_paren.input_offset,
-                                          "can't mix function definitions with other declarations");
+                    parser->errorNoMute(Error, initDcor.prod->var.as<DeclProduction::Function>()->openParen.inputOffset,
+                                        "can't mix function definitions with other declarations");
                 }
             }
             break; // Stop parsing declarators immediately after the function body.
         } else {
-            parse_optional_variable_initializer(parser, init_dcor.init, true);
+            parseOptionalVariableInitializer(parser, initDcor.init, true);
         }
-        Token sep_token = peek_token(parser);
-        if (sep_token.type == Token::Comma) {
-            parser->token_index++;
-            if (init_dcor.init.var.is<Initializer::FunctionBody>()) {
+        Token sepToken = peekToken(parser);
+        if (sepToken.type == Token::Comma) {
+            parser->tokenIndex++;
+            if (initDcor.init.var.is<Initializer::FunctionBody>()) {
                 // FIXME: It's not very clear from this error message that the comma is the
                 // token that triggered an error. In any case, we don't hit this codepath yet,
                 // as explained by the above comment.
                 PLY_ASSERT(0); // codepath never gets hit at the moment
-                parser->error_no_mute(Error,
-                                      init_dcor.prod->var.as<DeclProduction::Function>()->open_paren.input_offset,
-                                      "can't mix function definitions with other declarations");
+                parser->errorNoMute(Error, initDcor.prod->var.as<DeclProduction::Function>()->openParen.inputOffset,
+                                    "can't mix function definitions with other declarations");
             }
-            init_dcor.comma = sep_token;
+            initDcor.comma = sepToken;
         } else
             break;
     }
@@ -1868,64 +1866,64 @@ void parse_init_declarators(ParserImpl* parser, Declaration::Entity& entity) {
 //  ██▄▄█▀ ▀█▄▄▄  ▀█▄▄▄ ▄██▄ ▀█▄▄██ ██     ▀█▄▄██  ▀█▄▄ ██ ▀█▄▄█▀ ██  ██  ▄▄▄█▀
 //
 
-Array<DeclSpecifier::Class::BaseSpecifier> parse_base_specifier_list(ParserImpl* parser) {
-    Array<DeclSpecifier::Class::BaseSpecifier> base_specifiers;
+Array<DeclSpecifier::Class::BaseSpecifier> parseBaseSpecifierList(ParserImpl* parser) {
+    Array<DeclSpecifier::Class::BaseSpecifier> baseSpecifiers;
     for (;;) {
-        DeclSpecifier::Class::BaseSpecifier base_spec;
+        DeclSpecifier::Class::BaseSpecifier baseSpec;
 
         // Optional access specifier
-        Token token = peek_token(parser);
+        Token token = peekToken(parser);
         if (token.type == Token::Identifier) {
             if (token.text == "public" || token.text == "private" || token.text == "protected") {
-                parser->token_index++;
-                parser->mute_errors = false;
-                base_spec.access_spec = token;
-                token = peek_token(parser);
+                parser->tokenIndex++;
+                parser->muteErrors = false;
+                baseSpec.accessSpec = token;
+                token = peekToken(parser);
             }
         }
 
         // Qualified ID
-        base_spec.base_qid = parse_qualified_id(parser, ParseQualifiedMode::RequireComplete);
-        if (base_spec.base_qid.var.is_empty())
+        baseSpec.baseQid = parseQualifiedId(parser, ParseQualifiedMode::RequireComplete);
+        if (baseSpec.baseQid.var.isEmpty())
             break;
-        parser->mute_errors = false;
-        DeclSpecifier::Class::BaseSpecifier& added_bs = base_specifiers.append(std::move(base_spec));
+        parser->muteErrors = false;
+        DeclSpecifier::Class::BaseSpecifier& addedBs = baseSpecifiers.append(std::move(baseSpec));
 
         // Comma or {
-        Token punc_token = peek_token(parser);
-        if (punc_token.type == Token::OpenCurly)
+        Token puncToken = peekToken(parser);
+        if (puncToken.type == Token::OpenCurly)
             break;
-        if (punc_token.type == Token::Comma) {
-            parser->token_index++;
-            added_bs.comma = token;
+        if (puncToken.type == Token::Comma) {
+            parser->tokenIndex++;
+            addedBs.comma = token;
         } else {
-            parser->token_index++;
-            parser->error(Error, punc_token.input_offset,
-                          FMT_MSG("expected ',' or '{{' before '{}'", punc_token.to_string()));
-            // FIXME: Call handle_unexpected_token
+            parser->tokenIndex++;
+            parser->error(Error, puncToken.inputOffset,
+                          FMT_MSG("expected ',' or '{{' before '{}'", puncToken.toString()));
+            // FIXME: Call handleUnexpectedToken
             break;
         }
     }
-    return base_specifiers;
+    return baseSpecifiers;
 }
 
-DeclSpecifier::Class parse_class_declaration(ParserImpl* parser) {
+DeclSpecifier::Class parseClassDeclaration(ParserImpl* parser) {
     DeclSpecifier::Class class_;
-    Token token = read_token(parser);
+    Token token = readToken(parser);
     class_.keyword = token;
-    class_.qid = parse_qualified_id(parser, ParseQualifiedMode::RequireCompleteOrEmpty);
+    class_.qid = parseQualifiedId(parser, ParseQualifiedMode::RequireCompleteOrEmpty);
 
     // Read optional virt-specifier sequence
     {
-        Token final_tok;
+        Token finalTok;
         for (;;) {
-            token = read_token(parser);
+            token = readToken(parser);
             if (token.text == "final") {
-                if (final_tok.is_valid()) {
-                    parser->error(Error, token.input_offset, FMT_MSG("'{}' used more than once", token.text));
+                if (finalTok.isValid()) {
+                    parser->error(Error, token.inputOffset, FMT_MSG("'{}' used more than once", token.text));
                 } else {
-                    final_tok = token;
-                    class_.virt_specifiers.append(token);
+                    finalTok = token;
+                    class_.virtSpecifiers.append(token);
                 }
             } else {
                 break;
@@ -1935,268 +1933,268 @@ DeclSpecifier::Class parse_class_declaration(ParserImpl* parser) {
 
     if (token.type == Token::SingleColon) {
         class_.colon = token;
-        class_.base_specifiers = parse_base_specifier_list(parser);
-        token = read_token(parser);
+        class_.baseSpecifiers = parseBaseSpecifierList(parser);
+        token = readToken(parser);
     }
 
     if (token.type == Token::OpenCurly) {
-        class_.open_curly = token;
-        class_.member_decls = parse_declaration_list(parser, &class_.close_curly, get_class_name(class_.qid));
+        class_.openCurly = token;
+        class_.memberDecls = parseDeclarationList(parser, &class_.closeCurly, getClassName(class_.qid));
     } else {
-        parser->token_index--;
+        parser->tokenIndex--;
     }
     return class_;
 }
 
-void parse_enum_body(ParserImpl* parser, DeclSpecifier::Enum* en) {
-    parser->mute_errors = false;
-    SetAcceptFlagsInScope accept_scope{parser, Token::OpenCurly};
+void parseEnumBody(ParserImpl* parser, DeclSpecifier::Enum* en) {
+    parser->muteErrors = false;
+    SetAcceptFlagsInScope acceptScope{parser, Token::OpenCurly};
 
     for (;;) {
-        Token token = read_token(parser);
+        Token token = readToken(parser);
         if (token.type == Token::CloseCurly) {
             // Done
-            parser->mute_errors = false;
-            en->close_curly = token;
+            parser->muteErrors = false;
+            en->closeCurly = token;
             break;
         } else if (token.type == Token::Identifier) {
-            parser->mute_errors = false;
+            parser->muteErrors = false;
 
             // Create enor
             DeclSpecifier::Enum::Item& enor = en->enumerators.append();
             enor.text = token;
-            parse_optional_variable_initializer(parser, enor.init, false);
-            Token token2 = read_token(parser);
+            parseOptionalVariableInitializer(parser, enor.init, false);
+            Token token2 = readToken(parser);
             bool done = false;
             if (token2.type == Token::Comma) {
-                parser->mute_errors = false;
+                parser->muteErrors = false;
                 enor.comma = token2;
             } else if (token2.type == Token::CloseCurly) {
                 // Done
-                parser->mute_errors = false;
-                en->close_curly = token2;
+                parser->muteErrors = false;
+                en->closeCurly = token2;
                 done = true;
             } else {
                 // expected , or } after enum member
                 if (token2.type == Token::Identifier) {
-                    parser->error(Error, token2.input_offset, "missing ',' between enumerators");
+                    parser->error(Error, token2.inputOffset, "missing ',' between enumerators");
                 }
                 // Other tokens will generate an error on next loop iteration
-                parser->token_index--;
+                parser->tokenIndex--;
             }
             if (done)
                 break;
         } else {
             // expected enumerator or }
-            parser->error(Error, token.input_offset,
-                          FMT_MSG("expected enumerator or '}}' before '{}'", token.to_string()));
-            if (!handle_unexpected_token(parser, nullptr, token))
+            parser->error(Error, token.inputOffset,
+                          FMT_MSG("expected enumerator or '}}' before '{}'", token.toString()));
+            if (!handleUnexpectedToken(parser, nullptr, token))
                 return;
         }
     }
 }
 
-DeclSpecifier::Enum parse_enum_declaration(ParserImpl* parser) {
+DeclSpecifier::Enum parseEnumDeclaration(ParserImpl* parser) {
     DeclSpecifier::Enum en;
-    en.keyword = read_token(parser);
-    Token token2 = peek_token(parser);
+    en.keyword = readToken(parser);
+    Token token2 = peekToken(parser);
     if ((token2.type == Token::Identifier) && (token2.text == "class")) {
-        parser->token_index++;
-        en.class_keyword = token2;
+        parser->tokenIndex++;
+        en.classKeyword = token2;
     }
 
-    en.qid = parse_qualified_id(parser, ParseQualifiedMode::RequireCompleteOrEmpty);
+    en.qid = parseQualifiedId(parser, ParseQualifiedMode::RequireCompleteOrEmpty);
 
-    Token sep_token = peek_token(parser);
-    if (sep_token.type == Token::SingleColon) {
-        parser->token_index++;
-        if (en.qid.is_empty()) {
-            parser->error_no_mute(Error, sep_token.input_offset, "scoped enum requires a name");
+    Token sepToken = peekToken(parser);
+    if (sepToken.type == Token::SingleColon) {
+        parser->tokenIndex++;
+        if (en.qid.isEmpty()) {
+            parser->errorNoMute(Error, sepToken.inputOffset, "scoped enum requires a name");
         }
-        en.colon = sep_token;
-        en.base = parse_qualified_id(parser, ParseQualifiedMode::RequireComplete);
+        en.colon = sepToken;
+        en.base = parseQualifiedId(parser, ParseQualifiedMode::RequireComplete);
     }
 
-    Token token3 = peek_token(parser);
+    Token token3 = peekToken(parser);
     if (token3.type == Token::OpenCurly) {
-        parser->token_index++;
-        en.open_curly = token3;
-        parse_enum_body(parser, &en);
+        parser->tokenIndex++;
+        en.openCurly = token3;
+        parseEnumBody(parser, &en);
     }
     return en;
 }
 
-bool looks_like_ctor_dtor(StringView enclosing_class_name, const QualifiedID& qid) {
-    if (enclosing_class_name.is_empty()) {
-        if (qid.prefix.num_items() < 1)
+bool looksLikeCtorDtor(StringView enclosingClassName, const QualifiedID& qid) {
+    if (enclosingClassName.isEmpty()) {
+        if (qid.prefix.numItems() < 1)
             return false;
 
-        StringView ctor_dtor_name = get_ctor_dtor_name(qid);
-        if (ctor_dtor_name.is_empty())
+        StringView ctorDtorName = getCtorDtorName(qid);
+        if (ctorDtorName.isEmpty())
             return false;
 
         const QualifiedID::Prefix& tail = qid.prefix.back();
         if (auto* ident = tail.var.as<QualifiedID::Identifier>()) {
-            PLY_ASSERT(ident->name.is_valid());
-            return ctor_dtor_name == ident->name.text;
-        } else if (auto* tmpl_id = tail.var.as<QualifiedID::TemplateID>()) {
-            PLY_ASSERT(tmpl_id->name.is_valid());
-            return ctor_dtor_name == tmpl_id->name.text;
+            PLY_ASSERT(ident->name.isValid());
+            return ctorDtorName == ident->name.text;
+        } else if (auto* tmplId = tail.var.as<QualifiedID::TemplateID>()) {
+            PLY_ASSERT(tmplId->name.isValid());
+            return ctorDtorName == tmplId->name.text;
         }
 
         return false;
     } else {
-        if (qid.prefix.num_items() > 0)
+        if (qid.prefix.numItems() > 0)
             return false;
 
-        StringView ctor_dtor_name = get_ctor_dtor_name(qid);
-        return ctor_dtor_name == enclosing_class_name;
+        StringView ctorDtorName = getCtorDtorName(qid);
+        return ctorDtorName == enclosingClassName;
     }
 }
 
-Declaration parse_entity_declaration(ParserImpl* parser, StringView enclosing_class_name) {
+Declaration parseEntityDeclaration(ParserImpl* parser, StringView enclosingClassName) {
     Declaration result;
-    auto& entity = result.var.switch_to<Declaration::Entity>();
-    u32 start_input_offset = peek_token(parser).input_offset;
-    u32 saved_error_count = parser->raw_error_count;
+    auto& entity = result.var.switchTo<Declaration::Entity>();
+    u32 startInputOffset = peekToken(parser).inputOffset;
+    u32 savedErrorCount = parser->rawErrorCount;
 
     // Parse the decl-specifier sequence.
-    s32 type_specifier_index = -1;
+    s32 typeSpecifierIndex = -1;
     for (;;) {
-        Token token = peek_token(parser);
+        Token token = peekToken(parser);
         if (token.type == Token::Identifier) {
             if (token.text == "extern") {
-                parser->mute_errors = false;
-                parser->token_index++;
-                Token literal = peek_token(parser);
+                parser->muteErrors = false;
+                parser->tokenIndex++;
+                Token literal = peekToken(parser);
                 if (literal.type == Token::StringLiteral) {
-                    parser->token_index++;
-                    entity.decl_specifiers.append(Heap::create<DeclSpecifier>(DeclSpecifier::Linkage{token, literal}));
+                    parser->tokenIndex++;
+                    entity.declSpecifiers.append(Heap::create<DeclSpecifier>(DeclSpecifier::Linkage{token, literal}));
                 } else {
-                    entity.decl_specifiers.append(Heap::create<DeclSpecifier>(DeclSpecifier::Keyword{token}));
+                    entity.declSpecifiers.append(Heap::create<DeclSpecifier>(DeclSpecifier::Keyword{token}));
                 }
             } else if (token.text == "inline" || token.text == "const" || token.text == "volatile" ||
                        token.text == "static" || token.text == "friend" || token.text == "virtual" ||
                        token.text == "constexpr" || token.text == "thread_local" || token.text == "unsigned" ||
                        token.text == "mutable" || token.text == "explicit") {
-                parser->mute_errors = false;
-                parser->token_index++;
-                entity.decl_specifiers.append(Heap::create<DeclSpecifier>(DeclSpecifier::Keyword{token}));
+                parser->muteErrors = false;
+                parser->tokenIndex++;
+                entity.declSpecifiers.append(Heap::create<DeclSpecifier>(DeclSpecifier::Keyword{token}));
             } else if (token.text == "alignas") {
-                parser->mute_errors = false;
-                parser->token_index++;
+                parser->muteErrors = false;
+                parser->tokenIndex++;
                 // FIXME: Implement Decl_Specifier::AlignAs
                 // Note: alignas is technically part of the attribute-specifier-seq in the
                 // grammar, which means it can only appear before the decl-specifier-seq. But
                 // for now, let's just accept it here:
-                Token open_paren = read_token(parser);
-                if (open_paren.type != Token::OpenParen) {
-                    parser->error(Error, open_paren.input_offset,
-                                  FMT_MSG("expected '(' before '{}'", open_paren.to_string()));
+                Token openParen = readToken(parser);
+                if (openParen.type != Token::OpenParen) {
+                    parser->error(Error, openParen.inputOffset,
+                                  FMT_MSG("expected '(' before '{}'", openParen.toString()));
                     continue;
                 }
                 // FIXME: Accept integral constant expression here too
-                TypeID type_id = parse_type_id(parser);
-                Token close_paren;
-                if (!close_scope(parser, &close_paren, open_paren))
+                TypeID typeId = parseTypeId(parser);
+                Token closeParen;
+                if (!closeScope(parser, &closeParen, openParen))
                     break;
             } else if (token.text == "typedef") {
-                parser->mute_errors = false;
-                parser->token_index++;
+                parser->muteErrors = false;
+                parser->tokenIndex++;
                 // FIXME: Store this token in the parse tree
             } else if (token.text == "struct" || token.text == "class" || token.text == "union") {
-                parser->mute_errors = false;
+                parser->muteErrors = false;
                 // FIXME: for TemplateParams, "class" should be treated like "typename".
                 // Otherwise, it seems C++20 may actually support structs as non-type template
                 // parameters, so we should revisit this eventually.
-                if (type_specifier_index >= 0) {
+                if (typeSpecifierIndex >= 0) {
                     // Already got type specifier
-                    parser->error(Error, token.input_offset, "too many type specifiers");
+                    parser->error(Error, token.inputOffset, "too many type specifiers");
                 }
-                DeclSpecifier::Class class_ = parse_class_declaration(parser);
-                type_specifier_index = entity.decl_specifiers.num_items();
-                entity.decl_specifiers.append(Heap::create<DeclSpecifier>(std::move(class_)));
+                DeclSpecifier::Class class_ = parseClassDeclaration(parser);
+                typeSpecifierIndex = entity.declSpecifiers.numItems();
+                entity.declSpecifiers.append(Heap::create<DeclSpecifier>(std::move(class_)));
             } else if (token.text == "enum") {
-                parser->mute_errors = false;
-                if (type_specifier_index >= 0) {
-                    parser->error(Error, token.input_offset, "too many type specifiers");
+                parser->muteErrors = false;
+                if (typeSpecifierIndex >= 0) {
+                    parser->error(Error, token.inputOffset, "too many type specifiers");
                 }
-                DeclSpecifier::Enum en = parse_enum_declaration(parser);
-                type_specifier_index = entity.decl_specifiers.num_items();
-                entity.decl_specifiers.append(Heap::create<DeclSpecifier>(std::move(en)));
-            } else if ((token.text == "operator") && (type_specifier_index < 0)) {
-                parser->mute_errors = false;
-                parser->token_index++;
+                DeclSpecifier::Enum en = parseEnumDeclaration(parser);
+                typeSpecifierIndex = entity.declSpecifiers.numItems();
+                entity.declSpecifiers.append(Heap::create<DeclSpecifier>(std::move(en)));
+            } else if ((token.text == "operator") && (typeSpecifierIndex < 0)) {
+                parser->muteErrors = false;
+                parser->tokenIndex++;
                 // It's a conversion function
-                InitDeclarator& init_dcor = entity.init_declarators.append();
-                auto& conv_func = init_dcor.qid.var.switch_to<QualifiedID::ConversionFunc>();
-                conv_func.operator_keyword = token;
-                parse_conversion_type_id(parser, &conv_func);
+                InitDeclarator& initDcor = entity.initDeclarators.append();
+                auto& convFunc = initDcor.qid.var.switchTo<QualifiedID::ConversionFunc>();
+                convFunc.operatorKeyword = token;
+                parseConversionTypeId(parser, &convFunc);
                 // Ensure there's an open parenthesis
-                Token open_paren = peek_token(parser);
-                if (open_paren.type == Token::OpenParen) {
-                    parser->token_index++;
-                    init_dcor.prod = Heap::create<DeclProduction>();
-                    auto& func = init_dcor.prod->var.switch_to<DeclProduction::Function>();
-                    func.open_paren = open_paren;
-                    parse_parameter_declaration_list(parser, &func.params, false);
-                    Token close_paren = peek_token(parser);
-                    if (close_paren.type == Token::CloseParen) {
-                        parser->token_index++;
-                        func.close_paren = close_paren;
-                        func.qualifiers = parse_function_qualifier_seq(parser);
-                        parse_optional_function_body(parser, init_dcor.init, entity);
+                Token openParen = peekToken(parser);
+                if (openParen.type == Token::OpenParen) {
+                    parser->tokenIndex++;
+                    initDcor.prod = Heap::create<DeclProduction>();
+                    auto& func = initDcor.prod->var.switchTo<DeclProduction::Function>();
+                    func.openParen = openParen;
+                    parseParameterDeclarationList(parser, &func.params, false);
+                    Token closeParen = peekToken(parser);
+                    if (closeParen.type == Token::CloseParen) {
+                        parser->tokenIndex++;
+                        func.closeParen = closeParen;
+                        func.qualifiers = parseFunctionQualifierSeq(parser);
+                        parseOptionalFunctionBody(parser, initDcor.init, entity);
                     }
                     return result;
                 } else {
-                    parser->error(Error, open_paren.input_offset,
-                                  FMT_MSG("expected '(' before '{}'", open_paren.to_string()));
+                    parser->error(Error, openParen.inputOffset,
+                                  FMT_MSG("expected '(' before '{}'", openParen.toString()));
                 }
                 break;
             } else {
-                parser->mute_errors = false;
-                if (type_specifier_index >= 0)
+                parser->muteErrors = false;
+                if (typeSpecifierIndex >= 0)
                     // We already got a type specifier, so this must be the declarator part.
                     break;
 
-                parser->token_index++;
+                parser->tokenIndex++;
                 Token typename_;
                 QualifiedID qid;
                 if (token.text == "typename") {
                     typename_ = token;
                     Token ellipsis;
-                    Token t2 = peek_token(parser);
+                    Token t2 = peekToken(parser);
                     if (t2.type == Token::Ellipsis) {
-                        parser->token_index++;
+                        parser->tokenIndex++;
                         ellipsis = t2;
                     }
-                    qid = parse_qualified_id(parser, ParseQualifiedMode::RequireCompleteOrEmpty);
-                    if (ellipsis.is_valid()) {
-                        parser->error(Error, ellipsis.input_offset,
-                                      FMT_MSG("expected qualified-id before '{}'", ellipsis.to_string()));
+                    qid = parseQualifiedId(parser, ParseQualifiedMode::RequireCompleteOrEmpty);
+                    if (ellipsis.isValid()) {
+                        parser->error(Error, ellipsis.inputOffset,
+                                      FMT_MSG("expected qualified-id before '{}'", ellipsis.toString()));
                     }
                 } else {
-                    parser->token_index--;
-                    qid = parse_qualified_id(parser, ParseQualifiedMode::RequireComplete);
-                    PLY_ASSERT(!qid.is_empty()); // Shouldn't happen because token was an Identifier
+                    parser->tokenIndex--;
+                    qid = parseQualifiedId(parser, ParseQualifiedMode::RequireComplete);
+                    PLY_ASSERT(!qid.isEmpty()); // Shouldn't happen because token was an Identifier
                 }
 
-                if (!typename_.is_valid() && looks_like_ctor_dtor(enclosing_class_name, qid)) {
+                if (!typename_.isValid() && looksLikeCtorDtor(enclosingClassName, qid)) {
                     // Try (optimistically) to parse it as a constructor.
                     // We need a restore point in order to recover from Foo(bar())
                     RestorePoint rp{parser};
-                    Declarator ctor_dcor;
-                    Owned<DeclProduction>* prod_to_modify = &ctor_dcor.prod;
-                    parse_parameter_list(parser, &prod_to_modify);
-                    if (!rp.error_occurred()) {
+                    Declarator ctorDcor;
+                    Owned<DeclProduction>* prodToModify = &ctorDcor.prod;
+                    parseParameterList(parser, &prodToModify);
+                    if (!rp.errorOccurred()) {
                         // It's a constructor
-                        PLY_ASSERT(ctor_dcor.prod && ctor_dcor.prod->var.is<DeclProduction::Function>());
+                        PLY_ASSERT(ctorDcor.prod && ctorDcor.prod->var.is<DeclProduction::Function>());
                         rp.cancel();
-                        InitDeclarator& init_dcor = entity.init_declarators.append();
-                        init_dcor.prod = std::move(ctor_dcor.prod);
-                        PLY_ASSERT(ctor_dcor.qid.is_empty());
-                        init_dcor.qid = std::move(qid);
-                        parse_optional_function_body(parser, init_dcor.init, entity);
+                        InitDeclarator& initDcor = entity.initDeclarators.append();
+                        initDcor.prod = std::move(ctorDcor.prod);
+                        PLY_ASSERT(ctorDcor.qid.isEmpty());
+                        initDcor.qid = std::move(qid);
+                        parseOptionalFunctionBody(parser, initDcor.init, entity);
                         return result;
                     }
                     // It failed to parse as a constructor. Treat this token as part of a
@@ -2206,17 +2204,17 @@ Declaration parse_entity_declaration(ParserImpl* parser, StringView enclosing_cl
 
                 // In C++, all declarations must be explicitly typed; there is no "default
                 // int". Therefore, this must be a entity type specifier.
-                if (typename_.is_valid() && qid.prefix.is_empty()) {
-                    Token first_token = get_first_token(qid);
-                    parser->error(Error, first_token.input_offset,
-                                  FMT_MSG("expected nested name prefix before '{}'", first_token.to_string()));
+                if (typename_.isValid() && qid.prefix.isEmpty()) {
+                    Token firstToken = getFirstToken(qid);
+                    parser->error(Error, firstToken.inputOffset,
+                                  FMT_MSG("expected nested name prefix before '{}'", firstToken.toString()));
                 }
 
-                type_specifier_index = entity.decl_specifiers.num_items();
-                DeclSpecifier* decl_spec = entity.decl_specifiers.append(Heap::create<DeclSpecifier>());
-                auto& type_spec = decl_spec->var.switch_to<DeclSpecifier::TypeSpecifier>();
-                type_spec.elaborate_keyword = typename_;
-                type_spec.qid = std::move(qid);
+                typeSpecifierIndex = entity.declSpecifiers.numItems();
+                DeclSpecifier* declSpec = entity.declSpecifiers.append(Heap::create<DeclSpecifier>());
+                auto& typeSpec = declSpec->var.switchTo<DeclSpecifier::TypeSpecifier>();
+                typeSpec.elaborateKeyword = typename_;
+                typeSpec.qid = std::move(qid);
             }
         } else {
             // Not an identifier. Parse the remainder as a declarator list (eg. may start with * or &).
@@ -2227,229 +2225,227 @@ Declaration parse_entity_declaration(ParserImpl* parser, StringView enclosing_cl
     }
 
     // Parse init-declarators.
-    parse_init_declarators(parser, entity);
+    parseInitDeclarators(parser, entity);
 
-    bool is_type_declaration = false;
-    for (const DeclSpecifier* decl_spec : entity.decl_specifiers) {
-        if (decl_spec->var.is<DeclSpecifier::Class>() || decl_spec->var.is<DeclSpecifier::Enum>()) {
-            is_type_declaration = true;
+    bool isTypeDeclaration = false;
+    for (const DeclSpecifier* declSpec : entity.declSpecifiers) {
+        if (declSpec->var.is<DeclSpecifier::Class>() || declSpec->var.is<DeclSpecifier::Enum>()) {
+            isTypeDeclaration = true;
             break;
         }
     }
-    if ((saved_error_count == parser->raw_error_count) && entity.init_declarators.is_empty() && !is_type_declaration) {
-        parser->error_no_mute(Error, start_input_offset, "declaration does not declare anything");
+    if ((savedErrorCount == parser->rawErrorCount) && entity.initDeclarators.isEmpty() && !isTypeDeclaration) {
+        parser->errorNoMute(Error, startInputOffset, "declaration does not declare anything");
     }
 
     return result;
 }
 
 // Returns false if no input was read.
-Declaration parse_declaration_internal(ParserImpl* parser, StringView enclosing_class_name) {
+Declaration parseDeclarationInternal(ParserImpl* parser, StringView enclosingClassName) {
     Declaration result;
-    Token token = peek_token(parser);
+    Token token = peekToken(parser);
 
     if (token.type == Token::Identifier) {
         if (token.text == "extern") {
             // Possible linkage specification
-            parser->mute_errors = false;
+            parser->muteErrors = false;
             RestorePoint rp{parser};
 
-            Token token2 = read_token(parser);
+            Token token2 = readToken(parser);
             if (token2.type != Token::StringLiteral) {
                 rp.backtrack();
-                parse_entity_declaration(parser, enclosing_class_name);
+                parseEntityDeclaration(parser, enclosingClassName);
             } else {
-                Token token3 = read_token(parser);
+                Token token3 = readToken(parser);
                 if (token3.type == Token::OpenCurly) {
                     // It's a linkage specification block, such as
                     //      extern "C" {
                     //          ...
                     //      }
                     rp.cancel();
-                    auto& linkage = result.var.switch_to<Declaration::Linkage>();
-                    linkage.extern_keyword = token;
+                    auto& linkage = result.var.switchTo<Declaration::Linkage>();
+                    linkage.externKeyword = token;
                     linkage.literal = token2;
-                    linkage.open_curly = token3;
-                    linkage.child_decls = parse_declaration_list(parser, &linkage.close_curly, {});
+                    linkage.openCurly = token3;
+                    linkage.childDecls = parseDeclarationList(parser, &linkage.closeCurly, {});
                 } else {
                     // It's a linkage specifier for the current declaration, such as
                     //      extern "C" void foo();
                     //      ^^^^^^^^^^
                     // FIXME: Make Declaration type for this
                     rp.backtrack();
-                    parse_entity_declaration(parser, enclosing_class_name);
+                    parseEntityDeclaration(parser, enclosingClassName);
                 }
             }
         } else if (token.text == "public" || token.text == "private" || token.text == "protected") {
             // Access specifier
-            parser->token_index++;
-            parser->mute_errors = false;
-            Token punc_token = peek_token(parser);
-            if (punc_token.type == Token::SingleColon) {
-                parser->token_index++;
-                auto& access_spec = result.var.switch_to<Declaration::AccessSpecifier>();
-                access_spec.keyword = token;
-                access_spec.colon = punc_token;
+            parser->tokenIndex++;
+            parser->muteErrors = false;
+            Token puncToken = peekToken(parser);
+            if (puncToken.type == Token::SingleColon) {
+                parser->tokenIndex++;
+                auto& accessSpec = result.var.switchTo<Declaration::AccessSpecifier>();
+                accessSpec.keyword = token;
+                accessSpec.colon = puncToken;
             } else {
                 // expected :
-                parser->error(Error, punc_token.input_offset,
-                              FMT_MSG("expected ':' before '{}'", punc_token.to_string()));
+                parser->error(Error, puncToken.inputOffset, FMT_MSG("expected ':' before '{}'", puncToken.toString()));
             }
         } else if (token.text == "static_assert") {
             // static_assert
-            parser->token_index++;
-            parser->mute_errors = false;
-            Token punc_token = peek_token(parser);
-            if (punc_token.type != Token::OpenParen) {
+            parser->tokenIndex++;
+            parser->muteErrors = false;
+            Token puncToken = peekToken(parser);
+            if (puncToken.type != Token::OpenParen) {
                 // expected (
-                parser->error(Error, punc_token.input_offset,
-                              FMT_MSG("expected '(' before '{}'", punc_token.to_string()));
+                parser->error(Error, puncToken.inputOffset, FMT_MSG("expected '(' before '{}'", puncToken.toString()));
             } else {
-                parser->token_index++;
-                Token close_token;
-                bool continue_normally = skip_any_scope(parser, &close_token, punc_token);
-                if (continue_normally) {
-                    auto& sa = result.var.switch_to<Declaration::StaticAssert>();
+                parser->tokenIndex++;
+                Token closeToken;
+                bool continueNormally = skipAnyScope(parser, &closeToken, puncToken);
+                if (continueNormally) {
+                    auto& sa = result.var.switchTo<Declaration::StaticAssert>();
                     sa.keyword = token;
-                    sa.open_paren = punc_token;
-                    sa.close_paren = close_token;
+                    sa.openParen = puncToken;
+                    sa.closeParen = closeToken;
                 }
             }
         } else if (token.text == "namespace") {
             // namespace
-            parser->token_index++;
-            parser->mute_errors = false;
-            auto& ns = result.var.switch_to<Declaration::Namespace>();
+            parser->tokenIndex++;
+            parser->muteErrors = false;
+            auto& ns = result.var.switchTo<Declaration::Namespace>();
             ns.keyword = token;
 
-            Token token = peek_token(parser);
+            Token token = peekToken(parser);
             if (token.type == Token::Identifier) {
                 // FIXME: Ensure it's not a reserved word
-                ns.qid = parse_qualified_id(parser, ParseQualifiedMode::RequireComplete);
-                token = peek_token(parser);
+                ns.qid = parseQualifiedId(parser, ParseQualifiedMode::RequireComplete);
+                token = peekToken(parser);
             }
 
             if (token.type == Token::OpenCurly) {
-                parser->token_index++;
-                ns.open_curly = token;
-                ns.child_decls = parse_declaration_list(parser, &ns.close_curly, {});
+                parser->tokenIndex++;
+                ns.openCurly = token;
+                ns.childDecls = parseDeclarationList(parser, &ns.closeCurly, {});
             } else {
                 // expected {
-                parser->error(Error, token.input_offset, FMT_MSG("expected '{{' before '{}'", token.to_string()));
+                parser->error(Error, token.inputOffset, FMT_MSG("expected '{{' before '{}'", token.toString()));
             }
         } else if (token.text == "template") {
             // template
-            parser->token_index++;
-            parser->mute_errors = false;
-            auto& tmpl = result.var.switch_to<Declaration::Template>();
+            parser->tokenIndex++;
+            parser->muteErrors = false;
+            auto& tmpl = result.var.switchTo<Declaration::Template>();
             tmpl.keyword = token;
-            Token token2 = peek_token(parser);
+            Token token2 = peekToken(parser);
             if (token2.type == Token::OpenAngle) {
-                tmpl.open_angle = token2;
-                parser->token_index++;
-                PLY_SET_IN_SCOPE(parser->tkr.config.tokenize_right_shift, false);
-                parse_parameter_declaration_list(parser, &tmpl.params, true);
-                Token close_angle = peek_token(parser);
-                if (close_angle.type == Token::CloseAngle) {
-                    parser->token_index++;
-                    tmpl.close_angle = close_angle;
+                tmpl.openAngle = token2;
+                parser->tokenIndex++;
+                PLY_SET_IN_SCOPE(parser->tkr.config.tokenizeRightShift, false);
+                parseParameterDeclarationList(parser, &tmpl.params, true);
+                Token closeAngle = peekToken(parser);
+                if (closeAngle.type == Token::CloseAngle) {
+                    parser->tokenIndex++;
+                    tmpl.closeAngle = closeAngle;
                 }
             }
-            tmpl.child_decl = Heap::create<Declaration>(parse_declaration_internal(parser, enclosing_class_name));
+            tmpl.childDecl = Heap::create<Declaration>(parseDeclarationInternal(parser, enclosingClassName));
         } else if (token.text == "using") {
             // using directive or type alias
-            parser->token_index++;
-            parser->mute_errors = false;
-            Token token2 = read_token(parser);
+            parser->tokenIndex++;
+            parser->muteErrors = false;
+            Token token2 = readToken(parser);
             if (token2.type == Token::Identifier && token2.text == "namespace") {
-                auto& using_dir = result.var.switch_to<Declaration::UsingNamespace>();
-                using_dir.using_keyword = token;
-                using_dir.namespace_keyword = token2;
-                using_dir.qid = parse_qualified_id(parser, ParseQualifiedMode::RequireComplete);
+                auto& usingDir = result.var.switchTo<Declaration::UsingNamespace>();
+                usingDir.usingKeyword = token;
+                usingDir.namespaceKeyword = token2;
+                usingDir.qid = parseQualifiedId(parser, ParseQualifiedMode::RequireComplete);
             } else {
-                auto& alias = result.var.switch_to<Declaration::TypeAlias>();
-                alias.using_keyword = token;
+                auto& alias = result.var.switchTo<Declaration::TypeAlias>();
+                alias.usingKeyword = token;
                 alias.name = token2;
 
-                Token equal_token = peek_token(parser);
-                if (equal_token.type != Token::SingleEqual) {
+                Token equalToken = peekToken(parser);
+                if (equalToken.type != Token::SingleEqual) {
                     // expected =
-                    parser->error(Error, equal_token.input_offset,
-                                  FMT_MSG("expected '=' before '{}'", equal_token.to_string()));
+                    parser->error(Error, equalToken.inputOffset,
+                                  FMT_MSG("expected '=' before '{}'", equalToken.toString()));
                 } else {
-                    parser->token_index++;
-                    alias.equals = equal_token;
-                    alias.type_id = parse_type_id(parser);
+                    parser->tokenIndex++;
+                    alias.equals = equalToken;
+                    alias.typeId = parseTypeId(parser);
                 }
             }
         } else {
-            result = parse_entity_declaration(parser, enclosing_class_name);
+            result = parseEntityDeclaration(parser, enclosingClassName);
         }
     } else if (token.type == Token::Semicolon) {
-        parser->token_index++;
+        parser->tokenIndex++;
         /*
         Declaration::Empty empty;
         empty.semicolon = token;
         Declaration decl;
         decl.var = std::move(empty);
-        add_declaration_to_current_scope(parser, std::move(decl));
+        addDeclarationToCurrentScope(parser, std::move(decl));
         */
     } else if (token.type == Token::Tilde) {
-        result = parse_entity_declaration(parser, enclosing_class_name);
+        result = parseEntityDeclaration(parser, enclosingClassName);
     } else {
-        parser->token_index++;
-        parser->error(Error, token.input_offset, FMT_MSG("expected declaration before '{}'", token.to_string()));
+        parser->tokenIndex++;
+        parser->error(Error, token.inputOffset, FMT_MSG("expected declaration before '{}'", token.toString()));
     }
     return result;
 }
 
-Array<Declaration> parse_declaration_list(ParserImpl* parser, Token* out_close_curly, StringView enclosing_class_name) {
+Array<Declaration> parseDeclarationList(ParserImpl* parser, Token* outCloseCurly, StringView enclosingClassName) {
     // Always handle close curly at this scope, even if it's file scope:
-    SetAcceptFlagsInScope accept_scope{parser, Token::OpenCurly};
+    SetAcceptFlagsInScope acceptScope{parser, Token::OpenCurly};
     Array<Declaration> result;
 
     for (;;) {
-        Token token = peek_token(parser);
+        Token token = peekToken(parser);
         if (token.type == Token::EOF) {
-            if (out_close_curly) {
-                parser->error(Error, token.input_offset, FMT_MSG("expected '}' before '{}'", token.to_string()));
+            if (outCloseCurly) {
+                parser->error(Error, token.inputOffset, FMT_MSG("expected '}' before '{}'", token.toString()));
             }
             break;
         } else if (token.type == Token::CloseCurly) {
-            parser->token_index++;
-            if (out_close_curly) {
-                *out_close_curly = token;
+            parser->tokenIndex++;
+            if (outCloseCurly) {
+                *outCloseCurly = token;
                 break;
             }
-            parser->error(Error, token.input_offset, FMT_MSG("expected declaration before '{}'", token.to_string()));
+            parser->error(Error, token.inputOffset, FMT_MSG("expected declaration before '{}'", token.toString()));
             continue;
         }
 
-        result.append(parse_declaration_internal(parser, enclosing_class_name));
+        result.append(parseDeclarationInternal(parser, enclosingClassName));
 
-        bool semicolon_required = true;
+        bool semicolonRequired = true;
         if (auto* entity = result.back().var.as<Declaration::Entity>()) {
-            if (entity->init_declarators.num_items() > 0) {
-                semicolon_required = !entity->init_declarators.back().init.var.is<Initializer::FunctionBody>();
+            if (entity->initDeclarators.numItems() > 0) {
+                semicolonRequired = !entity->initDeclarators.back().init.var.is<Initializer::FunctionBody>();
             }
         }
 
-        Token semicolon = peek_token(parser);
+        Token semicolon = peekToken(parser);
         if (semicolon.type == Token::Semicolon) {
-            parser->token_index++;
-            parser->mute_errors = false;
-        } else if (semicolon_required) {
-            parser->error(Error, semicolon.input_offset, FMT_MSG("expected ';' before '{}'", semicolon.to_string()));
+            parser->tokenIndex++;
+            parser->muteErrors = false;
+        } else if (semicolonRequired) {
+            parser->error(Error, semicolon.inputOffset, FMT_MSG("expected ';' before '{}'", semicolon.toString()));
         }
     }
     return result;
 }
 
-Array<Declaration> parse_translation_unit(ParserImpl* parser) {
-    Array<Declaration> result = parse_declaration_list(parser, nullptr, {});
-    Token eof_tok = peek_token(parser);
-    PLY_ASSERT(eof_tok.type == Token::EOF); // EOF is the only possible token here
-    PLY_UNUSED(eof_tok);
+Array<Declaration> parseTranslationUnit(ParserImpl* parser) {
+    Array<Declaration> result = parseDeclarationList(parser, nullptr, {});
+    Token eofTok = peekToken(parser);
+    PLY_ASSERT(eofTok.type == Token::EOF); // EOF is the only possible token here
+    PLY_UNUSED(eofTok);
     return result;
 }
 
@@ -2464,28 +2460,28 @@ Array<Declaration> parse_translation_unit(ParserImpl* parser) {
 //  ██▄▄▄ ▄█▀▀█▄ ██▄▄█▀ ██     ▀█▄▄▄   ▄▄▄█▀  ▄▄▄█▀ ██ ▀█▄▄█▀ ██  ██  ▄▄▄█▀
 //               ██
 
-void consume_specifier(ParserImpl* parser) {
+void consumeSpecifier(ParserImpl* parser) {
     for (;;) {
-        Token token = peek_token(parser);
+        Token token = peekToken(parser);
         if (token.type == Token::OpenAngle) {
             // Template type
             // FIXME: Does < always indicate a template type here?
             // FIXME: This needs to handle "Tmpl<(2 > 1)>" and ""Tmpl<(2 >> 1)>"
-            parser->token_index++;
-            PLY_SET_IN_SCOPE(parser->tkr.config.tokenize_right_shift, false);
-            Token close_token;
-            skip_any_scope(parser, &close_token, token);
-            token = peek_token(parser);
+            parser->tokenIndex++;
+            PLY_SET_IN_SCOPE(parser->tkr.config.tokenizeRightShift, false);
+            Token closeToken;
+            skipAnyScope(parser, &closeToken, token);
+            token = peekToken(parser);
         }
         if (token.type == Token::DoubleColon) {
-            parser->token_index++;
-            Token spec_token = peek_token(parser);
-            if (spec_token.type == Token::Identifier) {
-                parser->token_index++;
+            parser->tokenIndex++;
+            Token specToken = peekToken(parser);
+            if (specToken.type == Token::Identifier) {
+                parser->tokenIndex++;
             } else {
                 // expected identifier after ::
-                parser->error(Error, spec_token.input_offset,
-                              FMT_MSG("expected identifier before '{}'", spec_token.to_string()));
+                parser->error(Error, specToken.inputOffset,
+                              FMT_MSG("expected identifier before '{}'", specToken.toString()));
                 return;
             }
         } else
@@ -2493,47 +2489,47 @@ void consume_specifier(ParserImpl* parser) {
     }
 }
 
-void parse_capture_list(ParserImpl* parser) {
-    Token token = read_token(parser);
+void parseCaptureList(ParserImpl* parser) {
+    Token token = readToken(parser);
     if (token.type != Token::CloseSquare) {
         // FIXME: accept an actual capture list instead of just an empty list
-        parser->error(Error, token.input_offset, FMT_MSG("expected ']' before '{}'", token.to_string()));
+        parser->error(Error, token.inputOffset, FMT_MSG("expected ']' before '{}'", token.toString()));
     }
 }
 
 // FIXME: This needs work.
 // It's enough to parse the initializers used by Plywood, but there are definitely lots of
 // expressions it doesn't handle.
-ParsedExpression parse_expression(ParserImpl* parser, bool optional) {
-    Token start_token = read_token(parser);
-    Token end_token;
-    switch (start_token.type) {
+ParsedExpression parseExpression(ParserImpl* parser, bool optional) {
+    Token startToken = readToken(parser);
+    Token endToken;
+    switch (startToken.type) {
         case Token::Identifier: {
-            // FIXME: This should use parse_qualified_id instead
-            consume_specifier(parser);
-            Token token2 = peek_token(parser);
+            // FIXME: This should use parseQualifiedId instead
+            consumeSpecifier(parser);
+            Token token2 = peekToken(parser);
             if (token2.type == Token::OpenParen) {
                 // Function arguments
-                parser->token_index++;
-                SetAcceptFlagsInScope accept_scope{parser, Token::OpenParen};
+                parser->tokenIndex++;
+                SetAcceptFlagsInScope acceptScope{parser, Token::OpenParen};
                 for (;;) {
-                    Token token3 = peek_token(parser);
+                    Token token3 = peekToken(parser);
                     if (token3.type == Token::CloseParen) {
-                        parser->token_index++;
-                        end_token = token3;
+                        parser->tokenIndex++;
+                        endToken = token3;
                         break; // end of arguments
                     } else {
-                        parse_expression(parser);
-                        Token token4 = read_token(parser);
+                        parseExpression(parser);
+                        Token token4 = readToken(parser);
                         if (token4.type == Token::Comma) {
                         } else if (token4.type == Token::CloseParen) {
-                            end_token = token4;
+                            endToken = token4;
                             break; // end of arguments
                         } else {
                             // expected , or ) after argument
-                            parser->error(Error, token4.input_offset,
-                                          FMT_MSG("expected ',' or ')' before '{}'", token4.to_string()));
-                            if (!handle_unexpected_token(parser, nullptr, token4))
+                            parser->error(Error, token4.inputOffset,
+                                          FMT_MSG("expected ',' or ')' before '{}'", token4.toString()));
+                            if (!handleUnexpectedToken(parser, nullptr, token4))
                                 break;
                         }
                     }
@@ -2544,95 +2540,95 @@ ParsedExpression parse_expression(ParserImpl* parser, bool optional) {
                 // Because if ';' is encountered, we should perhaps end the outer declaration.
                 // And if an outer ) is matched, it should maybe cancel the initializer.
                 // However, if we do that, it will be inconsisent with the behavior of
-                // skip_any_scope(). Does that matter?
-                parser->token_index++;
-                SetAcceptFlagsInScope accept_scope{parser, Token::OpenCurly};
+                // skipAnyScope(). Does that matter?
+                parser->tokenIndex++;
+                SetAcceptFlagsInScope acceptScope{parser, Token::OpenCurly};
                 for (;;) {
-                    Token token3 = peek_token(parser);
+                    Token token3 = peekToken(parser);
                     if (token3.type == Token::CloseCurly) {
-                        parser->token_index++;
-                        end_token = token3;
+                        parser->tokenIndex++;
+                        endToken = token3;
                         break; // end of arguments
                     } else {
-                        parse_expression(parser);
-                        Token token4 = read_token(parser);
+                        parseExpression(parser);
+                        Token token4 = readToken(parser);
                         if (token4.type == Token::Comma) {
                         } else if (token4.type == Token::CloseCurly) {
-                            end_token = token4;
+                            endToken = token4;
                             break; // end of arguments
                         } else {
                             // expected , or } after argument
-                            parser->error(Error, token4.input_offset,
-                                          FMT_MSG("expected ',' or '}}' before '{}'", token4.to_string()));
-                            if (!handle_unexpected_token(parser, nullptr, token4))
+                            parser->error(Error, token4.inputOffset,
+                                          FMT_MSG("expected ',' or '}}' before '{}'", token4.toString()));
+                            if (!handleUnexpectedToken(parser, nullptr, token4))
                                 break;
                         }
                     }
                 }
             } else {
                 // Can't consume any more of expression
-                end_token = start_token;
+                endToken = startToken;
             }
             break;
         }
 
         case Token::NumericLiteral: {
             // Consume it
-            end_token = start_token;
+            endToken = startToken;
             break;
         }
 
         case Token::StringLiteral: {
-            end_token = start_token;
+            endToken = startToken;
             for (;;) {
                 // concatenate multiple string literals
-                Token token = peek_token(parser);
+                Token token = peekToken(parser);
                 if (token.type != Token::StringLiteral)
                     break;
-                parser->token_index++;
-                end_token = token;
+                parser->tokenIndex++;
+                endToken = token;
             }
             break;
         }
 
         case Token::OpenParen: {
-            SetAcceptFlagsInScope accept_scope{parser, Token::OpenParen};
-            parse_expression(parser);
-            Token token2 = peek_token(parser);
+            SetAcceptFlagsInScope acceptScope{parser, Token::OpenParen};
+            parseExpression(parser);
+            Token token2 = peekToken(parser);
             if (token2.type == Token::CloseParen) {
                 // Treat as a C-style cast.
                 // FIXME: This should only be done if the inner expression identifies a type!
                 // Otherwise, it's just a parenthesized expression:
-                parser->token_index++;
-                end_token = parse_expression(parser, true).end_token;
+                parser->tokenIndex++;
+                endToken = parseExpression(parser, true).endToken;
             } else {
                 // expected ) after expression
-                Token close_paren;
-                close_scope(parser, &close_paren, start_token); // This will log an error
-                end_token = close_paren;
+                Token closeParen;
+                closeScope(parser, &closeParen, startToken); // This will log an error
+                endToken = closeParen;
             }
             break;
         }
 
         case Token::OpenCurly: {
             for (;;) {
-                Token token2 = peek_token(parser);
+                Token token2 = peekToken(parser);
                 if (token2.type == Token::CloseCurly) {
-                    parser->token_index++;
-                    end_token = token2;
+                    parser->tokenIndex++;
+                    endToken = token2;
                     break;
                 } else {
-                    parse_expression(parser);
-                    Token token4 = read_token(parser);
+                    parseExpression(parser);
+                    Token token4 = readToken(parser);
                     if (token4.type == Token::Comma) {
                     } else if (token4.type == Token::CloseCurly) {
-                        end_token = token4;
+                        endToken = token4;
                         break; // end of braced initializer
                     } else {
                         // expected , or } after expression
-                        parser->error(Error, token4.input_offset,
-                                      FMT_MSG("expected ',' or '}}' before '{}'", token4.to_string()));
-                        if (!handle_unexpected_token(parser, nullptr, token4))
+                        parser->error(Error, token4.inputOffset,
+                                      FMT_MSG("expected ',' or '}}' before '{}'", token4.toString()));
+                        if (!handleUnexpectedToken(parser, nullptr, token4))
                             break;
                     }
                 }
@@ -2643,47 +2639,46 @@ ParsedExpression parse_expression(ParserImpl* parser, bool optional) {
         case Token::Bang:
         case Token::SingleAmpersand:
         case Token::SingleMinus: {
-            end_token = parse_expression(parser).end_token;
+            endToken = parseExpression(parser).endToken;
             break;
         }
 
         case Token::OpenSquare: {
             // lambda expression
-            parse_capture_list(parser);
-            Token open_paren = peek_token(parser);
-            if (open_paren.type == Token::OpenParen) {
-                parser->token_index++;
-                Array<Parameter> unused_params;
-                parse_parameter_declaration_list(parser, &unused_params, false);
-                Token close_paren = peek_token(parser);
-                if (close_paren.type == Token::CloseParen) {
-                    parser->token_index++;
+            parseCaptureList(parser);
+            Token openParen = peekToken(parser);
+            if (openParen.type == Token::OpenParen) {
+                parser->tokenIndex++;
+                Array<Parameter> unusedParams;
+                parseParameterDeclarationList(parser, &unusedParams, false);
+                Token closeParen = peekToken(parser);
+                if (closeParen.type == Token::CloseParen) {
+                    parser->tokenIndex++;
                 }
             } else {
-                parser->error(Error, open_paren.input_offset,
-                              FMT_MSG("expected '(' before '{}'", open_paren.to_string()));
+                parser->error(Error, openParen.inputOffset, FMT_MSG("expected '(' before '{}'", openParen.toString()));
             }
-            Token token2 = peek_token(parser);
+            Token token2 = peekToken(parser);
             if (token2.type == Token::Arrow) {
-                parser->token_index++;
+                parser->tokenIndex++;
                 Declaration::Entity entity;
-                parse_type_id(parser);
-                token2 = peek_token(parser);
+                parseTypeId(parser);
+                token2 = peekToken(parser);
             }
             if (token2.type != Token::OpenCurly) {
-                parser->error(Error, token2.input_offset, FMT_MSG("expected '{{' before '{}'", token2.to_string()));
+                parser->error(Error, token2.inputOffset, FMT_MSG("expected '{{' before '{}'", token2.toString()));
             } else {
-                parser->token_index++;
-                Token close_token;
-                skip_any_scope(parser, &close_token, token2);
-                end_token = close_token;
+                parser->tokenIndex++;
+                Token closeToken;
+                skipAnyScope(parser, &closeToken, token2);
+                endToken = closeToken;
             }
             break;
         }
 
         default: {
             if (optional) {
-                parser->token_index--;
+                parser->tokenIndex--;
             } else {
                 PLY_ASSERT(0);
             }
@@ -2691,14 +2686,14 @@ ParsedExpression parse_expression(ParserImpl* parser, bool optional) {
         }
     }
 
-    Token token = peek_token(parser);
+    Token token = peekToken(parser);
     switch (token.type) {
         case Token::CloseAngle: {
-            if (!parser->tkr.config.tokenize_right_shift) {
+            if (!parser->tkr.config.tokenizeRightShift) {
                 break;
             } else {
-                parser->token_index++;
-                end_token = parse_expression(parser).end_token;
+                parser->tokenIndex++;
+                endToken = parseExpression(parser).endToken;
             }
         };
 
@@ -2717,23 +2712,23 @@ ParsedExpression parse_expression(ParserImpl* parser, bool optional) {
         case Token::Star:
         case Token::Dot:
         case Token::ForwardSlash: {
-            parser->token_index++;
-            end_token = parse_expression(parser).end_token;
+            parser->tokenIndex++;
+            endToken = parseExpression(parser).endToken;
             break;
         }
 
         case Token::QuestionMark: {
-            parser->token_index++;
-            parse_expression(parser);
-            token = peek_token(parser);
+            parser->tokenIndex++;
+            parseExpression(parser);
+            token = peekToken(parser);
             if (token.type != Token::SingleColon) {
                 // expected : after expression
                 // FIXME: It would be cool the mention, in the error message, that the colon is
                 // needed to match the '?' that was encountered earlier
-                parser->error(Error, token.input_offset, FMT_MSG("expected ':' before '{}'", token.to_string()));
+                parser->error(Error, token.inputOffset, FMT_MSG("expected ':' before '{}'", token.toString()));
             } else {
-                parser->token_index++;
-                end_token = parse_expression(parser).end_token;
+                parser->tokenIndex++;
+                endToken = parseExpression(parser).endToken;
             }
             break;
         };
@@ -2741,7 +2736,7 @@ ParsedExpression parse_expression(ParserImpl* parser, bool optional) {
         default:
             break;
     }
-    return {start_token, end_token};
+    return {startToken, endToken};
 }
 
 //  ▄▄▄▄▄         ▄▄     ▄▄▄  ▄▄            ▄▄▄▄  ▄▄▄▄▄  ▄▄▄▄
@@ -2758,24 +2753,24 @@ void Parser::destroy() {
     Heap::destroy(static_cast<ParserImpl*>(this));
 }
 
-void set_input(ParserImpl* parser, StringView abs_path, StringView contents) {
+void setInput(ParserImpl* parser, StringView absPath, StringView contents) {
     Preprocessor::File& file = parser->pp.files.append();
-    file.abs_path = abs_path;
+    file.absPath = absPath;
     file.contents = contents;
-    file.token_loc_map = TokenLocationMap::create_from_string(contents);
+    file.tokenLocMap = TokenLocationMap::createFromString(contents);
 
-    parser->pp.input_ranges.insert({});
+    parser->pp.inputRanges.insert({});
 
-    Preprocessor::IncludedItem& item = parser->pp.include_stack.append();
+    Preprocessor::IncludedItem& item = parser->pp.includeStack.append();
     item.vin = ViewStream{file.contents};
 }
 
-void apply_preprocessor_definitions(ParserImpl* parser) {
-    for (PreprocessorDefinition& def : parser->predefined_defs) {
-        // Add to macro_map.
-        u32 macro_idx = parser->pp.macros.num_items();
-        PLY_ASSERT(!parser->pp.macro_map.find(def.name)); // Adding twice is probably a mistake.
-        *parser->pp.macro_map.insert(def.name).value = macro_idx;
+void applyPreprocessorDefinitions(ParserImpl* parser) {
+    for (PreprocessorDefinition& def : parser->predefinedDefs) {
+        // Add to macroMap.
+        u32 macroIdx = parser->pp.macros.numItems();
+        PLY_ASSERT(!parser->pp.macroMap.find(def.name)); // Adding twice is probably a mistake.
+        *parser->pp.macroMap.insert(def.name).value = macroIdx;
 
         // Add to macros.
         Preprocessor::Macro& macro = parser->pp.macros.append();
@@ -2784,50 +2779,50 @@ void apply_preprocessor_definitions(ParserImpl* parser) {
     }
 }
 
-PreprocessResult Parser::preprocess(StringView abs_path, StringView src) {
+PreprocessResult Parser::preprocess(StringView absPath, StringView src) {
     ParserImpl* parser = static_cast<ParserImpl*>(this);
-    set_input(parser, abs_path, src);
-    apply_preprocessor_definitions(parser);
-    parser->is_only_preprocessing = true;
+    setInput(parser, absPath, src);
+    applyPreprocessorDefinitions(parser);
+    parser->isOnlyPreprocessing = true;
 
     MemStream mem;
     for (;;) {
-        Token token = read_token(parser);
+        Token token = readToken(parser);
         if (token.type == Token::EOF) {
             break;
         }
-        mem.write(token.to_string());
+        mem.write(token.toString());
     }
 
     PreprocessResult result;
-    result.output = mem.move_to_string();
+    result.output = mem.moveToString();
     result.success = parser->success;
     result.diagnostics = std::move(parser->diagnostics);
     return result;
 }
 
-ParseResult Parser::parse_file(StringView abs_path, StringView src) {
+ParseResult Parser::parseFile(StringView absPath, StringView src) {
     ParserImpl* parser = static_cast<ParserImpl*>(this);
-    set_input(parser, abs_path, src);
-    apply_preprocessor_definitions(parser);
+    setInput(parser, absPath, src);
+    applyPreprocessorDefinitions(parser);
 
     ParseResult result;
-    result.declarations = parse_translation_unit(parser);
+    result.declarations = parseTranslationUnit(parser);
     result.success = parser->success;
     result.diagnostics = std::move(parser->diagnostics);
     return result;
 }
 
-Declaration Parser::parse_declaration(StringView input, StringView enclosing_class_name) {
+Declaration Parser::parseDeclaration(StringView input, StringView enclosingClassName) {
     ParserImpl* parser = static_cast<ParserImpl*>(this);
-    set_input(parser, {}, input);
-    apply_preprocessor_definitions(parser);
-    return parse_declaration_internal(parser, enclosing_class_name);
+    setInput(parser, {}, input);
+    applyPreprocessorDefinitions(parser);
+    return parseDeclarationInternal(parser, enclosingClassName);
 }
 
-FileLocation Parser::get_file_location(u32 input_offset) const {
+FileLocation Parser::getFileLocation(u32 inputOffset) const {
     const ParserImpl* parser = static_cast<const ParserImpl*>(this);
-    return cpp::get_file_location(&parser->pp, input_offset);
+    return cpp::getFileLocation(&parser->pp, inputOffset);
 }
 
 //   ▄▄▄▄                 ▄▄
@@ -2844,109 +2839,111 @@ FileLocation Parser::get_file_location(u32 input_offset) const {
 struct NodeVisitor {
     const ParserImpl* parser = nullptr;
     Array<TokenSpan> spans;
-    const QualifiedID* inside_qid = nullptr;
-    bool needs_space = false;
+    const QualifiedID* insideQid = nullptr;
+    bool needsSpace = false;
 
     void append(TokenSpan::Color color, const Token& token) {
         TokenSpan& span = this->spans.append();
         span.color = color;
         span.token = token;
-        span.qid = inside_qid;
+        span.qid = insideQid;
     }
-    void append_space() {
+    void appendSpace() {
         TokenSpan& span = this->spans.append();
-        span.is_space = true;
-        span.qid = inside_qid;
+        span.isSpace = true;
+        span.qid = insideQid;
     }
 };
 
-void syntax_highlight_decl_specifiers(NodeVisitor* visitor, ArrayView<const Owned<DeclSpecifier>> decl_specifiers);
-void syntax_highlight_declarator(NodeVisitor* visitor, Variant<const QualifiedID*, const Token*> name, const DeclProduction* prod);
+void syntaxHighlightDeclSpecifiers(NodeVisitor* visitor, ArrayView<const Owned<DeclSpecifier>> declSpecifiers);
+void syntaxHighlightDeclarator(NodeVisitor* visitor, Variant<const QualifiedID*, const Token*> name,
+                               const DeclProduction* prod);
 
-void syntax_highlight_qid(NodeVisitor* visitor, TokenSpan::Color color, const QualifiedID& qid) {
-    PLY_SET_IN_SCOPE(visitor->inside_qid, &qid);
+void syntaxHighlightQid(NodeVisitor* visitor, TokenSpan::Color color, const QualifiedID& qid) {
+    PLY_SET_IN_SCOPE(visitor->insideQid, &qid);
     for (const QualifiedID::Prefix& p : qid.prefix) {
         if (auto* ident = p.var.as<QualifiedID::Identifier>()) {
             visitor->append(TokenSpan::Type, ident->name);
-        } else if (auto* tmpl_id = p.var.as<QualifiedID::TemplateID>()) {
-            visitor->append(TokenSpan::Type, tmpl_id->name);
-            visitor->append(TokenSpan::None, tmpl_id->open_angle);
-            visitor->needs_space = false;
-            for (const QualifiedID::TemplateID::Arg& arg : tmpl_id->args) {
-                if (auto* type_id = arg.var.as<TypeID>()) {
-                    syntax_highlight_decl_specifiers(visitor, type_id->decl_specifiers);
-                    syntax_highlight_declarator(visitor, {}, type_id->abstract_dcor);
+        } else if (auto* tmplId = p.var.as<QualifiedID::TemplateID>()) {
+            visitor->append(TokenSpan::Type, tmplId->name);
+            visitor->append(TokenSpan::None, tmplId->openAngle);
+            visitor->needsSpace = false;
+            for (const QualifiedID::TemplateID::Arg& arg : tmplId->args) {
+                if (auto* typeId = arg.var.as<TypeID>()) {
+                    syntaxHighlightDeclSpecifiers(visitor, typeId->declSpecifiers);
+                    syntaxHighlightDeclarator(visitor, {}, typeId->abstractDcor);
                 }
             }
-            visitor->append(TokenSpan::None, tmpl_id->close_angle);
+            visitor->append(TokenSpan::None, tmplId->closeAngle);
         } else {
             PLY_ASSERT(0); // Not supported yet
         }
-        if (p.double_colon.is_valid()) {
-            visitor->append(TokenSpan::None, p.double_colon);
+        if (p.doubleColon.isValid()) {
+            visitor->append(TokenSpan::None, p.doubleColon);
         }
     }
 
     if (auto* ident = qid.var.as<QualifiedID::Identifier>()) {
         visitor->append(color, ident->name);
-    } else if (auto* tmpl_id = qid.var.as<QualifiedID::TemplateID>()) {
-        visitor->append(color, tmpl_id->name);
-        visitor->append(TokenSpan::None, tmpl_id->open_angle);
-        visitor->needs_space = false;
-        for (const QualifiedID::TemplateID::Arg& arg : tmpl_id->args) {
-            if (auto* type_id = arg.var.as<TypeID>()) {
-                syntax_highlight_decl_specifiers(visitor, type_id->decl_specifiers);
-                syntax_highlight_declarator(visitor, {}, type_id->abstract_dcor);
+    } else if (auto* tmplId = qid.var.as<QualifiedID::TemplateID>()) {
+        visitor->append(color, tmplId->name);
+        visitor->append(TokenSpan::None, tmplId->openAngle);
+        visitor->needsSpace = false;
+        for (const QualifiedID::TemplateID::Arg& arg : tmplId->args) {
+            if (auto* typeId = arg.var.as<TypeID>()) {
+                syntaxHighlightDeclSpecifiers(visitor, typeId->declSpecifiers);
+                syntaxHighlightDeclarator(visitor, {}, typeId->abstractDcor);
             }
         }
-        visitor->append(TokenSpan::None, tmpl_id->close_angle);
+        visitor->append(TokenSpan::None, tmplId->closeAngle);
     } else if (auto* dtor = qid.var.as<QualifiedID::Destructor>()) {
         visitor->append(color, dtor->tilde);
         visitor->append(color, dtor->name);
-    } else if (auto* op_func = qid.var.as<QualifiedID::OperatorFunc>()) {
-        visitor->append(color, op_func->keyword);
-        visitor->append(color, op_func->punc);
-        if (op_func->punc2.is_valid()) {
-            visitor->append(color, op_func->punc2);
+    } else if (auto* opFunc = qid.var.as<QualifiedID::OperatorFunc>()) {
+        visitor->append(color, opFunc->keyword);
+        visitor->append(color, opFunc->punc);
+        if (opFunc->punc2.isValid()) {
+            visitor->append(color, opFunc->punc2);
         }
-    } else if (auto* conv_func = qid.var.as<QualifiedID::ConversionFunc>()) {
-        visitor->append(color, conv_func->operator_keyword);
-        visitor->needs_space = true;
-        syntax_highlight_decl_specifiers(visitor, conv_func->decl_specifiers);
-        syntax_highlight_declarator(visitor, {}, conv_func->abstract_dcor);
+    } else if (auto* convFunc = qid.var.as<QualifiedID::ConversionFunc>()) {
+        visitor->append(color, convFunc->operatorKeyword);
+        visitor->needsSpace = true;
+        syntaxHighlightDeclSpecifiers(visitor, convFunc->declSpecifiers);
+        syntaxHighlightDeclarator(visitor, {}, convFunc->abstractDcor);
     } else {
         PLY_ASSERT(0); // Not supported yet
     }
 }
 
-void syntax_highlight_decl_specifiers(NodeVisitor* visitor, ArrayView<const Owned<DeclSpecifier>> decl_specifiers) {
-    for (const DeclSpecifier* decl_spec : decl_specifiers) {
-        if (visitor->needs_space) {
-            visitor->append_space();
+void syntaxHighlightDeclSpecifiers(NodeVisitor* visitor, ArrayView<const Owned<DeclSpecifier>> declSpecifiers) {
+    for (const DeclSpecifier* declSpec : declSpecifiers) {
+        if (visitor->needsSpace) {
+            visitor->appendSpace();
         }
-        if (auto* keyword = decl_spec->var.as<DeclSpecifier::Keyword>()) {
+        if (auto* keyword = declSpec->var.as<DeclSpecifier::Keyword>()) {
             visitor->append(TokenSpan::None, keyword->token);
-        } else if (auto* type_id = decl_spec->var.as<DeclSpecifier::TypeSpecifier>()) {
-            if (type_id->elaborate_keyword.is_valid()) {
-                visitor->append(TokenSpan::None, type_id->elaborate_keyword);
+        } else if (auto* typeId = declSpec->var.as<DeclSpecifier::TypeSpecifier>()) {
+            if (typeId->elaborateKeyword.isValid()) {
+                visitor->append(TokenSpan::None, typeId->elaborateKeyword);
             }
-            syntax_highlight_qid(visitor, TokenSpan::Type, type_id->qid);
-        } else if (auto* type_param = decl_spec->var.as<DeclSpecifier::TypeParameter>()) {
-            visitor->append(TokenSpan::None, type_param->keyword);
-            if (type_param->ellipsis.is_valid()) {
-                visitor->append(TokenSpan::None, type_param->ellipsis);
+            syntaxHighlightQid(visitor, TokenSpan::Type, typeId->qid);
+        } else if (auto* typeParam = declSpec->var.as<DeclSpecifier::TypeParameter>()) {
+            visitor->append(TokenSpan::None, typeParam->keyword);
+            if (typeParam->ellipsis.isValid()) {
+                visitor->append(TokenSpan::None, typeParam->ellipsis);
             }
         }
-        visitor->needs_space = true;
+        visitor->needsSpace = true;
     }
 }
 
-void syntax_highlight_declarator(NodeVisitor* visitor, Variant<const QualifiedID*, const Token*> name, const DeclProduction* prod) {
+void syntaxHighlightDeclarator(NodeVisitor* visitor, Variant<const QualifiedID*, const Token*> name,
+                               const DeclProduction* prod) {
     // First, flatten the chain.
     // FIXME: We should really do this at parse time.
-    Array<const DeclProduction*> prod_chain;
+    Array<const DeclProduction*> prodChain;
     for (const DeclProduction* p = prod; p; p = p->child) {
-        prod_chain.append(p);
+        prodChain.append(p);
     }
 
     // Next, create parentheses groups.
@@ -2955,36 +2952,36 @@ void syntax_highlight_declarator(NodeVisitor* visitor, Variant<const QualifiedID
         u32 leading;
         u32 last;
     };
-    Array<ParenGroup> paren_groups;
+    Array<ParenGroup> parenGroups;
     {
         u32 first = 0;
         s32 trailing = -1;
-        for (u32 i = 0; i < prod_chain.num_items(); i++) {
-            if (prod_chain[i]->var.is<DeclProduction::ArrayOf>() || prod_chain[i]->var.is<DeclProduction::Function>()) {
+        for (u32 i = 0; i < prodChain.numItems(); i++) {
+            if (prodChain[i]->var.is<DeclProduction::ArrayOf>() || prodChain[i]->var.is<DeclProduction::Function>()) {
                 trailing = i;
             }
-            if (prod_chain[i]->var.is<DeclProduction::Parenthesized>()) {
+            if (prodChain[i]->var.is<DeclProduction::Parenthesized>()) {
                 return; // FIXME
-                paren_groups.append({first, (u32) (trailing + 1), i});
+                parenGroups.append({first, (u32) (trailing + 1), i});
                 first = i + 1;
                 trailing = first;
             }
         }
-        paren_groups.append({first, (u32) (trailing + 1), prod_chain.num_items()});
+        parenGroups.append({first, (u32) (trailing + 1), prodChain.numItems()});
     }
 
     // Visit leading productions of each group.
-    for (s32 g = paren_groups.num_items() - 1; g >= 0; g--) {
-        const ParenGroup& group = paren_groups[g];
+    for (s32 g = parenGroups.numItems() - 1; g >= 0; g--) {
+        const ParenGroup& group = parenGroups[g];
         for (s32 i = group.last - 1; i >= (s32) group.leading; i--) {
-            if (auto* indirect = prod_chain[i]->var.as<DeclProduction::Indirection>()) {
+            if (auto* indirect = prodChain[i]->var.as<DeclProduction::Indirection>()) {
                 visitor->append(TokenSpan::None, indirect->punc);
-            } else if (auto* qualifier = prod_chain[i]->var.as<DeclProduction::Qualifier>()) {
-                if (visitor->needs_space) {
-                    visitor->append_space();
+            } else if (auto* qualifier = prodChain[i]->var.as<DeclProduction::Qualifier>()) {
+                if (visitor->needsSpace) {
+                    visitor->appendSpace();
                 }
                 visitor->append(TokenSpan::None, qualifier->keyword);
-                visitor->needs_space = true;
+                visitor->needsSpace = true;
             } else {
                 PLY_ASSERT(0);
             }
@@ -2992,70 +2989,70 @@ void syntax_highlight_declarator(NodeVisitor* visitor, Variant<const QualifiedID
         if (g > 0) {
             // Open parenthesis
             PLY_ASSERT(group.first > 0);
-            auto* paren = prod_chain[group.first - 1]->var.as<DeclProduction::Parenthesized>();
-            if (visitor->needs_space) {
-                visitor->append_space();
+            auto* paren = prodChain[group.first - 1]->var.as<DeclProduction::Parenthesized>();
+            if (visitor->needsSpace) {
+                visitor->appendSpace();
             }
-            visitor->append(TokenSpan::None, paren->open_paren);
-            visitor->needs_space = false;
+            visitor->append(TokenSpan::None, paren->openParen);
+            visitor->needsSpace = false;
         }
     }
 
     // Visit qualified-id.
     if (const Token** token = name.as<const Token*>()) {
-        if (visitor->needs_space) {
-            visitor->append_space();
+        if (visitor->needsSpace) {
+            visitor->appendSpace();
         }
         visitor->append(TokenSpan::Variable, **token);
-        visitor->needs_space = true;
+        visitor->needsSpace = true;
     } else if (const QualifiedID** qid = name.as<const QualifiedID*>()) {
-        if (visitor->needs_space) {
-            visitor->append_space();
+        if (visitor->needsSpace) {
+            visitor->appendSpace();
         }
-        syntax_highlight_qid(visitor, TokenSpan::Symbol, **qid);
-        visitor->needs_space = true;
+        syntaxHighlightQid(visitor, TokenSpan::Symbol, **qid);
+        visitor->needsSpace = true;
     }
 
     // Visit trailing productions of each group.
-    for (u32 g = 0; g < paren_groups.num_items(); g++) {
-        const ParenGroup& group = paren_groups[g];
+    for (u32 g = 0; g < parenGroups.numItems(); g++) {
+        const ParenGroup& group = parenGroups[g];
         for (u32 i = group.first; i < group.leading; i++) {
-            if (auto* array_of = prod_chain[i]->var.as<DeclProduction::ArrayOf>()) {
-                visitor->append(TokenSpan::None, array_of->open_square);
-                visitor->append(TokenSpan::None, array_of->close_square);
-                visitor->needs_space = false;
-            } else if (auto* function = prod_chain[i]->var.as<DeclProduction::Function>()) {
-                visitor->append(TokenSpan::None, function->open_paren);
-                visitor->needs_space = false;
+            if (auto* arrayOf = prodChain[i]->var.as<DeclProduction::ArrayOf>()) {
+                visitor->append(TokenSpan::None, arrayOf->openSquare);
+                visitor->append(TokenSpan::None, arrayOf->closeSquare);
+                visitor->needsSpace = false;
+            } else if (auto* function = prodChain[i]->var.as<DeclProduction::Function>()) {
+                visitor->append(TokenSpan::None, function->openParen);
+                visitor->needsSpace = false;
                 // Visit function parameters.
                 for (const Parameter& param : function->params) {
-                    syntax_highlight_decl_specifiers(visitor, param.decl_specifiers);
-                    syntax_highlight_declarator(visitor, &param.identifier, param.prod);
-                    if (param.comma.is_valid()) {
+                    syntaxHighlightDeclSpecifiers(visitor, param.declSpecifiers);
+                    syntaxHighlightDeclarator(visitor, &param.identifier, param.prod);
+                    if (param.comma.isValid()) {
                         visitor->append(TokenSpan::None, param.comma);
-                        visitor->append_space();
+                        visitor->appendSpace();
                     }
                 }
-                visitor->append(TokenSpan::None, function->close_paren);
+                visitor->append(TokenSpan::None, function->closeParen);
                 for (const Token& token : function->qualifiers) {
-                    visitor->append_space();
+                    visitor->appendSpace();
                     visitor->append(TokenSpan::None, token);
                 }
-                visitor->needs_space = true;
+                visitor->needsSpace = true;
             } else {
                 PLY_ASSERT(0);
             }
         }
-        if (g + 1 < paren_groups.num_items()) {
+        if (g + 1 < parenGroups.numItems()) {
             // Close parenthesis
-            auto* paren = prod_chain[group.last]->var.as<DeclProduction::Parenthesized>();
-            visitor->append(TokenSpan::None, paren->close_paren);
-            visitor->needs_space = true;
+            auto* paren = prodChain[group.last]->var.as<DeclProduction::Parenthesized>();
+            visitor->append(TokenSpan::None, paren->closeParen);
+            visitor->needsSpace = true;
         }
     }
 }
 
-void syntax_highlight_initializer(NodeVisitor* visitor, const Initializer& init) {
+void syntaxHighlightInitializer(NodeVisitor* visitor, const Initializer& init) {
     if (init.var.as<Initializer::Assignment>()) {
         // Not supported yet
     } else if (init.var.as<Initializer::FunctionBody>()) {
@@ -3065,40 +3062,40 @@ void syntax_highlight_initializer(NodeVisitor* visitor, const Initializer& init)
     }
 }
 
-void syntax_highlight_declaration(NodeVisitor* visitor, const Declaration& decl) {
+void syntaxHighlightDeclaration(NodeVisitor* visitor, const Declaration& decl) {
     if (auto* entity = decl.var.as<Declaration::Entity>()) {
-        syntax_highlight_decl_specifiers(visitor, entity->decl_specifiers);
-        for (const InitDeclarator& init_decl : entity->init_declarators) {
-            syntax_highlight_declarator(visitor, &init_decl.qid, init_decl.prod);
-            syntax_highlight_initializer(visitor, init_decl.init);
-            if (init_decl.comma.is_valid()) {
-                visitor->append(TokenSpan::None, init_decl.comma);
-                visitor->append_space();
+        syntaxHighlightDeclSpecifiers(visitor, entity->declSpecifiers);
+        for (const InitDeclarator& initDecl : entity->initDeclarators) {
+            syntaxHighlightDeclarator(visitor, &initDecl.qid, initDecl.prod);
+            syntaxHighlightInitializer(visitor, initDecl.init);
+            if (initDecl.comma.isValid()) {
+                visitor->append(TokenSpan::None, initDecl.comma);
+                visitor->appendSpace();
             }
         }
     } else if (auto* tmpl = decl.var.as<Declaration::Template>()) {
         visitor->append(TokenSpan::None, tmpl->keyword);
-        visitor->append_space();
-        visitor->append(TokenSpan::None, tmpl->open_angle);
-        visitor->needs_space = false;
+        visitor->appendSpace();
+        visitor->append(TokenSpan::None, tmpl->openAngle);
+        visitor->needsSpace = false;
         for (const Parameter& param : tmpl->params) {
-            syntax_highlight_decl_specifiers(visitor, param.decl_specifiers);
-            syntax_highlight_declarator(visitor, &param.identifier, param.prod);
-            if (param.comma.is_valid()) {
+            syntaxHighlightDeclSpecifiers(visitor, param.declSpecifiers);
+            syntaxHighlightDeclarator(visitor, &param.identifier, param.prod);
+            if (param.comma.isValid()) {
                 visitor->append(TokenSpan::None, param.comma);
-                visitor->append_space();
+                visitor->appendSpace();
             }
         }
-        visitor->append(TokenSpan::None, tmpl->close_angle);
-        visitor->needs_space = true;
-        syntax_highlight_declaration(visitor, *tmpl->child_decl);
+        visitor->append(TokenSpan::None, tmpl->closeAngle);
+        visitor->needsSpace = true;
+        syntaxHighlightDeclaration(visitor, *tmpl->childDecl);
     }
 }
 
-Array<TokenSpan> Parser::syntax_highlight(const Declaration& decl) const {
+Array<TokenSpan> Parser::syntaxHighlight(const Declaration& decl) const {
     NodeVisitor visitor;
     visitor.parser = static_cast<const ParserImpl*>(this);
-    syntax_highlight_declaration(&visitor, decl);
+    syntaxHighlightDeclaration(&visitor, decl);
     return std::move(visitor.spans);
 }
 
@@ -3111,71 +3108,71 @@ Array<TokenSpan> Parser::syntax_highlight(const Declaration& decl) const {
 struct DumpContext {
     Stream* out = nullptr;
     const ParserImpl* parser = nullptr;
-    u32 indent_level = 0;
+    u32 indentLevel = 0;
 
     String indent() const {
-        return StringView{"  "} * this->indent_level;
+        return StringView{"  "} * this->indentLevel;
     }
 };
 
-void dump_declaration(DumpContext& ctx, const Declaration& decl);
-void dump_expression(DumpContext& ctx, const Expression* expr);
-void dump_statement(DumpContext& ctx, const Statement& stmt);
+void dumpDeclaration(DumpContext& ctx, const Declaration& decl);
+void dumpExpression(DumpContext& ctx, const Expression* expr);
+void dumpStatement(DumpContext& ctx, const Statement& stmt);
 
-void dump_decl_specifier(DumpContext& ctx, const DeclSpecifier& decl_spec) {
-    using Var = decltype(decl_spec.var);
-    switch (decl_spec.var.get_subtype_index()) {
-        case Var::index_of<DeclSpecifier::Keyword>: {
-            auto* keyword = decl_spec.var.as<DeclSpecifier::Keyword>();
+void dumpDeclSpecifier(DumpContext& ctx, const DeclSpecifier& declSpec) {
+    using Var = decltype(declSpec.var);
+    switch (declSpec.var.getSubtypeIndex()) {
+        case Var::indexOf<DeclSpecifier::Keyword>: {
+            auto* keyword = declSpec.var.as<DeclSpecifier::Keyword>();
             ctx.out->format("{}Keyword '{}'\n", ctx.indent(), keyword->token.text);
             break;
         }
-        case Var::index_of<DeclSpecifier::Linkage>: {
-            auto* lang_linkage = decl_spec.var.as<DeclSpecifier::Linkage>();
-            ctx.out->format("{}Linkage '{}'\n", ctx.indent(), lang_linkage->literal.text);
+        case Var::indexOf<DeclSpecifier::Linkage>: {
+            auto* langLinkage = declSpec.var.as<DeclSpecifier::Linkage>();
+            ctx.out->format("{}Linkage '{}'\n", ctx.indent(), langLinkage->literal.text);
             break;
         }
-        case Var::index_of<DeclSpecifier::Class>: {
-            auto* class_ = decl_spec.var.as<DeclSpecifier::Class>();
-            ctx.out->format("{}Class {} '{}'\n", ctx.indent(), class_->keyword.text, to_string(class_->qid));
-            if (class_->virt_specifiers.num_items() > 0) {
+        case Var::indexOf<DeclSpecifier::Class>: {
+            auto* class_ = declSpec.var.as<DeclSpecifier::Class>();
+            ctx.out->format("{}Class {} '{}'\n", ctx.indent(), class_->keyword.text, toString(class_->qid));
+            if (class_->virtSpecifiers.numItems() > 0) {
                 ctx.out->format("{}  virt_specifiers:", ctx.indent());
-                for (const Token& virt_spec : class_->virt_specifiers) {
-                    ctx.out->format(" {}", virt_spec.text);
+                for (const Token& virtSpec : class_->virtSpecifiers) {
+                    ctx.out->format(" {}", virtSpec.text);
                 }
                 ctx.out->write("\n");
             }
-            if (class_->base_specifiers.num_items() > 0) {
+            if (class_->baseSpecifiers.numItems() > 0) {
                 ctx.out->format("{}  base_specifiers:", ctx.indent());
                 StringView comma;
-                for (const DeclSpecifier::Class::BaseSpecifier& base_spec : class_->base_specifiers) {
-                    ctx.out->format("{} {} {}", comma, base_spec.access_spec.text, to_string(base_spec.base_qid));
+                for (const DeclSpecifier::Class::BaseSpecifier& baseSpec : class_->baseSpecifiers) {
+                    ctx.out->format("{} {} {}", comma, baseSpec.accessSpec.text, toString(baseSpec.baseQid));
                     comma = ",";
                 }
                 ctx.out->write("\n");
             }
-            PLY_SET_IN_SCOPE(ctx.indent_level, ctx.indent_level + 1);
-            for (const Declaration& decl : class_->member_decls) {
-                dump_declaration(ctx, decl);
+            PLY_SET_IN_SCOPE(ctx.indentLevel, ctx.indentLevel + 1);
+            for (const Declaration& decl : class_->memberDecls) {
+                dumpDeclaration(ctx, decl);
             }
             break;
         }
-        case Var::index_of<DeclSpecifier::Enum>: {
-            auto* enum_ = decl_spec.var.as<DeclSpecifier::Enum>();
-            ctx.out->format("{}Enum{}{} '{}'\n", ctx.indent(), enum_->class_keyword.is_valid() ? " " : "",
-                            enum_->class_keyword.text, to_string(enum_->qid));
-            if (!enum_->base.is_empty()) {
-                ctx.out->format("{}  base: '{}'\n", ctx.indent(), to_string(enum_->base));
+        case Var::indexOf<DeclSpecifier::Enum>: {
+            auto* enum_ = declSpec.var.as<DeclSpecifier::Enum>();
+            ctx.out->format("{}Enum{}{} '{}'\n", ctx.indent(), enum_->classKeyword.isValid() ? " " : "",
+                            enum_->classKeyword.text, toString(enum_->qid));
+            if (!enum_->base.isEmpty()) {
+                ctx.out->format("{}  base: '{}'\n", ctx.indent(), toString(enum_->base));
             }
             for (const DeclSpecifier::Enum::Item& enor : enum_->enumerators) {
                 ctx.out->format("{}  '{}'\n", ctx.indent(), enor.text.text);
-                PLY_ASSERT(enor.init.var.is_empty()); // Not supported yet
+                PLY_ASSERT(enor.init.var.isEmpty()); // Not supported yet
             }
             break;
         }
-        case Var::index_of<DeclSpecifier::TypeSpecifier>: {
-            auto* type_spec = decl_spec.var.as<DeclSpecifier::TypeSpecifier>();
-            ctx.out->format("{}TypeSpecifier '{}'\n", ctx.indent(), to_string(type_spec->qid));
+        case Var::indexOf<DeclSpecifier::TypeSpecifier>: {
+            auto* typeSpec = declSpec.var.as<DeclSpecifier::TypeSpecifier>();
+            ctx.out->format("{}TypeSpecifier '{}'\n", ctx.indent(), toString(typeSpec->qid));
             break;
         }
         default: {
@@ -3185,49 +3182,49 @@ void dump_decl_specifier(DumpContext& ctx, const DeclSpecifier& decl_spec) {
     }
 }
 
-void dump_declarator_production(DumpContext& ctx, const DeclProduction* prod) {
+void dumpDeclaratorProduction(DumpContext& ctx, const DeclProduction* prod) {
     if (!prod)
         return;
 
     using Var = decltype(prod->var);
-    switch (prod->var.get_subtype_index()) {
-        case Var::index_of<DeclProduction::Parenthesized>: {
+    switch (prod->var.getSubtypeIndex()) {
+        case Var::indexOf<DeclProduction::Parenthesized>: {
             ctx.out->format("{}Parenthesized\n", ctx.indent());
             break;
         }
-        case Var::index_of<DeclProduction::Indirection>: {
-            auto* pointer_to = prod->var.as<DeclProduction::Indirection>();
+        case Var::indexOf<DeclProduction::Indirection>: {
+            auto* pointerTo = prod->var.as<DeclProduction::Indirection>();
             ctx.out->format("{}Indirection ", ctx.indent());
-            PLY_ASSERT(pointer_to->prefix.is_empty()); // Not supported yet
-            ctx.out->format("'{}'\n", pointer_to->punc.text);
+            PLY_ASSERT(pointerTo->prefix.isEmpty()); // Not supported yet
+            ctx.out->format("'{}'\n", pointerTo->punc.text);
             break;
         }
-        case Var::index_of<DeclProduction::ArrayOf>: {
-            //auto* array_of = prod->var.as<DeclProduction::ArrayOf>();
+        case Var::indexOf<DeclProduction::ArrayOf>: {
+            // auto* arrayOf = prod->var.as<DeclProduction::ArrayOf>();
             ctx.out->format("{}ArrayOf\n", ctx.indent());
             // FIXME: dump size
             break;
         }
-        case Var::index_of<DeclProduction::Function>: {
+        case Var::indexOf<DeclProduction::Function>: {
             auto* function = prod->var.as<DeclProduction::Function>();
             ctx.out->format("{}Function\n", ctx.indent());
-            if (!function->params.is_empty()) {
-                PLY_SET_IN_SCOPE(ctx.indent_level, ctx.indent_level + 1);
+            if (!function->params.isEmpty()) {
+                PLY_SET_IN_SCOPE(ctx.indentLevel, ctx.indentLevel + 1);
                 for (const Parameter& param : function->params) {
                     ctx.out->format("{}Parameter '{}'\n", ctx.indent(), param.identifier.text);
-                    PLY_SET_IN_SCOPE(ctx.indent_level, ctx.indent_level + 1);
-                    for (const DeclSpecifier* decl_spec : param.decl_specifiers) {
-                        dump_decl_specifier(ctx, *decl_spec);
+                    PLY_SET_IN_SCOPE(ctx.indentLevel, ctx.indentLevel + 1);
+                    for (const DeclSpecifier* declSpec : param.declSpecifiers) {
+                        dumpDeclSpecifier(ctx, *declSpec);
                     }
-                    dump_declarator_production(ctx, param.prod);
-                    PLY_ASSERT(param.init.var.is_empty()); // Not supported yet
+                    dumpDeclaratorProduction(ctx, param.prod);
+                    PLY_ASSERT(param.init.var.isEmpty()); // Not supported yet
                 }
             }
-            //          PLY_ASSERT(function->qualifiers.tokens.is_empty()); // Not supported yet
-            // PLY_ASSERT(is_empty(function->trailing_ret_type)); // Not supported yet
+            //          PLY_ASSERT(function->qualifiers.tokens.isEmpty()); // Not supported yet
+            // PLY_ASSERT(isEmpty(function->trailingRetType)); // Not supported yet
             break;
         }
-        case Var::index_of<DeclProduction::Qualifier>: {
+        case Var::indexOf<DeclProduction::Qualifier>: {
             auto* qualifier = prod->var.as<DeclProduction::Qualifier>();
             ctx.out->format("{}Qualifier '{}'\n", ctx.indent(), qualifier->keyword.text);
             break;
@@ -3237,58 +3234,58 @@ void dump_declarator_production(DumpContext& ctx, const DeclProduction* prod) {
             break;
         }
     }
-    PLY_SET_IN_SCOPE(ctx.indent_level, ctx.indent_level + 1);
-    dump_declarator_production(ctx, prod->child);
+    PLY_SET_IN_SCOPE(ctx.indentLevel, ctx.indentLevel + 1);
+    dumpDeclaratorProduction(ctx, prod->child);
 }
 
-void dump_init_declarator(DumpContext& ctx, const InitDeclarator& init_decl) {
-    ctx.out->format("{}InitDeclarator '{}'\n", ctx.indent(), to_string(init_decl.qid));
+void dumpInitDeclarator(DumpContext& ctx, const InitDeclarator& initDecl) {
+    ctx.out->format("{}InitDeclarator '{}'\n", ctx.indent(), toString(initDecl.qid));
     {
-        PLY_SET_IN_SCOPE(ctx.indent_level, ctx.indent_level + 1);
-        dump_declarator_production(ctx, init_decl.prod);
+        PLY_SET_IN_SCOPE(ctx.indentLevel, ctx.indentLevel + 1);
+        dumpDeclaratorProduction(ctx, initDecl.prod);
     }
-    using Var = decltype(init_decl.init.var);
-    switch (init_decl.init.var.get_subtype_index()) {
+    using Var = decltype(initDecl.init.var);
+    switch (initDecl.init.var.getSubtypeIndex()) {
         case 0: {
             break; // Empty
         }
-        case Var::index_of<Initializer::Assignment>: {
-            auto* assignment = init_decl.init.var.as<Initializer::Assignment>();
+        case Var::indexOf<Initializer::Assignment>: {
+            auto* assignment = initDecl.init.var.as<Initializer::Assignment>();
             if (auto* expression = assignment->var.as<Owned<Expression>>()) {
                 ctx.out->format("{}Assignment (expression)\n", ctx.indent());
-                PLY_SET_IN_SCOPE(ctx.indent_level, ctx.indent_level + 1);
-                dump_expression(ctx, expression->get());
-            } else if (auto* type_id = assignment->var.as<TypeID>()) {
+                PLY_SET_IN_SCOPE(ctx.indentLevel, ctx.indentLevel + 1);
+                dumpExpression(ctx, expression->get());
+            } else if (auto* typeId = assignment->var.as<TypeID>()) {
                 ctx.out->format("{}Assignment (type_id)\n", ctx.indent());
-                PLY_SET_IN_SCOPE(ctx.indent_level, ctx.indent_level + 1);
-                for (const DeclSpecifier* decl_spec : type_id->decl_specifiers) {
-                    dump_decl_specifier(ctx, *decl_spec);
+                PLY_SET_IN_SCOPE(ctx.indentLevel, ctx.indentLevel + 1);
+                for (const DeclSpecifier* declSpec : typeId->declSpecifiers) {
+                    dumpDeclSpecifier(ctx, *declSpec);
                 }
-                dump_declarator_production(ctx, type_id->abstract_dcor);
+                dumpDeclaratorProduction(ctx, typeId->abstractDcor);
             } else {
                 PLY_ASSERT(0);
             }
             break;
         }
-        case Var::index_of<Initializer::FunctionBody>: {
-            auto* function_body = init_decl.init.var.as<Initializer::FunctionBody>();
+        case Var::indexOf<Initializer::FunctionBody>: {
+            auto* functionBody = initDecl.init.var.as<Initializer::FunctionBody>();
             ctx.out->format("{}FunctionBody\n", ctx.indent());
-            PLY_SET_IN_SCOPE(ctx.indent_level, ctx.indent_level + 1);
-            for (const Initializer::FunctionBody::MemberInitializer& member_init : function_body->member_inits) {
-                ctx.out->format("{}MemberInitializer '{}'\n", ctx.indent(), to_string(member_init.qid));
-                PLY_SET_IN_SCOPE(ctx.indent_level, ctx.indent_level + 1);
-                dump_expression(ctx, member_init.expr);
+            PLY_SET_IN_SCOPE(ctx.indentLevel, ctx.indentLevel + 1);
+            for (const Initializer::FunctionBody::MemberInitializer& memberInit : functionBody->memberInits) {
+                ctx.out->format("{}MemberInitializer '{}'\n", ctx.indent(), toString(memberInit.qid));
+                PLY_SET_IN_SCOPE(ctx.indentLevel, ctx.indentLevel + 1);
+                dumpExpression(ctx, memberInit.expr);
             }
-            for (const Statement& statement : function_body->statements) {
-                dump_statement(ctx, statement);
+            for (const Statement& statement : functionBody->statements) {
+                dumpStatement(ctx, statement);
             }
             break;
         }
-        case Var::index_of<Initializer::BitField>: {
-            auto* bit_field = init_decl.init.var.as<Initializer::BitField>();
+        case Var::indexOf<Initializer::BitField>: {
+            auto* bitField = initDecl.init.var.as<Initializer::BitField>();
             ctx.out->format("{}BitField\n", ctx.indent());
-            PLY_SET_IN_SCOPE(ctx.indent_level, ctx.indent_level + 1);
-            dump_expression(ctx, bit_field->expr);
+            PLY_SET_IN_SCOPE(ctx.indentLevel, ctx.indentLevel + 1);
+            dumpExpression(ctx, bitField->expr);
             break;
         }
         default: {
@@ -3298,81 +3295,81 @@ void dump_init_declarator(DumpContext& ctx, const InitDeclarator& init_decl) {
     }
 }
 
-void dump_declaration(DumpContext& ctx, const Declaration& decl) {
-    auto format_loc = [&](const Token& token) {
-        FileLocation file_loc = ctx.parser->get_file_location(token.input_offset);
-        return String::format("{}({})", split_path(file_loc.abs_path).filename, file_loc.line);
+void dumpDeclaration(DumpContext& ctx, const Declaration& decl) {
+    auto formatLoc = [&](const Token& token) {
+        FileLocation fileLoc = ctx.parser->getFileLocation(token.inputOffset);
+        return String::format("{}({})", splitPath(fileLoc.absPath).filename, fileLoc.line);
     };
     using Var = decltype(decl.var);
-    switch (decl.var.get_subtype_index()) {
-        case Var::index_of<Declaration::Linkage>: {
+    switch (decl.var.getSubtypeIndex()) {
+        case Var::indexOf<Declaration::Linkage>: {
             auto* linkage = decl.var.as<Declaration::Linkage>();
-            ctx.out->format("{}{}: Linkage '{}'\n", ctx.indent(), format_loc(linkage->extern_keyword),
+            ctx.out->format("{}{}: Linkage '{}'\n", ctx.indent(), formatLoc(linkage->externKeyword),
                             linkage->literal.text);
-            PLY_SET_IN_SCOPE(ctx.indent_level, ctx.indent_level + 1);
-            for (const Declaration& decl : linkage->child_decls) {
-                dump_declaration(ctx, decl);
+            PLY_SET_IN_SCOPE(ctx.indentLevel, ctx.indentLevel + 1);
+            for (const Declaration& decl : linkage->childDecls) {
+                dumpDeclaration(ctx, decl);
             }
             break;
         }
-        case Var::index_of<Declaration::Namespace>: {
+        case Var::indexOf<Declaration::Namespace>: {
             auto* ns = decl.var.as<Declaration::Namespace>();
-            ctx.out->format("{}{}: Namespace '{}'\n", ctx.indent(), format_loc(ns->keyword), to_string(ns->qid));
-            PLY_SET_IN_SCOPE(ctx.indent_level, ctx.indent_level + 1);
-            for (const Declaration& decl : ns->child_decls) {
-                dump_declaration(ctx, decl);
+            ctx.out->format("{}{}: Namespace '{}'\n", ctx.indent(), formatLoc(ns->keyword), toString(ns->qid));
+            PLY_SET_IN_SCOPE(ctx.indentLevel, ctx.indentLevel + 1);
+            for (const Declaration& decl : ns->childDecls) {
+                dumpDeclaration(ctx, decl);
             }
             break;
         }
-        case Var::index_of<Declaration::Entity>: {
+        case Var::indexOf<Declaration::Entity>: {
             auto* entity = decl.var.as<Declaration::Entity>();
-            ctx.out->format("{}{}: Entity\n", ctx.indent(), format_loc(get_first_token(*entity)));
-            PLY_SET_IN_SCOPE(ctx.indent_level, ctx.indent_level + 1);
-            for (const DeclSpecifier* decl_spec : entity->decl_specifiers) {
-                dump_decl_specifier(ctx, *decl_spec);
+            ctx.out->format("{}{}: Entity\n", ctx.indent(), formatLoc(getFirstToken(*entity)));
+            PLY_SET_IN_SCOPE(ctx.indentLevel, ctx.indentLevel + 1);
+            for (const DeclSpecifier* declSpec : entity->declSpecifiers) {
+                dumpDeclSpecifier(ctx, *declSpec);
             }
-            for (const InitDeclarator& init_decl : entity->init_declarators) {
-                dump_init_declarator(ctx, init_decl);
+            for (const InitDeclarator& initDecl : entity->initDeclarators) {
+                dumpInitDeclarator(ctx, initDecl);
             }
             break;
         }
-        case Var::index_of<Declaration::Template>: {
+        case Var::indexOf<Declaration::Template>: {
             auto* tmpl = decl.var.as<Declaration::Template>();
-            ctx.out->format("{}{}: Template'\n", ctx.indent(), format_loc(tmpl->keyword));
-            PLY_SET_IN_SCOPE(ctx.indent_level, ctx.indent_level + 1);
-            dump_declaration(ctx, *tmpl->child_decl);
+            ctx.out->format("{}{}: Template'\n", ctx.indent(), formatLoc(tmpl->keyword));
+            PLY_SET_IN_SCOPE(ctx.indentLevel, ctx.indentLevel + 1);
+            dumpDeclaration(ctx, *tmpl->childDecl);
             break;
         }
-        case Var::index_of<Declaration::TypeAlias>: {
+        case Var::indexOf<Declaration::TypeAlias>: {
             auto* alias = decl.var.as<Declaration::TypeAlias>();
-            ctx.out->format("{}{}: TypeAlias '{}'\n", ctx.indent(), format_loc(alias->using_keyword), alias->name.text);
-            PLY_SET_IN_SCOPE(ctx.indent_level, ctx.indent_level + 1);
-            for (const DeclSpecifier* decl_spec : alias->type_id.decl_specifiers) {
-                dump_decl_specifier(ctx, *decl_spec);
+            ctx.out->format("{}{}: TypeAlias '{}'\n", ctx.indent(), formatLoc(alias->usingKeyword), alias->name.text);
+            PLY_SET_IN_SCOPE(ctx.indentLevel, ctx.indentLevel + 1);
+            for (const DeclSpecifier* declSpec : alias->typeId.declSpecifiers) {
+                dumpDeclSpecifier(ctx, *declSpec);
             }
-            dump_declarator_production(ctx, alias->type_id.abstract_dcor);
+            dumpDeclaratorProduction(ctx, alias->typeId.abstractDcor);
             break;
         }
-        case Var::index_of<Declaration::UsingNamespace>: {
-            auto* using_directive = decl.var.as<Declaration::UsingNamespace>();
-            ctx.out->format("{}{}: UsingNamespace '{}'\n", ctx.indent(), format_loc(using_directive->using_keyword),
-                            to_string(using_directive->qid));
+        case Var::indexOf<Declaration::UsingNamespace>: {
+            auto* usingDirective = decl.var.as<Declaration::UsingNamespace>();
+            ctx.out->format("{}{}: UsingNamespace '{}'\n", ctx.indent(), formatLoc(usingDirective->usingKeyword),
+                            toString(usingDirective->qid));
             break;
         }
-        case Var::index_of<Declaration::StaticAssert>: {
-            auto* static_assert_ = decl.var.as<Declaration::StaticAssert>();
-            ctx.out->format("{}{}: StaticAssert\n", ctx.indent(), format_loc(static_assert_->keyword));
+        case Var::indexOf<Declaration::StaticAssert>: {
+            auto* staticAssert = decl.var.as<Declaration::StaticAssert>();
+            ctx.out->format("{}{}: StaticAssert\n", ctx.indent(), formatLoc(staticAssert->keyword));
             // Dump expression
             break;
         }
-        case Var::index_of<Declaration::AccessSpecifier>: {
-            auto* access_spec = decl.var.as<Declaration::AccessSpecifier>();
-            ctx.out->format("{}{}: AccessSpecifier '{}'\n", ctx.indent(), format_loc(access_spec->keyword),
-                            access_spec->keyword.text);
+        case Var::indexOf<Declaration::AccessSpecifier>: {
+            auto* accessSpec = decl.var.as<Declaration::AccessSpecifier>();
+            ctx.out->format("{}{}: AccessSpecifier '{}'\n", ctx.indent(), formatLoc(accessSpec->keyword),
+                            accessSpec->keyword.text);
             break;
         }
         case 0: {
-            ctx.out->format("{}{}: Declaration (empty)\n", ctx.indent(), format_loc(decl.semicolon));
+            ctx.out->format("{}{}: Declaration (empty)\n", ctx.indent(), formatLoc(decl.semicolon));
             break;
         }
         default: {
@@ -3382,19 +3379,19 @@ void dump_declaration(DumpContext& ctx, const Declaration& decl) {
     }
 }
 
-void dump_expression(DumpContext& ctx, const Expression* expr) {
+void dumpExpression(DumpContext& ctx, const Expression* expr) {
 }
 
-void dump_statement(DumpContext& ctx, const Statement& stmt) {
+void dumpStatement(DumpContext& ctx, const Statement& stmt) {
 }
 
-void Parser::dump_declaration(const Declaration& decl) const {
+void Parser::dumpDeclaration(const Declaration& decl) const {
     const ParserImpl* parser = static_cast<const ParserImpl*>(this);
-    Stream out = get_stdout();
+    Stream out = getStdout();
     DumpContext ctx;
     ctx.out = &out;
     ctx.parser = parser;
-    cpp::dump_declaration(ctx, decl);
+    cpp::dumpDeclaration(ctx, decl);
 }
 
 } // namespace cpp

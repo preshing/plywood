@@ -2,7 +2,7 @@
        ____
       ╱   ╱╲    Plywood C++ Base Library
      ╱___╱╭╮╲   https://plywood.dev/
-      └──┴┴┴┘   
+      └──┴┴┴┘
 ========================================================*/
 
 #include "test-suite.h"
@@ -12,58 +12,58 @@ struct Case {
     void (*func)();
 };
 
-Array<Case>& get_test_cases() {
+Array<Case>& getTestCases() {
     static Array<Case> cases;
     return cases;
 }
 
 RegisterTest::RegisterTest(StringView name, void (*func)()) {
-    get_test_cases().append({name, func});
+    getTestCases().append({name, func});
 }
 
 struct TestState {
     bool success = true;
 };
 
-TestState g_test_state;
+TestState gTestState;
 
 bool check(bool cond) {
     if (!cond) {
-        g_test_state.success = false;
+        gTestState.success = false;
     }
     return cond;
 }
 
 int main() {
-    u32 num_passed = 0;
-    const auto& test_cases = get_test_cases();
-    Stream out = get_stdout();
+    u32 numPassed = 0;
+    const auto& testCases = getTestCases();
+    Stream out = getStdout();
 
-    for (u32 i = 0; i < test_cases.num_items(); i++) {
-        out.format("[{}/{}] {}... ", (i + 1), test_cases.num_items(), test_cases[i].name);
-        g_test_state.success = true;
+    for (u32 i = 0; i < testCases.numItems(); i++) {
+        out.format("[{}/{}] {}... ", (i + 1), testCases.numItems(), testCases[i].name);
+        gTestState.success = true;
 #if PLY_USE_DLMALLOC
-        auto begin_stats = get_heap_stats();
+        auto beginStats = getHeapStats();
 #endif
-        test_cases[i].func();
+        testCases[i].func();
 #if PLY_USE_DLMALLOC
         // Check for memory leaks
-        auto end_stats = get_heap_stats();
-        if (begin_stats.in_use_bytes != end_stats.in_use_bytes) {
-            g_test_state.success = false;
+        auto endStats = getHeapStats();
+        if (beginStats.inUseBytes != endStats.inUseBytes) {
+            gTestState.success = false;
         }
 #endif
-        out.write(g_test_state.success ? "success\n" : "***FAIL***\n");
-        if (g_test_state.success) {
-            num_passed++;
+        out.write(gTestState.success ? "success\n" : "***FAIL***\n");
+        if (gTestState.success) {
+            numPassed++;
         }
         out.flush();
     }
     float frac = 1.f;
-    if (test_cases.num_items() > 0) {
-        frac = (float) num_passed / test_cases.num_items();
+    if (testCases.numItems() > 0) {
+        frac = (float) numPassed / testCases.numItems();
     }
-    out.format("{}/{} test cases passed ({}%)\n", num_passed, test_cases.num_items(), frac * 100.f);
+    out.format("{}/{} test cases passed ({}%)\n", numPassed, testCases.numItems(), frac * 100.f);
 
-    return (num_passed == test_cases.num_items()) ? 0 : 1;
+    return (numPassed == testCases.numItems()) ? 0 : 1;
 }

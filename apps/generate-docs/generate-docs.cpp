@@ -12,23 +12,23 @@
 using namespace ply;
 using namespace ply::cpp;
 
-String source_folder = join_path(PLYWOOD_ROOT_DIR, "apps/generate-docs/data");
-String docs_folder = join_path(PLYWOOD_ROOT_DIR, "docs");
-String out_folder = join_path(PLYWOOD_ROOT_DIR, "docs/build");
-TextFormat server_text_format = {UTF8, TextFormat::LF, false};
+String sourceFolder = joinPath(PLYWOOD_ROOT_DIR, "apps/generate-docs/data");
+String docsFolder = joinPath(PLYWOOD_ROOT_DIR, "docs");
+String outFolder = joinPath(PLYWOOD_ROOT_DIR, "docs/build");
+TextFormat serverTextFormat = {UTF8, TextFormat::LF, false};
 json::Node contents;
-u32 publish_key = 0; // Prevent browsers from caching old stylesheets
+u32 publishKey = 0; // Prevent browsers from caching old stylesheets
 
-void print_decl_as_api_title(Stream& out, const Parser* parser, const Declaration& decl) {
-    Array<TokenSpan> spans = parser->syntax_highlight(decl);
+void printDeclAsApiTitle(Stream& out, const Parser* parser, const Declaration& decl) {
+    Array<TokenSpan> spans = parser->syntaxHighlight(decl);
     out.write("<code>");
 
     // Output token spans.
-    TokenSpan::Color last_color = TokenSpan::None;
-    bool got_first_declarator_qid = false;
+    TokenSpan::Color lastColor = TokenSpan::None;
+    bool gotFirstDeclaratorQid = false;
     for (const TokenSpan& span : spans) {
-        if (last_color != span.color) {
-            if (last_color != TokenSpan::None) {
+        if (lastColor != span.color) {
+            if (lastColor != TokenSpan::None) {
                 out.write("</span>");
             }
             if (span.color == TokenSpan::Type) {
@@ -38,62 +38,62 @@ void print_decl_as_api_title(Stream& out, const Parser* parser, const Declaratio
             } else if (span.color == TokenSpan::Variable) {
                 out.write("<span class=\"var\">");
             }
-            last_color = span.color;
+            lastColor = span.color;
         }
-        if (span.is_space) {
-            out.write(got_first_declarator_qid ? " " : "&nbsp;");
+        if (span.isSpace) {
+            out.write(gotFirstDeclaratorQid ? " " : "&nbsp;");
         } else {
-            print_xml_escaped_string(out, span.token.text);
+            printXmlEscapedString(out, span.token.text);
         }
     }
-    if (last_color != TokenSpan::None) {
+    if (lastColor != TokenSpan::None) {
         out.write("</span>");
     }
     out.write("</code>");
 }
 
-void print_decl_as_html(Stream& out, const Parser* parser, const Declaration& decl) {
-    Array<TokenSpan> spans = parser->syntax_highlight(decl);
-    StringView main_row_header = "<tr class=\"entry\"><td class=\"prefix\"><code>";
+void printDeclAsHtml(Stream& out, const Parser* parser, const Declaration& decl) {
+    Array<TokenSpan> spans = parser->syntaxHighlight(decl);
+    StringView mainRowHeader = "<tr class=\"entry\"><td class=\"prefix\"><code>";
 
     // Find first declarator.
-    const Declaration* main_declaration = &decl;
-    Token first_main_token;
-    if (auto* tmpl = main_declaration->var.as<Declaration::Template>()) {
-        main_declaration = tmpl->child_decl;
-        first_main_token = main_declaration->get_first_token();
+    const Declaration* mainDeclaration = &decl;
+    Token firstMainToken;
+    if (auto* tmpl = mainDeclaration->var.as<Declaration::Template>()) {
+        mainDeclaration = tmpl->childDecl;
+        firstMainToken = mainDeclaration->getFirstToken();
         out.write("<tr><td colspan=\"2\" class=\"template\"><code>");
     } else {
-        out.write(main_row_header);
+        out.write(mainRowHeader);
     }
 
-    const cpp::QualifiedID* first_declarator_qid = nullptr;
-    if (auto* entity = main_declaration->var.as<Declaration::Entity>()) {
-        if (!entity->init_declarators.is_empty()) {
-            if (!entity->init_declarators[0].qid.is_empty()) {
-                first_declarator_qid = &entity->init_declarators[0].qid;
+    const cpp::QualifiedID* firstDeclaratorQid = nullptr;
+    if (auto* entity = mainDeclaration->var.as<Declaration::Entity>()) {
+        if (!entity->initDeclarators.isEmpty()) {
+            if (!entity->initDeclarators[0].qid.isEmpty()) {
+                firstDeclaratorQid = &entity->initDeclarators[0].qid;
             }
         }
     }
 
     // Output token spans.
-    TokenSpan::Color last_color = TokenSpan::None;
-    bool got_first_declarator_qid = false;
+    TokenSpan::Color lastColor = TokenSpan::None;
+    bool gotFirstDeclaratorQid = false;
     for (const TokenSpan& span : spans) {
-        if (first_main_token.is_valid() && (span.token == first_main_token)) {
+        if (firstMainToken.isValid() && (span.token == firstMainToken)) {
             out.write("</code></td></tr>\n");
-            out.write(main_row_header);
+            out.write(mainRowHeader);
         }
-        if (!got_first_declarator_qid && first_declarator_qid && (first_declarator_qid == span.qid)) {
-            if (last_color != TokenSpan::None) {
+        if (!gotFirstDeclaratorQid && firstDeclaratorQid && (firstDeclaratorQid == span.qid)) {
+            if (lastColor != TokenSpan::None) {
                 out.write("</span>");
-                last_color = TokenSpan::None;
+                lastColor = TokenSpan::None;
             }
             out.write("</code></td><td class=\"suffix\"><code>");
-            got_first_declarator_qid = true;
+            gotFirstDeclaratorQid = true;
         }
-        if (last_color != span.color) {
-            if (last_color != TokenSpan::None) {
+        if (lastColor != span.color) {
+            if (lastColor != TokenSpan::None) {
                 out.write("</span>");
             }
             if (span.color == TokenSpan::Type) {
@@ -103,159 +103,159 @@ void print_decl_as_html(Stream& out, const Parser* parser, const Declaration& de
             } else if (span.color == TokenSpan::Variable) {
                 out.write("<span class=\"var\">");
             }
-            last_color = span.color;
+            lastColor = span.color;
         }
-        if (span.is_space) {
-            out.write(got_first_declarator_qid ? " " : "&nbsp;");
+        if (span.isSpace) {
+            out.write(gotFirstDeclaratorQid ? " " : "&nbsp;");
         } else {
-            print_xml_escaped_string(out, span.token.text);
+            printXmlEscapedString(out, span.token.text);
         }
     }
-    if (last_color != TokenSpan::None) {
+    if (lastColor != TokenSpan::None) {
         out.write("</span>");
     }
     out.write("</code></td></tr>\n");
 }
 
-void parse_api_summary(Stream& out, const Map<StringView, String>& args, ViewStream& in) {
+void parseApiSummary(Stream& out, const Map<StringView, String>& args, ViewStream& in) {
     // Write optional caption.
     if (const String* caption = args.find("caption")) {
-        String html = markdown::convert_to_html(*caption);
-        out.format("<div class=\"caption\">{}</div>\n", html.substr(3, html.num_bytes() - 8));
+        String html = markdown::convertToHtml(*caption);
+        out.format("<div class=\"caption\">{}</div>\n", html.substr(3, html.numBytes() - 8));
     }
 
     // Get class name.
-    StringView class_name;
+    StringView className;
     if (const String* c = args.find("class")) {
-        class_name = *c;
+        className = *c;
     }
 
     out.write("<table class=\"api\">\n");
-    while (StringView line = read_line(in)) {
+    while (StringView line = readLine(in)) {
         StringView s = line.trim();
-        if (s.starts_with("--")) {
+        if (s.startsWith("--")) {
             StringView caption = s.substr(2).trim();
             if (caption) {
                 out.format("<tr class=\"heading\"><td colspan=\"2\" class=\"heading\">{&}</td></tr>\n", caption);
             }
             continue;
         }
-        if (s == "{/api_summary}")
+        if (s == "{/apiSummary}")
             break;
         Owned<Parser> parser = Parser::create();
-        Declaration decl = parser->parse_declaration(s, class_name);
-        print_decl_as_html(out, parser, decl);
+        Declaration decl = parser->parseDeclaration(s, className);
+        printDeclAsHtml(out, parser, decl);
     }
     out.write("</table>\n");
 }
 
-void parse_api_descriptions(Stream& out, const Map<StringView, String>& args, ViewStream& in) {
+void parseApiDescriptions(Stream& out, const Map<StringView, String>& args, ViewStream& in) {
     // Get class name.
-    StringView class_name;
+    StringView className;
     if (const String* c = args.find("class")) {
-        class_name = *c;
+        className = *c;
     }
 
     markdown::HTML_Options options;
-    Owned<markdown::Parser> md = markdown::create_parser();
-    out.write("<dl class=\"api_defs\"><dt>");
-    bool in_title = true;
-    bool first_decl = true;
-    while (StringView line = read_line(in)) {
-        if (line.trim() == "{/api_descriptions}")
+    Owned<markdown::Parser> md = markdown::createParser();
+    out.write("<dl class=\"apiDefs\"><dt>");
+    bool inTitle = true;
+    bool firstDecl = true;
+    while (StringView line = readLine(in)) {
+        if (line.trim() == "{/apiDescriptions}")
             break;
-        if (in_title) {
-            if (line.trim().is_empty())
+        if (inTitle) {
+            if (line.trim().isEmpty())
                 continue;
-            if (line.starts_with("--")) {
+            if (line.startsWith("--")) {
                 out.write("</dt>\n<dd>");
-                in_title = false;
+                inTitle = false;
             } else {
                 Owned<Parser> parser = Parser::create();
-                Declaration decl = parser->parse_declaration(line.trim(), class_name);
-                if (!first_decl) {
+                Declaration decl = parser->parseDeclaration(line.trim(), className);
+                if (!firstDecl) {
                     out.write("<br>\n");
                 }
-                print_decl_as_api_title(out, parser, decl);
-                first_decl = false;
+                printDeclAsApiTitle(out, parser, decl);
+                firstDecl = false;
             }
         } else {
-            if (line.starts_with(">>")) {
+            if (line.startsWith(">>")) {
                 // Flush current markdown block.
                 if (Owned<markdown::Element> node = flush(md)) {
-                    convert_to_html(&out, node, options);
+                    convertToHtml(&out, node, options);
                 }
                 out.write("</dd>\n<dt>");
-                in_title = true;
-                first_decl = true;
+                inTitle = true;
+                firstDecl = true;
             } else {
-                if (Owned<markdown::Element> node = parse_line(md, line)) {
-                    convert_to_html(&out, node, options);
+                if (Owned<markdown::Element> node = parseLine(md, line)) {
+                    convertToHtml(&out, node, options);
                 }
             }
         }
     }
-    if (in_title) {
+    if (inTitle) {
         out.write("</dt></dl>\n");
     } else {
         // Flush current markdown block.
         if (Owned<markdown::Element> node = flush(md)) {
-            convert_to_html(&out, node, options);
+            convertToHtml(&out, node, options);
         }
         out.write("</dd></dl>\n");
     }
 }
 
-void parse_table(Stream& out, const Map<StringView, String>& args, ViewStream& in) {
+void parseTable(Stream& out, const Map<StringView, String>& args, ViewStream& in) {
     out.write("<table class=\"grid\">\n");
-    while (StringView line = read_line(in)) {
+    while (StringView line = readLine(in)) {
         StringView s = line.trim();
         if (s == "{/table}")
             break;
         out.write("<tr>");
         for (StringView column : s.split("|")) {
-            String html = markdown::convert_to_html(column);
-            out.format("<td>{}</td>", html.substr(3, html.num_bytes() - 8));
+            String html = markdown::convertToHtml(column);
+            out.format("<td>{}</td>", html.substr(3, html.numBytes() - 8));
         }
         out.write("</tr>\n");
     }
     out.write("</table>\n");
 }
 
-void parse_example(Stream& out, ViewStream& in) {
+void parseExample(Stream& out, ViewStream& in) {
     out.format("<div class=\"caption\">Example</div>\n");
     out.write("<pre>\n");
-    while (StringView line = read_line(in)) {
+    while (StringView line = readLine(in)) {
         StringView s = line.trim();
         if (s == "{/example}")
             break;
-        print_xml_escaped_string(out, line);
+        printXmlEscapedString(out, line);
     }
     out.write("</pre>\n");
 }
 
-void parse_output(Stream& out, ViewStream& in) {
+void parseOutput(Stream& out, ViewStream& in) {
     out.format("<div class=\"caption\">Output</div>\n");
     out.write("<pre>\n");
-    while (StringView line = read_line(in)) {
+    while (StringView line = readLine(in)) {
         StringView s = line.trim();
         if (s == "{/output}")
             break;
-        print_xml_escaped_string(out, line);
+        printXmlEscapedString(out, line);
     }
     out.write("</pre>\n");
 }
 
-void parse_markdown(Stream& out, ViewStream& in) {
+void parseMarkdown(Stream& out, ViewStream& in) {
     markdown::HTML_Options options;
-    Owned<markdown::Parser> parser = markdown::create_parser();
-    while (StringView line = read_line(in)) {
-        ViewStream line_in{line};
+    Owned<markdown::Parser> parser = markdown::createParser();
+    while (StringView line = readLine(in)) {
+        ViewStream lineIn{line};
         StringView cmd;
-        if (line_in.match("'{%i", &cmd)) {
+        if (lineIn.match("'{%i", &cmd)) {
             // Flush current markdown block.
             if (Owned<markdown::Element> node = flush(parser)) {
-                convert_to_html(&out, node, options);
+                convertToHtml(&out, node, options);
             }
 
             // Parse section arguments.
@@ -263,26 +263,26 @@ void parse_markdown(Stream& out, ViewStream& in) {
             {
                 StringView key;
                 String value;
-                while (line_in.match(" *%i=(%i|%q)", &key, &value, &value)) {
+                while (lineIn.match(" *%i=(%i|%q)", &key, &value, &value)) {
                     *args.insert(key).value = std::move(value);
                 }
             }
-            PLY_ASSERT(line_in.match(" *'}"));
+            PLY_ASSERT(lineIn.match(" *'}"));
 
             // Handle section type.
-            if (cmd == "api_summary") {
-                parse_api_summary(out, args, in);
-            } else if (cmd == "api_descriptions") {
-                parse_api_descriptions(out, args, in);
+            if (cmd == "apiSummary") {
+                parseApiSummary(out, args, in);
+            } else if (cmd == "apiDescriptions") {
+                parseApiDescriptions(out, args, in);
             } else if (cmd == "table") {
-                parse_table(out, args, in);
+                parseTable(out, args, in);
             } else if (cmd == "example") {
-                parse_example(out, in);
+                parseExample(out, in);
             } else if (cmd == "output") {
                 if (Owned<markdown::Element> node = flush(parser)) {
-                    convert_to_html(&out, node, options);
+                    convertToHtml(&out, node, options);
                 }
-                parse_output(out, in);
+                parseOutput(out, in);
             } else if (cmd == "title") {
                 out.format("<h1><span class=\"right\"><div class=\"include\"><code>&lt;{&}&gt;</code></div><div "
                            "class=\"namespace\"><code>namespace {&}</code></div></span>{&}</h1>\n",
@@ -291,130 +291,130 @@ void parse_markdown(Stream& out, ViewStream& in) {
                 PLY_ASSERT(0); // Unrecognized section type
             }
         } else {
-            if (Owned<markdown::Element> node = parse_line(parser, line)) {
-                convert_to_html(&out, node, options);
+            if (Owned<markdown::Element> node = parseLine(parser, line)) {
+                convertToHtml(&out, node, options);
             }
         }
     }
     if (Owned<markdown::Element> node = flush(parser)) {
-        convert_to_html(&out, node, options);
+        convertToHtml(&out, node, options);
     }
 }
 
-void flatten_pages(Array<const json::Node*>& pages, const json::Node& items) {
-    for (const json::Node& item : items.array_view()) {
+void flattenPages(Array<const json::Node*>& pages, const json::Node& items) {
+    for (const json::Node& item : items.arrayView()) {
         pages.append(&item);
-        if (item.get("children").is_valid()) {
-            flatten_pages(pages, item.get("children"));
+        if (item.get("children").isValid()) {
+            flattenPages(pages, item.get("children"));
         }
     }
 }
 
-void generate_table_of_contents_html(Stream& out, const json::Node& items) {
-    for (const json::Node& item : items.array_view()) {
+void generateTableOfContentsHtml(Stream& out, const json::Node& items) {
+    for (const json::Node& item : items.arrayView()) {
         const json::Node& children = item.get("children");
-        StringView span_class;
-        if (children.is_valid()) {
-            span_class = " class=\"caret caret-down\"";
+        StringView spanClass;
+        if (children.isValid()) {
+            spanClass = " class=\"caret caret-down\"";
         }
-        String header_file;
-        if (item.get("header-file").is_valid()) {
-            header_file =
+        String headerFile;
+        if (item.get("header-file").isValid()) {
+            headerFile =
                 String::format(" <span class=\"toc-header\">&lt;{&}&gt;</span>", item.get("header-file").text());
         }
         out.format("<a href=\"/docs/{}\"><li class=\"selectable\"><span{}>{&}</span>{}</li></a>",
-                   item.get("path").text(), span_class, item.get("title").text(), header_file);
-        if (children.is_valid()) {
+                   item.get("path").text(), spanClass, item.get("title").text(), headerFile);
+        if (children.isValid()) {
             out.write("<ul class=\"nested active\">");
-            generate_table_of_contents_html(out, children);
+            generateTableOfContentsHtml(out, children);
             out.write("</ul>");
         }
     }
 }
 
-void convert_page(const json::Node& item, const json::Node* prev_page, const json::Node* next_page) {
-    String rel_name = item.get("path").text();
-    String markdown_path = join_path(docs_folder, rel_name);
-    if (Filesystem::is_dir(markdown_path)) {
-        rel_name = join_path(rel_name, "index");
-        markdown_path = join_path(markdown_path, "index.md");
+void convertPage(const json::Node& item, const json::Node* prevPage, const json::Node* nextPage) {
+    String relName = item.get("path").text();
+    String markdownPath = joinPath(docsFolder, relName);
+    if (Filesystem::isDir(markdownPath)) {
+        relName = joinPath(relName, "index");
+        markdownPath = joinPath(markdownPath, "index.md");
     } else {
-        markdown_path += ".md";
+        markdownPath += ".md";
     }
-    String markdown = Filesystem::load_text_autodetect(markdown_path);
+    String markdown = Filesystem::loadTextAutodetect(markdownPath);
     ViewStream in{markdown};
     MemStream mem;
-    parse_markdown(mem, in);
-    String article_content = mem.move_to_string();
-    String page_title = item.get("title").text();
+    parseMarkdown(mem, in);
+    String articleContent = mem.moveToString();
+    String pageTitle = item.get("title").text();
 
     // Generate prev/next navigation
-    String prev_link, next_link;
-    if (prev_page) {
-        prev_link = String::format("<a href=\"/docs/{}\"><span class=\"nav-button\">&#9664;&nbsp; {&}</span></a>",
-                                   prev_page->get("path").text(), prev_page->get("title").text());
+    String prevLink, nextLink;
+    if (prevPage) {
+        prevLink = String::format("<a href=\"/docs/{}\"><span class=\"nav-button\">&#9664;&nbsp; {&}</span></a>",
+                                  prevPage->get("path").text(), prevPage->get("title").text());
     }
-    if (next_page) {
-        next_link = String::format("<a href=\"/docs/{}\"><span class=\"nav-button right\">{&}&nbsp; &#9654;</span></a>",
-                                   next_page->get("path").text(), next_page->get("title").text());
+    if (nextPage) {
+        nextLink = String::format("<a href=\"/docs/{}\"><span class=\"nav-button right\">{&}&nbsp; &#9654;</span></a>",
+                                  nextPage->get("path").text(), nextPage->get("title").text());
     }
-    String nav_html = String::format("<div class=\"page-nav\">{}{}</div>", prev_link, next_link);
+    String navHtml = String::format("<div class=\"page-nav\">{}{}</div>", prevLink, nextLink);
 
     // Write content-only file for AJAX loading
-    String ajax_content = String::format("{} :: Plywood C++ Base Library\n{}{}", page_title, article_content, nav_html);
-    String ajax_path = join_path(out_folder, "content/docs", rel_name + ".html");
-    Filesystem::make_dirs(split_path(ajax_path).directory);
-    Filesystem::save_text(ajax_path, ajax_content, server_text_format);
+    String ajaxContent = String::format("{} :: Plywood C++ Base Library\n{}{}", pageTitle, articleContent, navHtml);
+    String ajaxPath = joinPath(outFolder, "content/docs", relName + ".html");
+    Filesystem::makeDirs(splitPath(ajaxPath).directory);
+    Filesystem::saveText(ajaxPath, ajaxContent, serverTextFormat);
 }
 
-json::Node parse_json(StringView path) {
-    String src = Filesystem::load_text_autodetect(path);
+json::Node parseJson(StringView path) {
+    String src = Filesystem::loadTextAutodetect(path);
     return json::Parser{}.parse(path, src).root;
 }
 
-void generate_whole_site() {
-    publish_key = Random{}.generate_u32(); // Prevent browsers from caching old stylesheets
+void generateWholeSite() {
+    publishKey = Random{}.generate_u32(); // Prevent browsers from caching old stylesheets
 
-    Filesystem::make_dirs(join_path(out_folder, "content"));
-    Filesystem::make_dirs(join_path(out_folder, "static"));
+    Filesystem::makeDirs(joinPath(outFolder, "content"));
+    Filesystem::makeDirs(joinPath(outFolder, "static"));
 
     // Copy front page to content/index.html.
-    String front_page = Filesystem::load_text(join_path(source_folder, "index.html"));
-    front_page = front_page.replace("/static/style.css", String::format("/static/style.css?key={}", publish_key));
-    Filesystem::save_text(join_path(out_folder, "content/index.html"), front_page, server_text_format);
+    String frontPage = Filesystem::loadText(joinPath(sourceFolder, "index.html"));
+    frontPage = frontPage.replace("/static/style.css", String::format("/static/style.css?key={}", publishKey));
+    Filesystem::saveText(joinPath(outFolder, "content/index.html"), frontPage, serverTextFormat);
 
     // Copy static files to static/.
-    for (const DirectoryEntry& entry : Filesystem::list_dir(join_path(source_folder, "static"))) {
-        if (entry.is_file()) {
-            String src_path = join_path(source_folder, "static", entry.name);
-            String dst_path = join_path(out_folder, "static", entry.name);
-            if (entry.name.ends_with(".css") || entry.name.ends_with(".js") || entry.name.ends_with(".html")) {
-                String text = Filesystem::load_text_autodetect(src_path);
-                Filesystem::save_text(dst_path, text, server_text_format);
+    for (const DirectoryEntry& entry : Filesystem::listDir(joinPath(sourceFolder, "static"))) {
+        if (entry.isFile()) {
+            String srcPath = joinPath(sourceFolder, "static", entry.name);
+            String dstPath = joinPath(outFolder, "static", entry.name);
+            if (entry.name.endsWith(".css") || entry.name.endsWith(".js") || entry.name.endsWith(".html")) {
+                String text = Filesystem::loadTextAutodetect(srcPath);
+                Filesystem::saveText(dstPath, text, serverTextFormat);
             } else {
-                Filesystem::copy_file(src_path, dst_path);
+                Filesystem::copyFile(srcPath, dstPath);
             }
         }
     }
 
     // Copy docs template to content/.
-    String template_text = Filesystem::load_text_autodetect(join_path(source_folder, "docs-template.html"));
-    Filesystem::save_text(join_path(out_folder, "content/docs-template.html"), template_text, server_text_format);
+    String templateText = Filesystem::loadTextAutodetect(joinPath(sourceFolder, "docs-template.html"));
+    Filesystem::saveText(joinPath(outFolder, "content/docs-template.html"), templateText, serverTextFormat);
 
     // Parse contents.json and generate table of contents HTML.
-    contents = parse_json(join_path(docs_folder, "contents.json"));
-    MemStream toc_stream;
-    generate_table_of_contents_html(toc_stream, contents);
-    Filesystem::make_dirs(join_path(out_folder, "content/docs"));
-    Filesystem::save_text(join_path(out_folder, "content/toc.html"), toc_stream.move_to_string(), server_text_format);
+    contents = parseJson(joinPath(docsFolder, "contents.json"));
+    MemStream tocStream;
+    generateTableOfContentsHtml(tocStream, contents);
+    Filesystem::makeDirs(joinPath(outFolder, "content/docs"));
+    Filesystem::saveText(joinPath(outFolder, "content/toc.html"), tocStream.moveToString(), serverTextFormat);
 
     // Traverse contents.json and generate pages in content/docs/.
     Array<const json::Node*> pages;
-    flatten_pages(pages, contents);
-    for (u32 i = 0; i < pages.num_items(); i++) {
-        const json::Node* prev_page = (i > 0) ? pages[i - 1] : nullptr;
-        const json::Node* next_page = (i + 1 < pages.num_items()) ? pages[i + 1] : nullptr;
-        convert_page(*pages[i], prev_page, next_page);
+    flattenPages(pages, contents);
+    for (u32 i = 0; i < pages.numItems(); i++) {
+        const json::Node* prevPage = (i > 0) ? pages[i - 1] : nullptr;
+        const json::Node* nextPage = (i + 1 < pages.numItems()) ? pages[i + 1] : nullptr;
+        convertPage(*pages[i], prevPage, nextPage);
     }
 }
 
@@ -424,51 +424,51 @@ int main(int argc, const char* argv[]) {
 #endif
 
     // Check for -watch argument
-    bool watch_mode = false;
+    bool watchMode = false;
     for (int i = 1; i < argc; i++) {
         if (StringView{argv[i]} == "-watch") {
-            watch_mode = true;
+            watchMode = true;
             break;
         }
     }
 
-    generate_whole_site();
+    generateWholeSite();
 
-    if (watch_mode) {
+    if (watchMode) {
 #if PLY_WITH_DIRECTORY_WATCHER
-        get_stdout().write("Watching for changes...\n");
+        getStdout().write("Watching for changes...\n");
 
         Mutex mutex;
         ConditionVariable cond;
         Atomic<u32> changed = 0;
 
-        auto on_change = [&](StringView path, bool must_recurse) {
-            if (split_path_full(path)[0] != "build") {
+        auto onChange = [&](StringView path, bool mustRecurse) {
+            if (splitPathFull(path)[0] != "build") {
                 LockGuard<Mutex> lock{mutex};
-                changed.store_release(1);
-                cond.wake_one();
+                changed.storeRelease(1);
+                cond.wakeOne();
             }
         };
 
-        DirectoryWatcher source_watcher{source_folder, on_change};
-        DirectoryWatcher docs_watcher{docs_folder, on_change};
+        DirectoryWatcher sourceWatcher{sourceFolder, onChange};
+        DirectoryWatcher docsWatcher{docsFolder, onChange};
 
         for (;;) {
             {
                 LockGuard<Mutex> lock{mutex};
-                while (!changed.load_acquire()) {
+                while (!changed.loadAcquire()) {
                     cond.wait(lock);
                 }
             }
 
-            get_stdout().write("Change detected, regenerating...\n");
-            sleep_millis(100);
-            changed.store_release(0);
-            generate_whole_site();
-            get_stdout().write("Done.\n");
+            getStdout().write("Change detected, regenerating...\n");
+            sleepMillis(100);
+            changed.storeRelease(0);
+            generateWholeSite();
+            getStdout().write("Done.\n");
         }
 #else
-        get_stdout().write("-watch is not supported on this platform.");
+        getStdout().write("-watch is not supported on this platform.");
 #endif
     }
 

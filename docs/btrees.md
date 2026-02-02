@@ -6,34 +6,34 @@ A `BTree` is a collection of items that supports fast lookup using a key type th
 
 `BTree` objects are movable, copyable and construct to an empty collection by default. They provide the following member functions:
 
-{api_summary class=BTree}
+{apiSummary class=BTree}
 -- Additional Constructors
 BTree(std::initializer_list<Item> items)
 -- Accessing Items
-bool find(const Key& desired_key) const
-ConstIterator find_earliest(const Key& desired_key, FindType find_type) const
+bool find(const Key& desiredKey) const
+ConstIterator findEarliest(const Key& desiredKey, FindType findType) const
 ConstIterator begin() const
 ConstIterator end() const
 -- Modifying the B-Tree
 void clear()
-void insert(Arg_ item_to_insert)
-void insert(Iterator* insert_pos, Arg_  item_to_insert)
-bool erase(const Key& key_to_erase)
-void erase(Iterator erase_pos)
-{/api_summary}
+void insert(Arg_ itemToInsert)
+void insert(Iterator* insertPos, Arg_  itemToInsert)
+bool erase(const Key& keyToErase)
+void erase(Iterator erasePos)
+{/apiSummary}
 
 A type is *sortable* if it can be compared using the `<` operator. Sortable item types can be used directly as the item type.
 
     BTree<u32> tree = {4, 5, 6};
     PLY_ASSERT(tree.find(4));  // OK
 
-Otherwise, the item type must implement a `get_lookup_key` member function. The return type of `get_lookup_key` determines the key type.
+Otherwise, the item type must implement a `getLookupKey` member function. The return type of `getLookupKey` determines the key type.
 
     struct CustomItem {
         String key;
         u32 value;
 
-        StringView get_lookup_key() const {
+        StringView getLookupKey() const {
             return this->key;
         }
     };
@@ -49,7 +49,7 @@ The items in a `BTree` are always kept in sorted order.
 
     BTree<u32> tree = {7, 5, 6, 4};
     for (u32 item : tree) {
-        get_stdout().format("{}\n", item);
+        getStdout().format("{}\n", item);
     }
 
 {output}
@@ -61,21 +61,21 @@ The items in a `BTree` are always kept in sorted order.
 
 ### Additional Constructors
 
-{api_descriptions class=BTree}
+{apiDescriptions class=BTree}
 BTree(std::initializer_list<Item> items)
 --
 Constructs a B-tree from a braced initializer list.
-{/api_descriptions}
+{/apiDescriptions}
 
 ### Accessing Items
 
-{api_descriptions class=BTree}
-bool find(const Key& desired_key) const
+{apiDescriptions class=BTree}
+bool find(const Key& desiredKey) const
 --
 Returns `true` if an item with the given key exists in the tree.
 
 >>
-ConstIterator find_earliest(const Key& desired_key, FindType find_type) const
+ConstIterator findEarliest(const Key& desiredKey, FindType findType) const
 --
 Finds the first item matching the given criteria. Use `FindGreaterThan` or `FindGreaterThanOrEqual` to specify the comparison.
 
@@ -84,32 +84,32 @@ ConstIterator begin() const
 ConstIterator end() const
 --
 Returns iterators for range-based for loops. Items are yielded in sorted order.
-{/api_descriptions}
+{/apiDescriptions}
 
 ### Modifying the B-Tree
 
-{api_descriptions class=BTree}
+{apiDescriptions class=BTree}
 void clear()
 --
 Removes all items from the tree.
 
 >>
-void insert(Arg_ item_to_insert)
+void insert(Arg_ itemToInsert)
 --
 Inserts an item into the tree. The tree remains sorted after insertion.
 
 >>
-void insert(Iterator* insert_pos, Arg_ item_to_insert)
+void insert(Iterator* insertPos, Arg_ itemToInsert)
 --
 Inserts an item at a specific position. The caller must ensure the position maintains sorted order.
 
 >>
-bool erase(const Key& key_to_erase)
+bool erase(const Key& keyToErase)
 --
 Removes the item with the given key. Returns `true` if an item was removed.
 
 >>
-void erase(Iterator erase_pos)
+void erase(Iterator erasePos)
 --
 Removes the item at the given iterator position.
-{/api_descriptions}
+{/apiDescriptions}

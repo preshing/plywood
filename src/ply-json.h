@@ -32,42 +32,42 @@ struct Node {
         Map<String, Node> items;
     };
 
-    u32 file_ofs = 0;
+    u32 fileOfs = 0;
     Variant<Bool, Text, Array, Object> var;
 
     Node() {
     }
-    Node(const Bool& b, u32 file_ofs = 0) : file_ofs{file_ofs}, var{b} {
+    Node(const Bool& b, u32 fileOfs = 0) : fileOfs{fileOfs}, var{b} {
     }
-    Node(Text&& text, u32 file_ofs = 0) : file_ofs{file_ofs}, var{Text{std::move(text)}} {
+    Node(Text&& text, u32 fileOfs = 0) : fileOfs{fileOfs}, var{Text{std::move(text)}} {
     }
-    Node(Array&& arr, u32 file_ofs = 0) : file_ofs{file_ofs}, var{std::move(arr)} {
+    Node(Array&& arr, u32 fileOfs = 0) : fileOfs{fileOfs}, var{std::move(arr)} {
     }
-    Node(Object&& obj, u32 file_ofs = 0) : file_ofs{file_ofs}, var{std::move(obj)} {
+    Node(Object&& obj, u32 fileOfs = 0) : fileOfs{fileOfs}, var{std::move(obj)} {
     }
 
     static Node InvalidNode;
     static Object EmptyObject;
 
-    bool is_valid() const {
-        return !this->var.is_empty();
+    bool isValid() const {
+        return !this->var.isEmpty();
     }
 
     //-----------------------------------------------------------
     // Bool
     //-----------------------------------------------------------
 
-    bool is_bool() const {
+    bool isBool() const {
         return this->var.is<Bool>();
     }
 
-    bool get_bool() const {
+    bool getBool() const {
         if (const Bool* b = this->var.as<Bool>())
             return b->value;
         return false;
     }
 
-    void set_bool(bool value) {
+    void setBool(bool value) {
         this->var = Bool{value};
     }
 
@@ -75,7 +75,7 @@ struct Node {
     // Text
     //-----------------------------------------------------------
 
-    bool is_text() const {
+    bool isText() const {
         return this->var.is<Text>();
     }
 
@@ -85,7 +85,7 @@ struct Node {
         return {};
     }
 
-    void set_text(String&& text) {
+    void setText(String&& text) {
         this->var = Text{std::move(text)};
     }
 
@@ -93,13 +93,13 @@ struct Node {
     // Array
     //-----------------------------------------------------------
 
-    bool is_array() const {
+    bool isArray() const {
         return this->var.is<Array>();
     }
 
     Node& get(u32 i) {
         if (Array* arr = this->var.as<Array>()) {
-            if (i < arr->items.num_items())
+            if (i < arr->items.numItems())
                 return arr->items[i];
         }
         return InvalidNode;
@@ -109,7 +109,7 @@ struct Node {
         return const_cast<Node*>(this)->get(i);
     }
 
-    ArrayView<const Node> array_view() const {
+    ArrayView<const Node> arrayView() const {
         if (const Array* arr = this->var.as<Array>())
             return arr->items;
         return {};
@@ -125,7 +125,7 @@ struct Node {
     // Object
     //-----------------------------------------------------------
 
-    bool is_object() const {
+    bool isObject() const {
         return this->var.is<Object>();
     }
 
@@ -163,26 +163,26 @@ struct ParseError {
             Duplicate,
             Array,
         };
-        u32 file_ofs;
+        u32 fileOfs;
         Type type;
         StringView name;
         u32 index;
 
-        static Scope object(u32 file_ofs) {
-            return {file_ofs, Object, {}, 0};
+        static Scope object(u32 fileOfs) {
+            return {fileOfs, Object, {}, 0};
         }
-        static Scope property(u32 file_ofs, StringView name) {
-            return {file_ofs, Property, name, 0};
+        static Scope property(u32 fileOfs, StringView name) {
+            return {fileOfs, Property, name, 0};
         }
-        static Scope duplicate(u32 file_ofs) {
-            return {file_ofs, Duplicate, {}, 0};
+        static Scope duplicate(u32 fileOfs) {
+            return {fileOfs, Duplicate, {}, 0};
         }
-        static Scope array(u32 file_ofs, u32 index) {
-            return {file_ofs, Array, {}, index};
+        static Scope array(u32 fileOfs, u32 index) {
+            return {fileOfs, Array, {}, index};
         }
     };
 
-    u32 file_ofs;
+    u32 fileOfs;
     String message;
     const Array<Scope>& context;
 };
@@ -206,39 +206,39 @@ private:
             EndOfFile,
         };
         Type type = Invalid;
-        u32 file_ofs = 0;
+        u32 fileOfs = 0;
         String text;
 
-        bool is_valid() const {
+        bool isValid() const {
             return type != Type::Invalid;
         }
     };
 
-    Functor<void(const ParseError& err)> error_callback;
-    TokenLocationMap token_loc_map;
-    bool any_error_ = false;
-    StringView src_view;
-    u32 read_ofs = 0;
-    s32 next_unit = 0;
-    u32 tab_size = 4;
-    Token push_back_token;
+    Functor<void(const ParseError& err)> errorCallback;
+    TokenLocationMap tokenLocMap;
+    bool anyError_ = false;
+    StringView srcView;
+    u32 readOfs = 0;
+    s32 nextUnit = 0;
+    u32 tabSize = 4;
+    Token pushBackToken;
     Array<ParseError::Scope> context;
 
-    void push_back(Token&& token) {
-        push_back_token = std::move(token);
+    void pushBack(Token&& token) {
+        pushBackToken = std::move(token);
     }
 
     struct ScopeHandler {
         Parser& parser;
         u32 index;
 
-        ScopeHandler(Parser& parser, ParseError::Scope&& scope) : parser{parser}, index{parser.context.num_items()} {
+        ScopeHandler(Parser& parser, ParseError::Scope&& scope) : parser{parser}, index{parser.context.numItems()} {
             parser.context.append(std::move(scope));
         }
         ~ScopeHandler() {
             // parser.context can be empty when Parse_Error is thrown
-            if (!parser.context.is_empty()) {
-                PLY_ASSERT(parser.context.num_items() == index + 1);
+            if (!parser.context.isEmpty()) {
+                PLY_ASSERT(parser.context.numItems() == index + 1);
                 parser.context.pop();
             }
         }
@@ -247,38 +247,38 @@ private:
         }
     };
 
-    void error(u32 file_ofs, String&& message);
-    void advance_char();
-    Token read_plain_token(Token::Type type);
-    bool read_escaped_hex(Stream& out, u32 escape_file_ofs);
-    Token read_quoted_string();
-    Token read_literal();
-    Token read_token(bool tokenize_new_line = false);
-    static String to_string(const Token& token);
-    static String to_string(const Node& node);
-    Node read_object(const Token& start_token);
-    Node read_array(const Token& start_token);
-    Node read_expression(Token&& first_token, const Token* after_token = nullptr);
+    void error(u32 fileOfs, String&& message);
+    void advanceChar();
+    Token readPlainToken(Token::Type type);
+    bool readEscapedHex(Stream& out, u32 escapeFileOfs);
+    Token readQuotedString();
+    Token readLiteral();
+    Token readToken(bool tokenizeNewLine = false);
+    static String toString(const Token& token);
+    static String toString(const Node& node);
+    Node readObject(const Token& startToken);
+    Node readArray(const Token& startToken);
+    Node readExpression(Token&& firstToken, const Token* afterToken = nullptr);
 
 public:
-    void set_tab_size(int tab_size_) {
-        tab_size = tab_size_;
+    void setTabSize(int tabSize) {
+        this->tabSize = tabSize;
     }
-    void set_error_callback(Functor<void(const ParseError& err)>&& cb) {
-        this->error_callback = std::move(cb);
+    void setErrorCallback(Functor<void(const ParseError& err)>&& cb) {
+        this->errorCallback = std::move(cb);
     }
-    bool any_error() const {
-        return this->any_error_;
+    bool anyError() const {
+        return this->anyError_;
     }
 
     struct Result {
         Node root;
-        TokenLocationMap token_loc_map;
+        TokenLocationMap tokenLocMap;
     };
 
-    void dump_error(const ParseError& error, Stream& out) const;
+    void dumpError(const ParseError& error, Stream& out) const;
 
-    Result parse(StringView path, StringView src_view_);
+    Result parse(StringView path, StringView srcView);
 };
 
 //  ▄▄    ▄▄        ▄▄  ▄▄
@@ -287,8 +287,8 @@ public:
 //   ██▀▀██  ██     ██  ▀█▄▄ ▀█▄▄▄
 //
 
-void write(Stream& out, const Node& a_node);
-String to_string(const Node& a_node);
+void write(Stream& out, const Node& node);
+String toString(const Node& node);
 
 } // namespace json
 } // namespace ply

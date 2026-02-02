@@ -6,7 +6,7 @@
 
 `Owned` is movable but not copyable.
 
-{api_summary class=Owned}
+{apiSummary class=Owned}
 -- Additional Constructors
 Owned(Item* ptr)
 template <typename Derived> Owned(Owned<Derived>&& other)
@@ -20,9 +20,9 @@ Item* operator->() const
 -- Modification
 void clear()
 Item* release()
-{/api_summary}
+{/apiSummary}
 
-{api_descriptions class=Owned}
+{apiDescriptions class=Owned}
 Owned(Item* ptr)
 --
 Takes ownership of the given pointer. The object will be destroyed when this `Owned` is destroyed.
@@ -71,13 +71,13 @@ Destroys the owned object and resets to empty.
 Item* release()
 --
 Releases ownership and returns the raw pointer. The caller becomes responsible for destroying the object.
-{/api_descriptions}
+{/apiDescriptions}
 
 ## `Reference`
 
 `Reference` is a reference-counting smart pointer. Multiple `Reference` objects can share ownership of the same object.
 
-{api_summary class=Reference}
+{apiSummary class=Reference}
 -- Constructors
 Reference()
 Reference(Item* ptr)
@@ -94,13 +94,13 @@ explicit operator bool() const
 -- Modification
 void clear()
 Item* release()
-{/api_summary}
+{/apiSummary}
 
 The object is automatically destroyed when the last `Reference` to it is destroyed.
 
 It's thread-safe when the target `Item` type derives from `RefCounted`.
 
-{api_descriptions class=Reference}
+{apiDescriptions class=Reference}
 Reference()
 --
 Constructs an empty reference.
@@ -159,30 +159,30 @@ Releases the reference, decrementing the object's reference count. May destroy t
 item* release()
 --
 Releases ownership without decrementing the reference count. The caller becomes responsible for the reference.
-{/api_descriptions}
+{/apiDescriptions}
 
 ## `RefCounted`
 
 `RefCounted` is a base class that provides reference counting functionality. Derive your class from `RefCounted` to use it with `Reference` smart pointers.
 
-{api_summary class=RefCounted}
-void inc_ref_count()
-void dec_ref_count()
-s32 get_ref_count() const
-{/api_summary}
+{apiSummary class=RefCounted}
+void incRefCount()
+void decRefCount()
+s32 getRefCount() const
+{/apiSummary}
 
-{api_descriptions class=RefCounted}
-void inc_ref_count()
+{apiDescriptions class=RefCounted}
+void incRefCount()
 --
 Increments the reference count. Called automatically by `Reference` when a new reference is created.
 
 >>
-void dec_ref_count()
+void decRefCount()
 --
 Decrements the reference count. If the count reaches zero, the object is destroyed. Called automatically by `Reference` when a reference is released.
 
 >>
-s32 get_ref_count() const
+s32 getRefCount() const
 --
 Returns the current reference count. Useful for debugging and assertions.
-{/api_descriptions}
+{/apiDescriptions}

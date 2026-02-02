@@ -2,7 +2,7 @@
        ____
       ╱   ╱╲    Plywood C++ Base Library
      ╱___╱╭╮╲   https://plywood.dev/
-      └──┴┴┴┘   
+      └──┴┴┴┘
 ========================================================*/
 
 #pragma once
@@ -27,86 +27,86 @@ struct BTree {
 
     struct Node {
         InnerNode* parent = nullptr;
-        Node* left_sibling = nullptr;
-        Node* right_sibling = nullptr;
-        Key max_key;
-        bool is_leaf = true;
+        Node* leftSibling = nullptr;
+        Node* rightSibling = nullptr;
+        Key maxKey;
+        bool isLeaf = true;
     };
 
     struct InnerNode : Node {
-        u16 num_children;
-        Key child_keys[MaxItemsPerNode];
+        u16 numChildren;
+        Key childKeys[MaxItemsPerNode];
         Node* children[MaxItemsPerNode];
 
-        const Key& get_min_key() const {
-            PLY_ASSERT(this->num_children > 0 && this->num_children <= MaxItemsPerNode);
-            return this->child_keys[0];
+        const Key& getMinKey() const {
+            PLY_ASSERT(this->numChildren > 0 && this->numChildren <= MaxItemsPerNode);
+            return this->childKeys[0];
         }
-        const Key& get_internal_max_key() const {
-            PLY_ASSERT(this->num_children > 0 && this->num_children <= MaxItemsPerNode);
-            return this->children[this->num_children - 1]->max_key;
+        const Key& getInternalMaxKey() const {
+            PLY_ASSERT(this->numChildren > 0 && this->numChildren <= MaxItemsPerNode);
+            return this->children[this->numChildren - 1]->maxKey;
         }
     };
 
     struct LeafNode : Node {
-        u16 num_items;
+        u16 numItems;
         Item items[MaxItemsPerNode];
 
-        auto get_min_key() const {
-            PLY_ASSERT(this->num_items > 0 && this->num_items <= MaxItemsPerNode);
-            return get_any_lookup_key(this->items[0]);
+        auto getMinKey() const {
+            PLY_ASSERT(this->numItems > 0 && this->numItems <= MaxItemsPerNode);
+            return getAnyLookupKey(this->items[0]);
         }
-        auto get_internal_max_key() const {
-            PLY_ASSERT(this->num_items > 0 && this->num_items <= MaxItemsPerNode);
-            return get_any_lookup_key(this->items[this->num_items - 1]);
+        auto getInternalMaxKey() const {
+            PLY_ASSERT(this->numItems > 0 && this->numItems <= MaxItemsPerNode);
+            return getAnyLookupKey(this->items[this->numItems - 1]);
         }
     };
 
     Node* root = nullptr;
-    u32 num_items = 0;
+    u32 numItems = 0;
 
     struct Iterator {
         BTree* btree = nullptr;
-        LeafNode* leaf_node = nullptr;
-        u32 item_index = 0;
+        LeafNode* leafNode = nullptr;
+        u32 itemIndex = 0;
 
         operator bool() const {
-            return this->leaf_node;
+            return this->leafNode;
         }
         Item& operator*() const {
-            PLY_ASSERT(this->leaf_node);
-            return this->leaf_node->items[this->item_index];
+            PLY_ASSERT(this->leafNode);
+            return this->leafNode->items[this->itemIndex];
         }
         Item* operator->() const {
-            PLY_ASSERT(this->leaf_node);
-            return &this->leaf_node->items[this->item_index];
+            PLY_ASSERT(this->leafNode);
+            return &this->leafNode->items[this->itemIndex];
         }
         void operator++(int) {
-            this->item_index++;
-            if (this->item_index >= this->leaf_node->num_items) {
-                this->leaf_node = static_cast<LeafNode*>(this->leaf_node->right_sibling);
-                PLY_ASSERT(!this->leaf_node || this->leaf_node->is_leaf);
-                this->item_index = 0;
+            this->itemIndex++;
+            if (this->itemIndex >= this->leafNode->numItems) {
+                this->leafNode = static_cast<LeafNode*>(this->leafNode->rightSibling);
+                PLY_ASSERT(!this->leafNode || this->leafNode->isLeaf);
+                this->itemIndex = 0;
             }
         }
         void operator++() {
             (*this)++;
         }
         void operator--(int) {
-            this->item_index--;
+            this->itemIndex--;
             // Test for wrap-around.
-            if (this->item_index > MaxItemsPerNode) {
-                if (!this->leaf_node) {
-                    *this = this->btree->get_last_item();
+            if (this->itemIndex > MaxItemsPerNode) {
+                if (!this->leafNode) {
+                    *this = this->btree->getLastItem();
                 } else {
-                    this->leaf_node = static_cast<LeafNode*>(this->leaf_node->left_sibling);
-                    if (this->leaf_node) {
-                        PLY_ASSERT(leaf_node->is_leaf);
-                        PLY_ASSERT((leaf_node->num_items >= MaxItemsPerNode / 2) &&
-                                   (leaf_node->num_items <= MaxItemsPerNode));
-                        this->item_index = this->leaf_node->num_items - 1;
+                    this->leafNode = static_cast<LeafNode*>(this->leafNode->leftSibling);
+                    if (this->leafNode) {
+                        PLY_ASSERT(leafNode->isLeaf);
+                        PLY_ASSERT((leafNode->numItems >= MaxItemsPerNode / 2) &&
+                                   (leafNode->numItems <= MaxItemsPerNode));
+                        this->itemIndex = this->leafNode->numItems - 1;
                     } else {
-                        this->item_index = 0;
+                        this->itemIndex = 0;
                     }
                 }
             }
@@ -122,409 +122,407 @@ struct BTree {
         }
 
         const Item& operator*() const {
-            PLY_ASSERT(this->leaf_node);
-            return this->leaf_node->items[this->item_index];
+            PLY_ASSERT(this->leafNode);
+            return this->leafNode->items[this->itemIndex];
         }
         const Item* operator->() const {
-            PLY_ASSERT(this->leaf_node);
-            return &this->leaf_node->items[this->item_index];
+            PLY_ASSERT(this->leafNode);
+            return &this->leafNode->items[this->itemIndex];
         }
     };
 
 private:
     //------------------------------------------------
-    PLY_NO_INLINE static void on_min_key_changed(Node* node) {
+    PLY_NO_INLINE static void onMinKeyChanged(Node* node) {
         PLY_ASSERT(node);
         if (node->parent) {
             // Find the index of this node within its parent.
-            PLY_ASSERT(node->parent->num_children > 0);
-            u32 index_in_parent = 0;
-            for (; index_in_parent < node->parent->num_children; index_in_parent++) {
-                if (node->parent->children[index_in_parent] == node)
+            PLY_ASSERT(node->parent->numChildren > 0);
+            u32 indexInParent = 0;
+            for (; indexInParent < node->parent->numChildren; indexInParent++) {
+                if (node->parent->children[indexInParent] == node)
                     break;
             }
-            PLY_ASSERT(index_in_parent < node->parent->num_children); // Must be found.
+            PLY_ASSERT(indexInParent < node->parent->numChildren); // Must be found.
 
             // Update the corresponding child key.
-            if (node->is_leaf) {
-                node->parent->child_keys[index_in_parent] = static_cast<LeafNode*>(node)->get_min_key();
+            if (node->isLeaf) {
+                node->parent->childKeys[indexInParent] = static_cast<LeafNode*>(node)->getMinKey();
             } else {
-                node->parent->child_keys[index_in_parent] = static_cast<InnerNode*>(node)->get_min_key();
+                node->parent->childKeys[indexInParent] = static_cast<InnerNode*>(node)->getMinKey();
             }
 
-            if (index_in_parent == 0) {
-                on_min_key_changed(node->parent);
+            if (indexInParent == 0) {
+                onMinKeyChanged(node->parent);
             }
         }
     }
 
     //------------------------------------------------
-    PLY_NO_INLINE static void on_max_key_changed(Node* node) {
+    PLY_NO_INLINE static void onMaxKeyChanged(Node* node) {
         PLY_ASSERT(node);
-        if (node->is_leaf) {
-            node->max_key = static_cast<LeafNode*>(node)->get_internal_max_key();
+        if (node->isLeaf) {
+            node->maxKey = static_cast<LeafNode*>(node)->getInternalMaxKey();
         } else {
-            node->max_key = static_cast<InnerNode*>(node)->get_internal_max_key();
+            node->maxKey = static_cast<InnerNode*>(node)->getInternalMaxKey();
         }
         if (node->parent) {
-            PLY_ASSERT(node->parent->num_children > 0);
-            if (node->parent->children[node->parent->num_children - 1] == node) {
-                on_max_key_changed(node->parent);
+            PLY_ASSERT(node->parent->numChildren > 0);
+            if (node->parent->children[node->parent->numChildren - 1] == node) {
+                onMaxKeyChanged(node->parent);
             }
         }
     }
 
     //------------------------------------------------
-    PLY_NO_INLINE void insert_right_sibling(Node* existing_node, Node* node_to_insert) {
-        // Add node_to_insert to the linked list of siblings, just to the right of existing_node.
-        node_to_insert->right_sibling = existing_node->right_sibling;
-        if (node_to_insert->right_sibling) {
-            node_to_insert->right_sibling->left_sibling = node_to_insert;
+    PLY_NO_INLINE void insertRightSibling(Node* existingNode, Node* nodeToInsert) {
+        // Add nodeToInsert to the linked list of siblings, just to the right of existingNode.
+        nodeToInsert->rightSibling = existingNode->rightSibling;
+        if (nodeToInsert->rightSibling) {
+            nodeToInsert->rightSibling->leftSibling = nodeToInsert;
         }
-        node_to_insert->left_sibling = existing_node;
-        existing_node->right_sibling = node_to_insert;
+        nodeToInsert->leftSibling = existingNode;
+        existingNode->rightSibling = nodeToInsert;
 
-        // Locate existing_node inside its parent.
-        InnerNode* existing_parent = existing_node->parent;
-        u32 insert_index = 0;
-        if (existing_parent) {
-            for (; insert_index < existing_parent->num_children; insert_index++) {
-                if (existing_parent->children[insert_index] == existing_node)
+        // Locate existingNode inside its parent.
+        InnerNode* existingParent = existingNode->parent;
+        u32 insertIndex = 0;
+        if (existingParent) {
+            for (; insertIndex < existingParent->numChildren; insertIndex++) {
+                if (existingParent->children[insertIndex] == existingNode)
                     break;
             }
-            // existing_node must have been found.
-            PLY_ASSERT(insert_index < existing_parent->num_children);
+            // existingNode must have been found.
+            PLY_ASSERT(insertIndex < existingParent->numChildren);
             // Increment because we are inserting to the right.
-            insert_index++;
+            insertIndex++;
         } else {
             // There's no parent for this node, which means it's currently the root.
-            // Create new root node and make this node its only child. node_to_insert will
+            // Create new root node and make this node its only child. nodeToInsert will
             // be inserted to its right.
-            PLY_ASSERT(this->root == existing_node);
-            InnerNode* new_root = (InnerNode*) Heap::alloc(sizeof(InnerNode));
-            new (new_root) Node; // Construct base class members only
-            new_root->is_leaf = false;
-            new_root->num_children = 1;
-            if (existing_node->is_leaf) {
-                new (&new_root->child_keys[0]) Key{get_any_lookup_key(static_cast<LeafNode*>(existing_node)->items[0])};
+            PLY_ASSERT(this->root == existingNode);
+            InnerNode* newRoot = (InnerNode*) Heap::alloc(sizeof(InnerNode));
+            new (newRoot) Node; // Construct base class members only
+            newRoot->isLeaf = false;
+            newRoot->numChildren = 1;
+            if (existingNode->isLeaf) {
+                new (&newRoot->childKeys[0]) Key{getAnyLookupKey(static_cast<LeafNode*>(existingNode)->items[0])};
             } else {
-                new (&new_root->child_keys[0]) Key{static_cast<InnerNode*>(existing_node)->child_keys[0]};
+                new (&newRoot->childKeys[0]) Key{static_cast<InnerNode*>(existingNode)->childKeys[0]};
             }
-            new_root->children[0] = existing_node;
-            new_root->max_key = new_root->child_keys[0];
-            existing_node->parent = new_root;
-            this->root = new_root;
-            existing_parent = new_root;
-            insert_index = 1;
+            newRoot->children[0] = existingNode;
+            newRoot->maxKey = newRoot->childKeys[0];
+            existingNode->parent = newRoot;
+            this->root = newRoot;
+            existingParent = newRoot;
+            insertIndex = 1;
         }
 
-        // Set node_to_insert's parent optimistically.
-        node_to_insert->parent = existing_parent;
+        // Set nodeToInsert's parent optimistically.
+        nodeToInsert->parent = existingParent;
 
         // If the parent is full, split it in two before inserting.
-        InnerNode* split_parent = nullptr;
-        if (existing_parent->num_children == MaxItemsPerNode) {
-            // Split parent into two nodes. split_parent will be the new sibling to its right.
-            split_parent = (InnerNode*) Heap::alloc(sizeof(InnerNode));
-            new (split_parent) Node; // Construct base class members only.
-            split_parent->is_leaf = false;
-            // Move half of parent's items to split_parent.
-            split_parent->num_children = existing_parent->num_children / 2;
-            existing_parent->num_children -= split_parent->num_children;
-            for (u32 i = 0; i < split_parent->num_children; i++) {
-                Key& key_to_move = existing_parent->child_keys[existing_parent->num_children + i];
-                new (&split_parent->child_keys[i]) Key{std::move(key_to_move)};
-                key_to_move.~Key();
-                split_parent->children[i] = existing_parent->children[existing_parent->num_children + i];
-                split_parent->children[i]->parent = split_parent;
+        InnerNode* splitParent = nullptr;
+        if (existingParent->numChildren == MaxItemsPerNode) {
+            // Split parent into two nodes. splitParent will be the new sibling to its right.
+            splitParent = (InnerNode*) Heap::alloc(sizeof(InnerNode));
+            new (splitParent) Node; // Construct base class members only.
+            splitParent->isLeaf = false;
+            // Move half of parent's items to splitParent.
+            splitParent->numChildren = existingParent->numChildren / 2;
+            existingParent->numChildren -= splitParent->numChildren;
+            for (u32 i = 0; i < splitParent->numChildren; i++) {
+                Key& keyToMove = existingParent->childKeys[existingParent->numChildren + i];
+                new (&splitParent->childKeys[i]) Key{std::move(keyToMove)};
+                keyToMove.~Key();
+                splitParent->children[i] = existingParent->children[existingParent->numChildren + i];
+                splitParent->children[i]->parent = splitParent;
             }
 
             // If out of range...
-            if (insert_index > existing_parent->num_children) {
-                node_to_insert->parent = split_parent;
-                insert_index -= existing_parent->num_children;
+            if (insertIndex > existingParent->numChildren) {
+                nodeToInsert->parent = splitParent;
+                insertIndex -= existingParent->numChildren;
             }
 
             // Update max keys.
-            split_parent->max_key = std::move(existing_parent->max_key);
-            on_max_key_changed(existing_parent);
+            splitParent->maxKey = std::move(existingParent->maxKey);
+            onMaxKeyChanged(existingParent);
         }
 
-        // Insert node_to_insert into its parent at the prescribed index.
-        if (insert_index == node_to_insert->parent->num_children) {
-            if (node_to_insert->is_leaf) {
-                new (&node_to_insert->parent->child_keys[insert_index])
-                    Key{static_cast<LeafNode*>(node_to_insert)->get_min_key()};
+        // Insert nodeToInsert into its parent at the prescribed index.
+        if (insertIndex == nodeToInsert->parent->numChildren) {
+            if (nodeToInsert->isLeaf) {
+                new (&nodeToInsert->parent->childKeys[insertIndex])
+                    Key{static_cast<LeafNode*>(nodeToInsert)->getMinKey()};
             } else {
-                new (&node_to_insert->parent->child_keys[insert_index])
-                    Key{static_cast<InnerNode*>(node_to_insert)->get_min_key()};
+                new (&nodeToInsert->parent->childKeys[insertIndex])
+                    Key{static_cast<InnerNode*>(nodeToInsert)->getMinKey()};
             }
         } else {
-            u32 i = node_to_insert->parent->num_children;
-            new (&node_to_insert->parent->child_keys[i]) Key{std::move(node_to_insert->parent->child_keys[i - 1])};
-            node_to_insert->parent->children[i] = node_to_insert->parent->children[i - 1];
-            for (; i > insert_index; i--) {
-                node_to_insert->parent->child_keys[i] = std::move(node_to_insert->parent->child_keys[i - 1]);
-                node_to_insert->parent->children[i] = node_to_insert->parent->children[i - 1];
+            u32 i = nodeToInsert->parent->numChildren;
+            new (&nodeToInsert->parent->childKeys[i]) Key{std::move(nodeToInsert->parent->childKeys[i - 1])};
+            nodeToInsert->parent->children[i] = nodeToInsert->parent->children[i - 1];
+            for (; i > insertIndex; i--) {
+                nodeToInsert->parent->childKeys[i] = std::move(nodeToInsert->parent->childKeys[i - 1]);
+                nodeToInsert->parent->children[i] = nodeToInsert->parent->children[i - 1];
             }
-            if (node_to_insert->is_leaf) {
-                node_to_insert->parent->child_keys[insert_index] =
-                    static_cast<LeafNode*>(node_to_insert)->get_min_key();
+            if (nodeToInsert->isLeaf) {
+                nodeToInsert->parent->childKeys[insertIndex] = static_cast<LeafNode*>(nodeToInsert)->getMinKey();
             } else {
-                node_to_insert->parent->child_keys[insert_index] =
-                    static_cast<InnerNode*>(node_to_insert)->get_min_key();
+                nodeToInsert->parent->childKeys[insertIndex] = static_cast<InnerNode*>(nodeToInsert)->getMinKey();
             }
         }
-        node_to_insert->parent->children[insert_index] = node_to_insert;
-        node_to_insert->parent->num_children++;
-        PLY_ASSERT(node_to_insert->parent->num_children <= MaxItemsPerNode);
-        if (insert_index == 0) {
-            on_min_key_changed(node_to_insert->parent);
+        nodeToInsert->parent->children[insertIndex] = nodeToInsert;
+        nodeToInsert->parent->numChildren++;
+        PLY_ASSERT(nodeToInsert->parent->numChildren <= MaxItemsPerNode);
+        if (insertIndex == 0) {
+            onMinKeyChanged(nodeToInsert->parent);
         }
-        if (insert_index == (u32) node_to_insert->parent->num_children - 1) {
-            on_max_key_changed(node_to_insert->parent);
+        if (insertIndex == (u32) nodeToInsert->parent->numChildren - 1) {
+            onMaxKeyChanged(nodeToInsert->parent);
         }
 
-        // If the parent was split, insert split_parent into parent's parent.
-        if (split_parent) {
-            this->insert_right_sibling(existing_parent, split_parent);
+        // If the parent was split, insert splitParent into parent's parent.
+        if (splitParent) {
+            this->insertRightSibling(existingParent, splitParent);
         }
     }
 
     //------------------------------------------------
-    PLY_NO_INLINE void insert_internal(Iterator* insert_pos, Item& item_to_insert, bool with_move_semantics) {
-        if (!insert_pos->leaf_node) {
+    PLY_NO_INLINE void insertInternal(Iterator* insertPos, Item& itemToInsert, bool withMoveSemantics) {
+        if (!insertPos->leafNode) {
             // A null iterator means insert at the end of the list.
             if (!this->root) {
                 // It's an empty tree. Create a new Leaf_Node and set it as root.
-                insert_pos->leaf_node = (LeafNode*) Heap::alloc(sizeof(LeafNode));
-                insert_pos->item_index = 0;
+                insertPos->leafNode = (LeafNode*) Heap::alloc(sizeof(LeafNode));
+                insertPos->itemIndex = 0;
                 // Construct base class members only (no Items are constructed).
-                new (insert_pos->leaf_node) Node;
-                insert_pos->leaf_node->num_items = 0;
-                this->root = insert_pos->leaf_node;
+                new (insertPos->leafNode) Node;
+                insertPos->leafNode->numItems = 0;
+                this->root = insertPos->leafNode;
             } else {
                 // Find the actual insert position.
-                *insert_pos = this->get_last_item();
-                insert_pos->item_index++;
+                *insertPos = this->getLastItem();
+                insertPos->itemIndex++;
             }
         }
 
         // If the leaf node is full, split it in two before inserting.
-        if (insert_pos->leaf_node->num_items == MaxItemsPerNode) {
-            LeafNode* leaf_node = insert_pos->leaf_node;
-            u32 N = leaf_node->num_items;
+        if (insertPos->leafNode->numItems == MaxItemsPerNode) {
+            LeafNode* leafNode = insertPos->leafNode;
+            u32 N = leafNode->numItems;
 
-            // Split this leaf node in two. split_node will be the new sibling to its right.
-            LeafNode* split_node = (LeafNode*) Heap::alloc(sizeof(LeafNode));
+            // Split this leaf node in two. splitNode will be the new sibling to its right.
+            LeafNode* splitNode = (LeafNode*) Heap::alloc(sizeof(LeafNode));
             // Construct base class members only (no Items are constructed).
-            new (split_node) Node;
-            split_node->parent = leaf_node->parent;
-            // Move half leaf_node's items to split_node.
-            split_node->num_items = N / 2;
-            N -= split_node->num_items;
-            for (u32 i = 0; i < split_node->num_items; i++) {
-                Item* src_item = &leaf_node->items[N + i];
-                new (&split_node->items[i]) Item{std::move(*src_item)}; // Move to destination.
-                src_item->~Item();                                      // Destruct source item.
+            new (splitNode) Node;
+            splitNode->parent = leafNode->parent;
+            // Move half leafNode's items to splitNode.
+            splitNode->numItems = N / 2;
+            N -= splitNode->numItems;
+            for (u32 i = 0; i < splitNode->numItems; i++) {
+                Item* srcItem = &leafNode->items[N + i];
+                new (&splitNode->items[i]) Item{std::move(*srcItem)}; // Move to destination.
+                srcItem->~Item();                                     // Destruct source item.
             }
-            insert_pos->leaf_node->num_items = N;
+            insertPos->leafNode->numItems = N;
 
             // If the input Iterator no longer refers to a valid Item, modify it to point to the correct Item in
-            // split_node.
-            if (insert_pos->item_index >= N) {
-                insert_pos->leaf_node = split_node;
-                insert_pos->item_index -= N;
+            // splitNode.
+            if (insertPos->itemIndex >= N) {
+                insertPos->leafNode = splitNode;
+                insertPos->itemIndex -= N;
             }
 
             // Update max keys.
-            split_node->max_key = leaf_node->max_key;
-            on_max_key_changed(leaf_node);
+            splitNode->maxKey = leafNode->maxKey;
+            onMaxKeyChanged(leafNode);
 
-            this->insert_right_sibling(leaf_node, split_node);
+            this->insertRightSibling(leafNode, splitNode);
         }
 
         // Insert into the leaf node.
-        LeafNode* leaf_node = insert_pos->leaf_node;
-        u32 N = leaf_node->num_items;
+        LeafNode* leafNode = insertPos->leafNode;
+        u32 N = leafNode->numItems;
         PLY_ASSERT(N < MaxItemsPerNode);
-        PLY_ASSERT(insert_pos->item_index <= N);
-        leaf_node->num_items++;
-        if (insert_pos->item_index == N) {
+        PLY_ASSERT(insertPos->itemIndex <= N);
+        leafNode->numItems++;
+        if (insertPos->itemIndex == N) {
             // It's the last item in the leaf node. Move-construct it directly here.
-            if (with_move_semantics) {
-                new (&leaf_node->items[N]) Item{std::move(item_to_insert)};
+            if (withMoveSemantics) {
+                new (&leafNode->items[N]) Item{std::move(itemToInsert)};
             } else {
-                new (&leaf_node->items[N]) Item{static_cast<const Item&>(item_to_insert)};
+                new (&leafNode->items[N]) Item{static_cast<const Item&>(itemToInsert)};
             }
-            on_max_key_changed(leaf_node);
+            onMaxKeyChanged(leafNode);
         } else {
             // It's not the last item in the leaf node. Move-construct the last item to the right of the insert
             // position.
-            new (&leaf_node->items[N]) Item{std::move(leaf_node->items[N - 1])};
+            new (&leafNode->items[N]) Item{std::move(leafNode->items[N - 1])};
             // Move the items on the right of the insert position to the right.
-            for (u32 i = N - 1; i > insert_pos->item_index; i--) {
-                leaf_node->items[i] = std::move(leaf_node->items[i - 1]);
+            for (u32 i = N - 1; i > insertPos->itemIndex; i--) {
+                leafNode->items[i] = std::move(leafNode->items[i - 1]);
             }
             // Move the new item to the insert position.
-            if (with_move_semantics) {
-                leaf_node->items[insert_pos->item_index] = std::move(item_to_insert);
+            if (withMoveSemantics) {
+                leafNode->items[insertPos->itemIndex] = std::move(itemToInsert);
             } else {
-                leaf_node->items[insert_pos->item_index] = static_cast<const Item&>(item_to_insert);
+                leafNode->items[insertPos->itemIndex] = static_cast<const Item&>(itemToInsert);
             }
         }
 
-        if (insert_pos->item_index == 0) {
-            on_min_key_changed(leaf_node);
+        if (insertPos->itemIndex == 0) {
+            onMinKeyChanged(leafNode);
         }
 
         // Increment the number of items in the tree.
-        this->num_items++;
+        this->numItems++;
 
 #if defined(PLY_WITH_ASSERTS)
         // Validate non-decreasing order to the left of the insert position.
-        if (insert_pos->item_index > 0) {
-            PLY_ASSERT(get_any_lookup_key(leaf_node->items[insert_pos->item_index - 1]) <=
-                       get_any_lookup_key(leaf_node->items[insert_pos->item_index]));
-        } else if (leaf_node->left_sibling) {
-            LeafNode* left_sibling = static_cast<LeafNode*>(leaf_node->left_sibling);
-            PLY_ASSERT(left_sibling->is_leaf);
-            PLY_ASSERT(get_any_lookup_key(left_sibling->items[left_sibling->num_items - 1]) <=
-                       get_any_lookup_key(leaf_node->items[0]));
+        if (insertPos->itemIndex > 0) {
+            PLY_ASSERT(getAnyLookupKey(leafNode->items[insertPos->itemIndex - 1]) <=
+                       getAnyLookupKey(leafNode->items[insertPos->itemIndex]));
+        } else if (leafNode->leftSibling) {
+            LeafNode* leftSibling = static_cast<LeafNode*>(leafNode->leftSibling);
+            PLY_ASSERT(leftSibling->isLeaf);
+            PLY_ASSERT(getAnyLookupKey(leftSibling->items[leftSibling->numItems - 1]) <=
+                       getAnyLookupKey(leafNode->items[0]));
         }
         // Validate non-decreasing order to the right of the insert position.
-        if (insert_pos->item_index + 1 < leaf_node->num_items) {
-            PLY_ASSERT(get_any_lookup_key(leaf_node->items[insert_pos->item_index]) <=
-                       get_any_lookup_key(leaf_node->items[insert_pos->item_index + 1]));
-        } else if (leaf_node->right_sibling) {
-            LeafNode* right_sibling = static_cast<LeafNode*>(leaf_node->right_sibling);
-            PLY_ASSERT(right_sibling->is_leaf);
-            PLY_ASSERT(get_any_lookup_key(leaf_node->items[insert_pos->item_index]) >=
-                       get_any_lookup_key(right_sibling->items[0]));
+        if (insertPos->itemIndex + 1 < leafNode->numItems) {
+            PLY_ASSERT(getAnyLookupKey(leafNode->items[insertPos->itemIndex]) <=
+                       getAnyLookupKey(leafNode->items[insertPos->itemIndex + 1]));
+        } else if (leafNode->rightSibling) {
+            LeafNode* rightSibling = static_cast<LeafNode*>(leafNode->rightSibling);
+            PLY_ASSERT(rightSibling->isLeaf);
+            PLY_ASSERT(getAnyLookupKey(leafNode->items[insertPos->itemIndex]) >=
+                       getAnyLookupKey(rightSibling->items[0]));
         }
 #endif
     }
 
     //------------------------------------------------
-    PLY_NO_INLINE void merge_with_right_sibling(Node* node) {
+    PLY_NO_INLINE void mergeWithRightSibling(Node* node) {
         PLY_ASSERT(node);
-        PLY_ASSERT(node->right_sibling);
+        PLY_ASSERT(node->rightSibling);
 
-        if (node->is_leaf) {
-            LeafNode* leaf_node = static_cast<LeafNode*>(node);
-            LeafNode* right_sibling = static_cast<LeafNode*>(node->right_sibling);
-            u32 N = leaf_node->num_items;
-            for (u32 i = 0; i < right_sibling->num_items; i++) {
-                new (&leaf_node->items[N + i]) Item{std::move(right_sibling->items[i])};
-                right_sibling->items[i].~Item();
+        if (node->isLeaf) {
+            LeafNode* leafNode = static_cast<LeafNode*>(node);
+            LeafNode* rightSibling = static_cast<LeafNode*>(node->rightSibling);
+            u32 N = leafNode->numItems;
+            for (u32 i = 0; i < rightSibling->numItems; i++) {
+                new (&leafNode->items[N + i]) Item{std::move(rightSibling->items[i])};
+                rightSibling->items[i].~Item();
             }
-            leaf_node->num_items += right_sibling->num_items;
+            leafNode->numItems += rightSibling->numItems;
         } else {
-            InnerNode* inner_node = static_cast<InnerNode*>(node);
-            InnerNode* right_sibling = static_cast<InnerNode*>(node->right_sibling);
-            u32 N = inner_node->num_children;
-            for (u32 i = 0; i < right_sibling->num_children; i++) {
-                Key& key_to_move = right_sibling->child_keys[i];
-                inner_node->child_keys[N + i] = std::move(key_to_move);
-                key_to_move.~Key();
-                inner_node->children[N + i] = right_sibling->children[i];
-                inner_node->children[N + i]->parent = inner_node;
+            InnerNode* innerNode = static_cast<InnerNode*>(node);
+            InnerNode* rightSibling = static_cast<InnerNode*>(node->rightSibling);
+            u32 N = innerNode->numChildren;
+            for (u32 i = 0; i < rightSibling->numChildren; i++) {
+                Key& keyToMove = rightSibling->childKeys[i];
+                innerNode->childKeys[N + i] = std::move(keyToMove);
+                keyToMove.~Key();
+                innerNode->children[N + i] = rightSibling->children[i];
+                innerNode->children[N + i]->parent = innerNode;
             }
-            inner_node->num_children += right_sibling->num_children;
+            innerNode->numChildren += rightSibling->numChildren;
         }
-        on_max_key_changed(node);
+        onMaxKeyChanged(node);
 
         // We want to erase the right sibling from its parent.
-        InnerNode* parent = node->right_sibling->parent;
-        InnerNode* parent_left_sibling = static_cast<InnerNode*>(parent->left_sibling);
-        InnerNode* parent_right_sibling = static_cast<InnerNode*>(parent->right_sibling);
+        InnerNode* parent = node->rightSibling->parent;
+        InnerNode* parentLeftSibling = static_cast<InnerNode*>(parent->leftSibling);
+        InnerNode* parentRightSibling = static_cast<InnerNode*>(parent->rightSibling);
 
         // But first, if the parent is only half full, select a strategy to avoid making it any smaller.
-        bool steal_from_left = false;
-        bool steal_from_right = false;
-        if (parent->num_children == MaxItemsPerNode / 2) {
-            if (parent_left_sibling && (parent_left_sibling->num_children > MaxItemsPerNode / 2)) {
+        bool stealFromLeft = false;
+        bool stealFromRight = false;
+        if (parent->numChildren == MaxItemsPerNode / 2) {
+            if (parentLeftSibling && (parentLeftSibling->numChildren > MaxItemsPerNode / 2)) {
                 // Steal a node from the left sibling.
-                steal_from_left = true;
-            } else if (parent_right_sibling && (parent_right_sibling->num_children > MaxItemsPerNode / 2)) {
+                stealFromLeft = true;
+            } else if (parentRightSibling && (parentRightSibling->numChildren > MaxItemsPerNode / 2)) {
                 // Steal a node from the right sibling.
-                steal_from_right = true;
-            } else if (parent_left_sibling) {
+                stealFromRight = true;
+            } else if (parentLeftSibling) {
                 // Merge the left sibling before deleting.
-                parent = parent_left_sibling;
-                merge_with_right_sibling(parent);
-            } else if (parent_right_sibling) {
+                parent = parentLeftSibling;
+                mergeWithRightSibling(parent);
+            } else if (parentRightSibling) {
                 // Merge with the right sibling before deleting.
-                merge_with_right_sibling(parent);
+                mergeWithRightSibling(parent);
             }
         }
 
         // Locate the right sibling within its parent.
-        Node* right_sibling = node->right_sibling;
-        u32 erase_index = 0;
-        for (; erase_index < parent->num_children; erase_index++) {
-            if (parent->children[erase_index] == right_sibling)
+        Node* rightSibling = node->rightSibling;
+        u32 eraseIndex = 0;
+        for (; eraseIndex < parent->numChildren; eraseIndex++) {
+            if (parent->children[eraseIndex] == rightSibling)
                 break;
         }
         // The right sibling must have been found.
-        PLY_ASSERT(erase_index < parent->num_children);
+        PLY_ASSERT(eraseIndex < parent->numChildren);
 
         // Erase the right sibling from its parent.
-        if (steal_from_left) {
+        if (stealFromLeft) {
             // Move the child nodes left of the erase position to the right.
-            for (u32 i = erase_index; i > 0; i--) {
-                parent->child_keys[i] = std::move(parent->child_keys[i - 1]);
+            for (u32 i = eraseIndex; i > 0; i--) {
+                parent->childKeys[i] = std::move(parent->childKeys[i - 1]);
                 parent->children[i] = parent->children[i - 1];
             }
             // Move the child node from the left sibling to the first position.
-            Key& key_to_move = parent_left_sibling->child_keys[parent_left_sibling->num_children - 1];
-            parent->child_keys[0] = std::move(key_to_move);
-            key_to_move.~Key();
-            parent->children[0] = parent_left_sibling->children[parent_left_sibling->num_children - 1];
+            Key& keyToMove = parentLeftSibling->childKeys[parentLeftSibling->numChildren - 1];
+            parent->childKeys[0] = std::move(keyToMove);
+            keyToMove.~Key();
+            parent->children[0] = parentLeftSibling->children[parentLeftSibling->numChildren - 1];
             parent->children[0]->parent = parent;
             // Decrement the number of items in the left sibling.
-            parent_left_sibling->num_children--;
-            on_max_key_changed(parent_left_sibling);
-            on_min_key_changed(parent);
-            if (erase_index == (u32) parent->num_children - 1) {
-                on_max_key_changed(parent);
+            parentLeftSibling->numChildren--;
+            onMaxKeyChanged(parentLeftSibling);
+            onMinKeyChanged(parent);
+            if (eraseIndex == (u32) parent->numChildren - 1) {
+                onMaxKeyChanged(parent);
             }
         } else {
             // Move the child nodes on the right of the erase position to the left.
-            for (u32 i = erase_index; i < (u32) parent->num_children - 1; i++) {
-                parent->child_keys[i] = std::move(parent->child_keys[i + 1]);
+            for (u32 i = eraseIndex; i < (u32) parent->numChildren - 1; i++) {
+                parent->childKeys[i] = std::move(parent->childKeys[i + 1]);
                 parent->children[i] = parent->children[i + 1];
             }
-            if (steal_from_right) {
+            if (stealFromRight) {
                 // Move the child node from the right sibling to the last position.
-                Key& key_to_move = parent_right_sibling->child_keys[0];
-                parent->child_keys[parent->num_children - 1] = std::move(key_to_move);
-                key_to_move.~Key();
-                parent->children[parent->num_children - 1] = parent_right_sibling->children[0];
-                parent->children[parent->num_children - 1]->parent = parent;
+                Key& keyToMove = parentRightSibling->childKeys[0];
+                parent->childKeys[parent->numChildren - 1] = std::move(keyToMove);
+                keyToMove.~Key();
+                parent->children[parent->numChildren - 1] = parentRightSibling->children[0];
+                parent->children[parent->numChildren - 1]->parent = parent;
                 // Move all child nodes in the right sibling to the left.
-                for (u32 i = 0; i < (u32) parent_right_sibling->num_children - 1; i++) {
-                    parent_right_sibling->child_keys[i] = std::move(parent_right_sibling->child_keys[i + 1]);
-                    parent_right_sibling->children[i] = parent_right_sibling->children[i + 1];
+                for (u32 i = 0; i < (u32) parentRightSibling->numChildren - 1; i++) {
+                    parentRightSibling->childKeys[i] = std::move(parentRightSibling->childKeys[i + 1]);
+                    parentRightSibling->children[i] = parentRightSibling->children[i + 1];
                 }
                 // Decrement the number of items in the right sibling.
-                parent_right_sibling->num_children--;
-                parent_right_sibling->child_keys[parent_right_sibling->num_children].~Key();
-                on_max_key_changed(parent);
-                on_min_key_changed(parent_right_sibling);
+                parentRightSibling->numChildren--;
+                parentRightSibling->childKeys[parentRightSibling->numChildren].~Key();
+                onMaxKeyChanged(parent);
+                onMinKeyChanged(parentRightSibling);
             } else {
                 // Decrement the number of child nodes in the parent.
-                parent->num_children--;
-                parent->child_keys[parent->num_children].~Key();
-                if (erase_index == parent->num_children) {
-                    on_max_key_changed(parent);
+                parent->numChildren--;
+                parent->childKeys[parent->numChildren].~Key();
+                if (eraseIndex == parent->numChildren) {
+                    onMaxKeyChanged(parent);
                 }
             }
-            if (erase_index == 0) {
-                on_min_key_changed(parent);
+            if (eraseIndex == 0) {
+                onMinKeyChanged(parent);
             }
 
-            if (parent->num_children == 1) {
+            if (parent->numChildren == 1) {
                 // This is the root node, and it has only one child. Promote the child to be the new root.
                 PLY_ASSERT(this->root == parent);
                 PLY_ASSERT(!parent->parent);
@@ -535,222 +533,222 @@ private:
         }
 
         // Unlink right sibling from its siblings.
-        node->right_sibling = right_sibling->right_sibling;
-        if (node->right_sibling) {
-            node->right_sibling->left_sibling = node;
+        node->rightSibling = rightSibling->rightSibling;
+        if (node->rightSibling) {
+            node->rightSibling->leftSibling = node;
         }
 
         // Delete right sibling.
-        Heap::free(right_sibling);
+        Heap::free(rightSibling);
     }
 
 public:
     //------------------------------------------------
-    Iterator get_first_item() {
+    Iterator getFirstItem() {
         Node* node = this->root;
         if (!node)
             return {this, nullptr, 0};
-        while (!node->is_leaf) {
-            InnerNode* inner_node = static_cast<InnerNode*>(node);
-            PLY_ASSERT(inner_node->num_children > 0 && inner_node->num_children <= MaxItemsPerNode);
-            node = inner_node->children[0];
+        while (!node->isLeaf) {
+            InnerNode* innerNode = static_cast<InnerNode*>(node);
+            PLY_ASSERT(innerNode->numChildren > 0 && innerNode->numChildren <= MaxItemsPerNode);
+            node = innerNode->children[0];
         }
-        LeafNode* leaf_node = static_cast<LeafNode*>(node);
-        PLY_ASSERT(leaf_node->num_items > 0 && leaf_node->num_items <= MaxItemsPerNode);
-        return {this, leaf_node, 0};
+        LeafNode* leafNode = static_cast<LeafNode*>(node);
+        PLY_ASSERT(leafNode->numItems > 0 && leafNode->numItems <= MaxItemsPerNode);
+        return {this, leafNode, 0};
     }
 
-    ConstIterator get_first_item() const {
-        return (ConstIterator) const_cast<BTree*>(this)->get_first_item();
+    ConstIterator getFirstItem() const {
+        return (ConstIterator) const_cast<BTree*>(this)->getFirstItem();
     }
 
     //------------------------------------------------
-    Iterator get_last_item() {
+    Iterator getLastItem() {
         Node* node = this->root;
         if (!node)
             return {this, nullptr, 0};
-        while (!node->is_leaf) {
-            InnerNode* inner_node = static_cast<InnerNode*>(node);
-            PLY_ASSERT(inner_node->num_children > 0 && inner_node->num_children <= MaxItemsPerNode);
-            node = inner_node->children[inner_node->num_children - 1];
+        while (!node->isLeaf) {
+            InnerNode* innerNode = static_cast<InnerNode*>(node);
+            PLY_ASSERT(innerNode->numChildren > 0 && innerNode->numChildren <= MaxItemsPerNode);
+            node = innerNode->children[innerNode->numChildren - 1];
         }
-        LeafNode* leaf_node = static_cast<LeafNode*>(node);
-        PLY_ASSERT(leaf_node->num_items > 0 && leaf_node->num_items <= MaxItemsPerNode);
-        return {this, leaf_node, leaf_node->num_items - 1u};
+        LeafNode* leafNode = static_cast<LeafNode*>(node);
+        PLY_ASSERT(leafNode->numItems > 0 && leafNode->numItems <= MaxItemsPerNode);
+        return {this, leafNode, leafNode->numItems - 1u};
     }
 
-    ConstIterator get_last_item() const {
-        return (ConstIterator) const_cast<BTree*>(this)->get_last_item();
+    ConstIterator getLastItem() const {
+        return (ConstIterator) const_cast<BTree*>(this)->getLastItem();
     }
 
     //------------------------------------------------
     // Returns the first item whose key is > the target key.
     // If the BTree items fall on range boundaries, this lets you find the range containing a particular key.
-    PLY_NO_INLINE Iterator find_earliest(const Key& desired_key, FindType find_type) {
+    PLY_NO_INLINE Iterator findEarliest(const Key& desiredKey, FindType findType) {
         Node* node = this->root;
         if (!node)
             return {this, nullptr, 0};
-        if (!meets_condition(node->max_key, desired_key, find_type))
+        if (!meetsCondition(node->maxKey, desiredKey, findType))
             return {this, nullptr, 0};
 
         // Iterate from the top to the bottom of the tree.
-        while (!node->is_leaf) {
-            InnerNode* inner_node = static_cast<InnerNode*>(node);
-            PLY_ASSERT((inner_node->num_children > 0) && (inner_node->num_children <= MaxItemsPerNode));
+        while (!node->isLeaf) {
+            InnerNode* innerNode = static_cast<InnerNode*>(node);
+            PLY_ASSERT((innerNode->numChildren > 0) && (innerNode->numChildren <= MaxItemsPerNode));
 
             // Binary search this inner node.
-            u32 found_item =
-                binary_search(ArrayView<Key>{inner_node->child_keys, inner_node->num_children}, desired_key, find_type);
+            u32 foundItem =
+                binarySearch(ArrayView<Key>{innerNode->childKeys, innerNode->numChildren}, desiredKey, findType);
 
-            // found_item identifies the first child node whose descendent items *all* meet the specified search
+            // foundItem identifies the first child node whose descendent items *all* meet the specified search
             // condition, which may not necessarily be the node we'll descend into. If the node preceding that one has a
-            // max_key that also meets the search condition, that means *some* of its descendent items meet the search
+            // maxKey that also meets the search condition, that means *some* of its descendent items meet the search
             // condition, so we descend into that node instead. In both cases, we descend into the node containing the
             // first item that meets the condition.
-            if (found_item == inner_node->num_children) {
-                node = inner_node->children[found_item - 1];
-            } else if ((found_item > 0) &&
-                       meets_condition(inner_node->children[found_item - 1]->max_key, desired_key, find_type)) {
-                node = inner_node->children[found_item - 1];
+            if (foundItem == innerNode->numChildren) {
+                node = innerNode->children[foundItem - 1];
+            } else if ((foundItem > 0) &&
+                       meetsCondition(innerNode->children[foundItem - 1]->maxKey, desiredKey, findType)) {
+                node = innerNode->children[foundItem - 1];
             } else {
-                node = inner_node->children[found_item];
+                node = innerNode->children[foundItem];
             }
         }
 
         // Binary search the items in this leaf node.
         // Items are stored with their keys in increasing order (with possible duplicate keys).
-        LeafNode* leaf_node = static_cast<LeafNode*>(node);
-        PLY_ASSERT((leaf_node->num_items > 0) && (leaf_node->num_items <= MaxItemsPerNode));
-        u32 found_item = binary_search(ArrayView<Item>{leaf_node->items, leaf_node->num_items}, desired_key, find_type);
-        // Item must have been found, because this->root->max_key promised it would be.
-        PLY_ASSERT(found_item < leaf_node->num_items);
-        PLY_ASSERT(meets_condition(get_any_lookup_key(leaf_node->items[found_item]), desired_key, find_type));
-        return {this, leaf_node, found_item};
+        LeafNode* leafNode = static_cast<LeafNode*>(node);
+        PLY_ASSERT((leafNode->numItems > 0) && (leafNode->numItems <= MaxItemsPerNode));
+        u32 foundItem = binarySearch(ArrayView<Item>{leafNode->items, leafNode->numItems}, desiredKey, findType);
+        // Item must have been found, because this->root->maxKey promised it would be.
+        PLY_ASSERT(foundItem < leafNode->numItems);
+        PLY_ASSERT(meetsCondition(getAnyLookupKey(leafNode->items[foundItem]), desiredKey, findType));
+        return {this, leafNode, foundItem};
     }
 
-    ConstIterator find_earliest(const Key& desired_key, FindType find_type) const {
-        return const_cast<BTree*>(this)->find_earliest(desired_key, find_type);
+    ConstIterator findEarliest(const Key& desiredKey, FindType findType) const {
+        return const_cast<BTree*>(this)->findEarliest(desiredKey, findType);
     }
 
-    bool find(const Key& desired_key) const {
-        ConstIterator iter = this->find_earliest(desired_key, FindGreaterThanOrEqual);
-        return (iter && get_any_lookup_key(*iter) == desired_key);
-    }
-
-    //------------------------------------------------
-    void insert(const Item& item_to_insert) {
-        Iterator insert_pos = this->find_earliest(get_any_lookup_key(item_to_insert), FindGreaterThan);
-        this->insert_internal(&insert_pos, const_cast<Item&>(item_to_insert), false);
-    }
-
-    void insert(Item&& item_to_insert) {
-        Iterator insert_pos = this->find_earliest(get_any_lookup_key(item_to_insert), FindGreaterThan);
-        this->insert_internal(&insert_pos, item_to_insert, true);
-    }
-
-    void insert(Iterator* insert_pos, const Item& item_to_insert) {
-        this->insert_internal(insert_pos, const_cast<Item&>(item_to_insert), false);
-    }
-
-    void insert(Iterator* insert_pos, Item&& item_to_insert) {
-        this->insert_internal(insert_pos, item_to_insert, true);
+    bool find(const Key& desiredKey) const {
+        ConstIterator iter = this->findEarliest(desiredKey, FindGreaterThanOrEqual);
+        return (iter && getAnyLookupKey(*iter) == desiredKey);
     }
 
     //------------------------------------------------
-    PLY_NO_INLINE void erase(Iterator erase_pos) {
-        LeafNode* leaf_node = erase_pos.leaf_node;
-        LeafNode* left_sibling = static_cast<LeafNode*>(leaf_node->left_sibling);
-        LeafNode* right_sibling = static_cast<LeafNode*>(leaf_node->right_sibling);
+    void insert(const Item& itemToInsert) {
+        Iterator insertPos = this->findEarliest(getAnyLookupKey(itemToInsert), FindGreaterThan);
+        this->insertInternal(&insertPos, const_cast<Item&>(itemToInsert), false);
+    }
 
-        // If the leaf_node is only half full, select a strategy to avoid making it any smaller.
-        bool steal_from_left = false;
-        bool steal_from_right = false;
-        if (leaf_node->num_items == MaxItemsPerNode / 2) {
-            if (left_sibling && (left_sibling->num_items > MaxItemsPerNode / 2)) {
+    void insert(Item&& itemToInsert) {
+        Iterator insertPos = this->findEarliest(getAnyLookupKey(itemToInsert), FindGreaterThan);
+        this->insertInternal(&insertPos, itemToInsert, true);
+    }
+
+    void insert(Iterator* insertPos, const Item& itemToInsert) {
+        this->insertInternal(insertPos, const_cast<Item&>(itemToInsert), false);
+    }
+
+    void insert(Iterator* insertPos, Item&& itemToInsert) {
+        this->insertInternal(insertPos, itemToInsert, true);
+    }
+
+    //------------------------------------------------
+    PLY_NO_INLINE void erase(Iterator erasePos) {
+        LeafNode* leafNode = erasePos.leafNode;
+        LeafNode* leftSibling = static_cast<LeafNode*>(leafNode->leftSibling);
+        LeafNode* rightSibling = static_cast<LeafNode*>(leafNode->rightSibling);
+
+        // If the leafNode is only half full, select a strategy to avoid making it any smaller.
+        bool stealFromLeft = false;
+        bool stealFromRight = false;
+        if (leafNode->numItems == MaxItemsPerNode / 2) {
+            if (leftSibling && (leftSibling->numItems > MaxItemsPerNode / 2)) {
                 // Steal an item from the left sibling.
-                steal_from_left = true;
-            } else if (right_sibling && (right_sibling->num_items > MaxItemsPerNode / 2)) {
+                stealFromLeft = true;
+            } else if (rightSibling && (rightSibling->numItems > MaxItemsPerNode / 2)) {
                 // Steal an item from the right sibling.
-                steal_from_right = true;
-            } else if (left_sibling) {
+                stealFromRight = true;
+            } else if (leftSibling) {
                 // Update the erase position to point to the left sibling.
-                erase_pos.item_index += left_sibling->num_items;
-                erase_pos.leaf_node = left_sibling;
-                leaf_node = left_sibling;
+                erasePos.itemIndex += leftSibling->numItems;
+                erasePos.leafNode = leftSibling;
+                leafNode = leftSibling;
                 // Merge the left sibling.
-                merge_with_right_sibling(left_sibling);
-            } else if (right_sibling) {
+                mergeWithRightSibling(leftSibling);
+            } else if (rightSibling) {
                 // Merge with the right sibling. The erase position remains unchanged.
-                merge_with_right_sibling(leaf_node);
+                mergeWithRightSibling(leafNode);
             }
         }
 
         // Erase the desired item from the leaf node.
-        if (steal_from_left) {
+        if (stealFromLeft) {
             // Move the items left of the erase position to the right.
-            for (u32 i = erase_pos.item_index; i > 0; i--) {
-                leaf_node->items[i] = std::move(leaf_node->items[i - 1]);
+            for (u32 i = erasePos.itemIndex; i > 0; i--) {
+                leafNode->items[i] = std::move(leafNode->items[i - 1]);
             }
             // Move the item from the left sibling to the first position.
-            leaf_node->items[0] = std::move(left_sibling->items[left_sibling->num_items - 1]);
+            leafNode->items[0] = std::move(leftSibling->items[leftSibling->numItems - 1]);
             // Destruct the item we stole.
-            left_sibling->items[left_sibling->num_items - 1].~Item();
+            leftSibling->items[leftSibling->numItems - 1].~Item();
             // Decrement the number of items in the left sibling.
-            left_sibling->num_items--;
-            on_max_key_changed(left_sibling);
-            on_min_key_changed(leaf_node);
-            if (erase_pos.item_index == (u32) leaf_node->num_items - 1) {
-                on_max_key_changed(leaf_node);
+            leftSibling->numItems--;
+            onMaxKeyChanged(leftSibling);
+            onMinKeyChanged(leafNode);
+            if (erasePos.itemIndex == (u32) leafNode->numItems - 1) {
+                onMaxKeyChanged(leafNode);
             }
         } else {
             // Move the items on the right of the erase position to the left.
-            for (u32 i = erase_pos.item_index; i < (u32) leaf_node->num_items - 1; i++) {
-                leaf_node->items[i] = std::move(leaf_node->items[i + 1]);
+            for (u32 i = erasePos.itemIndex; i < (u32) leafNode->numItems - 1; i++) {
+                leafNode->items[i] = std::move(leafNode->items[i + 1]);
             }
-            if (steal_from_right) {
+            if (stealFromRight) {
                 // Move the item from the right sibling to the last position.
-                leaf_node->items[leaf_node->num_items - 1] = std::move(right_sibling->items[0]);
+                leafNode->items[leafNode->numItems - 1] = std::move(rightSibling->items[0]);
                 // Move all items in the right sibling to the left.
-                for (u32 i = 0; i < (u32) right_sibling->num_items - 1; i++) {
-                    right_sibling->items[i] = std::move(right_sibling->items[i + 1]);
+                for (u32 i = 0; i < (u32) rightSibling->numItems - 1; i++) {
+                    rightSibling->items[i] = std::move(rightSibling->items[i + 1]);
                 }
                 // Destruct the last item in the right sibling.
-                right_sibling->items[right_sibling->num_items - 1].~Item();
+                rightSibling->items[rightSibling->numItems - 1].~Item();
                 // Decrement the number of items in the right sibling.
-                right_sibling->num_items--;
-                on_max_key_changed(leaf_node);
-                on_min_key_changed(right_sibling);
-                if (erase_pos.item_index == 0) {
-                    on_min_key_changed(leaf_node);
+                rightSibling->numItems--;
+                onMaxKeyChanged(leafNode);
+                onMinKeyChanged(rightSibling);
+                if (erasePos.itemIndex == 0) {
+                    onMinKeyChanged(leafNode);
                 }
             } else {
                 // Destruct the item in the last position.
-                leaf_node->items[leaf_node->num_items - 1].~Item();
+                leafNode->items[leafNode->numItems - 1].~Item();
                 // Decrement the number of items in the leaf node.
-                leaf_node->num_items--;
+                leafNode->numItems--;
 
-                if (leaf_node->num_items == 0) {
-                    PLY_ASSERT(this->root == leaf_node);
-                    PLY_ASSERT(leaf_node->parent == nullptr);
+                if (leafNode->numItems == 0) {
+                    PLY_ASSERT(this->root == leafNode);
+                    PLY_ASSERT(leafNode->parent == nullptr);
                     this->root = nullptr;
-                    Heap::free(leaf_node);
+                    Heap::free(leafNode);
                 } else {
-                    if (erase_pos.item_index == 0) {
-                        on_min_key_changed(leaf_node);
+                    if (erasePos.itemIndex == 0) {
+                        onMinKeyChanged(leafNode);
                     }
-                    if (erase_pos.item_index == leaf_node->num_items) {
-                        on_max_key_changed(leaf_node);
+                    if (erasePos.itemIndex == leafNode->numItems) {
+                        onMaxKeyChanged(leafNode);
                     }
                 }
             }
         }
         // Decrement the number of items in the tree.
-        this->num_items--;
+        this->numItems--;
     }
 
-    bool erase(const Key& key_to_erase) {
-        Iterator iter = this->find_earliest(key_to_erase, FindGreaterThanOrEqual);
-        if (get_any_lookup_key(*iter) == key_to_erase) {
+    bool erase(const Key& keyToErase) {
+        Iterator iter = this->findEarliest(keyToErase, FindGreaterThanOrEqual);
+        if (getAnyLookupKey(*iter) == keyToErase) {
             this->erase(iter);
             return true;
         }
@@ -759,37 +757,37 @@ public:
 
     //------------------------------------------------
     PLY_NO_INLINE void clear() {
-        Node* first_node_in_row = this->root;
-        while (!first_node_in_row->is_leaf) {
-            InnerNode* inner_node = static_cast<InnerNode*>(first_node_in_row);
-            first_node_in_row = inner_node->children[0];
+        Node* firstNodeInRow = this->root;
+        while (!firstNodeInRow->isLeaf) {
+            InnerNode* innerNode = static_cast<InnerNode*>(firstNodeInRow);
+            firstNodeInRow = innerNode->children[0];
 
             // Iterate over the inner nodes of this row from left to right.
-            while (inner_node) {
-                PLY_ASSERT((inner_node->num_children > 0) && (inner_node->num_children <= MaxItemsPerNode));
-                for (u32 i = 0; i < inner_node->num_children; i++) {
-                    inner_node->child_keys[i].~Key();
+            while (innerNode) {
+                PLY_ASSERT((innerNode->numChildren > 0) && (innerNode->numChildren <= MaxItemsPerNode));
+                for (u32 i = 0; i < innerNode->numChildren; i++) {
+                    innerNode->childKeys[i].~Key();
                 }
-                InnerNode* next = static_cast<InnerNode*>(inner_node->right_sibling);
-                Heap::free(inner_node);
-                inner_node = next;
+                InnerNode* next = static_cast<InnerNode*>(innerNode->rightSibling);
+                Heap::free(innerNode);
+                innerNode = next;
             }
         }
 
         // Iterate over leaf nodes.
-        LeafNode* leaf_node = static_cast<LeafNode*>(first_node_in_row);
-        while (leaf_node) {
-            PLY_ASSERT((leaf_node->num_items > 0) && (leaf_node->num_items <= MaxItemsPerNode));
-            for (u32 i = 0; i < leaf_node->num_items; i++) {
-                leaf_node->items[i].~Item();
+        LeafNode* leafNode = static_cast<LeafNode*>(firstNodeInRow);
+        while (leafNode) {
+            PLY_ASSERT((leafNode->numItems > 0) && (leafNode->numItems <= MaxItemsPerNode));
+            for (u32 i = 0; i < leafNode->numItems; i++) {
+                leafNode->items[i].~Item();
             }
-            LeafNode* next = static_cast<LeafNode*>(leaf_node->right_sibling);
-            Heap::free(leaf_node);
-            leaf_node = next;
+            LeafNode* next = static_cast<LeafNode*>(leafNode->rightSibling);
+            Heap::free(leafNode);
+            leafNode = next;
         }
 
         this->root = nullptr;
-        this->num_items = 0;
+        this->numItems = 0;
     }
 
     ~BTree() {
@@ -803,89 +801,88 @@ public:
             return;
 
         // Iterate over the rows of the tree from top to bottom.
-        Node* first_node_in_row = this->root;
-        while (!first_node_in_row->is_leaf) {
-            InnerNode* inner_node = static_cast<InnerNode*>(first_node_in_row);
-            PLY_ASSERT(!inner_node->left_sibling);
+        Node* firstNodeInRow = this->root;
+        while (!firstNodeInRow->isLeaf) {
+            InnerNode* innerNode = static_cast<InnerNode*>(firstNodeInRow);
+            PLY_ASSERT(!innerNode->leftSibling);
 
             // Iterate over the inner nodes of this row from left to right.
-            while (inner_node) {
-                PLY_ASSERT(!inner_node->is_leaf);
+            while (innerNode) {
+                PLY_ASSERT(!innerNode->isLeaf);
 
                 // Validate the number of children.
-                PLY_ASSERT(inner_node->num_children > 0 && inner_node->num_children <= MaxItemsPerNode);
-                if (inner_node->parent) {
+                PLY_ASSERT(innerNode->numChildren > 0 && innerNode->numChildren <= MaxItemsPerNode);
+                if (innerNode->parent) {
                     // All nodes must be at least half full unless it's the root node.
-                    PLY_ASSERT(inner_node->num_children >= MaxItemsPerNode / 2);
+                    PLY_ASSERT(innerNode->numChildren >= MaxItemsPerNode / 2);
                 }
 
                 // Iterate over this node's children.
-                for (u32 i = 0; i < inner_node->num_children; i++) {
+                for (u32 i = 0; i < innerNode->numChildren; i++) {
                     // Validate the parent pointer.
-                    PLY_ASSERT(inner_node->children[i]->parent == inner_node);
+                    PLY_ASSERT(innerNode->children[i]->parent == innerNode);
                     // Validate that the child keys are non-decreasing.
                     if (i > 0) {
-                        PLY_ASSERT(inner_node->child_keys[i] >= inner_node->child_keys[i - 1]);
+                        PLY_ASSERT(innerNode->childKeys[i] >= innerNode->childKeys[i - 1]);
                         // Validate sibling links.
-                        PLY_ASSERT(inner_node->children[i]->left_sibling == inner_node->children[i - 1]);
-                        PLY_ASSERT(inner_node->children[i]->left_sibling->right_sibling == inner_node->children[i]);
-                    } else if (inner_node->left_sibling) {
-                        InnerNode* left_sibling = static_cast<InnerNode*>(inner_node->left_sibling);
-                        PLY_ASSERT(!left_sibling->is_leaf);
-                        PLY_ASSERT(inner_node->child_keys[0] >=
-                                   left_sibling->child_keys[left_sibling->num_children - 1]);
+                        PLY_ASSERT(innerNode->children[i]->leftSibling == innerNode->children[i - 1]);
+                        PLY_ASSERT(innerNode->children[i]->leftSibling->rightSibling == innerNode->children[i]);
+                    } else if (innerNode->leftSibling) {
+                        InnerNode* leftSibling = static_cast<InnerNode*>(innerNode->leftSibling);
+                        PLY_ASSERT(!leftSibling->isLeaf);
+                        PLY_ASSERT(innerNode->childKeys[0] >= leftSibling->childKeys[leftSibling->numChildren - 1]);
                         // Validate sibling links.
-                        PLY_ASSERT(inner_node->children[i]->left_sibling ==
-                                   left_sibling->children[left_sibling->num_children - 1]);
-                        PLY_ASSERT(inner_node->children[i]->left_sibling->right_sibling == inner_node->children[i]);
+                        PLY_ASSERT(innerNode->children[i]->leftSibling ==
+                                   leftSibling->children[leftSibling->numChildren - 1]);
+                        PLY_ASSERT(innerNode->children[i]->leftSibling->rightSibling == innerNode->children[i]);
                     }
                     // Validate the child's max key.
-                    if (i + 1 < inner_node->num_children) {
-                        PLY_ASSERT(inner_node->children[i]->max_key <= inner_node->child_keys[i + 1]);
+                    if (i + 1 < innerNode->numChildren) {
+                        PLY_ASSERT(innerNode->children[i]->maxKey <= innerNode->childKeys[i + 1]);
                     } else {
-                        PLY_ASSERT(inner_node->children[i]->max_key <= inner_node->max_key);
+                        PLY_ASSERT(innerNode->children[i]->maxKey <= innerNode->maxKey);
                     }
                 }
 
-                inner_node = static_cast<InnerNode*>(inner_node->right_sibling);
+                innerNode = static_cast<InnerNode*>(innerNode->rightSibling);
             }
 
-            first_node_in_row = static_cast<InnerNode*>(first_node_in_row)->children[0];
+            firstNodeInRow = static_cast<InnerNode*>(firstNodeInRow)->children[0];
         }
 
-        LeafNode* leaf_node = static_cast<LeafNode*>(first_node_in_row);
-        PLY_ASSERT(!leaf_node->left_sibling);
+        LeafNode* leafNode = static_cast<LeafNode*>(firstNodeInRow);
+        PLY_ASSERT(!leafNode->leftSibling);
 
         // Iterate over the leaf nodes of this row from left to right.
-        while (leaf_node) {
-            PLY_ASSERT(leaf_node->is_leaf);
+        while (leafNode) {
+            PLY_ASSERT(leafNode->isLeaf);
 
             // Validate the number of items in the leaf node.
-            PLY_ASSERT(leaf_node->num_items > 0 && leaf_node->num_items <= MaxItemsPerNode);
-            if (leaf_node->parent) {
+            PLY_ASSERT(leafNode->numItems > 0 && leafNode->numItems <= MaxItemsPerNode);
+            if (leafNode->parent) {
                 // All nodes must be at least half full unless it's the root node.
-                PLY_ASSERT(leaf_node->num_items >= MaxItemsPerNode / 2);
+                PLY_ASSERT(leafNode->numItems >= MaxItemsPerNode / 2);
             }
 
             // Iterate over the items in the leaf node.
-            for (u32 i = 0; i < leaf_node->num_items; i++) {
+            for (u32 i = 0; i < leafNode->numItems; i++) {
                 // Validate that the items are in non-decreasing order.
                 if (i > 0) {
-                    PLY_ASSERT(get_any_lookup_key(leaf_node->items[i]) >= get_any_lookup_key(leaf_node->items[i - 1]));
+                    PLY_ASSERT(getAnyLookupKey(leafNode->items[i]) >= getAnyLookupKey(leafNode->items[i - 1]));
                 } else {
-                    if (leaf_node->left_sibling) {
-                        LeafNode* left_sibling = static_cast<LeafNode*>(leaf_node->left_sibling);
-                        PLY_ASSERT(left_sibling->is_leaf);
-                        PLY_ASSERT(get_any_lookup_key(leaf_node->items[i]) >=
-                                   get_any_lookup_key(left_sibling->items[left_sibling->num_items - 1]));
+                    if (leafNode->leftSibling) {
+                        LeafNode* leftSibling = static_cast<LeafNode*>(leafNode->leftSibling);
+                        PLY_ASSERT(leftSibling->isLeaf);
+                        PLY_ASSERT(getAnyLookupKey(leafNode->items[i]) >=
+                                   getAnyLookupKey(leftSibling->items[leftSibling->numItems - 1]));
                     }
                 }
             }
 
             // Validate the leaf node's max key.
-            PLY_ASSERT(leaf_node->max_key >= get_any_lookup_key(leaf_node->items[leaf_node->num_items - 1]));
+            PLY_ASSERT(leafNode->maxKey >= getAnyLookupKey(leafNode->items[leafNode->numItems - 1]));
 
-            leaf_node = static_cast<LeafNode*>(leaf_node->right_sibling);
+            leafNode = static_cast<LeafNode*>(leafNode->rightSibling);
         }
     }
 #endif

@@ -2,7 +2,7 @@
        ____
       ╱   ╱╲    Plywood C++ Base Library
      ╱___╱╭╮╲   https://plywood.dev/
-      └──┴┴┴┘   
+      └──┴┴┴┘
 ========================================================*/
 
 #include <ply-base.h>
@@ -52,37 +52,37 @@ struct BigGlyph {
     static constexpr u32 height = 5;
 };
 
-void print_bigfont(StringView text) {
+void printBigfont(StringView text) {
     Array<BigGlyph> glyphs;
     glyphs.resize(128);
-    u32 num_rows = PLY_STATIC_ARRAY_SIZE(GlyphData) / BigGlyph::height;
-    for (u32 i = 0; i < num_rows; i++) {
+    u32 numRows = PLY_STATIC_ARRAY_SIZE(GlyphData) / BigGlyph::height;
+    for (u32 i = 0; i < numRows; i++) {
         const char* row = GlyphData[i * BigGlyph::height];
-        u32 start_col = 0;
-        for (u32 j = start_col + 1;; j++) {
+        u32 startCol = 0;
+        for (u32 j = startCol + 1;; j++) {
             if (StringView{" ,#`"}.find(row[j]) < 0) {
-                char c = row[start_col];
+                char c = row[startCol];
                 if (c == '~') {
                     c = ' ';
                 }
                 glyphs[c].row = i;
-                glyphs[c].col = start_col + 1;
-                glyphs[c].width = j - start_col - 1;
-                start_col = j;
+                glyphs[c].col = startCol + 1;
+                glyphs[c].width = j - startCol - 1;
+                startCol = j;
             }
             if (row[j] == 0)
                 break;
         }
     }
 
-    Stream out = get_stdout();
+    Stream out = getStdout();
     for (u32 i = 0; i < BigGlyph::height; i++) {
         MemStream mem;
         mem.write("// ");
-        for (u32 j = 0; j < text.num_bytes(); j++) {
+        for (u32 j = 0; j < text.numBytes(); j++) {
             // Look up glyph
             char c = text[j];
-            if ((u8) c >= glyphs.num_items())
+            if ((u8) c >= glyphs.numItems())
                 continue;
             const BigGlyph& glyph = glyphs[c];
             if (glyph.width == 0)
@@ -104,7 +104,7 @@ void print_bigfont(StringView text) {
                 }
             }
         }
-        out.format("{}\n", mem.move_to_string().trim_right());
+        out.format("{}\n", mem.moveToString().trimRight());
     }
 }
 
@@ -113,9 +113,9 @@ int main(int argc, const char* argv[]) {
     SetConsoleOutputCP(CP_UTF8);
 #endif
     if (argc != 2) {
-        get_stderr().write("error: expected exactly 1 argument\n");
+        getStderr().write("error: expected exactly 1 argument\n");
         return 1;
     }
-    print_bigfont(argv[1]);
+    printBigfont(argv[1]);
     return 0;
 }

@@ -53,18 +53,18 @@ void Node::remove(StringView key) {
 //  ██     ▀█▄▄██ ██      ▄▄▄█▀ ▀█▄▄▄
 //
 
-bool is_alnum_unit(u32 c) {
+bool isAlnumUnit(u32 c) {
     return (c == '_') || (c == '$') || (c == '-') || (c == '.') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
            (c >= '0' && c <= '9') || (c >= 128);
 }
 
-void Parser::dump_error(const ParseError& error, Stream& out) const {
-    TokenLocation error_loc = this->token_loc_map.get_location_from_offset(error.file_ofs);
-    out.format("({}, {}): error: {}\n", error_loc.line_number, error_loc.column_number, error.message);
-    for (u32 i = 0; i < error.context.num_items(); i++) {
+void Parser::dumpError(const ParseError& error, Stream& out) const {
+    TokenLocation errorLoc = this->tokenLocMap.getLocationFromOffset(error.fileOfs);
+    out.format("({}, {}): error: {}\n", errorLoc.lineNumber, errorLoc.columnNumber, error.message);
+    for (u32 i = 0; i < error.context.numItems(); i++) {
         const ParseError::Scope& scope = error.context.back(-(s32) i - 1);
-        TokenLocation context_loc = this->token_loc_map.get_location_from_offset(scope.file_ofs);
-        out.format("({}, {}) ", context_loc.line_number, context_loc.column_number);
+        TokenLocation contextLoc = this->tokenLocMap.getLocationFromOffset(scope.fileOfs);
+        out.format("({}, {}) ", contextLoc.lineNumber, contextLoc.columnNumber);
         switch (scope.type) {
             case ParseError::Scope::Object:
                 out.write("while reading object started here");
@@ -86,90 +86,90 @@ void Parser::dump_error(const ParseError& error, Stream& out) const {
     }
 }
 
-void Parser::error(u32 file_ofs, String&& message) {
-    if (this->error_callback) {
-        ParseError err{file_ofs, std::move(message), context};
-        this->error_callback(err);
+void Parser::error(u32 fileOfs, String&& message) {
+    if (this->errorCallback) {
+        ParseError err{fileOfs, std::move(message), context};
+        this->errorCallback(err);
     }
-    this->any_error_ = true;
+    this->anyError_ = true;
 }
 
-void Parser::advance_char() {
-    if (this->read_ofs + 1 < this->src_view.num_bytes()) {
-        this->read_ofs++;
-        this->next_unit = this->src_view.bytes()[this->read_ofs];
+void Parser::advanceChar() {
+    if (this->readOfs + 1 < this->srcView.numBytes()) {
+        this->readOfs++;
+        this->nextUnit = this->srcView.bytes()[this->readOfs];
     } else {
-        this->next_unit = -1;
+        this->nextUnit = -1;
     }
 }
 
-Parser::Token Parser::read_plain_token(Token::Type type) {
-    Token result = {type, this->read_ofs, {}};
-    this->advance_char();
+Parser::Token Parser::readPlainToken(Token::Type type) {
+    Token result = {type, this->readOfs, {}};
+    this->advanceChar();
     return result;
 }
 
-bool Parser::read_escaped_hex(Stream& out, u32 escape_file_ofs) {
+bool Parser::readEscapedHex(Stream& out, u32 escapeFileOfs) {
     PLY_ASSERT(0); // FIXME
     return false;
 }
 
-Parser::Token Parser::read_quoted_string() {
-    PLY_ASSERT(this->next_unit == '"' || this->next_unit == '\'');
-    Token token = {Token::Text, this->read_ofs, {}};
+Parser::Token Parser::readQuotedString() {
+    PLY_ASSERT(this->nextUnit == '"' || this->nextUnit == '\'');
+    Token token = {Token::Text, this->readOfs, {}};
     MemStream out;
-    s32 end_byte = this->next_unit;
-    u32 quote_run = 1;
+    s32 endByte = this->nextUnit;
+    u32 quoteRun = 1;
     bool multiline = false;
-    this->advance_char();
+    this->advanceChar();
 
     for (;;) {
-        if (this->next_unit == end_byte) {
-            this->advance_char();
-            if (quote_run == 0) {
+        if (this->nextUnit == endByte) {
+            this->advanceChar();
+            if (quoteRun == 0) {
                 if (multiline) {
-                    quote_run++;
+                    quoteRun++;
                 } else {
                     break; // end of string
                 }
             } else {
-                quote_run++;
-                if (quote_run == 3) {
+                quoteRun++;
+                if (quoteRun == 3) {
                     if (multiline) {
                         break; // end of string
                     } else {
                         multiline = true;
-                        quote_run = 0;
+                        quoteRun = 0;
                     }
                 }
             }
         } else {
-            if (quote_run > 0) {
+            if (quoteRun > 0) {
                 if (multiline) {
-                    for (u32 i = 0; i < quote_run; i++) {
-                        out.write((char) end_byte);
+                    for (u32 i = 0; i < quoteRun; i++) {
+                        out.write((char) endByte);
                     }
-                } else if (quote_run == 2) {
+                } else if (quoteRun == 2) {
                     break; // empty string
                 }
-                quote_run = 0;
+                quoteRun = 0;
             }
 
-            switch (this->next_unit) {
+            switch (this->nextUnit) {
                 case -1: {
-                    error(this->read_ofs, "Unexpected end of file in string literal");
+                    error(this->readOfs, "Unexpected end of file in string literal");
                     return {};
                 }
 
                 case '\r':
                 case '\n': {
                     if (multiline) {
-                        if (this->next_unit == '\n') {
-                            out.write((char) this->next_unit);
+                        if (this->nextUnit == '\n') {
+                            out.write((char) this->nextUnit);
                         }
-                        this->advance_char();
+                        this->advanceChar();
                     } else {
-                        this->error(this->read_ofs, "Unexpected end of line in string literal");
+                        this->error(this->readOfs, "Unexpected end of line in string literal");
                         return {};
                     }
                     break;
@@ -177,19 +177,19 @@ Parser::Token Parser::read_quoted_string() {
 
                 case '\\': {
                     // Escape sequence
-                    u32 escape_file_ofs = this->read_ofs;
-                    this->advance_char();
-                    s32 code = this->next_unit;
-                    this->advance_char();
+                    u32 escapeFileOfs = this->readOfs;
+                    this->advanceChar();
+                    s32 code = this->nextUnit;
+                    this->advanceChar();
                     switch (code) {
                         case -1: {
-                            this->error(this->read_ofs, "Unexpected end of file in string literal");
+                            this->error(this->readOfs, "Unexpected end of file in string literal");
                             return {};
                         }
 
                         case '\r':
                         case '\n': {
-                            this->error(this->read_ofs, "Unexpected end of line in string literal");
+                            this->error(this->readOfs, "Unexpected end of line in string literal");
                             return {};
                         }
 
@@ -216,14 +216,14 @@ Parser::Token Parser::read_quoted_string() {
                         }
 
                         case 'x': {
-                            if (!read_escaped_hex(out, escape_file_ofs))
+                            if (!readEscapedHex(out, escapeFileOfs))
                                 return {}; // FIXME: Would be better to continue reading
                                            // the rest of the string
                             break;
                         }
 
                         default: {
-                            this->error(escape_file_ofs,
+                            this->error(escapeFileOfs,
                                         String::format("Unrecognized escape sequence \"\\{}\"", (char) code));
                             return {}; // FIXME: Would be better to continue reading the
                                        // rest of the string
@@ -233,82 +233,82 @@ Parser::Token Parser::read_quoted_string() {
                 }
 
                 default: {
-                    out.write((char) this->next_unit);
-                    this->advance_char();
+                    out.write((char) this->nextUnit);
+                    this->advanceChar();
                     break;
                 }
             }
         }
     }
 
-    token.text = out.move_to_string();
+    token.text = out.moveToString();
     return token;
 }
 
-Parser::Token Parser::read_literal() {
-    PLY_ASSERT(is_alnum_unit(this->next_unit));
-    Token token = {Token::Text, this->read_ofs, {}};
-    u32 start_ofs = this->read_ofs;
+Parser::Token Parser::readLiteral() {
+    PLY_ASSERT(isAlnumUnit(this->nextUnit));
+    Token token = {Token::Text, this->readOfs, {}};
+    u32 startOfs = this->readOfs;
 
-    while (is_alnum_unit(this->next_unit)) {
-        this->advance_char();
+    while (isAlnumUnit(this->nextUnit)) {
+        this->advanceChar();
     }
 
-    token.text = StringView{(char*) this->src_view.bytes() + start_ofs, this->read_ofs - start_ofs};
+    token.text = StringView{(char*) this->srcView.bytes() + startOfs, this->readOfs - startOfs};
     return token;
 }
 
-Parser::Token Parser::read_token(bool tokenize_new_line) {
-    if (this->push_back_token.is_valid()) {
-        Token token = std::move(this->push_back_token);
-        this->push_back_token = {};
+Parser::Token Parser::readToken(bool tokenizeNewLine) {
+    if (this->pushBackToken.isValid()) {
+        Token token = std::move(this->pushBackToken);
+        this->pushBackToken = {};
         return token;
     }
 
     for (;;) {
-        switch (this->next_unit) {
+        switch (this->nextUnit) {
             case ' ':
             case '\t':
             case '\r':
-                this->advance_char();
+                this->advanceChar();
                 break;
 
             case '\n': {
-                u32 new_line_ofs = this->read_ofs;
-                this->advance_char();
-                if (tokenize_new_line)
-                    return {Token::NewLine, new_line_ofs, {}};
+                u32 newLineOfs = this->readOfs;
+                this->advanceChar();
+                if (tokenizeNewLine)
+                    return {Token::NewLine, newLineOfs, {}};
                 break;
             }
 
             case -1:
-                return {Token::EndOfFile, this->read_ofs, {}};
+                return {Token::EndOfFile, this->readOfs, {}};
             case '{':
-                return this->read_plain_token(Token::OpenCurly);
+                return this->readPlainToken(Token::OpenCurly);
             case '}':
-                return this->read_plain_token(Token::CloseCurly);
+                return this->readPlainToken(Token::CloseCurly);
             case '[':
-                return this->read_plain_token(Token::OpenSquare);
+                return this->readPlainToken(Token::OpenSquare);
             case ']':
-                return this->read_plain_token(Token::CloseSquare);
+                return this->readPlainToken(Token::CloseSquare);
             case ':':
-                return this->read_plain_token(Token::Colon);
+                return this->readPlainToken(Token::Colon);
             case '=':
-                return this->read_plain_token(Token::Equals);
+                return this->readPlainToken(Token::Equals);
             case ',':
-                return this->read_plain_token(Token::Comma);
+                return this->readPlainToken(Token::Comma);
             case ';':
-                return this->read_plain_token(Token::Semicolon);
+                return this->readPlainToken(Token::Semicolon);
 
             case '"':
             case '\'':
-                return this->read_quoted_string();
+                return this->readQuotedString();
 
             default:
-                if (is_alnum_unit(this->next_unit))
-                    return this->read_literal();
+                if (isAlnumUnit(this->nextUnit))
+                    return this->readLiteral();
                 else
-                    return {Token::Junk, this->read_ofs, {}};
+                    return {Token::Junk, this->readOfs, {}};
         }
     }
 }
@@ -316,11 +316,11 @@ Parser::Token Parser::read_token(bool tokenize_new_line) {
 // FIXME: Maybe turn this into a format string because it's common
 String escape(StringView str) {
     MemStream out;
-    print_escaped_string(out, str);
-    return out.move_to_string();
+    printEscapedString(out, str);
+    return out.moveToString();
 }
 
-String Parser::to_string(const Token& token) {
+String Parser::toString(const Token& token) {
     switch (token.type) {
         case Token::OpenCurly:
             return "\"{\"";
@@ -352,7 +352,7 @@ String Parser::to_string(const Token& token) {
     }
 }
 
-String Parser::to_string(const Node& node) {
+String Parser::toString(const Node& node) {
     if (node.var.is<Node::Object>()) {
         return "object";
     } else if (node.var.is<Node::Array>()) {
@@ -366,124 +366,124 @@ String Parser::to_string(const Node& node) {
     return "???";
 }
 
-Node Parser::read_object(const Token& start_token) {
-    PLY_ASSERT(start_token.type == Token::OpenCurly);
-    ScopeHandler object_scope{*this, ParseError::Scope::object(start_token.file_ofs)};
-    Node node{Node::Object{}, start_token.file_ofs};
-    Token prev_property = {};
+Node Parser::readObject(const Token& startToken) {
+    PLY_ASSERT(startToken.type == Token::OpenCurly);
+    ScopeHandler objectScope{*this, ParseError::Scope::object(startToken.fileOfs)};
+    Node node{Node::Object{}, startToken.fileOfs};
+    Token prevProperty = {};
     for (;;) {
-        bool got_separator = false;
-        Token first_token = {};
+        bool gotSeparator = false;
+        Token firstToken = {};
         for (;;) {
-            first_token = this->read_token(true);
-            switch (first_token.type) {
+            firstToken = this->readToken(true);
+            switch (firstToken.type) {
                 case Token::CloseCurly:
                     return node;
 
                 case Token::Comma:
                 case Token::Semicolon:
                 case Token::NewLine:
-                    got_separator = true;
+                    gotSeparator = true;
                     break;
 
                 default:
-                    goto break_outer;
+                    goto breakOuter;
             }
         }
 
-    break_outer:
-        if (first_token.type == Token::Text) {
-            if (prev_property.is_valid() && !got_separator) {
-                this->error(first_token.file_ofs, String::format("Expected a comma, semicolon or newline "
-                                                                 "separator between properties \"{}\" and \"{}\"",
-                                                                 escape(prev_property.text), escape(first_token.text)));
+    breakOuter:
+        if (firstToken.type == Token::Text) {
+            if (prevProperty.isValid() && !gotSeparator) {
+                this->error(firstToken.fileOfs, String::format("Expected a comma, semicolon or newline "
+                                                               "separator between properties \"{}\" and \"{}\"",
+                                                               escape(prevProperty.text), escape(firstToken.text)));
                 return {};
             }
-        } else if (prev_property.is_valid()) {
-            this->error(first_token.file_ofs, String::format("Unexpected {} after property \"{}\"",
-                                                             to_string(first_token), escape(prev_property.text)));
+        } else if (prevProperty.isValid()) {
+            this->error(firstToken.fileOfs, String::format("Unexpected {} after property \"{}\"", toString(firstToken),
+                                                           escape(prevProperty.text)));
             return {};
         } else {
-            this->error(first_token.file_ofs, String::format("Expected property, got {}", to_string(first_token)));
+            this->error(firstToken.fileOfs, String::format("Expected property, got {}", toString(firstToken)));
             return {};
         }
 
-        const Node& existing_node = node.get(first_token.text);
-        if (existing_node.is_valid()) {
-            ScopeHandler duplicate_scope{*this, ParseError::Scope::duplicate(existing_node.file_ofs)};
-            this->error(first_token.file_ofs, String::format("Duplicate property \"{}\"", escape(first_token.text)));
+        const Node& existingNode = node.get(firstToken.text);
+        if (existingNode.isValid()) {
+            ScopeHandler duplicateScope{*this, ParseError::Scope::duplicate(existingNode.fileOfs)};
+            this->error(firstToken.fileOfs, String::format("Duplicate property \"{}\"", escape(firstToken.text)));
             return {};
         }
 
-        Token colon = this->read_token();
+        Token colon = this->readToken();
         if (colon.type != Token::Colon && colon.type != Token::Equals) {
-            this->error(colon.file_ofs, String::format("Expected \":\" or \"=\" after \"{}\", got {}",
-                                                       escape(first_token.text), to_string(colon)));
+            this->error(colon.fileOfs, String::format("Expected \":\" or \"=\" after \"{}\", got {}",
+                                                      escape(firstToken.text), toString(colon)));
             return {};
         }
 
         {
             // Read value of property
-            ScopeHandler property_scope{*this, ParseError::Scope::property(first_token.file_ofs, first_token.text)};
-            Node value = this->read_expression(this->read_token(), &colon);
-            if (!value.is_valid())
+            ScopeHandler propertyScope{*this, ParseError::Scope::property(firstToken.fileOfs, firstToken.text)};
+            Node value = this->readExpression(this->readToken(), &colon);
+            if (!value.isValid())
                 return value;
-            node.set(first_token.text, std::move(value));
+            node.set(firstToken.text, std::move(value));
         }
 
-        prev_property = std::move(first_token);
+        prevProperty = std::move(firstToken);
     }
     return {};
 }
 
-Node Parser::read_array(const Token& start_token) {
-    PLY_ASSERT(start_token.type == Token::OpenSquare);
-    ScopeHandler array_scope{*this, ParseError::Scope::array(start_token.file_ofs, 0)};
-    Node array_node{Node::Array{}, start_token.file_ofs};
-    Token sep_token_holder;
-    Token* sep_token = nullptr;
+Node Parser::readArray(const Token& startToken) {
+    PLY_ASSERT(startToken.type == Token::OpenSquare);
+    ScopeHandler arrayScope{*this, ParseError::Scope::array(startToken.fileOfs, 0)};
+    Node arrayNode{Node::Array{}, startToken.fileOfs};
+    Token sepTokenHolder;
+    Token* sepToken = nullptr;
     for (;;) {
-        Token token = this->read_token(true);
+        Token token = this->readToken(true);
         switch (token.type) {
             case Token::CloseSquare:
-                return array_node;
+                return arrayNode;
 
             case Token::Comma:
             case Token::Semicolon:
             case Token::NewLine:
-                sep_token_holder = std::move(token);
-                sep_token = &sep_token_holder;
+                sepTokenHolder = std::move(token);
+                sepToken = &sepTokenHolder;
                 break;
 
             default: {
-                Node value = this->read_expression(std::move(token), sep_token);
-                if (!value.is_valid())
+                Node value = this->readExpression(std::move(token), sepToken);
+                if (!value.isValid())
                     return value;
-                array_node.array().append(std::move(value));
-                array_scope.get().index++;
-                sep_token = nullptr;
+                arrayNode.array().append(std::move(value));
+                arrayScope.get().index++;
+                sepToken = nullptr;
                 break;
             }
         }
     }
 }
 
-Node Parser::read_expression(Token&& first_token, const Token* after_token) {
-    switch (first_token.type) {
+Node Parser::readExpression(Token&& firstToken, const Token* afterToken) {
+    switch (firstToken.type) {
         case Token::OpenCurly:
-            return this->read_object(first_token);
+            return this->readObject(firstToken);
 
         case Token::OpenSquare:
-            return this->read_array(first_token);
+            return this->readArray(firstToken);
 
         case Token::Text: {
-            if (first_token.text == "true") {
-                return Node{Node::Bool{true}, first_token.file_ofs};
+            if (firstToken.text == "true") {
+                return Node{Node::Bool{true}, firstToken.fileOfs};
             }
-            if (first_token.text == "false") {
-                return Node{Node::Bool{false}, first_token.file_ofs};
+            if (firstToken.text == "false") {
+                return Node{Node::Bool{false}, firstToken.fileOfs};
             }
-            return Node{Node::Text{std::move(first_token.text)}, first_token.file_ofs};
+            return Node{Node::Text{std::move(firstToken.text)}, firstToken.fileOfs};
         }
 
         case Token::Invalid:
@@ -491,32 +491,31 @@ Node Parser::read_expression(Token&& first_token, const Token* after_token) {
 
         default: {
             MemStream mout;
-            mout.format("Unexpected {} after {}", to_string(first_token), after_token ? to_string(*after_token) : "");
-            this->error(first_token.file_ofs, mout.move_to_string());
+            mout.format("Unexpected {} after {}", toString(firstToken), afterToken ? toString(*afterToken) : "");
+            this->error(firstToken.fileOfs, mout.moveToString());
             return {};
         }
     }
 }
 
-Parser::Result Parser::parse(StringView path, StringView src_view_) {
-    this->src_view = src_view_;
-    this->next_unit = this->src_view.num_bytes() > 0 ? this->src_view[0] : -1;
+Parser::Result Parser::parse(StringView path, StringView srcView) {
+    this->srcView = srcView;
+    this->nextUnit = this->srcView.numBytes() > 0 ? this->srcView[0] : -1;
 
-    this->token_loc_map = TokenLocationMap::create_from_string(src_view_);
+    this->tokenLocMap = TokenLocationMap::createFromString(srcView);
 
-    Token root_token = this->read_token();
-    Node root = this->read_expression(std::move(root_token));
-    if (!root.is_valid())
+    Token rootToken = this->readToken();
+    Node root = this->readExpression(std::move(rootToken));
+    if (!root.isValid())
         return {};
 
-    Token next_token = this->read_token();
-    if (next_token.type != Token::EndOfFile) {
-        this->error(next_token.file_ofs,
-                    String::format("Unexpected {} after {}", to_string(next_token), to_string(root)));
+    Token nextToken = this->readToken();
+    if (nextToken.type != Token::EndOfFile) {
+        this->error(nextToken.fileOfs, String::format("Unexpected {} after {}", toString(nextToken), toString(root)));
         return {};
     }
 
-    return {std::move(root), std::move(this->token_loc_map)};
+    return {std::move(root), std::move(this->tokenLocMap)};
 }
 
 //  ▄▄    ▄▄        ▄▄  ▄▄
@@ -527,52 +526,52 @@ Parser::Result Parser::parse(StringView path, StringView src_view_) {
 
 struct WriteContext {
     Stream& out;
-    u32 indent_level = 0;
+    u32 indentLevel = 0;
 
     WriteContext(Stream& out) : out{out} {
     }
 
     void indent() {
-        for (u32 i = 0; i < this->indent_level; i++) {
+        for (u32 i = 0; i < this->indentLevel; i++) {
             this->out.write("  ");
         }
     }
 
     void write(const Node& node) {
-        if (!node.is_valid()) {
+        if (!node.isValid()) {
             this->out.write("null");
             return;
         }
 
         if (const Node::Object* obj = node.var.as<Node::Object>()) {
             this->out.write("{\n");
-            this->indent_level++;
+            this->indentLevel++;
             ArrayView<const Map<String, Node>::Item> items = obj->items.items();
-            for (u32 item_index = 0; item_index < items.num_items(); item_index++) {
-                const auto& obj_item = items[item_index];
+            for (u32 itemIndex = 0; itemIndex < items.numItems(); itemIndex++) {
+                const auto& objItem = items[itemIndex];
                 indent();
-                this->out.format("\"{}\": ", escape(obj_item.key));
-                write(obj_item.value);
-                if (item_index < items.num_items() - 1) {
+                this->out.format("\"{}\": ", escape(objItem.key));
+                write(objItem.value);
+                if (itemIndex < items.numItems() - 1) {
                     this->out.write(',');
                 }
                 this->out.write('\n');
             }
-            this->indent_level--;
+            this->indentLevel--;
             indent();
             this->out.write('}');
         } else if (const Node::Array* arr = node.var.as<Node::Array>()) {
             this->out.write("[\n");
-            this->indent_level++;
-            for (u32 i = 0; i < arr->items.num_items(); i++) {
+            this->indentLevel++;
+            for (u32 i = 0; i < arr->items.numItems(); i++) {
                 indent();
                 write(arr->items[i]);
-                if (i < arr->items.num_items() - 1) {
+                if (i < arr->items.numItems() - 1) {
                     this->out.write(',');
                 }
                 this->out.write('\n');
             }
-            this->indent_level--;
+            this->indentLevel--;
             indent();
             this->out.write(']');
         } else if (const Node::Bool* b = node.var.as<Node::Bool>()) {
@@ -590,10 +589,10 @@ void write(Stream& out, const Node& node) {
     ctx.write(node);
 }
 
-String to_string(const Node& node) {
+String toString(const Node& node) {
     MemStream out;
     write(out, node);
-    return out.move_to_string();
+    return out.moveToString();
 }
 
 } // namespace json

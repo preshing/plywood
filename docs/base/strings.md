@@ -20,11 +20,11 @@ These classes aren't thread-safe. Functions that read from the same string can b
 
 The following member functions are implemented in both `String` and `StringView`:
 
-{api_summary title="`String` and `StringView` member functions"}
+{apiSummary title="`String` and `StringView` member functions"}
 -- Accessing String Bytes
 char* bytes()
 const char* bytes() const
-u32 num_bytes() const
+u32 numBytes() const
 char& operator[](u32 index)
 const char& operator[](u32 index) const
 char& back(s32 ofs = -1)
@@ -34,23 +34,23 @@ const char* begin() const
 char* end()
 const char* end() const
 -- Examining String Contents
-bool is_empty() const
+bool isEmpty() const
 explicit operator bool() const
-bool starts_with(StringView arg) const
-bool ends_with(StringView arg) const
-s32 find(StringView substr, u32 start_pos = 0) const
-s32 find(const MatchFunc& match_func, u32 start_pos = 0) const
-s32 reverse_find(StringView substr, u32 start_pos) const
-s32 reverse_find(const MatchFunc& match_func, u32 start_pos) const
+bool startsWith(StringView arg) const
+bool endsWith(StringView arg) const
+s32 find(StringView substr, u32 startPos = 0) const
+s32 find(const MatchFunc& matchFunc, u32 startPos = 0) const
+s32 reverseFind(StringView substr, u32 startPos) const
+s32 reverseFind(const MatchFunc& matchFunc, u32 startPos) const
 -- Creating Subviews
 StringView substr(u32 start) const
-StringView substr(u32 start, u32 num_bytes) const
-StringView left(u32 num_bytes) const
-StringView shortened_by(u32 num_bytes) const
-StringView right(u32 num_bytes) const
-StringView trim(bool (*match_func)(char) = is_whitespace, bool left = true, bool right = true) const
-StringView trim_left(bool (*match_func)(char) = is_whitespace) const
-StringView trim_right(bool (*match_func)(char) = is_whitespace) const
+StringView substr(u32 start, u32 numBytes) const
+StringView left(u32 numBytes) const
+StringView shortenedBy(u32 numBytes) const
+StringView right(u32 numBytes) const
+StringView trim(bool (*matchFunc)(char) = isWhitespace, bool left = true, bool right = true) const
+StringView trimLeft(bool (*matchFunc)(char) = isWhitespace) const
+StringView trimRight(bool (*matchFunc)(char) = isWhitespace) const
 -- Creating New Strings
 String upper() const
 String lower() const
@@ -59,11 +59,11 @@ String join(ArrayView<const StringView> comps) const;
 String operator+(StringView other);
 -- Pattern Matching
 template <typename... Args> bool match(StringView pattern, const Args&&... args)
-{/api_summary}
+{/apiSummary}
 
 ### Accessing String Bytes
 
-{api_descriptions class=String}
+{apiDescriptions class=String}
 char& operator[](u32 index)
 const char& operator[](u32 index) const
 --
@@ -95,92 +95,92 @@ Returns a pointer to one past the last byte of the string. Suitable for range-fo
     for (char c : str) {
         // Iterates over 'H', 'e', 'l', 'l', 'o'
     }
-{/api_descriptions}
+{/apiDescriptions}
 
 ### Examining String Contents
 
-{api_descriptions class=String}
-bool is_empty() const
+{apiDescriptions class=String}
+bool isEmpty() const
 --
 Returns `true` if the string contains no bytes.
 
 >>
-bool starts_with(StringView arg) const
+bool startsWith(StringView arg) const
 --
 Returns `true` if the string begins with the specified prefix.
 
 >>
-bool ends_with(StringView arg) const
+bool endsWith(StringView arg) const
 --
 Returns `true` if the string ends with the specified suffix.
 
 >>
-s32 find(StringView substr, u32 start_pos = 0) const
+s32 find(StringView substr, u32 startPos = 0) const
 --
-Searches for the first occurrence of `substr` starting from `start_pos`. Returns the index of the first match, or `-1` if not found.
+Searches for the first occurrence of `substr` starting from `startPos`. Returns the index of the first match, or `-1` if not found.
 
 >>
-s32 find(const MatchFunc& match_func, u32 start_pos = 0) const
+s32 find(const MatchFunc& matchFunc, u32 startPos = 0) const
 --
-Searches for the first byte that satisfies the match function starting from `start_pos`. Returns the index of the first match, or `-1` if not found.
+Searches for the first byte that satisfies the match function starting from `startPos`. Returns the index of the first match, or `-1` if not found.
 
 >>
-s32 reverse_find(StringView substr, s32 start_pos = -1) const
+s32 reverseFind(StringView substr, s32 startPos = -1) const
 --
-Searches backwards for the last occurrence of `substr` starting from `start_pos` (or the end if `-1`). Returns the index of the match, or `-1` if not found.
+Searches backwards for the last occurrence of `substr` starting from `startPos` (or the end if `-1`). Returns the index of the match, or `-1` if not found.
 
 >>
-s32 reverse_find(const MatchFunc& match_func, s32 start_pos = -1) const
+s32 reverseFind(const MatchFunc& matchFunc, s32 startPos = -1) const
 --
 Searches backwards for the last byte that satisfies the match function. Returns the index of the match, or `-1` if not found.
-{/api_descriptions}
+{/apiDescriptions}
 
 ### Creating Subviews
 
-{api_descriptions class=String}
+{apiDescriptions class=String}
 StringView substr(u32 start) const
 --
 Returns a view of the substring starting at `start` and extending to the end of the string.
 
 >>
-StringView substr(u32 start, u32 num_bytes) const
+StringView substr(u32 start, u32 numBytes) const
 --
-Returns a view of the substring starting at `start` with length `num_bytes`.
+Returns a view of the substring starting at `start` with length `numBytes`.
 
 >>
-StringView left(u32 num_bytes) const
+StringView left(u32 numBytes) const
 --
-Returns a view of the first `num_bytes` bytes of the string.
+Returns a view of the first `numBytes` bytes of the string.
 
 >>
-StringView shortened_by(u32 num_bytes) const
+StringView shortenedBy(u32 numBytes) const
 --
-Returns a view of the string with `num_bytes` removed from the end.
+Returns a view of the string with `numBytes` removed from the end.
 
 >>
-StringView right(u32 num_bytes) const
+StringView right(u32 numBytes) const
 --
-Returns a view of the last `num_bytes` bytes of the string.
+Returns a view of the last `numBytes` bytes of the string.
 
 >>
-StringView trim(bool (*match_func)(char) = is_whitespace, bool left = true, bool right = true) const
+StringView trim(bool (*matchFunc)(char) = isWhitespace, bool left = true, bool right = true) const
 --
 Returns a view with matching characters removed from both ends. By default, trims whitespace characters.
 
 >>
-StringView trim_left(bool (*match_func)(char) = is_whitespace) const
+StringView trimLeft(bool (*matchFunc)(char) = isWhitespace) const
 --
 Returns a view with matching characters removed from the beginning. By default, trims whitespace.
 
 >>
-StringView trim_right(bool (*match_func)(char) = is_whitespace) const
+StringView trimRight(bool (*matchFunc)(char) = isWhitespace) const
 --
 Returns a view with matching characters removed from the end. By default, trims whitespace.
-{/api_descriptions}
+{/apiDescriptions}
 
 ### Creating New Strings
 
-{api_descriptions class=String}
+{apiDescriptions class=String}
 String upper() const
 --
 Returns a new string with all ASCII lowercase letters converted to uppercase. Non-ASCII bytes are unchanged.
@@ -204,15 +204,15 @@ Joins an array of string components using this string as the separator.
 String operator+(StringView other)
 --
 Returns a new string with the contents of this string followed by the contents of `other`.
-{/api_descriptions}
+{/apiDescriptions}
 
 ### Pattern Matching
 
-{api_descriptions}
+{apiDescriptions}
 template <typename... Args> bool match(StringView pattern, const Args&&... args)
 --
 Matches the string against a pattern containing `{}` placeholders. If the match succeeds, captured values are written to the output arguments.
-{/api_descriptions}
+{/apiDescriptions}
 
 ## `String`
 
@@ -220,7 +220,7 @@ The `String` class owns a block of memory allocated from the [Plywood heap](/doc
 
 `String` objects are movable, copyable and construct to an empty string by default. In addition to the [common string functions](#common) listed in the previous section, they provide the following member functions:
 
-{api_summary class=String}
+{apiSummary class=String}
 -- Type Conversions
 String(StringView other)
 String(const char* s)
@@ -228,19 +228,19 @@ operator StringView() const
 -- Modifying String Contents
 void clear()
 String& operator+=(StringView other)
-void resize(u32 num_bytes)
+void resize(u32 numBytes)
 char* release()
 -- Creating New Strings
-static String allocate(u32 num_bytes)
-static String adopt(char* bytes, u32 num_bytes)
+static String allocate(u32 numBytes)
+static String adopt(char* bytes, u32 numBytes)
 -- Formatting
 static String format(StringView fmt, const Args&... args)
-static String from_date_time(const DateTime& date_time);
-{/api_summary}
+static String fromDateTime(const DateTime& dateTime);
+{/apiSummary}
 
 ### Type Conversions
 
-{api_descriptions class=String}
+{apiDescriptions class=String}
 String(StringView other)
 --
 Constructs a new string by copying the contents of a `StringView`.
@@ -254,11 +254,11 @@ Constructs a string from a null-terminated C string. The characters are copied i
 operator StringView() const
 --
 Implicitly converts the string to a `StringView`. This allows `String` objects to be passed directly to functions that expect `StringView` parameters.
-{/api_descriptions}
+{/apiDescriptions}
 
 ### Modifying String Contents
 
-{api_descriptions class=String}
+{apiDescriptions class=String}
 void clear()
 --
 Frees the internal memory block and resets to an empty state.
@@ -269,7 +269,7 @@ void operator+=(StringView other)
 Appends the bytes from `other` to this string, reallocating if necessary.
 
 >>
-void resize(u32 num_bytes)
+void resize(u32 numBytes)
 --
 Resizes the string to the specified length, reallocating if necessary. New bytes are uninitialized.
 
@@ -277,24 +277,24 @@ Resizes the string to the specified length, reallocating if necessary. New bytes
 char* release()
 --
 Releases ownership of the internal memory block and returns a pointer to it. The caller is responsible for freeing the memory later using `Heap::free`.
-{/api_descriptions}
+{/apiDescriptions}
 
 ### Creating New Strings
 
-{api_descriptions class=String}
-static String allocate(u32 num_bytes)
+{apiDescriptions class=String}
+static String allocate(u32 numBytes)
 --
 Allocates a new string of the specified size. The contents are uninitialized.
 
 >>
-static String adopt(char* bytes, u32 num_bytes)
+static String adopt(char* bytes, u32 numBytes)
 --
 Creates a `String` object that takes ownership of an existing buffer. The buffer must have been allocated from the Plywood heap and will be freed when the `String` is destroyed.
-{/api_descriptions}
+{/apiDescriptions}
 
 ### Formatting
 
-{api_descriptions class=String}
+{apiDescriptions class=String}
 static String format(StringView fmt, const Args&... args)
 --
 Creates a formatted string using `{}` placeholders. Arguments are converted to text and substituted in order.
@@ -302,10 +302,10 @@ Creates a formatted string using `{}` placeholders. Arguments are converted to t
 [TBD]
 
 >>
-static String from_date_time(const DateTime& date_time);
+static String fromDateTime(const DateTime& dateTime);
 --
 Creates a string representation of a `DateTime` object using a format string. See the [Time and Date](/docs/base/time-and-date) chapter for format specifiers.
-{/api_descriptions}
+{/apiDescriptions}
 
 ## `StringView`
 

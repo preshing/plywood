@@ -2,7 +2,7 @@
        ____
       ╱   ╱╲    Plywood C++ Base Library
      ╱___╱╭╮╲   https://plywood.dev/
-      └──┴┴┴┘   
+      └──┴┴┴┘
 ========================================================*/
 
 #include <ply-json.h>
@@ -15,14 +15,14 @@ int main(int argc, const char* argv[]) {
     SetConsoleOutputCP(CP_UTF8);
 #endif
 
-    String path = join_path(MARKDOWN_TESTS_PATH, "spec.json");
-    String src = Filesystem::load_text_autodetect(path);
+    String path = joinPath(MARKDOWN_TESTS_PATH, "spec.json");
+    String src = Filesystem::loadTextAutodetect(path);
     json::Parser::Result result = json::Parser{}.parse(path, src);
 
-    for (const json::Node* test_case : result.root->array_) {
-        String converted = markdown::convert_to_html(test_case->get("markdown")->text());
-        get_stdout().write("---------------------\n");
-        get_stdout().write(converted);
-        get_stdout().write(test_case->get("html")->text());
+    for (const json::Node* testCase : result.root->array_) {
+        String converted = markdown::convertToHtml(testCase->get("markdown")->text());
+        getStdout().write("---------------------\n");
+        getStdout().write(converted);
+        getStdout().write(testCase->get("html")->text());
     }
 }

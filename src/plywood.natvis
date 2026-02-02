@@ -8,24 +8,24 @@
   </Type>
 
   <Type Name="ply::Array&lt;*&gt;">
-    <DisplayString Condition="num_items_ == 0">num_items=0</DisplayString>
-    <DisplayString Condition="num_items_ == 1">num_items=1 {{{items_[0]}}}</DisplayString>
-    <DisplayString Condition="num_items_ &gt; 1">num_items={num_items_} {{{items_[0]}, ...}}</DisplayString>
+    <DisplayString Condition="numItems_ == 0">numItems=0</DisplayString>
+    <DisplayString Condition="numItems_ == 1">numItems=1 {{{items_[0]}}}</DisplayString>
+    <DisplayString Condition="numItems_ &gt; 1">numItems={numItems_} {{{items_[0]}, ...}}</DisplayString>
     <Expand>
       <ArrayItems>
-        <Size>num_items_</Size>
+        <Size>numItems_</Size>
         <ValuePointer>items_</ValuePointer>
       </ArrayItems>
     </Expand>
   </Type>
 
   <Type Name="ply::ArrayView&lt;*&gt;">
-    <DisplayString Condition="num_items_ == 0">num_items=0</DisplayString>
-    <DisplayString Condition="num_items_ == 1">num_items=1 {{{items_[0]}}}</DisplayString>
-    <DisplayString Condition="num_items_ &gt; 1">num_items={num_items_} {{{items_[0]}, ...}}</DisplayString>
+    <DisplayString Condition="numItems_ == 0">numItems=0</DisplayString>
+    <DisplayString Condition="numItems_ == 1">numItems=1 {{{items_[0]}}}</DisplayString>
+    <DisplayString Condition="numItems_ &gt; 1">numItems={numItems_} {{{items_[0]}, ...}}</DisplayString>
     <Expand>
       <ArrayItems>
-        <Size>num_items_</Size>
+        <Size>numItems_</Size>
         <ValuePointer>items_</ValuePointer>
       </ArrayItems>
     </Expand>
@@ -40,27 +40,27 @@
   </Type>
 
   <Type Name="ply::Set&lt;*&gt;">
-    <DisplayString>size={items_.num_items_}</DisplayString>
+    <DisplayString>size={items_.numItems_}</DisplayString>
     <Expand>
       <ExpandedItem>items_</ExpandedItem>
     </Expand>
   </Type>
 
   <Type Name="ply::Map&lt;*,*&gt;">
-    <DisplayString>size={items_.num_items_}</DisplayString>
+    <DisplayString>size={items_.numItems_}</DisplayString>
     <Expand>
       <ExpandedItem>items_</ExpandedItem>
     </Expand>
   </Type>
 
   <Type Name="ply::String">
-    <DisplayString>{bytes_,[num_bytes_]s}</DisplayString>
-    <StringView>bytes_,[num_bytes_]s</StringView>
+    <DisplayString>{bytes_,[numBytes_]s}</DisplayString>
+    <StringView>bytes_,[numBytes_]s</StringView>
   </Type>
 
   <Type Name="ply::StringView">
-    <DisplayString>{bytes_,[num_bytes_]s}</DisplayString>
-    <StringView>bytes_,[num_bytes_]s</StringView>
+    <DisplayString>{bytes_,[numBytes_]s}</DisplayString>
+    <StringView>bytes_,[numBytes_]s</StringView>
   </Type>
 
   <Type Name="ply::Variant&lt;*&gt;">

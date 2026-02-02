@@ -2,13 +2,14 @@
        ____
       ╱   ╱╲    Plywood C++ Base Library
      ╱___╱╭╮╲   https://plywood.dev/
-      └──┴┴┴┘   
+      └──┴┴┴┘
 ========================================================*/
 
 #include "ply-network.h"
 
-#if PLY_MACOS
+#if defined(PLY_POSIX)
 #include <arpa/inet.h>
+#include <signal.h>
 #define PLY_IPPOSIX_ALLOW_UNKNOWN_ERRORS 0
 #endif
 
@@ -20,11 +21,11 @@ namespace ply {
 //  ▄██▄ ██     ██  ██ ▀█▄▄██ ▀█▄▄██ ██     ▀█▄▄▄   ▄▄▄█▀  ▄▄▄█▀
 //
 
-String IPAddress::to_string() const {
+String IPAddress::toString() const {
     char buf[INET6_ADDRSTRLEN] = {0};
     if (this->version() == IPV4) {
         // FIXME: Rewrite without using CRT
-        const char* r = inet_ntop(AF_INET, &this->net_ordered[3], buf, INET6_ADDRSTRLEN);
+        const char* r = inet_ntop(AF_INET, &this->netOrdered[3], buf, INET6_ADDRSTRLEN);
         PLY_ASSERT(r == buf);
         PLY_UNUSED(r);
     } else {
@@ -53,7 +54,7 @@ PLY_STATIC_ASSERT(sizeof(struct sockaddr_in) <= sizeof(struct sockaddr_in6));
 
 bool Network::IsInit = false;
 bool Network::HasIPv6 = false;
-ThreadLocal<IPResult> Network::last_result_;
+ThreadLocal<IPResult> Network::lastResult_;
 
 #if defined(PLY_WINDOWS)
 
@@ -65,7 +66,7 @@ PipeWinsock::~PipeWinsock() {
 }
 
 u32 PipeWinsock::read(MutStringView buf) {
-    int rc = recv(this->socket, (char*) buf.bytes, int(buf.num_bytes), 0);
+    int rc = recv(this->socket, (char*) buf.bytes, int(buf.numBytes), 0);
     if (rc == 0 || rc == SOCKET_ERROR)
         return 0;
     PLY_ASSERT(rc > 0);
@@ -73,12 +74,12 @@ u32 PipeWinsock::read(MutStringView buf) {
 }
 
 bool PipeWinsock::write(StringView buf) {
-    while (buf.num_bytes() > 0) {
-        int rc = send(this->socket, (const char*) buf.bytes(), (DWORD) buf.num_bytes(), 0);
+    while (buf.numBytes() > 0) {
+        int rc = send(this->socket, (const char*) buf.bytes(), (DWORD) buf.numBytes(), 0);
         if (rc == SOCKET_ERROR) // FIXME: Test to make sure that disconnected sockets return
                                 // SOCKET_ERROR and not 0
             return false;
-        PLY_ASSERT(rc >= 0 && u32(rc) <= buf.num_bytes());
+        PLY_ASSERT(rc >= 0 && u32(rc) <= buf.numBytes());
         buf = buf.substr(rc);
     }
     return true;
@@ -87,14 +88,14 @@ bool PipeWinsock::write(StringView buf) {
 void PipeWinsock::flush(bool) {
 }
 
-void Network::initialize(IPVersion ip_version) {
+void Network::initialize(IPVersion ipVersion) {
     PLY_ASSERT(!IsInit);
     // Initialize Winsock
-    WSADATA wsa_data;
-    int rc = WSAStartup(MAKEWORD(2, 2), &wsa_data);
+    WSADATA wsaData;
+    int rc = WSAStartup(MAKEWORD(2, 2), &wsaData);
     PLY_ASSERT(rc == 0);
     PLY_UNUSED(rc);
-    PLY_ASSERT(LOBYTE(wsa_data.wVersion) == 2 && HIBYTE(wsa_data.wVersion) == 2);
+    PLY_ASSERT(LOBYTE(wsaData.wVersion) == 2 && HIBYTE(wsaData.wVersion) == 2);
     IsInit = true;
 }
 
@@ -108,51 +109,51 @@ void Network::shutdown() {
 
 TCPConnection::~TCPConnection() {
     // Prevent double-deletion of socket handle
-    this->out_pipe->socket = INVALID_SOCKET;
+    this->outPipe->socket = INVALID_SOCKET;
 }
 
 Owned<TCPConnection> TCPListener::accept() {
-    if (this->listen_socket == INVALID_SOCKET) {
-        Network::last_result_.store(IPResult::NO_SOCKET);
+    if (this->listenSocket == INVALID_SOCKET) {
+        Network::lastResult_.store(IPResult::NO_SOCKET);
         return nullptr;
     }
 
-    struct PLY_IF_IPV6(sockaddr_in6, sockaddr_in) remote_addr;
-    socklen_t remote_addr_len = sizeof(sockaddr_in);
+    struct PLY_IF_IPV6(sockaddr_in6, sockaddr_in) remoteAddr;
+    socklen_t remoteAddrLen = sizeof(sockaddr_in);
     if (PLY_IF_IPV6(Network::HasIPv6, false)) {
-        remote_addr_len = sizeof(sockaddr_in6);
+        remoteAddrLen = sizeof(sockaddr_in6);
     }
-    socklen_t passed_addr_len = remote_addr_len;
-    SOCKET host_socket = ::accept(this->listen_socket, (struct sockaddr*) &remote_addr, &remote_addr_len);
+    socklen_t passedAddrLen = remoteAddrLen;
+    SOCKET hostSocket = ::accept(this->listenSocket, (struct sockaddr*) &remoteAddr, &remoteAddrLen);
 
-    if (host_socket == INVALID_SOCKET) {
+    if (hostSocket == INVALID_SOCKET) {
         // FIXME: Check WSAGetLastError
         PLY_ASSERT(PLY_IPWINSOCK_ALLOW_UNKNOWN_ERRORS);
-        Network::last_result_.store(IPResult::UNKNOWN);
+        Network::lastResult_.store(IPResult::UNKNOWN);
         return nullptr;
     }
 
-    PLY_ASSERT(passed_addr_len >= remote_addr_len);
-    TCPConnection* tcp_conn = Heap::create<TCPConnection>();
+    PLY_ASSERT(passedAddrLen >= remoteAddrLen);
+    TCPConnection* tcpConn = Heap::create<TCPConnection>();
 #if PLY_WITH_IPV6
-    if (Network::HasIPv6 && remote_addr_len == sizeof(sockaddr_in6)) {
-        PLY_ASSERT(remote_addr.sin6_family == AF_INET6);
-        memcpy(&tcp_conn->remote_addr_, &remote_addr.sin6_addr, 16);
+    if (Network::HasIPv6 && remoteAddrLen == sizeof(sockaddr_in6)) {
+        PLY_ASSERT(remoteAddr.sin6_family == AF_INET6);
+        memcpy(&tcpConn->remoteAddr_, &remoteAddr.sin6_addr, 16);
     } else
 #endif
     {
-        struct sockaddr_in* remoteAddrV4 = (struct sockaddr_in*) &remote_addr;
+        struct sockaddr_in* remoteAddrV4 = (struct sockaddr_in*) &remoteAddr;
         PLY_ASSERT(remoteAddrV4->sin_family == AF_INET);
-        tcp_conn->remote_addr_ = IPAddress::from_ipv4(remoteAddrV4->sin_addr.s_addr);
+        tcpConn->remoteAddr_ = IPAddress::from_ipv4(remoteAddrV4->sin_addr.s_addr);
     }
-    tcp_conn->remote_port_ = convert_big_endian(remote_addr.sin6_port);
-    tcp_conn->in_pipe = Heap::create<PipeWinsock>(host_socket, Pipe::HAS_READ_PERMISSION);
-    tcp_conn->out_pipe = Heap::create<PipeWinsock>(host_socket, Pipe::HAS_WRITE_PERMISSION);
-    Network::last_result_.store(IPResult::OK);
-    return tcp_conn;
+    tcpConn->remotePort_ = convertBigEndian(remoteAddr.sin6_port);
+    tcpConn->inPipe = Heap::create<PipeWinsock>(hostSocket, Pipe::HAS_READ_PERMISSION);
+    tcpConn->outPipe = Heap::create<PipeWinsock>(hostSocket, Pipe::HAS_WRITE_PERMISSION);
+    Network::lastResult_.store(IPResult::OK);
+    return tcpConn;
 }
 
-SOCKET create_socket(int type) {
+SOCKET createSocket(int type) {
     int family = AF_INET;
     if (PLY_IF_IPV6(Network::HasIPv6, false)) {
         family = AF_INET6;
@@ -164,7 +165,7 @@ SOCKET create_socket(int type) {
             case 0: // Dummy case to prevent compiler warnings
             default: {
                 PLY_ASSERT(PLY_IPWINSOCK_ALLOW_UNKNOWN_ERRORS); // FIXME: Recognize this code
-                Network::last_result_.store(IPResult::UNKNOWN);
+                Network::lastResult_.store(IPResult::UNKNOWN);
                 break;
             }
         }
@@ -172,47 +173,47 @@ SOCKET create_socket(int type) {
     return s;
 }
 
-TCPListener Network::bind_tcp(u16 port) {
-    SOCKET listen_socket = create_socket(SOCK_STREAM);
-    if (listen_socket == INVALID_SOCKET) { // last_result_ is already set
+TCPListener Network::bindTcp(u16 port) {
+    SOCKET listenSocket = createSocket(SOCK_STREAM);
+    if (listenSocket == INVALID_SOCKET) { // lastResult_ is already set
         return {};
     }
 
-    BOOL reuse_addr = TRUE;
-    int rc = setsockopt(listen_socket, SOL_SOCKET, SO_REUSEADDR, (const char*) &reuse_addr, sizeof(reuse_addr));
+    BOOL reuseAddr = TRUE;
+    int rc = setsockopt(listenSocket, SOL_SOCKET, SO_REUSEADDR, (const char*) &reuseAddr, sizeof(reuseAddr));
     PLY_ASSERT(rc == 0 || PLY_IPWINSOCK_ALLOW_UNKNOWN_ERRORS);
 
-    struct PLY_IF_IPV6(sockaddr_in6, sockaddr_in) server_addr;
-    socklen_t server_addr_len = sizeof(sockaddr_in);
+    struct PLY_IF_IPV6(sockaddr_in6, sockaddr_in) serverAddr;
+    socklen_t serverAddrLen = sizeof(sockaddr_in);
 #if PLY_WITH_IPV6
     if (Network::HasIPv6) {
-        server_addr_len = sizeof(sockaddr_in6);
-        memset(&server_addr, 0, server_addr_len);
+        serverAddrLen = sizeof(sockaddr_in6);
+        memset(&serverAddr, 0, serverAddrLen);
 #if PLY_KERNEL_FREEBSD
-        server_addr.sin6_len = server_addr_len;
+        serverAddr.sin6_len = serverAddrLen;
 #endif
-        server_addr.sin6_family = AF_INET6;
-        server_addr.sin6_addr = IN6ADDR_ANY_INIT;
-        server_addr.sin6_port = convert_big_endian(port);
+        serverAddr.sin6_family = AF_INET6;
+        serverAddr.sin6_addr = IN6ADDR_ANY_INIT;
+        serverAddr.sin6_port = convertBigEndian(port);
     } else
 #endif
     {
-        struct sockaddr_in* serverAddrV4 = (struct sockaddr_in*) &server_addr;
-        memset(serverAddrV4, 0, server_addr_len);
+        struct sockaddr_in* serverAddrV4 = (struct sockaddr_in*) &serverAddr;
+        memset(serverAddrV4, 0, serverAddrLen);
 #if PLY_KERNEL_FREEBSD
-        server_addr.sin_len = server_addr_len;
+        serverAddr.sin_len = serverAddrLen;
 #endif
         serverAddrV4->sin_family = AF_INET;
         serverAddrV4->sin_addr.s_addr = INADDR_ANY;
-        serverAddrV4->sin_port = convert_big_endian(port);
+        serverAddrV4->sin_port = convertBigEndian(port);
     }
 
-    rc = bind(listen_socket, (struct sockaddr*) &server_addr, server_addr_len);
+    rc = bind(listenSocket, (struct sockaddr*) &serverAddr, serverAddrLen);
     if (rc == 0) {
-        rc = listen(listen_socket, 1);
+        rc = listen(listenSocket, 1);
         if (rc == 0) {
-            Network::last_result_.store(IPResult::OK);
-            return TCPListener{listen_socket};
+            Network::lastResult_.store(IPResult::OK);
+            return TCPListener{listenSocket};
         } else {
             int err = WSAGetLastError();
             switch (err) {
@@ -220,7 +221,7 @@ TCPListener Network::bind_tcp(u16 port) {
                 default: {
                     // FIXME: Recognize this error code
                     PLY_ASSERT(PLY_IPWINSOCK_ALLOW_UNKNOWN_ERRORS);
-                    Network::last_result_.store(IPResult::UNKNOWN);
+                    Network::lastResult_.store(IPResult::UNKNOWN);
                     break;
                 }
             }
@@ -232,99 +233,99 @@ TCPListener Network::bind_tcp(u16 port) {
             default: {
                 // FIXME: Recognize this error code
                 PLY_ASSERT(PLY_IPWINSOCK_ALLOW_UNKNOWN_ERRORS);
-                Network::last_result_.store(IPResult::UNKNOWN);
+                Network::lastResult_.store(IPResult::UNKNOWN);
                 break;
             }
         }
     }
 
     // Failed
-    rc = ::closesocket(listen_socket);
+    rc = ::closesocket(listenSocket);
     PLY_ASSERT(rc == 0 || PLY_IPWINSOCK_ALLOW_UNKNOWN_ERRORS);
     PLY_UNUSED(rc);
     return {};
 }
 
-Owned<TCPConnection> Network::connect_tcp(const IPAddress& address, u16 port) {
-    SOCKET connect_socket = create_socket(SOCK_STREAM);
-    if (connect_socket == INVALID_SOCKET) { // last_result_ is already set
+Owned<TCPConnection> Network::connectTcp(const IPAddress& address, u16 port) {
+    SOCKET connectSocket = createSocket(SOCK_STREAM);
+    if (connectSocket == INVALID_SOCKET) { // lastResult_ is already set
         return {};
     }
 
-    struct PLY_IF_IPV6(sockaddr_in6, sockaddr_in) remote_addr;
-    socklen_t remote_addr_len = sizeof(sockaddr_in);
+    struct PLY_IF_IPV6(sockaddr_in6, sockaddr_in) remoteAddr;
+    socklen_t remoteAddrLen = sizeof(sockaddr_in);
 #if PLY_WITH_IPV6
     if (Network::HasIPv6) {
-        remote_addr_len = sizeof(sockaddr_in6);
-        memset(&remote_addr, 0, remote_addr_len);
+        remoteAddrLen = sizeof(sockaddr_in6);
+        memset(&remoteAddr, 0, remoteAddrLen);
 #if PLY_KERNEL_FREEBSD
-        remote_addr.sin6_len = remote_addr_len;
+        remoteAddr.sin6_len = remoteAddrLen;
 #endif
-        remote_addr.sin6_family = AF_INET6;
-        memcpy(&remote_addr.sin6_addr, &address, 16);
-        remote_addr.sin6_port = convert_big_endian(port);
+        remoteAddr.sin6_family = AF_INET6;
+        memcpy(&remoteAddr.sin6_addr, &address, 16);
+        remoteAddr.sin6_port = convertBigEndian(port);
     } else
 #endif
     {
         PLY_ASSERT(address.version() == IPV4);
-        struct sockaddr_in* remoteAddrV4 = (struct sockaddr_in*) &remote_addr;
-        memset(remoteAddrV4, 0, remote_addr_len);
+        struct sockaddr_in* remoteAddrV4 = (struct sockaddr_in*) &remoteAddr;
+        memset(remoteAddrV4, 0, remoteAddrLen);
 #if PLY_KERNEL_FREEBSD
-        server_addr.sin_len = server_addr_len;
+        serverAddr.sin_len = serverAddrLen;
 #endif
         remoteAddrV4->sin_family = AF_INET;
-        remoteAddrV4->sin_addr.s_addr = address.net_ordered[3];
-        remoteAddrV4->sin_port = convert_big_endian(port);
+        remoteAddrV4->sin_addr.s_addr = address.netOrdered[3];
+        remoteAddrV4->sin_port = convertBigEndian(port);
     }
 
-    int rc = ::connect(connect_socket, (sockaddr*) &remote_addr, remote_addr_len);
+    int rc = ::connect(connectSocket, (sockaddr*) &remoteAddr, remoteAddrLen);
     if (rc == 0) {
-        TCPConnection* tcp_conn = Heap::create<TCPConnection>();
-        tcp_conn->remote_addr_ = address;
-        tcp_conn->remote_port_ = port;
-        tcp_conn->in_pipe = Heap::create<PipeWinsock>(connect_socket, Pipe::HAS_READ_PERMISSION);
-        tcp_conn->out_pipe = Heap::create<PipeWinsock>(connect_socket, Pipe::HAS_WRITE_PERMISSION);
-        Network::last_result_.store(IPResult::OK);
-        return tcp_conn;
+        TCPConnection* tcpConn = Heap::create<TCPConnection>();
+        tcpConn->remoteAddr_ = address;
+        tcpConn->remotePort_ = port;
+        tcpConn->inPipe = Heap::create<PipeWinsock>(connectSocket, Pipe::HAS_READ_PERMISSION);
+        tcpConn->outPipe = Heap::create<PipeWinsock>(connectSocket, Pipe::HAS_WRITE_PERMISSION);
+        Network::lastResult_.store(IPResult::OK);
+        return tcpConn;
     }
 
     int err = WSAGetLastError();
     switch (err) {
         case WSAECONNREFUSED: {
-            Network::last_result_.store(IPResult::REFUSED);
+            Network::lastResult_.store(IPResult::REFUSED);
             break;
         }
         default: {
             PLY_ASSERT(PLY_IPWINSOCK_ALLOW_UNKNOWN_ERRORS); // FIXME: Recognize this error ode
-            Network::last_result_.store(IPResult::UNKNOWN);
+            Network::lastResult_.store(IPResult::UNKNOWN);
             break;
         }
     }
-    rc = ::closesocket(connect_socket);
+    rc = ::closesocket(connectSocket);
     PLY_ASSERT(rc == 0 || PLY_IPWINSOCK_ALLOW_UNKNOWN_ERRORS);
     PLY_UNUSED(rc);
     return nullptr;
 }
 
-IPAddress Network::resolve_host_name(StringView host_name, IPVersion ip_version) {
+IPAddress Network::resolveHostName(StringView hostName, IPVersion ipVersion) {
     struct addrinfo hints;
     memset(&hints, 0, sizeof(hints));
     hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
 #if PLY_WITH_IPV6
-    if (ip_version == IPV6) {
+    if (ipVersion == IPV6) {
         hints.ai_family = AF_INET6;
         hints.ai_flags = AI_V4MAPPED | AI_ADDRCONFIG; // Fallback to V4 if no V6
     }
 #endif
     struct addrinfo* res = nullptr;
-    int rc = getaddrinfo((host_name + '\0').bytes(), nullptr, &hints, &res);
+    int rc = getaddrinfo((hostName + '\0').bytes(), nullptr, &hints, &res);
     PLY_ASSERT(rc == 0);
     PLY_UNUSED(rc);
     struct addrinfo* best = nullptr;
     for (struct addrinfo* cur = res; cur; cur = cur->ai_next) {
 #if PLY_WITH_IPV6
-        if (cur->ai_family == AF_INET6 && ip_version == IPV6) {
+        if (cur->ai_family == AF_INET6 && ipVersion == IPV6) {
             if (!best || best->ai_family != AF_INET6) {
                 best = cur;
             }
@@ -337,28 +338,28 @@ IPAddress Network::resolve_host_name(StringView host_name, IPVersion ip_version)
         }
     }
 
-    IPAddress ip_addr;
+    IPAddress ipAddr;
     if (best) {
 #if PLY_WITH_IPV6
         if (best->ai_family == AF_INET6) {
             PLY_ASSERT(best->ai_addrlen >= sizeof(sockaddr_in6));
-            struct sockaddr_in6* resolved_addr = (struct sockaddr_in6*) best->ai_addr;
-            memcpy(&ip_addr, &resolved_addr->sin6_addr, 16);
+            struct sockaddr_in6* resolvedAddr = (struct sockaddr_in6*) best->ai_addr;
+            memcpy(&ipAddr, &resolvedAddr->sin6_addr, 16);
         } else
 #endif
         {
             PLY_ASSERT(best->ai_addrlen >= sizeof(sockaddr_in));
-            struct sockaddr_in* resolved_addr = (struct sockaddr_in*) best->ai_addr;
-            ip_addr = IPAddress::from_ipv4(resolved_addr->sin_addr.s_addr);
+            struct sockaddr_in* resolvedAddr = (struct sockaddr_in*) best->ai_addr;
+            ipAddr = IPAddress::from_ipv4(resolvedAddr->sin_addr.s_addr);
         }
     }
     freeaddrinfo(res);
-    return ip_addr;
+    return ipAddr;
 }
 
 #elif defined(PLY_POSIX)
 
-void Network::initialize(IPVersion ip_version) {
+void Network::initialize(IPVersion ipVersion) {
     // FIXME: Move this to some kind of generic Plywood initialization function, since this disables
     // SIGPIPE for all file descriptors, not just sockets, and we probably always want that. In
     // particular, we want that when communicating with a subprocess:
@@ -367,12 +368,12 @@ void Network::initialize(IPVersion ip_version) {
     IsInit = true;
 
 #if PLY_WITH_IPV6
-    if (ip_version == IPV6) {
+    if (ipVersion == IPV6) {
         // FIXME: Is there a better way to test for IPv6 support?
-        int test_socket = socket(AF_INET6, SOCK_STREAM, 0);
-        if (test_socket >= 0) {
+        int testSocket = socket(AF_INET6, SOCK_STREAM, 0);
+        if (testSocket >= 0) {
             Network::HasIPv6 = true;
-            int rc = ::close(test_socket);
+            int rc = ::close(testSocket);
             PLY_ASSERT(rc == 0 || PLY_IPPOSIX_ALLOW_UNKNOWN_ERRORS);
             PLY_UNUSED(rc);
         }
@@ -387,52 +388,52 @@ void Network::shutdown() {
 
 TCPConnection::~TCPConnection() {
     // Prevent double-deletion of file descriptor
-    this->out_pipe->fd = -1;
+    this->outPipe->fd = -1;
 }
 
 Owned<TCPConnection> TCPListener::accept() {
-    if (this->listen_socket < 0) {
-        Network::last_result_.store(IPResult::NO_SOCKET);
+    if (this->listenSocket < 0) {
+        Network::lastResult_.store(IPResult::NO_SOCKET);
         return nullptr;
     }
 
-    struct PLY_IF_IPV6(sockaddr_in6, sockaddr_in) remote_addr;
-    socklen_t remote_addr_len = sizeof(sockaddr_in);
+    struct PLY_IF_IPV6(sockaddr_in6, sockaddr_in) remoteAddr;
+    socklen_t remoteAddrLen = sizeof(sockaddr_in);
     if (PLY_IF_IPV6(Network::HasIPv6, false)) {
-        remote_addr_len = sizeof(sockaddr_in6);
+        remoteAddrLen = sizeof(sockaddr_in6);
     }
-    socklen_t passed_addr_len = remote_addr_len;
-    int host_socket = ::accept(this->listen_socket, (struct sockaddr*) &remote_addr, &remote_addr_len);
+    socklen_t passedAddrLen = remoteAddrLen;
+    int hostSocket = ::accept(this->listenSocket, (struct sockaddr*) &remoteAddr, &remoteAddrLen);
 
-    if (host_socket <= 0) {
+    if (hostSocket <= 0) {
         // FIXME: Check errno
         PLY_ASSERT(PLY_IPPOSIX_ALLOW_UNKNOWN_ERRORS);
-        Network::last_result_.store(IPResult::UNKNOWN);
+        Network::lastResult_.store(IPResult::UNKNOWN);
         return nullptr;
     }
 
-    PLY_ASSERT(passed_addr_len >= remote_addr_len);
-    PLY_UNUSED(passed_addr_len);
-    TCPConnection* tcp_conn = Heap::create<TCPConnection>();
+    PLY_ASSERT(passedAddrLen >= remoteAddrLen);
+    PLY_UNUSED(passedAddrLen);
+    TCPConnection* tcpConn = Heap::create<TCPConnection>();
 #if PLY_WITH_IPV6
-    if (Network::HasIPv6 && remote_addr_len == sizeof(sockaddr_in6)) {
-        PLY_ASSERT(remote_addr.sin6_family == AF_INET6);
-        memcpy(&tcp_conn->remote_addr_, &remote_addr.sin6_addr, 16);
+    if (Network::HasIPv6 && remoteAddrLen == sizeof(sockaddr_in6)) {
+        PLY_ASSERT(remoteAddr.sin6_family == AF_INET6);
+        memcpy(&tcpConn->remoteAddr_, &remoteAddr.sin6_addr, 16);
     } else
 #endif
     {
-        struct sockaddr_in* remoteAddrV4 = (struct sockaddr_in*) &remote_addr;
+        struct sockaddr_in* remoteAddrV4 = (struct sockaddr_in*) &remoteAddr;
         PLY_ASSERT(remoteAddrV4->sin_family == AF_INET);
-        tcp_conn->remote_addr_ = IPAddress::from_ipv4(remoteAddrV4->sin_addr.s_addr);
+        tcpConn->remoteAddr_ = IPAddress::from_ipv4(remoteAddrV4->sin_addr.s_addr);
     }
-    tcp_conn->remote_port_ = convert_big_endian(remote_addr.sin6_port);
-    tcp_conn->in_pipe->fd = host_socket;
-    tcp_conn->out_pipe->fd = host_socket;
-    Network::last_result_.store(IPResult::OK);
-    return tcp_conn;
+    tcpConn->remotePort_ = convertBigEndian(remoteAddr.sin6_port);
+    tcpConn->inPipe->fd = hostSocket;
+    tcpConn->outPipe->fd = hostSocket;
+    Network::lastResult_.store(IPResult::OK);
+    return tcpConn;
 }
 
-int create_socket(int type) {
+int createSocket(int type) {
     int family = AF_INET;
     if (PLY_IF_IPV6(Network::HasIPv6, false)) {
         family = AF_INET6;
@@ -444,7 +445,7 @@ int create_socket(int type) {
             case ENOMEM:
             case ENFILE:
             case EMFILE: {
-                Network::last_result_.store(IPResult::NO_SOCKET);
+                Network::lastResult_.store(IPResult::NO_SOCKET);
                 break;
             }
             case EAFNOSUPPORT:
@@ -453,7 +454,7 @@ int create_socket(int type) {
                 // Maybe fall back to IPv4 if this happens for IPv6?
             default: {
                 PLY_ASSERT(PLY_IPPOSIX_ALLOW_UNKNOWN_ERRORS); // FIXME: Recognize this code
-                Network::last_result_.store(IPResult::UNKNOWN);
+                Network::lastResult_.store(IPResult::UNKNOWN);
                 break;
             }
         }
@@ -461,57 +462,57 @@ int create_socket(int type) {
     return s;
 }
 
-TCPListener Network::bind_tcp(u16 port) {
-    int listen_socket = create_socket(SOCK_STREAM);
-    if (listen_socket < 0) { // last_result_ is already set
+TCPListener Network::bindTcp(u16 port) {
+    int listenSocket = createSocket(SOCK_STREAM);
+    if (listenSocket < 0) { // lastResult_ is already set
         return {};
     }
 
-    int reuse_addr = 1;
-    int rc = setsockopt(listen_socket, SOL_SOCKET, SO_REUSEADDR, &reuse_addr, sizeof(reuse_addr));
+    int reuseAddr = 1;
+    int rc = setsockopt(listenSocket, SOL_SOCKET, SO_REUSEADDR, &reuseAddr, sizeof(reuseAddr));
     PLY_ASSERT(rc == 0 || PLY_IPPOSIX_ALLOW_UNKNOWN_ERRORS);
 
-    struct PLY_IF_IPV6(sockaddr_in6, sockaddr_in) server_addr;
-    socklen_t server_addr_len = sizeof(sockaddr_in);
+    struct PLY_IF_IPV6(sockaddr_in6, sockaddr_in) serverAddr;
+    socklen_t serverAddrLen = sizeof(sockaddr_in);
 #if PLY_WITH_IPV6
     if (Network::HasIPv6) {
-        server_addr_len = sizeof(sockaddr_in6);
-        memset(&server_addr, 0, server_addr_len);
+        serverAddrLen = sizeof(sockaddr_in6);
+        memset(&serverAddr, 0, serverAddrLen);
 #if PLY_KERNEL_FREEBSD
-        server_addr.sin6_len = server_addr_len;
+        serverAddr.sin6_len = serverAddrLen;
 #endif
-        server_addr.sin6_family = AF_INET6;
-        server_addr.sin6_addr = IN6ADDR_ANY_INIT;
-        server_addr.sin6_port = convert_big_endian(port);
+        serverAddr.sin6_family = AF_INET6;
+        serverAddr.sin6_addr = IN6ADDR_ANY_INIT;
+        serverAddr.sin6_port = convertBigEndian(port);
     } else
 #endif
     {
-        struct sockaddr_in* serverAddrV4 = (struct sockaddr_in*) &server_addr;
-        memset(serverAddrV4, 0, server_addr_len);
+        struct sockaddr_in* serverAddrV4 = (struct sockaddr_in*) &serverAddr;
+        memset(serverAddrV4, 0, serverAddrLen);
 #if PLY_KERNEL_FREEBSD
-        server_addr.sin_len = server_addr_len;
+        serverAddr.sin_len = serverAddrLen;
 #endif
         serverAddrV4->sin_family = AF_INET;
         serverAddrV4->sin_addr.s_addr = INADDR_ANY;
-        serverAddrV4->sin_port = convert_big_endian(port);
+        serverAddrV4->sin_port = convertBigEndian(port);
     }
 
-    rc = bind(listen_socket, (struct sockaddr*) &server_addr, server_addr_len);
+    rc = bind(listenSocket, (struct sockaddr*) &serverAddr, serverAddrLen);
     if (rc == 0) {
-        rc = listen(listen_socket, 1);
+        rc = listen(listenSocket, 1);
         if (rc == 0) {
-            Network::last_result_.store(IPResult::OK);
-            return TCPListener{listen_socket};
+            Network::lastResult_.store(IPResult::OK);
+            return TCPListener{listenSocket};
         } else {
             switch (errno) {
                 case EADDRINUSE: {
-                    Network::last_result_.store(IPResult::IN_USE);
+                    Network::lastResult_.store(IPResult::IN_USE);
                     break;
                 }
                 default: {
                     // FIXME: Recognize this errno
                     PLY_ASSERT(PLY_IPPOSIX_ALLOW_UNKNOWN_ERRORS);
-                    Network::last_result_.store(IPResult::UNKNOWN);
+                    Network::lastResult_.store(IPResult::UNKNOWN);
                     break;
                 }
             }
@@ -519,108 +520,108 @@ TCPListener Network::bind_tcp(u16 port) {
     } else {
         switch (errno) {
             case EADDRINUSE: {
-                Network::last_result_.store(IPResult::IN_USE);
+                Network::lastResult_.store(IPResult::IN_USE);
                 break;
             }
             default: {
                 // FIXME: Recognize this errno
                 PLY_ASSERT(PLY_IPPOSIX_ALLOW_UNKNOWN_ERRORS);
-                Network::last_result_.store(IPResult::UNKNOWN);
+                Network::lastResult_.store(IPResult::UNKNOWN);
                 break;
             }
         }
     }
 
     // Failed
-    rc = ::close(listen_socket);
+    rc = ::close(listenSocket);
     PLY_ASSERT(rc == 0 || PLY_IPPOSIX_ALLOW_UNKNOWN_ERRORS);
     PLY_UNUSED(rc);
     return {};
 }
 
-Owned<TCPConnection> Network::connect_tcp(const IPAddress& address, u16 port) {
-    int connect_socket = create_socket(SOCK_STREAM);
-    if (connect_socket < 0) { // last_result_ is already set
+Owned<TCPConnection> Network::connectTcp(const IPAddress& address, u16 port) {
+    int connectSocket = createSocket(SOCK_STREAM);
+    if (connectSocket < 0) { // lastResult_ is already set
         return {};
     }
 
-    struct PLY_IF_IPV6(sockaddr_in6, sockaddr_in) remote_addr;
-    socklen_t remote_addr_len = sizeof(sockaddr_in);
+    struct PLY_IF_IPV6(sockaddr_in6, sockaddr_in) remoteAddr;
+    socklen_t remoteAddrLen = sizeof(sockaddr_in);
 #if PLY_WITH_IPV6
     if (Network::HasIPv6) {
-        remote_addr_len = sizeof(sockaddr_in6);
-        memset(&remote_addr, 0, remote_addr_len);
+        remoteAddrLen = sizeof(sockaddr_in6);
+        memset(&remoteAddr, 0, remoteAddrLen);
 #if PLY_KERNEL_FREEBSD
-        remote_addr.sin6_len = remote_addr_len;
+        remoteAddr.sin6_len = remoteAddrLen;
 #endif
-        remote_addr.sin6_family = AF_INET6;
-        memcpy(&remote_addr.sin6_addr, &address, 16);
-        remote_addr.sin6_port = convert_big_endian(port);
+        remoteAddr.sin6_family = AF_INET6;
+        memcpy(&remoteAddr.sin6_addr, &address, 16);
+        remoteAddr.sin6_port = convertBigEndian(port);
     } else
 #endif
     {
         PLY_ASSERT(address.version() == IPV4);
-        struct sockaddr_in* remoteAddrV4 = (struct sockaddr_in*) &remote_addr;
-        memset(remoteAddrV4, 0, remote_addr_len);
+        struct sockaddr_in* remoteAddrV4 = (struct sockaddr_in*) &remoteAddr;
+        memset(remoteAddrV4, 0, remoteAddrLen);
 #if PLY_KERNEL_FREEBSD
-        server_addr.sin_len = server_addr_len;
+        serverAddr.sin_len = serverAddrLen;
 #endif
         remoteAddrV4->sin_family = AF_INET;
-        remoteAddrV4->sin_addr.s_addr = address.net_ordered[3];
-        remoteAddrV4->sin_port = convert_big_endian(port);
+        remoteAddrV4->sin_addr.s_addr = address.netOrdered[3];
+        remoteAddrV4->sin_port = convertBigEndian(port);
     }
 
-    int rc = ::connect(connect_socket, (sockaddr*) &remote_addr, remote_addr_len);
+    int rc = ::connect(connectSocket, (sockaddr*) &remoteAddr, remoteAddrLen);
     if (rc == 0) {
-        TCPConnection* tcp_conn = Heap::create<TCPConnection>();
-        tcp_conn->remote_addr_ = address;
-        tcp_conn->remote_port_ = port;
-        tcp_conn->in_pipe->fd = connect_socket;
-        tcp_conn->out_pipe->fd = connect_socket;
-        Network::last_result_.store(IPResult::OK);
-        return tcp_conn;
+        TCPConnection* tcpConn = Heap::create<TCPConnection>();
+        tcpConn->remoteAddr_ = address;
+        tcpConn->remotePort_ = port;
+        tcpConn->inPipe->fd = connectSocket;
+        tcpConn->outPipe->fd = connectSocket;
+        Network::lastResult_.store(IPResult::OK);
+        return tcpConn;
     }
 
     switch (errno) {
         case ECONNREFUSED: {
-            Network::last_result_.store(IPResult::REFUSED);
+            Network::lastResult_.store(IPResult::REFUSED);
             break;
         }
         case ENETUNREACH: {
-            Network::last_result_.store(IPResult::UNREACHABLE);
+            Network::lastResult_.store(IPResult::UNREACHABLE);
             break;
         }
         default: {
             PLY_ASSERT(PLY_IPPOSIX_ALLOW_UNKNOWN_ERRORS); // FIXME: Recognize this code
-            Network::last_result_.store(IPResult::UNKNOWN);
+            Network::lastResult_.store(IPResult::UNKNOWN);
             break;
         }
     }
-    rc = ::close(connect_socket);
+    rc = ::close(connectSocket);
     PLY_ASSERT(rc == 0 || PLY_IPPOSIX_ALLOW_UNKNOWN_ERRORS);
     PLY_UNUSED(rc);
     return nullptr;
 }
 
-IPAddress Network::resolve_host_name(StringView host_name, IPVersion ip_version) {
+IPAddress Network::resolveHostName(StringView hostName, IPVersion ipVersion) {
     struct addrinfo hints;
     memset(&hints, 0, sizeof(hints));
     hints.ai_family = AF_INET;
     hints.ai_socktype = SOCK_STREAM;
 #if PLY_WITH_IPV6
-    if (ip_version == IPV6) {
+    if (ipVersion == IPV6) {
         hints.ai_family = AF_INET6;
         hints.ai_flags = AI_V4MAPPED | AI_ADDRCONFIG; // Fallback to V4 if no V6
     }
 #endif
     struct addrinfo* res = nullptr;
-    int rc = getaddrinfo((host_name + '\0').bytes(), nullptr, &hints, &res);
+    int rc = getaddrinfo((hostName + '\0').bytes(), nullptr, &hints, &res);
     PLY_ASSERT(rc == 0);
     PLY_UNUSED(rc);
     struct addrinfo* best = nullptr;
     for (struct addrinfo* cur = res; cur; cur = cur->ai_next) {
 #if PLY_WITH_IPV6
-        if (cur->ai_family == AF_INET6 && ip_version == IPV6) {
+        if (cur->ai_family == AF_INET6 && ipVersion == IPV6) {
             if (!best || best->ai_family != AF_INET6) {
                 best = cur;
             }
@@ -633,23 +634,23 @@ IPAddress Network::resolve_host_name(StringView host_name, IPVersion ip_version)
         }
     }
 
-    IPAddress ip_addr;
+    IPAddress ipAddr;
     if (best) {
 #if PLY_WITH_IPV6
         if (best->ai_family == AF_INET6) {
             PLY_ASSERT(best->ai_addrlen >= sizeof(sockaddr_in6));
-            struct sockaddr_in6* resolved_addr = (struct sockaddr_in6*) best->ai_addr;
-            memcpy(&ip_addr, &resolved_addr->sin6_addr, 16);
+            struct sockaddr_in6* resolvedAddr = (struct sockaddr_in6*) best->ai_addr;
+            memcpy(&ipAddr, &resolvedAddr->sin6_addr, 16);
         } else
 #endif
         {
             PLY_ASSERT(best->ai_addrlen >= sizeof(sockaddr_in));
-            struct sockaddr_in* resolved_addr = (struct sockaddr_in*) best->ai_addr;
-            ip_addr = IPAddress::from_ipv4(resolved_addr->sin_addr.s_addr);
+            struct sockaddr_in* resolvedAddr = (struct sockaddr_in*) best->ai_addr;
+            ipAddr = IPAddress::from_ipv4(resolvedAddr->sin_addr.s_addr);
         }
     }
     freeaddrinfo(res);
-    return ip_addr;
+    return ipAddr;
 }
 
 #endif // PLY_POSIX

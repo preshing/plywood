@@ -42,17 +42,17 @@ struct Element {
     };
 
     Type type = None;
-    u32 heading_level = 0;              // only used by Headings
-    u32 relative_indent = 0;            // only used by List_Items
-    s32 list_start_number = 0;          // only used by Lists. -1 means unordered
-    bool is_loose_if_continued = false; // only used by Lists
-    bool is_loose = false;              // only used by Lists
-    char list_punc = '-';               // only used by Lists
+    u32 headingLevel = 0;            // only used by Headings
+    u32 relativeIndent = 0;          // only used by List_Items
+    s32 listStartNumber = 0;         // only used by Lists. -1 means unordered
+    bool isLooseIfContinued = false; // only used by Lists
+    bool isLoose = false;            // only used by Lists
+    char listPunc = '-';             // only used by Lists
     Array<Owned<Element>> children;
     Element* parent = nullptr;
-    Array<String> raw_lines; // only used by Leaf elements (Heading, Paragraph, Code_Block)
-    String text;             // only used by Text, CodeSpan or Link (for the destination)
-    String id;               // sets the id attribute for Headings
+    Array<String> rawLines; // only used by Leaf elements (Heading, Paragraph, Code_Block)
+    String text;            // only used by Text, CodeSpan or Link (for the destination)
+    String id;              // sets the id attribute for Headings
 
     Element(Element* parent, Type type) : type{type}, parent{parent} {
         if (parent) {
@@ -60,28 +60,28 @@ struct Element {
         }
     }
 
-    void add_children(ArrayView<Owned<Element>> new_children) {
-        for (Element* new_child : new_children) {
-            PLY_ASSERT(!new_child->parent);
-            new_child->parent = this;
+    void addChildren(ArrayView<Owned<Element>> newChildren) {
+        for (Element* newChild : newChildren) {
+            PLY_ASSERT(!newChild->parent);
+            newChild->parent = this;
         }
-        this->children += std::move(new_children);
+        this->children += std::move(newChildren);
     }
 
-    bool is_container_block() const {
+    bool isContainerBlock() const {
         return this->type < StartLeafElementType;
     }
 
-    bool is_leaf_block() const {
+    bool isLeafBlock() const {
         return (this->type >= StartLeafElementType) && (this->type < StartInlineElementType);
     }
 
-    bool is_inline_element() const {
+    bool isInlineElement() const {
         return this->type >= StartInlineElementType;
     }
 
-    bool is_ordered_list() const {
-        return (this->type == List) && (this->list_start_number >= 0);
+    bool isOrderedList() const {
+        return (this->type == List) && (this->listStartNumber >= 0);
     }
 };
 
@@ -92,30 +92,30 @@ struct Element {
 //
 
 struct Parser {
-    Array<Element*> element_stack;
-    Element* leaf_element = nullptr;
-    Element root_element{nullptr, Element::Type::None};
+    Array<Element*> elementStack;
+    Element* leafElement = nullptr;
+    Element rootElement{nullptr, Element::Type::None};
 };
 
 // Creation and Destruction
 
-Owned<Parser> create_parser();
+Owned<Parser> createParser();
 void destroy(Parser* parser);
 
 // Parsing
 
-Owned<Element> parse_line(Parser* parser, StringView line);
+Owned<Element> parseLine(Parser* parser, StringView line);
 Owned<Element> flush(Parser* parser);
-Array<Owned<Element>> parse_whole_document(StringView markdown);
+Array<Owned<Element>> parseWholeDocument(StringView markdown);
 
 // Converting to HTML
 
 struct HTML_Options {
-    bool child_anchors = false;
+    bool childAnchors = false;
 };
 
-String convert_to_html(StringView src);
-void convert_to_html(Stream* outs, const Element* element, const HTML_Options& options);
+String convertToHtml(StringView src);
+void convertToHtml(Stream* outs, const Element* element, const HTML_Options& options);
 
 // Debugging
 
