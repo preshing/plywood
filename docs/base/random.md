@@ -6,8 +6,8 @@ The `Random` class generates pseudorandom integers and floating-point values.
 Random()
 Random(u64 seed)
 --
-u32 generate_u32()
-u64 generate_u64()
+u32 generateU32()
+u64 generateU64()
 double generateDouble()
 {/apiSummary}
 
@@ -26,12 +26,12 @@ Random(u64 seed)
 Constructs a pseudorandom number generator using an explicit seed. The same `seed` always generates the same sequence of pseudorandom numbers.
 
 >>
-u32 generate_u32()
+u32 generateU32()
 --
 Returns an unsigned integer uniformly distibuted over the entire range of representable 32-bit values. Use the modulo `%` operator to restrict the value to a smaller range.
 
 >>
-u64 generate_u64()
+u64 generateU64()
 --
 Returns an unsigned integer uniformly distibuted over the entire range of representable 64-bit values. Use the modulo `%` operator to restrict the value to a smaller range.
 
@@ -43,9 +43,9 @@ Returns a uniformly-distributed floating-point number that is greater than or eq
 
     // Generate some 4-digit random numbers
     Random r;
-    Stream out = getStdout();
+    Stream out = getStdOut();
     for (u32 i = 0; i < 5; i++) {
-        out.format("{}\n", r.generate_u32() % 9000 + 1000);
+        out.format("{}\n", r.generateU32() % 9000 + 1000);
     }
 
 {output}

@@ -93,7 +93,7 @@ void parsePlywoodSource() {
     Owned<Parser> parser = Parser::create();
     parser->includePaths.append(srcFolder);
     ParseResult result = parser->parseFile(filePath, src);
-    Stream out = getStdout();
+    Stream out = getStdOut();
     for (StringView diagnostic : result.diagnostics) {
         out.write(diagnostic);
     }

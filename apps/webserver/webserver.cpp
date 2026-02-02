@@ -287,7 +287,7 @@ void handleHttpRequest(TCPConnection* tcpConn, const RequestHandler& reqHandler)
 void runHttpServer(u16 port, const RequestHandler& reqHandler) {
     TCPListener listener = Network::bindTcp(port);
     if (!listener.isValid()) {
-        getStderr().format("Error: Can't bind to port {}\n", port);
+        getStdErr().format("Error: Can't bind to port {}\n", port);
         return;
     }
 

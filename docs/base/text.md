@@ -14,8 +14,8 @@ StringView readWhitespace(ViewStream& in)
 void skipWhitespace(Stream& in)
 String readIdentifier(Stream& in, u32 flags = 0)
 StringView readIdentifier(ViewStream& viewIn, u32 flags = 0)
-u64 read_u64_from_text(Stream& in, u32 radix = 10)
-s64 read_s64_from_text(Stream& in, u32 radix = 10)
+u64 readU64FromText(Stream& in, u32 radix = 10)
+s64 readS64FromText(Stream& in, u32 radix = 10)
 double readDoubleFromText(Stream& in, u32 radix = 10)
 String readQuotedString(Stream& in, u32 flags = 0, Functor<void(QS_Error_Code)> errorCallback = {})
 {/apiSummary}
@@ -44,12 +44,12 @@ StringView readIdentifier(ViewStream& viewIn, u32 flags = 0)
 Reads a C-style identifier (letters, digits, underscores, starting with a non-digit).
 
 >>
-u64 read_u64_from_text(Stream& in, u32 radix = 10)
+u64 readU64FromText(Stream& in, u32 radix = 10)
 --
 Parses an unsigned integer from the stream. The `radix` parameter specifies the number base (e.g., 10 for decimal, 16 for hexadecimal).
 
 >>
-s64 read_s64_from_text(Stream& in, u32 radix = 10)
+s64 readS64FromText(Stream& in, u32 radix = 10)
 --
 Parses a signed integer from the stream. Handles optional leading `-` sign.
 

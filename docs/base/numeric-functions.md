@@ -18,14 +18,14 @@ u64 reverseBytes(u64 value)
 template <typename Type> Type convertLittleEndian(Type value)
 template <typename Type> Type convertBigEndian(Type value)
 -- Power-of-2 Alignment
-u32 is_power_of_2(u32 value)
-u64 is_power_of_2(u64 value)
-u32 align_to_power_of_2(u32 value, u32 alignment)
-u64 align_to_power_of_2(u64 value, u64 alignment)
-bool is_aligned_to_power_of_2(u32 value, u32 alignment)
-bool is_aligned_to_power_of_2(u64 value, u64 alignment)
-u32 round_up_to_nearest_to_power_of_2(u32 value)
-u64 round_up_to_nearest_to_power_of_2(u64 value)
+u32 isPowerOf2(u32 value)
+u64 isPowerOf2(u64 value)
+u32 alignToPowerOf2(u32 value, u32 alignment)
+u64 alignToPowerOf2(u64 value, u64 alignment)
+bool isAlignedToPowerOf2(u32 value, u32 alignment)
+bool isAlignedToPowerOf2(u64 value, u64 alignment)
+u32 roundUpToNearestPowerOf2(u32 value)
+u64 roundUpToNearestPowerOf2(u64 value)
 -- Numeric Casts With Bounds Checking
 template <typename DstType, typename SrcType> bool isRepresentable(SrcType value)
 template <typename DstType, typename SrcType> DstType numericCast(SrcType value)
@@ -101,26 +101,26 @@ These days, nearly every platform is little-endian, so these functions aren't of
 ### Power-of-2 Alignment
 
 {apiDescriptions}
-u32 is_power_of_2(u32 value)
-u64 is_power_of_2(u64 value)
+u32 isPowerOf2(u32 value)
+u64 isPowerOf2(u64 value)
 --
 Returns `true` if a `value` is a power of 2, `false` otherwise.
 
 >>
-u32 align_to_power_of_2(u32 value, u32 alignment)
-u64 align_to_power_of_2(u64 value, u64 alignment)
+u32 alignToPowerOf2(u32 value, u32 alignment)
+u64 alignToPowerOf2(u64 value, u64 alignment)
 --
 Rounds `value` up to the nearest multiple of `alignment`, which must be a power of 2.
 
 >>
-bool is_aligned_to_power_of_2(u32 value, u32 alignment)
-bool is_aligned_to_power_of_2(u64 value, u64 alignment)
+bool isAlignedToPowerOf2(u32 value, u32 alignment)
+bool isAlignedToPowerOf2(u64 value, u64 alignment)
 --
 Returns `true` if `value` is a multiple of `alignment`, which must be a power of 2.
 
 >>
-u32 round_up_to_nearest_to_power_of_2(u32 value)
-u64 round_up_to_nearest_to_power_of_2(u64 value)
+u32 roundUpToNearestPowerOf2(u32 value)
+u64 roundUpToNearestPowerOf2(u64 value)
 --
 Rounds `value` up to the nearest power of 2.
 {/apiDescriptions}

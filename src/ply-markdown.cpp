@@ -262,7 +262,7 @@ void parseNewMarkers(ParserDetails* parser, LineParser& lp) {
             lp.outerIndent = indentAfterStar + 1;
             gotListMarker(-1, c);
         } else if (c >= '0' && c <= '9') {
-            u64 num = read_u64_from_text(lp.in);
+            u64 num = readU64FromText(lp.in);
             if (parser->leafElement && num != 1) {
                 // If list item interrupts a paragraph, the start number must be 1.
                 goto notMarker;

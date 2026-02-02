@@ -227,7 +227,7 @@ void readNumericLiteral(ViewStream& in) {
         in.curByte++;
         if (in.makeReadable() && (*in.curByte == 'x')) {
             in.curByte++;
-            read_u64_from_text(in, 16); // FIXME: Wasteful to compute the number and not use it
+            readU64FromText(in, 16); // FIXME: Wasteful to compute the number and not use it
             goto suffix;
         }
     }

@@ -123,7 +123,7 @@ Lets you use arrays in [range-based for loops](https://en.cppreference.com/w/cpp
 
     Array<u32> array = {4, 5, 6};
     for (u32 item : array) {
-        getStdout().format("{}\n", item);
+        getStdOut().format("{}\n", item);
     }
 
 {output}

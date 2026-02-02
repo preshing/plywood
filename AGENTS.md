@@ -56,7 +56,7 @@ Plywood is a low-level C++ base library for building cross-platform native softw
 **Numeric helpers**:
 - `getMinValue<T>()`/`getMaxValue<T>` - Numeric limits
 - `abs min max clamp` - Function templates
-- Alignment functions end with `_power_of_2`
+- Alignment functions end with suffix `PowerOf2`
 - `numericCast` - Asserts if conversion doesn't fit
 
 **Time & date**:
@@ -97,7 +97,7 @@ Plywood is a low-level C++ base library for building cross-platform native softw
 - `Stream` - Buffered input/output over `Pipe`; can be created on the stack; gets flushed in the destructor
 - `MemStream` - Specialization of `Stream` that uses a dynamic memory buffer
 - `ViewStream` - Read-only `Stream` specialization that reads from a `StringView`
-- `getStdin getStdout getStderr` - Returns temporary `Stream`s over standard handles
+- `getStdIn getStdOut getStdErr` - Returns temporary `Stream`s over standard handles
 
 **Threads and processes**:
 - `getCurrentThreadId getCurrentProcessId getCurrentExecutablePath`
@@ -125,7 +125,7 @@ Plywood is a low-level C++ base library for building cross-platform native softw
 - `Functor<Return(Args...)>` - Can store and invoke callback functions or lambda expressions
 - `Variant<Types...>` - Can hold one of several predefined types, like a type-checked tagged union
 - Generic algorithms: `find reverseFind sort binarySearch`
-- Reading text: `readLine readWhitespace skipWhitespace readIdentifier read_u64_from_text read_s64_from_text readDoubleFromText readQuotedString`
+- Reading text: `readLine readWhitespace skipWhitespace readIdentifier readU64FromText readS64FromText readDoubleFromText readQuotedString`
 - Writing text: `printNumber printEscapedString printXmlEscapedString`
 - Unicode conversion: `encodeUnicode decodeUnicode`
 - `Filesystem` - Filesystem operations, opening files, text format detection

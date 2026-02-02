@@ -1,8 +1,6 @@
-/* Hardcode USE_DL_PREFIX for Plywood: */
+/* BEGIN Plywood modification */
 #define USE_DL_PREFIX 1
-/* The rest of the original dlmalloc 2.8.6 follows.
-------------------------------------------------------------------- */
-
+/* END Plywood modification */
 /*
   This is a version (aka dlmalloc) of malloc/free/realloc written by
   Doug Lea and released to the public domain, as explained at
@@ -6284,3 +6282,9 @@ History:
          structure of old version,  but most details differ.)
 
 */
+/* BEGIN Plywood modification */
+size_t dlget_total_system_memory_used(void) {
+    struct mallinfo info = internal_mallinfo(gm);
+    return info.arena + info.hblkhd;
+}
+/* END Plywood modification */

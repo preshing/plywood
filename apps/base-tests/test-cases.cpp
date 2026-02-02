@@ -111,7 +111,7 @@ TEST_CASE("Thread join") {
 TEST_CASE("shuffle_bits() 32") {
     Random rand;
     for (u32 i = 0; i < 1000; i++) {
-        u32 value = rand.generate_u32();
+        u32 value = rand.generateU32();
         u32 shuffled = shuffleBits(value);
         u32 unshuffled = unshuffleBits(shuffled);
         check(value == unshuffled);
@@ -121,7 +121,7 @@ TEST_CASE("shuffle_bits() 32") {
 TEST_CASE("shuffle_bits() 64") {
     Random rand;
     for (u32 i = 0; i < 1000; i++) {
-        u64 value = rand.generate_u32();
+        u64 value = rand.generateU32();
         u64 shuffled = shuffleBits(value);
         u64 unshuffled = unshuffleBits(shuffled);
         check(value == unshuffled);
@@ -769,7 +769,7 @@ TEST_CASE("Set stress test u32") {
 
         // Add items to the set if needed.
         while (desiredPopulation > set.items().numItems()) {
-            u32 valueToInsert = r.generate_u32() % 1000;
+            u32 valueToInsert = r.generateU32() % 1000;
             if (set.insert(valueToInsert).wasFound) {
                 check(find(arr, valueToInsert) >= 0);
             } else {
@@ -779,7 +779,7 @@ TEST_CASE("Set stress test u32") {
 
         // Remove items from the set if needed.
         while (desiredPopulation < arr.numItems()) {
-            u32 indexToRemove = r.generate_u32() % arr.numItems();
+            u32 indexToRemove = r.generateU32() % arr.numItems();
             u32 valueToRemove = arr[indexToRemove];
             bool wasFound = set.erase(valueToRemove);
             check(wasFound);
@@ -804,7 +804,7 @@ TEST_CASE("Set stress test u32") {
                 check(arr[i] > arr[i - 1]); // No duplicates.
                 u32 delta = arr[i] - arr[i - 1];
                 if (delta > 1) {
-                    u32 absentKey = arr[i - 1] + 1 + (r.generate_u32() % (delta - 1));
+                    u32 absentKey = arr[i - 1] + 1 + (r.generateU32() % (delta - 1));
                     check(!set.find(absentKey));
                 }
             }
@@ -874,7 +874,7 @@ TEST_CASE("Map stress test") {
 
         // Add items to the map if needed.
         while (desiredPopulation > map.items().numItems()) {
-            u32 keyToInsert = r.generate_u32() % 1000;
+            u32 keyToInsert = r.generateU32() % 1000;
             auto result = map.insert(keyToInsert);
             if (result.wasFound) {
                 check(find(arr, keyToInsert) >= 0);
@@ -886,7 +886,7 @@ TEST_CASE("Map stress test") {
 
         // Remove items from the map if needed.
         while (desiredPopulation < arr.numItems()) {
-            u32 indexToRemove = r.generate_u32() % arr.numItems();
+            u32 indexToRemove = r.generateU32() % arr.numItems();
             u32 keyToRemove = arr[indexToRemove];
             map.erase(keyToRemove);
             arr.eraseQuick(indexToRemove);
@@ -912,7 +912,7 @@ TEST_CASE("Map stress test") {
                 check(arr[i] > arr[i - 1]); // No duplicates.
                 u32 delta = arr[i] - arr[i - 1];
                 if (delta > 1) {
-                    u32 absentKey = arr[i - 1] + 1 + (r.generate_u32() % (delta - 1));
+                    u32 absentKey = arr[i - 1] + 1 + (r.generateU32() % (delta - 1));
                     check(!map.find(absentKey));
                 }
             }
@@ -954,7 +954,7 @@ TEST_CASE("BTree stress test u32") {
 
         // Add items to the B-tree if needed.
         while (desiredPopulation > arr.numItems()) {
-            u32 valueToInsert = r.generate_u32() % 1000;
+            u32 valueToInsert = r.generateU32() % 1000;
             arr.append(valueToInsert);
             btree.insert(valueToInsert);
 #if defined(PLY_WITH_ASSERTS)
@@ -964,7 +964,7 @@ TEST_CASE("BTree stress test u32") {
 
         // Remove items from the B-tree if needed.
         while (desiredPopulation < arr.numItems()) {
-            u32 indexToRemove = r.generate_u32() % arr.numItems();
+            u32 indexToRemove = r.generateU32() % arr.numItems();
             u32 valueToRemove = arr[indexToRemove];
             bool wasFound = btree.erase(valueToRemove);
 #if defined(PLY_WITH_ASSERTS)
@@ -1353,7 +1353,7 @@ TEST_CASE("Mem stream temp buffer") {
         while (offset < fileSize) {
             check(offset == mem.getSeekPos());
             u32 numConsecutiveBytes =
-                (random.generate_u32() % (Stream::MAX_CONSECUTIVE_BYTES / 2)) + (Stream::MAX_CONSECUTIVE_BYTES / 2);
+                (random.generateU32() % (Stream::MAX_CONSECUTIVE_BYTES / 2)) + (Stream::MAX_CONSECUTIVE_BYTES / 2);
             check(mem.makeWritable(min(numConsecutiveBytes, fileSize - offset)));
             while (mem.curByte < mem.endByte) {
                 *mem.curByte++ = (u8) shuffleBits(offset++);
@@ -1366,7 +1366,7 @@ TEST_CASE("Mem stream temp buffer") {
         while (offset < fileSize) {
             check(offset == mem.getSeekPos());
             u32 numConsecutiveBytes =
-                (random.generate_u32() % (Stream::MAX_CONSECUTIVE_BYTES / 2)) + (Stream::MAX_CONSECUTIVE_BYTES / 2);
+                (random.generateU32() % (Stream::MAX_CONSECUTIVE_BYTES / 2)) + (Stream::MAX_CONSECUTIVE_BYTES / 2);
             mem.makeReadable(numConsecutiveBytes);
             check(mem.atEof == (mem.numRemainingBytes() == 0));
             if (mem.atEof)

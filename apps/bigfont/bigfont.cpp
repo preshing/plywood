@@ -75,7 +75,7 @@ void printBigfont(StringView text) {
         }
     }
 
-    Stream out = getStdout();
+    Stream out = getStdOut();
     for (u32 i = 0; i < BigGlyph::height; i++) {
         MemStream mem;
         mem.write("// ");
@@ -113,7 +113,7 @@ int main(int argc, const char* argv[]) {
     SetConsoleOutputCP(CP_UTF8);
 #endif
     if (argc != 2) {
-        getStderr().write("error: expected exactly 1 argument\n");
+        getStdErr().write("error: expected exactly 1 argument\n");
         return 1;
     }
     printBigfont(argv[1]);

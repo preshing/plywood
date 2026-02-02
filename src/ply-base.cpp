@@ -303,22 +303,22 @@ Random::Random() {
     s[1] = shuffleBits(t | 1);
 
     for (u32 i = 0; i < 10; i++) {
-        generate_u64();
+        generateU64();
     }
 }
 
 Random::Random(u64 seed) {
     s[0] = shuffleBits(seed + 1);
     s[1] = shuffleBits(s[0] + 1);
-    generate_u64();
-    generate_u64();
+    generateU64();
+    generateU64();
 }
 
 static inline u64 rotl(const u64 x, int k) {
     return (x << k) | (x >> (64 - k));
 }
 
-u64 Random::generate_u64() {
+u64 Random::generateU64() {
     const u64 s0 = s[0];
     u64 s1 = s[1];
     const u64 result = rotl(s0 * 5, 7) * 9;
@@ -375,8 +375,8 @@ VirtualMemory::Properties VirtualMemory::getProperties() {
     static VirtualMemory::Properties props = []() {
         SYSTEM_INFO sysInfo;
         GetSystemInfo(&sysInfo);
-        PLY_ASSERT(is_power_of_2((u32) sysInfo.dwAllocationGranularity));
-        PLY_ASSERT(is_power_of_2((u32) sysInfo.dwPageSize));
+        PLY_ASSERT(isPowerOf2((u32) sysInfo.dwAllocationGranularity));
+        PLY_ASSERT(isPowerOf2((u32) sysInfo.dwPageSize));
         return VirtualMemory::Properties{sysInfo.dwAllocationGranularity, sysInfo.dwPageSize};
     }();
     return props;
@@ -394,7 +394,7 @@ VirtualMemory::SystemStats VirtualMemory::getSystemStats() {
 }
 
 void* VirtualMemory::reserveRegion(uptr numBytes) {
-    PLY_ASSERT(is_aligned_to_power_of_2(numBytes, VirtualMemory::getProperties().regionAlignment));
+    PLY_ASSERT(isAlignedToPowerOf2(numBytes, VirtualMemory::getProperties().regionAlignment));
 
     void* addr = VirtualAlloc(0, (SIZE_T) numBytes, MEM_RESERVE, PAGE_READWRITE);
     if (addr == NULL)
@@ -404,9 +404,9 @@ void* VirtualMemory::reserveRegion(uptr numBytes) {
 }
 
 void VirtualMemory::unreserveRegion(void* addr, uptr numReservedBytes, uptr numCommittedBytes) {
-    PLY_ASSERT(is_aligned_to_power_of_2((uptr) addr, VirtualMemory::getProperties().regionAlignment));
-    PLY_ASSERT(is_aligned_to_power_of_2(numReservedBytes, VirtualMemory::getProperties().regionAlignment));
-    PLY_ASSERT(is_aligned_to_power_of_2(numCommittedBytes, VirtualMemory::getProperties().pageSize));
+    PLY_ASSERT(isAlignedToPowerOf2((uptr) addr, VirtualMemory::getProperties().regionAlignment));
+    PLY_ASSERT(isAlignedToPowerOf2(numReservedBytes, VirtualMemory::getProperties().regionAlignment));
+    PLY_ASSERT(isAlignedToPowerOf2(numCommittedBytes, VirtualMemory::getProperties().pageSize));
 
 #if defined(PLY_WITH_ASSERTS)
     MEMORY_BASIC_INFORMATION memInfo;
@@ -427,8 +427,8 @@ void VirtualMemory::unreserveRegion(void* addr, uptr numReservedBytes, uptr numC
 }
 
 void VirtualMemory::commitPages(void* addr, uptr numBytes) {
-    PLY_ASSERT(is_aligned_to_power_of_2((uptr) addr, VirtualMemory::getProperties().pageSize));
-    PLY_ASSERT(is_aligned_to_power_of_2(numBytes, VirtualMemory::getProperties().pageSize));
+    PLY_ASSERT(isAlignedToPowerOf2((uptr) addr, VirtualMemory::getProperties().pageSize));
+    PLY_ASSERT(isAlignedToPowerOf2(numBytes, VirtualMemory::getProperties().pageSize));
 
     LPVOID result = VirtualAlloc(addr, (SIZE_T) numBytes, MEM_COMMIT, PAGE_READWRITE);
     PLY_ASSERT(result != NULL); // Failure is considered fatal
@@ -437,8 +437,8 @@ void VirtualMemory::commitPages(void* addr, uptr numBytes) {
 }
 
 void VirtualMemory::decommitPages(void* addr, uptr numBytes) {
-    PLY_ASSERT(is_aligned_to_power_of_2((uptr) addr, VirtualMemory::getProperties().pageSize));
-    PLY_ASSERT(is_aligned_to_power_of_2(numBytes, VirtualMemory::getProperties().pageSize));
+    PLY_ASSERT(isAlignedToPowerOf2((uptr) addr, VirtualMemory::getProperties().pageSize));
+    PLY_ASSERT(isAlignedToPowerOf2(numBytes, VirtualMemory::getProperties().pageSize));
 
     BOOL rc = VirtualFree(addr, numBytes, MEM_DECOMMIT);
     PLY_ASSERT(rc);
@@ -447,7 +447,7 @@ void VirtualMemory::decommitPages(void* addr, uptr numBytes) {
 }
 
 void* VirtualMemory::allocRegion(uptr numBytes) {
-    PLY_ASSERT(is_aligned_to_power_of_2(numBytes, VirtualMemory::getProperties().regionAlignment));
+    PLY_ASSERT(isAlignedToPowerOf2(numBytes, VirtualMemory::getProperties().regionAlignment));
 
     void* addr = VirtualAlloc(0, (SIZE_T) numBytes, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
     if (addr == NULL)
@@ -470,7 +470,7 @@ void VirtualMemory::freeRegion(void* addr, uptr numBytes) {
 VirtualMemory::Properties VirtualMemory::getProperties() {
     static VirtualMemory::Properties props = []() {
         long result = sysconf(_SC_PAGE_SIZE);
-        PLY_ASSERT(is_power_of_2((u64) result));
+        PLY_ASSERT(isPowerOf2((u64) result));
         return VirtualMemory::Properties{(uptr) result, (uptr) result};
     }();
     return props;
@@ -489,9 +489,9 @@ VirtualMemory::SystemStats VirtualMemory::getSystemStats() {
 #else
     Stream in = Filesystem::openBinaryForRead("/proc/self/statm");
     if (in) {
-        u64 vmPages = read_u64_from_text(in);
+        u64 vmPages = readU64FromText(in);
         skipWhitespace(in);
-        u64 rssPages = read_u64_from_text(in);
+        u64 rssPages = readU64FromText(in);
         uptr pageSize = VirtualMemory::getProperties().pageSize;
         usageStats.virtualSize = vmPages * pageSize;
         usageStats.residentSize = rssPages * pageSize;
@@ -502,7 +502,7 @@ VirtualMemory::SystemStats VirtualMemory::getSystemStats() {
 }
 
 void* VirtualMemory::reserveRegion(uptr numBytes) {
-    PLY_ASSERT(is_aligned_to_power_of_2(numBytes, VirtualMemory::getProperties().regionAlignment));
+    PLY_ASSERT(isAlignedToPowerOf2(numBytes, VirtualMemory::getProperties().regionAlignment));
 
     void* addr = mmap(0, numBytes, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     if (addr == MAP_FAILED)
@@ -512,9 +512,9 @@ void* VirtualMemory::reserveRegion(uptr numBytes) {
 }
 
 void VirtualMemory::unreserveRegion(void* addr, uptr numReservedBytes, uptr numCommittedBytes) {
-    PLY_ASSERT(is_aligned_to_power_of_2((uptr) addr, VirtualMemory::getProperties().regionAlignment));
-    PLY_ASSERT(is_aligned_to_power_of_2(numReservedBytes, VirtualMemory::getProperties().regionAlignment));
-    PLY_ASSERT(is_aligned_to_power_of_2(numCommittedBytes, VirtualMemory::getProperties().pageSize));
+    PLY_ASSERT(isAlignedToPowerOf2((uptr) addr, VirtualMemory::getProperties().regionAlignment));
+    PLY_ASSERT(isAlignedToPowerOf2(numReservedBytes, VirtualMemory::getProperties().regionAlignment));
+    PLY_ASSERT(isAlignedToPowerOf2(numCommittedBytes, VirtualMemory::getProperties().pageSize));
 
     int rc = munmap(addr, numReservedBytes);
     PLY_ASSERT(rc == 0);
@@ -524,8 +524,8 @@ void VirtualMemory::unreserveRegion(void* addr, uptr numReservedBytes, uptr numC
 }
 
 void VirtualMemory::commitPages(void* addr, uptr numBytes) {
-    PLY_ASSERT(is_aligned_to_power_of_2((uptr) addr, VirtualMemory::getProperties().pageSize));
-    PLY_ASSERT(is_aligned_to_power_of_2(numBytes, VirtualMemory::getProperties().pageSize));
+    PLY_ASSERT(isAlignedToPowerOf2((uptr) addr, VirtualMemory::getProperties().pageSize));
+    PLY_ASSERT(isAlignedToPowerOf2(numBytes, VirtualMemory::getProperties().pageSize));
 
     int rc = mprotect(addr, numBytes, PROT_READ | PROT_WRITE);
     PLY_ASSERT(rc == 0);
@@ -534,8 +534,8 @@ void VirtualMemory::commitPages(void* addr, uptr numBytes) {
 }
 
 void VirtualMemory::decommitPages(void* addr, uptr numBytes) {
-    PLY_ASSERT(is_aligned_to_power_of_2((uptr) addr, VirtualMemory::getProperties().pageSize));
-    PLY_ASSERT(is_aligned_to_power_of_2(numBytes, VirtualMemory::getProperties().pageSize));
+    PLY_ASSERT(isAlignedToPowerOf2((uptr) addr, VirtualMemory::getProperties().pageSize));
+    PLY_ASSERT(isAlignedToPowerOf2(numBytes, VirtualMemory::getProperties().pageSize));
 
     int rc = madvise(addr, numBytes, MADV_DONTNEED);
     PLY_ASSERT(rc == 0);
@@ -546,7 +546,7 @@ void VirtualMemory::decommitPages(void* addr, uptr numBytes) {
 }
 
 void* VirtualMemory::allocRegion(uptr numBytes) {
-    PLY_ASSERT(is_aligned_to_power_of_2(numBytes, VirtualMemory::getProperties().regionAlignment));
+    PLY_ASSERT(isAlignedToPowerOf2(numBytes, VirtualMemory::getProperties().regionAlignment));
 
     void* addr = mmap(0, numBytes, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     if (addr == MAP_FAILED)
@@ -885,7 +885,7 @@ static bool matchPatternSegment(MatchState& state, MatchMode mode) {
             } else if (spec == 'd') { // Integer
                 if (mode == MatchMode::Matching) {
                     if (arg.is<u64*>() || arg.is<u32*>()) {
-                        u64 val = read_u64_from_text(*state.str);
+                        u64 val = readU64FromText(*state.str);
                         if (!state.str->inputError) {
                             elementMatched = true;
                             outputVariablesToCommit.append([arg, val]() {
@@ -897,7 +897,7 @@ static bool matchPatternSegment(MatchState& state, MatchMode mode) {
                             });
                         }
                     } else if (arg.is<s64*>() || arg.is<s32*>()) {
-                        s64 val = read_s64_from_text(*state.str);
+                        s64 val = readS64FromText(*state.str);
                         if (!state.str->inputError) {
                             elementMatched = true;
                             outputVariablesToCommit.append([arg, val]() {
@@ -1135,7 +1135,7 @@ void addToHash(HashBuilder& builder, StringView str) {
 
 u32 getBestNumHashIndices(u32 numItems) {
     if (numItems >= 8) {
-        return round_up_to_nearest_to_power_of_2(u32((u64{numItems} * 5) >> 2));
+        return roundUpToNearestPowerOf2(u32((u64{numItems} * 5) >> 2));
     }
     return (numItems < 4) ? 4 : 8;
 }
@@ -1951,7 +1951,7 @@ u8 digitFromChar(char c) {
     return 255;
 }
 
-u64 read_u64_from_text(Stream& in, u32 radix) {
+u64 readU64FromText(Stream& in, u32 radix) {
     PLY_ASSERT(radix > 0 && radix <= 36);
     u64 result = 0;
     bool anyDigits = false;
@@ -1982,7 +1982,7 @@ u64 read_u64_from_text(Stream& in, u32 radix) {
     return result;
 }
 
-s64 read_s64_from_text(Stream& in, u32 radix) {
+s64 readS64FromText(Stream& in, u32 radix) {
     bool negate = false;
 
     if (in.makeReadable() && (*in.curByte == '-')) {
@@ -1990,7 +1990,7 @@ s64 read_s64_from_text(Stream& in, u32 radix) {
         in.curByte++;
     }
 
-    u64 unsignedComponent = read_u64_from_text(in, radix);
+    u64 unsignedComponent = readU64FromText(in, radix);
     if (negate) {
         s64 result = -(s64) unsignedComponent;
         if (result > 0) {
@@ -2474,52 +2474,52 @@ void formatWithArgs(Stream& out, StringView fmt, ArrayView<const FormatArg> args
 
 #if defined(PLY_WINDOWS)
 
-Pipe* getStdinPipe() {
+Pipe* getStdInPipe() {
     static PipeHandle inPipe{GetStdHandle(STD_INPUT_HANDLE), Pipe::HAS_READ_PERMISSION};
     return &inPipe;
 }
 
-Pipe* getStdoutPipe() {
+Pipe* getStdOutPipe() {
     static PipeHandle outPipe{GetStdHandle(STD_OUTPUT_HANDLE), Pipe::HAS_WRITE_PERMISSION};
     return &outPipe;
 }
 
-Pipe* getStderrPipe() {
+Pipe* getStdErrPipe() {
     static PipeHandle errorPipe{GetStdHandle(STD_ERROR_HANDLE), Pipe::HAS_WRITE_PERMISSION};
     return &errorPipe;
 }
 
 #elif defined(PLY_POSIX)
 
-Pipe* getStdinPipe() {
+Pipe* getStdInPipe() {
     static Pipe_FD inPipe{STDIN_FILENO, Pipe::HAS_READ_PERMISSION};
     return &inPipe;
 }
 
-Pipe* getStdoutPipe() {
+Pipe* getStdOutPipe() {
     static Pipe_FD outPipe{STDOUT_FILENO, Pipe::HAS_WRITE_PERMISSION};
     return &outPipe;
 }
 
-Pipe* getStderrPipe() {
+Pipe* getStdErrPipe() {
     static Pipe_FD errorPipe{STDERR_FILENO, Pipe::HAS_WRITE_PERMISSION};
     return &errorPipe;
 }
 
 #endif
 
-Stream getStdin(ConsoleMode mode) {
+Stream getStdIn(ConsoleMode mode) {
     if (mode == ConsoleMode::TEXT) {
-        Stream in{getStdinPipe(), false};
+        Stream in{getStdInPipe(), false};
         // Always create a filter to make newlines consistent.
         return {Heap::create<InPipeNewLineFilter>(std::move(in)), true};
     } else {
-        return {getStdinPipe(), false};
+        return {getStdInPipe(), false};
     }
 }
 
-Stream getStdout(ConsoleMode mode) {
-    Stream out{getStdoutPipe(), false};
+Stream getStdOut(ConsoleMode mode) {
+    Stream out{getStdOutPipe(), false};
     bool writeCrlf = false;
 #if defined(PLY_WINDOWS)
     writeCrlf = true;
@@ -2528,8 +2528,8 @@ Stream getStdout(ConsoleMode mode) {
     return {Heap::create<OutPipeNewLineFilter>(std::move(out), writeCrlf), true};
 }
 
-Stream getStderr(ConsoleMode mode) {
-    Stream out{getStderrPipe(), false};
+Stream getStdErr(ConsoleMode mode) {
+    Stream out{getStdErrPipe(), false};
     bool writeCrlf = false;
 #if defined(PLY_WINDOWS)
     writeCrlf = true;
@@ -2545,7 +2545,7 @@ Stream getStderr(ConsoleMode mode) {
 //                ▄▄▄█▀  ▄▄▄█▀            ▄▄▄█▀
 
 void logMessageInternal(StringView fmt, ArrayView<const FormatArg> args) {
-    Stream out = getStderr();
+    Stream out = getStdErr();
     formatWithArgs(out, fmt, args);
     if (!fmt.endsWith('\n')) {
         out.write('\n');
@@ -3179,8 +3179,8 @@ struct WString {
         new (this) WString{std::move(other)};
     }
     static WString moveFromString(String&& other) {
-        PLY_ASSERT(is_aligned_to_power_of_2(uptr(other.bytes()), 2));
-        PLY_ASSERT(is_aligned_to_power_of_2(other.numBytes(), 2));
+        PLY_ASSERT(isAlignedToPowerOf2(uptr(other.bytes()), 2));
+        PLY_ASSERT(isAlignedToPowerOf2(other.numBytes(), 2));
         WString result;
         result.numUnits = other.numBytes() >> 1;
         result.units = (char16_t*) other.release();

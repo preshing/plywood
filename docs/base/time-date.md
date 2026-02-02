@@ -79,7 +79,7 @@ Prints the contents of a `DateTime` object as human-readable text. Month and wee
 
     s64 sysTime = getUnixTimestamp();
     DateTime dateTime = convertToDateTime(sysTime);
-    Stream out = getStdout();
+    Stream out = getStdOut();
     printDateTime(out, "[%Y:%m:%d %H:%M:%S.%L]\n", dateTime);
     out.format("The date is {}.\n", String::fromDateTime("%A, %B %e, %Y", dateTime));
     out.format("The time is {}.\n", String::fromDateTime("%l:%M %p (UTC%Z)", dateTime));
@@ -114,7 +114,7 @@ Returns the high-resolution timer frequency. To measure a time interval in secon
     doSomeWork();
     u64 endTick = getCpuTicks();
     float duration = (endTick - startTick) / getCpuTicksPerSecond();
-    getStdout().write("{} seconds elapsed.\n", duration);
+    getStdOut().write("{} seconds elapsed.\n", duration);
 
 {output}
 1.234 seconds elapsed.

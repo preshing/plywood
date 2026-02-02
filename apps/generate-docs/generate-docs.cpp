@@ -373,7 +373,7 @@ json::Node parseJson(StringView path) {
 }
 
 void generateWholeSite() {
-    publishKey = Random{}.generate_u32(); // Prevent browsers from caching old stylesheets
+    publishKey = Random{}.generateU32(); // Prevent browsers from caching old stylesheets
 
     Filesystem::makeDirs(joinPath(outFolder, "content"));
     Filesystem::makeDirs(joinPath(outFolder, "static"));
@@ -436,7 +436,7 @@ int main(int argc, const char* argv[]) {
 
     if (watchMode) {
 #if PLY_WITH_DIRECTORY_WATCHER
-        getStdout().write("Watching for changes...\n");
+        getStdOut().write("Watching for changes...\n");
 
         Mutex mutex;
         ConditionVariable cond;
@@ -461,14 +461,14 @@ int main(int argc, const char* argv[]) {
                 }
             }
 
-            getStdout().write("Change detected, regenerating...\n");
+            getStdOut().write("Change detected, regenerating...\n");
             sleepMillis(100);
             changed.storeRelease(0);
             generateWholeSite();
-            getStdout().write("Done.\n");
+            getStdOut().write("Done.\n");
         }
 #else
-        getStdout().write("-watch is not supported on this platform.");
+        getStdOut().write("-watch is not supported on this platform.");
 #endif
     }
 

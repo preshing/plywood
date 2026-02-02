@@ -37,7 +37,7 @@ bool check(bool cond) {
 int main() {
     u32 numPassed = 0;
     const auto& testCases = getTestCases();
-    Stream out = getStdout();
+    Stream out = getStdOut();
 
     for (u32 i = 0; i < testCases.numItems(); i++) {
         out.format("[{}/{}] {}... ", (i + 1), testCases.numItems(), testCases[i].name);

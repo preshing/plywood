@@ -3387,7 +3387,7 @@ void dumpStatement(DumpContext& ctx, const Statement& stmt) {
 
 void Parser::dumpDeclaration(const Declaration& decl) const {
     const ParserImpl* parser = static_cast<const ParserImpl*>(this);
-    Stream out = getStdout();
+    Stream out = getStdOut();
     DumpContext ctx;
     ctx.out = &out;
     ctx.parser = parser;

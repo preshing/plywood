@@ -21,8 +21,8 @@ int main(int argc, const char* argv[]) {
 
     for (const json::Node* testCase : result.root->array_) {
         String converted = markdown::convertToHtml(testCase->get("markdown")->text());
-        getStdout().write("---------------------\n");
-        getStdout().write(converted);
-        getStdout().write(testCase->get("html")->text());
+        getStdOut().write("---------------------\n");
+        getStdOut().write(converted);
+        getStdOut().write(testCase->get("html")->text());
     }
 }

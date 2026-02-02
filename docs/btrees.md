@@ -49,7 +49,7 @@ The items in a `BTree` are always kept in sorted order.
 
     BTree<u32> tree = {7, 5, 6, 4};
     for (u32 item : tree) {
-        getStdout().format("{}\n", item);
+        getStdOut().format("{}\n", item);
     }
 
 {output}
