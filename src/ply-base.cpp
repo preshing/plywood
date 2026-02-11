@@ -27,7 +27,6 @@
 #include <sys/stat.h>
 #include <mach-o/dyld.h>
 #include <mach/mach.h>
-#include <mach/mach_vm.h>
 #include <mach/task.h>
 #if PLY_WITH_DIRECTORY_WATCHER
 #include <CoreServices/CoreServices.h>
