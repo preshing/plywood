@@ -934,9 +934,9 @@ public:
 
     ThreadLocalScope(const ThreadLocalScope&) = delete;
     ThreadLocalScope(ThreadLocalScope&& other) {
-        this->var = other->var;
+        this->var = other.var;
         this->oldValue = std::move(other.oldValue);
-        other->var = nullptr;
+        other.var = nullptr;
     }
 
     ~ThreadLocalScope() {
