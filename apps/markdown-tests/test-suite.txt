@@ -1,0 +1,5233 @@
+>> Tabs
+	foo	baz		bim
+--
+<pre><code>foo	baz		bim
+</code></pre>
+
+>> Tabs
+  	foo	baz		bim
+--
+<pre><code>foo	baz		bim
+</code></pre>
+
+>> Tabs
+    a	a
+    ὐ	a
+--
+<pre><code>a	a
+ὐ	a
+</code></pre>
+
+>> Tabs
+  - foo
+
+	bar
+--
+<ul>
+<li>
+<p>foo</p>
+<p>bar</p>
+</li>
+</ul>
+
+>> Tabs
+- foo
+
+		bar
+--
+<ul>
+<li>
+<p>foo</p>
+<pre><code>  bar
+</code></pre>
+</li>
+</ul>
+
+>> Tabs
+>		foo
+--
+<blockquote>
+<pre><code>  foo
+</code></pre>
+</blockquote>
+
+>> Tabs
+-		foo
+--
+<ul>
+<li>
+<pre><code>  foo
+</code></pre>
+</li>
+</ul>
+
+>> Tabs
+    foo
+	bar
+--
+<pre><code>foo
+bar
+</code></pre>
+
+>> Tabs
+ - foo
+   - bar
+	 - baz
+--
+<ul>
+<li>foo
+<ul>
+<li>bar
+<ul>
+<li>baz</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+>> Tabs
+#	Foo
+--
+<h1>Foo</h1>
+
+>> Tabs
+*	*	*	
+--
+<hr />
+
+>> Backslash escapes
+\!\"\#\$\%\&\'\(\)\*\+\,\-\.\/\:\;\<\=\>\?\@\[\\\]\^\_\`\{\|\}\~
+--
+<p>!&quot;#$%&amp;'()*+,-./:;&lt;=&gt;?@[\]^_`{|}~</p>
+
+>> Backslash escapes
+\	\A\a\ \3\φ\«
+--
+<p>\	\A\a\ \3\φ\«</p>
+
+>> Backslash escapes
+\*not emphasized*
+\<br/> not a tag
+\[not a link](/foo)
+\`not code`
+1\. not a list
+\* not a list
+\# not a heading
+\[foo]: /url "not a reference"
+\&ouml; not a character entity
+--
+<p>*not emphasized*
+&lt;br/&gt; not a tag
+[not a link](/foo)
+`not code`
+1. not a list
+* not a list
+# not a heading
+[foo]: /url &quot;not a reference&quot;
+&amp;ouml; not a character entity</p>
+
+>> Backslash escapes
+\\*emphasis*
+--
+<p>\<em>emphasis</em></p>
+
+>> Backslash escapes
+foo\
+bar
+--
+<p>foo<br />
+bar</p>
+
+>> Backslash escapes
+`` \[\` ``
+--
+<p><code>\[\`</code></p>
+
+>> Backslash escapes
+    \[\]
+--
+<pre><code>\[\]
+</code></pre>
+
+>> Backslash escapes
+~~~
+\[\]
+~~~
+--
+<pre><code>\[\]
+</code></pre>
+
+>> Backslash escapes
+<https://example.com?find=\*>
+--
+<p><a href="https://example.com?find=%5C*">https://example.com?find=\*</a></p>
+
+>> Backslash escapes
+<a href="/bar\/)">
+--
+<a href="/bar\/)">
+
+>> Backslash escapes
+[foo](/bar\* "ti\*tle")
+--
+<p><a href="/bar*" title="ti*tle">foo</a></p>
+
+>> Backslash escapes
+[foo]
+
+[foo]: /bar\* "ti\*tle"
+--
+<p><a href="/bar*" title="ti*tle">foo</a></p>
+
+>> Backslash escapes
+``` foo\+bar
+foo
+```
+--
+<pre><code class="language-foo+bar">foo
+</code></pre>
+
+>> Entity and numeric character references
+&nbsp; &amp; &copy; &AElig; &Dcaron;
+&frac34; &HilbertSpace; &DifferentialD;
+&ClockwiseContourIntegral; &ngE;
+--
+<p>  &amp; © Æ Ď
+¾ ℋ ⅆ
+∲ ≧̸</p>
+
+>> Entity and numeric character references
+&#35; &#1234; &#992; &#0;
+--
+<p># Ӓ Ϡ �</p>
+
+>> Entity and numeric character references
+&#X22; &#XD06; &#xcab;
+--
+<p>&quot; ആ ಫ</p>
+
+>> Entity and numeric character references
+&nbsp &x; &#; &#x;
+&#87654321;
+&#abcdef0;
+&ThisIsNotDefined; &hi?;
+--
+<p>&amp;nbsp &amp;x; &amp;#; &amp;#x;
+&amp;#87654321;
+&amp;#abcdef0;
+&amp;ThisIsNotDefined; &amp;hi?;</p>
+
+>> Entity and numeric character references
+&copy
+--
+<p>&amp;copy</p>
+
+>> Entity and numeric character references
+&MadeUpEntity;
+--
+<p>&amp;MadeUpEntity;</p>
+
+>> Entity and numeric character references
+<a href="&ouml;&ouml;.html">
+--
+<a href="&ouml;&ouml;.html">
+
+>> Entity and numeric character references
+[foo](/f&ouml;&ouml; "f&ouml;&ouml;")
+--
+<p><a href="/f%C3%B6%C3%B6" title="föö">foo</a></p>
+
+>> Entity and numeric character references
+[foo]
+
+[foo]: /f&ouml;&ouml; "f&ouml;&ouml;"
+--
+<p><a href="/f%C3%B6%C3%B6" title="föö">foo</a></p>
+
+>> Entity and numeric character references
+``` f&ouml;&ouml;
+foo
+```
+--
+<pre><code class="language-föö">foo
+</code></pre>
+
+>> Entity and numeric character references
+`f&ouml;&ouml;`
+--
+<p><code>f&amp;ouml;&amp;ouml;</code></p>
+
+>> Entity and numeric character references
+    f&ouml;f&ouml;
+--
+<pre><code>f&amp;ouml;f&amp;ouml;
+</code></pre>
+
+>> Entity and numeric character references
+&#42;foo&#42;
+*foo*
+--
+<p>*foo*
+<em>foo</em></p>
+
+>> Entity and numeric character references
+&#42; foo
+
+* foo
+--
+<p>* foo</p>
+<ul>
+<li>foo</li>
+</ul>
+
+>> Entity and numeric character references
+foo&#10;&#10;bar
+--
+<p>foo
+
+bar</p>
+
+>> Entity and numeric character references
+&#9;foo
+--
+<p>	foo</p>
+
+>> Entity and numeric character references
+[a](url &quot;tit&quot;)
+--
+<p>[a](url &quot;tit&quot;)</p>
+
+>> Precedence
+- `one
+- two`
+--
+<ul>
+<li>`one</li>
+<li>two`</li>
+</ul>
+
+>> Thematic breaks
+***
+---
+___
+--
+<hr />
+<hr />
+<hr />
+
+>> Thematic breaks
++++
+--
+<p>+++</p>
+
+>> Thematic breaks
+===
+--
+<p>===</p>
+
+>> Thematic breaks
+--
+**
+__
+--
+<p>--
+**
+__</p>
+
+>> Thematic breaks
+ ***
+  ***
+   ***
+--
+<hr />
+<hr />
+<hr />
+
+>> Thematic breaks
+    ***
+--
+<pre><code>***
+</code></pre>
+
+>> Thematic breaks
+Foo
+    ***
+--
+<p>Foo
+***</p>
+
+>> Thematic breaks
+_____________________________________
+--
+<hr />
+
+>> Thematic breaks
+ - - -
+--
+<hr />
+
+>> Thematic breaks
+ **  * ** * ** * **
+--
+<hr />
+
+>> Thematic breaks
+-     -      -      -
+--
+<hr />
+
+>> Thematic breaks
+- - - -    
+--
+<hr />
+
+>> Thematic breaks
+_ _ _ _ a
+
+a------
+
+---a---
+--
+<p>_ _ _ _ a</p>
+<p>a------</p>
+<p>---a---</p>
+
+>> Thematic breaks
+ *-*
+--
+<p><em>-</em></p>
+
+>> Thematic breaks
+- foo
+***
+- bar
+--
+<ul>
+<li>foo</li>
+</ul>
+<hr />
+<ul>
+<li>bar</li>
+</ul>
+
+>> Thematic breaks
+Foo
+***
+bar
+--
+<p>Foo</p>
+<hr />
+<p>bar</p>
+
+>> Thematic breaks
+Foo
+---
+bar
+--
+<h2>Foo</h2>
+<p>bar</p>
+
+>> Thematic breaks
+* Foo
+* * *
+* Bar
+--
+<ul>
+<li>Foo</li>
+</ul>
+<hr />
+<ul>
+<li>Bar</li>
+</ul>
+
+>> Thematic breaks
+- Foo
+- * * *
+--
+<ul>
+<li>Foo</li>
+<li>
+<hr />
+</li>
+</ul>
+
+>> ATX headings
+# foo
+## foo
+### foo
+#### foo
+##### foo
+###### foo
+--
+<h1>foo</h1>
+<h2>foo</h2>
+<h3>foo</h3>
+<h4>foo</h4>
+<h5>foo</h5>
+<h6>foo</h6>
+
+>> ATX headings
+####### foo
+--
+<p>####### foo</p>
+
+>> ATX headings
+#5 bolt
+
+#hashtag
+--
+<p>#5 bolt</p>
+<p>#hashtag</p>
+
+>> ATX headings
+\## foo
+--
+<p>## foo</p>
+
+>> ATX headings
+# foo *bar* \*baz\*
+--
+<h1>foo <em>bar</em> *baz*</h1>
+
+>> ATX headings
+#                  foo                     
+--
+<h1>foo</h1>
+
+>> ATX headings
+ ### foo
+  ## foo
+   # foo
+--
+<h3>foo</h3>
+<h2>foo</h2>
+<h1>foo</h1>
+
+>> ATX headings
+    # foo
+--
+<pre><code># foo
+</code></pre>
+
+>> ATX headings
+foo
+    # bar
+--
+<p>foo
+# bar</p>
+
+>> ATX headings
+## foo ##
+  ###   bar    ###
+--
+<h2>foo</h2>
+<h3>bar</h3>
+
+>> ATX headings
+# foo ##################################
+##### foo ##
+--
+<h1>foo</h1>
+<h5>foo</h5>
+
+>> ATX headings
+### foo ###     
+--
+<h3>foo</h3>
+
+>> ATX headings
+### foo ### b
+--
+<h3>foo ### b</h3>
+
+>> ATX headings
+# foo#
+--
+<h1>foo#</h1>
+
+>> ATX headings
+### foo \###
+## foo #\##
+# foo \#
+--
+<h3>foo ###</h3>
+<h2>foo ###</h2>
+<h1>foo #</h1>
+
+>> ATX headings
+****
+## foo
+****
+--
+<hr />
+<h2>foo</h2>
+<hr />
+
+>> ATX headings
+Foo bar
+# baz
+Bar foo
+--
+<p>Foo bar</p>
+<h1>baz</h1>
+<p>Bar foo</p>
+
+>> ATX headings
+## 
+#
+### ###
+--
+<h2></h2>
+<h1></h1>
+<h3></h3>
+
+>> Setext headings
+Foo *bar*
+=========
+
+Foo *bar*
+---------
+--
+<h1>Foo <em>bar</em></h1>
+<h2>Foo <em>bar</em></h2>
+
+>> Setext headings
+Foo *bar
+baz*
+====
+--
+<h1>Foo <em>bar
+baz</em></h1>
+
+>> Setext headings
+  Foo *bar
+baz*	
+====
+--
+<h1>Foo <em>bar
+baz</em></h1>
+
+>> Setext headings
+Foo
+-------------------------
+
+Foo
+=
+--
+<h2>Foo</h2>
+<h1>Foo</h1>
+
+>> Setext headings
+   Foo
+---
+
+  Foo
+-----
+
+  Foo
+  ===
+--
+<h2>Foo</h2>
+<h2>Foo</h2>
+<h1>Foo</h1>
+
+>> Setext headings
+    Foo
+    ---
+
+    Foo
+---
+--
+<pre><code>Foo
+---
+
+Foo
+</code></pre>
+<hr />
+
+>> Setext headings
+Foo
+   ----      
+--
+<h2>Foo</h2>
+
+>> Setext headings
+Foo
+    ---
+--
+<p>Foo
+---</p>
+
+>> Setext headings
+Foo
+= =
+
+Foo
+--- -
+--
+<p>Foo
+= =</p>
+<p>Foo</p>
+<hr />
+
+>> Setext headings
+Foo  
+-----
+--
+<h2>Foo</h2>
+
+>> Setext headings
+Foo\
+----
+--
+<h2>Foo\</h2>
+
+>> Setext headings
+`Foo
+----
+`
+
+<a title="a lot
+---
+of dashes"/>
+--
+<h2>`Foo</h2>
+<p>`</p>
+<h2>&lt;a title=&quot;a lot</h2>
+<p>of dashes&quot;/&gt;</p>
+
+>> Setext headings
+> Foo
+---
+--
+<blockquote>
+<p>Foo</p>
+</blockquote>
+<hr />
+
+>> Setext headings
+> foo
+bar
+===
+--
+<blockquote>
+<p>foo
+bar
+===</p>
+</blockquote>
+
+>> Setext headings
+- Foo
+---
+--
+<ul>
+<li>Foo</li>
+</ul>
+<hr />
+
+>> Setext headings
+Foo
+Bar
+---
+--
+<h2>Foo
+Bar</h2>
+
+>> Setext headings
+---
+Foo
+---
+Bar
+---
+Baz
+--
+<hr />
+<h2>Foo</h2>
+<h2>Bar</h2>
+<p>Baz</p>
+
+>> Setext headings
+
+====
+--
+<p>====</p>
+
+>> Setext headings
+---
+---
+--
+<hr />
+<hr />
+
+>> Setext headings
+- foo
+-----
+--
+<ul>
+<li>foo</li>
+</ul>
+<hr />
+
+>> Setext headings
+    foo
+---
+--
+<pre><code>foo
+</code></pre>
+<hr />
+
+>> Setext headings
+> foo
+-----
+--
+<blockquote>
+<p>foo</p>
+</blockquote>
+<hr />
+
+>> Setext headings
+\> foo
+------
+--
+<h2>&gt; foo</h2>
+
+>> Setext headings
+Foo
+
+bar
+---
+baz
+--
+<p>Foo</p>
+<h2>bar</h2>
+<p>baz</p>
+
+>> Setext headings
+Foo
+bar
+
+---
+
+baz
+--
+<p>Foo
+bar</p>
+<hr />
+<p>baz</p>
+
+>> Setext headings
+Foo
+bar
+* * *
+baz
+--
+<p>Foo
+bar</p>
+<hr />
+<p>baz</p>
+
+>> Setext headings
+Foo
+bar
+\---
+baz
+--
+<p>Foo
+bar
+---
+baz</p>
+
+>> Indented code blocks
+    a simple
+      indented code block
+--
+<pre><code>a simple
+  indented code block
+</code></pre>
+
+>> Indented code blocks
+  - foo
+
+    bar
+--
+<ul>
+<li>
+<p>foo</p>
+<p>bar</p>
+</li>
+</ul>
+
+>> Indented code blocks
+1.  foo
+
+    - bar
+--
+<ol>
+<li>
+<p>foo</p>
+<ul>
+<li>bar</li>
+</ul>
+</li>
+</ol>
+
+>> Indented code blocks
+    <a/>
+    *hi*
+
+    - one
+--
+<pre><code>&lt;a/&gt;
+*hi*
+
+- one
+</code></pre>
+
+>> Indented code blocks
+    chunk1
+
+    chunk2
+  
+ 
+ 
+    chunk3
+--
+<pre><code>chunk1
+
+chunk2
+
+
+
+chunk3
+</code></pre>
+
+>> Indented code blocks
+    chunk1
+      
+      chunk2
+--
+<pre><code>chunk1
+  
+  chunk2
+</code></pre>
+
+>> Indented code blocks
+Foo
+    bar
+
+--
+<p>Foo
+bar</p>
+
+>> Indented code blocks
+    foo
+bar
+--
+<pre><code>foo
+</code></pre>
+<p>bar</p>
+
+>> Indented code blocks
+# Heading
+    foo
+Heading
+------
+    foo
+----
+--
+<h1>Heading</h1>
+<pre><code>foo
+</code></pre>
+<h2>Heading</h2>
+<pre><code>foo
+</code></pre>
+<hr />
+
+>> Indented code blocks
+        foo
+    bar
+--
+<pre><code>    foo
+bar
+</code></pre>
+
+>> Indented code blocks
+
+    
+    foo
+    
+
+--
+<pre><code>foo
+</code></pre>
+
+>> Indented code blocks
+    foo  
+--
+<pre><code>foo  
+</code></pre>
+
+>> Fenced code blocks
+```
+<
+ >
+```
+--
+<pre><code>&lt;
+ &gt;
+</code></pre>
+
+>> Fenced code blocks
+~~~
+<
+ >
+~~~
+--
+<pre><code>&lt;
+ &gt;
+</code></pre>
+
+>> Fenced code blocks
+``
+foo
+``
+--
+<p><code>foo</code></p>
+
+>> Fenced code blocks
+```
+aaa
+~~~
+```
+--
+<pre><code>aaa
+~~~
+</code></pre>
+
+>> Fenced code blocks
+~~~
+aaa
+```
+~~~
+--
+<pre><code>aaa
+```
+</code></pre>
+
+>> Fenced code blocks
+````
+aaa
+```
+``````
+--
+<pre><code>aaa
+```
+</code></pre>
+
+>> Fenced code blocks
+~~~~
+aaa
+~~~
+~~~~
+--
+<pre><code>aaa
+~~~
+</code></pre>
+
+>> Fenced code blocks
+```
+--
+<pre><code></code></pre>
+
+>> Fenced code blocks
+`````
+
+```
+aaa
+--
+<pre><code>
+```
+aaa
+</code></pre>
+
+>> Fenced code blocks
+> ```
+> aaa
+
+bbb
+--
+<blockquote>
+<pre><code>aaa
+</code></pre>
+</blockquote>
+<p>bbb</p>
+
+>> Fenced code blocks
+```
+
+  
+```
+--
+<pre><code>
+  
+</code></pre>
+
+>> Fenced code blocks
+```
+```
+--
+<pre><code></code></pre>
+
+>> Fenced code blocks
+ ```
+ aaa
+aaa
+```
+--
+<pre><code>aaa
+aaa
+</code></pre>
+
+>> Fenced code blocks
+  ```
+aaa
+  aaa
+aaa
+  ```
+--
+<pre><code>aaa
+aaa
+aaa
+</code></pre>
+
+>> Fenced code blocks
+   ```
+   aaa
+    aaa
+  aaa
+   ```
+--
+<pre><code>aaa
+ aaa
+aaa
+</code></pre>
+
+>> Fenced code blocks
+    ```
+    aaa
+    ```
+--
+<pre><code>```
+aaa
+```
+</code></pre>
+
+>> Fenced code blocks
+```
+aaa
+  ```
+--
+<pre><code>aaa
+</code></pre>
+
+>> Fenced code blocks
+   ```
+aaa
+  ```
+--
+<pre><code>aaa
+</code></pre>
+
+>> Fenced code blocks
+```
+aaa
+    ```
+--
+<pre><code>aaa
+    ```
+</code></pre>
+
+>> Fenced code blocks
+``` ```
+aaa
+--
+<p><code> </code>
+aaa</p>
+
+>> Fenced code blocks
+~~~~~~
+aaa
+~~~ ~~
+--
+<pre><code>aaa
+~~~ ~~
+</code></pre>
+
+>> Fenced code blocks
+foo
+```
+bar
+```
+baz
+--
+<p>foo</p>
+<pre><code>bar
+</code></pre>
+<p>baz</p>
+
+>> Fenced code blocks
+foo
+---
+~~~
+bar
+~~~
+# baz
+--
+<h2>foo</h2>
+<pre><code>bar
+</code></pre>
+<h1>baz</h1>
+
+>> Fenced code blocks
+```ruby
+def foo(x)
+  return 3
+end
+```
+--
+<pre><code class="language-ruby">def foo(x)
+  return 3
+end
+</code></pre>
+
+>> Fenced code blocks
+~~~~    ruby startline=3 $%@#$
+def foo(x)
+  return 3
+end
+~~~~~~~
+--
+<pre><code class="language-ruby">def foo(x)
+  return 3
+end
+</code></pre>
+
+>> Fenced code blocks
+````;
+````
+--
+<pre><code class="language-;"></code></pre>
+
+>> Fenced code blocks
+``` aa ```
+foo
+--
+<p><code>aa</code>
+foo</p>
+
+>> Fenced code blocks
+~~~ aa ``` ~~~
+foo
+~~~
+--
+<pre><code class="language-aa">foo
+</code></pre>
+
+>> Fenced code blocks
+```
+``` aaa
+```
+--
+<pre><code>``` aaa
+</code></pre>
+
+>> HTML blocks
+<table><tr><td>
+<pre>
+**Hello**,
+
+_world_.
+</pre>
+</td></tr></table>
+--
+<table><tr><td>
+<pre>
+**Hello**,
+<p><em>world</em>.
+</pre></p>
+</td></tr></table>
+
+>> HTML blocks
+<table>
+  <tr>
+    <td>
+           hi
+    </td>
+  </tr>
+</table>
+
+okay.
+--
+<table>
+  <tr>
+    <td>
+           hi
+    </td>
+  </tr>
+</table>
+<p>okay.</p>
+
+>> HTML blocks
+ <div>
+  *hello*
+         <foo><a>
+--
+ <div>
+  *hello*
+         <foo><a>
+
+>> HTML blocks
+</div>
+*foo*
+--
+</div>
+*foo*
+
+>> HTML blocks
+<DIV CLASS="foo">
+
+*Markdown*
+
+</DIV>
+--
+<DIV CLASS="foo">
+<p><em>Markdown</em></p>
+</DIV>
+
+>> HTML blocks
+<div id="foo"
+  class="bar">
+</div>
+--
+<div id="foo"
+  class="bar">
+</div>
+
+>> HTML blocks
+<div id="foo" class="bar
+  baz">
+</div>
+--
+<div id="foo" class="bar
+  baz">
+</div>
+
+>> HTML blocks
+<div>
+*foo*
+
+*bar*
+--
+<div>
+*foo*
+<p><em>bar</em></p>
+
+>> HTML blocks
+<div id="foo"
+*hi*
+--
+<div id="foo"
+*hi*
+
+>> HTML blocks
+<div class
+foo
+--
+<div class
+foo
+
+>> HTML blocks
+<div *???-&&&-<---
+*foo*
+--
+<div *???-&&&-<---
+*foo*
+
+>> HTML blocks
+<div><a href="bar">*foo*</a></div>
+--
+<div><a href="bar">*foo*</a></div>
+
+>> HTML blocks
+<table><tr><td>
+foo
+</td></tr></table>
+--
+<table><tr><td>
+foo
+</td></tr></table>
+
+>> HTML blocks
+<div></div>
+``` c
+int x = 33;
+```
+--
+<div></div>
+``` c
+int x = 33;
+```
+
+>> HTML blocks
+<a href="foo">
+*bar*
+</a>
+--
+<a href="foo">
+*bar*
+</a>
+
+>> HTML blocks
+<Warning>
+*bar*
+</Warning>
+--
+<Warning>
+*bar*
+</Warning>
+
+>> HTML blocks
+<i class="foo">
+*bar*
+</i>
+--
+<i class="foo">
+*bar*
+</i>
+
+>> HTML blocks
+</ins>
+*bar*
+--
+</ins>
+*bar*
+
+>> HTML blocks
+<del>
+*foo*
+</del>
+--
+<del>
+*foo*
+</del>
+
+>> HTML blocks
+<del>
+
+*foo*
+
+</del>
+--
+<del>
+<p><em>foo</em></p>
+</del>
+
+>> HTML blocks
+<del>*foo*</del>
+--
+<p><del><em>foo</em></del></p>
+
+>> HTML blocks
+<pre language="haskell"><code>
+import Text.HTML.TagSoup
+
+main :: IO ()
+main = print $ parseTags tags
+</code></pre>
+okay
+--
+<pre language="haskell"><code>
+import Text.HTML.TagSoup
+
+main :: IO ()
+main = print $ parseTags tags
+</code></pre>
+<p>okay</p>
+
+>> HTML blocks
+<script type="text/javascript">
+// JavaScript example
+
+document.getElementById("demo").innerHTML = "Hello JavaScript!";
+</script>
+okay
+--
+<script type="text/javascript">
+// JavaScript example
+
+document.getElementById("demo").innerHTML = "Hello JavaScript!";
+</script>
+<p>okay</p>
+
+>> HTML blocks
+<textarea>
+
+*foo*
+
+_bar_
+
+</textarea>
+--
+<textarea>
+
+*foo*
+
+_bar_
+
+</textarea>
+
+>> HTML blocks
+<style
+  type="text/css">
+h1 {color:red;}
+
+p {color:blue;}
+</style>
+okay
+--
+<style
+  type="text/css">
+h1 {color:red;}
+
+p {color:blue;}
+</style>
+<p>okay</p>
+
+>> HTML blocks
+<style
+  type="text/css">
+
+foo
+--
+<style
+  type="text/css">
+
+foo
+
+>> HTML blocks
+> <div>
+> foo
+
+bar
+--
+<blockquote>
+<div>
+foo
+</blockquote>
+<p>bar</p>
+
+>> HTML blocks
+- <div>
+- foo
+--
+<ul>
+<li>
+<div>
+</li>
+<li>foo</li>
+</ul>
+
+>> HTML blocks
+<style>p{color:red;}</style>
+*foo*
+--
+<style>p{color:red;}</style>
+<p><em>foo</em></p>
+
+>> HTML blocks
+<!-- foo -->*bar*
+*baz*
+--
+<!-- foo -->*bar*
+<p><em>baz</em></p>
+
+>> HTML blocks
+<script>
+foo
+</script>1. *bar*
+--
+<script>
+foo
+</script>1. *bar*
+
+>> HTML blocks
+<!-- Foo
+
+bar
+   baz -->
+okay
+--
+<!-- Foo
+
+bar
+   baz -->
+<p>okay</p>
+
+>> HTML blocks
+<?php
+
+  echo '>';
+
+?>
+okay
+--
+<?php
+
+  echo '>';
+
+?>
+<p>okay</p>
+
+>> HTML blocks
+<!DOCTYPE html>
+--
+<!DOCTYPE html>
+
+>> HTML blocks
+<![CDATA[
+function matchwo(a,b)
+{
+  if (a < b && a < 0) then {
+    return 1;
+
+  } else {
+
+    return 0;
+  }
+}
+]]>
+okay
+--
+<![CDATA[
+function matchwo(a,b)
+{
+  if (a < b && a < 0) then {
+    return 1;
+
+  } else {
+
+    return 0;
+  }
+}
+]]>
+<p>okay</p>
+
+>> HTML blocks
+  <!-- foo -->
+
+    <!-- foo -->
+--
+  <!-- foo -->
+<pre><code>&lt;!-- foo --&gt;
+</code></pre>
+
+>> HTML blocks
+  <div>
+
+    <div>
+--
+  <div>
+<pre><code>&lt;div&gt;
+</code></pre>
+
+>> HTML blocks
+Foo
+<div>
+bar
+</div>
+--
+<p>Foo</p>
+<div>
+bar
+</div>
+
+>> HTML blocks
+<div>
+bar
+</div>
+*foo*
+--
+<div>
+bar
+</div>
+*foo*
+
+>> HTML blocks
+Foo
+<a href="bar">
+baz
+--
+<p>Foo
+<a href="bar">
+baz</p>
+
+>> HTML blocks
+<div>
+
+*Emphasized* text.
+
+</div>
+--
+<div>
+<p><em>Emphasized</em> text.</p>
+</div>
+
+>> HTML blocks
+<div>
+*Emphasized* text.
+</div>
+--
+<div>
+*Emphasized* text.
+</div>
+
+>> HTML blocks
+<table>
+
+<tr>
+
+<td>
+Hi
+</td>
+
+</tr>
+
+</table>
+--
+<table>
+<tr>
+<td>
+Hi
+</td>
+</tr>
+</table>
+
+>> HTML blocks
+<table>
+
+  <tr>
+
+    <td>
+      Hi
+    </td>
+
+  </tr>
+
+</table>
+--
+<table>
+  <tr>
+<pre><code>&lt;td&gt;
+  Hi
+&lt;/td&gt;
+</code></pre>
+  </tr>
+</table>
+
+>> Link reference definitions
+[foo]: /url "title"
+
+[foo]
+--
+<p><a href="/url" title="title">foo</a></p>
+
+>> Link reference definitions
+   [foo]: 
+      /url  
+           'the title'  
+
+[foo]
+--
+<p><a href="/url" title="the title">foo</a></p>
+
+>> Link reference definitions
+[Foo*bar\]]:my_(url) 'title (with parens)'
+
+[Foo*bar\]]
+--
+<p><a href="my_(url)" title="title (with parens)">Foo*bar]</a></p>
+
+>> Link reference definitions
+[Foo bar]:
+<my url>
+'title'
+
+[Foo bar]
+--
+<p><a href="my%20url" title="title">Foo bar</a></p>
+
+>> Link reference definitions
+[foo]: /url '
+title
+line1
+line2
+'
+
+[foo]
+--
+<p><a href="/url" title="
+title
+line1
+line2
+">foo</a></p>
+
+>> Link reference definitions
+[foo]: /url 'title
+
+with blank line'
+
+[foo]
+--
+<p>[foo]: /url 'title</p>
+<p>with blank line'</p>
+<p>[foo]</p>
+
+>> Link reference definitions
+[foo]:
+/url
+
+[foo]
+--
+<p><a href="/url">foo</a></p>
+
+>> Link reference definitions
+[foo]:
+
+[foo]
+--
+<p>[foo]:</p>
+<p>[foo]</p>
+
+>> Link reference definitions
+[foo]: <>
+
+[foo]
+--
+<p><a href="">foo</a></p>
+
+>> Link reference definitions
+[foo]: <bar>(baz)
+
+[foo]
+--
+<p>[foo]: <bar>(baz)</p>
+<p>[foo]</p>
+
+>> Link reference definitions
+[foo]: /url\bar\*baz "foo\"bar\baz"
+
+[foo]
+--
+<p><a href="/url%5Cbar*baz" title="foo&quot;bar\baz">foo</a></p>
+
+>> Link reference definitions
+[foo]
+
+[foo]: url
+--
+<p><a href="url">foo</a></p>
+
+>> Link reference definitions
+[foo]
+
+[foo]: first
+[foo]: second
+--
+<p><a href="first">foo</a></p>
+
+>> Link reference definitions
+[FOO]: /url
+
+[Foo]
+--
+<p><a href="/url">Foo</a></p>
+
+>> Link reference definitions
+[ΑΓΩ]: /φου
+
+[αγω]
+--
+<p><a href="/%CF%86%CE%BF%CF%85">αγω</a></p>
+
+>> Link reference definitions
+[foo]: /url
+--
+
+
+>> Link reference definitions
+[
+foo
+]: /url
+bar
+--
+<p>bar</p>
+
+>> Link reference definitions
+[foo]: /url "title" ok
+--
+<p>[foo]: /url &quot;title&quot; ok</p>
+
+>> Link reference definitions
+[foo]: /url
+"title" ok
+--
+<p>&quot;title&quot; ok</p>
+
+>> Link reference definitions
+    [foo]: /url "title"
+
+[foo]
+--
+<pre><code>[foo]: /url &quot;title&quot;
+</code></pre>
+<p>[foo]</p>
+
+>> Link reference definitions
+```
+[foo]: /url
+```
+
+[foo]
+--
+<pre><code>[foo]: /url
+</code></pre>
+<p>[foo]</p>
+
+>> Link reference definitions
+Foo
+[bar]: /baz
+
+[bar]
+--
+<p>Foo
+[bar]: /baz</p>
+<p>[bar]</p>
+
+>> Link reference definitions
+# [Foo]
+[foo]: /url
+> bar
+--
+<h1><a href="/url">Foo</a></h1>
+<blockquote>
+<p>bar</p>
+</blockquote>
+
+>> Link reference definitions
+[foo]: /url
+bar
+===
+[foo]
+--
+<h1>bar</h1>
+<p><a href="/url">foo</a></p>
+
+>> Link reference definitions
+[foo]: /url
+===
+[foo]
+--
+<p>===
+<a href="/url">foo</a></p>
+
+>> Link reference definitions
+[foo]: /foo-url "foo"
+[bar]: /bar-url
+  "bar"
+[baz]: /baz-url
+
+[foo],
+[bar],
+[baz]
+--
+<p><a href="/foo-url" title="foo">foo</a>,
+<a href="/bar-url" title="bar">bar</a>,
+<a href="/baz-url">baz</a></p>
+
+>> Link reference definitions
+[foo]
+
+> [foo]: /url
+--
+<p><a href="/url">foo</a></p>
+<blockquote>
+</blockquote>
+
+>> Paragraphs
+aaa
+
+bbb
+--
+<p>aaa</p>
+<p>bbb</p>
+
+>> Paragraphs
+aaa
+bbb
+
+ccc
+ddd
+--
+<p>aaa
+bbb</p>
+<p>ccc
+ddd</p>
+
+>> Paragraphs
+aaa
+
+
+bbb
+--
+<p>aaa</p>
+<p>bbb</p>
+
+>> Paragraphs
+  aaa
+ bbb
+--
+<p>aaa
+bbb</p>
+
+>> Paragraphs
+aaa
+             bbb
+                                       ccc
+--
+<p>aaa
+bbb
+ccc</p>
+
+>> Paragraphs
+   aaa
+bbb
+--
+<p>aaa
+bbb</p>
+
+>> Paragraphs
+    aaa
+bbb
+--
+<pre><code>aaa
+</code></pre>
+<p>bbb</p>
+
+>> Paragraphs
+aaa     
+bbb     
+--
+<p>aaa<br />
+bbb</p>
+
+>> Blank lines
+  
+
+aaa
+  
+
+# aaa
+
+  
+--
+<p>aaa</p>
+<h1>aaa</h1>
+
+>> Block quotes
+> # Foo
+> bar
+> baz
+--
+<blockquote>
+<h1>Foo</h1>
+<p>bar
+baz</p>
+</blockquote>
+
+>> Block quotes
+># Foo
+>bar
+> baz
+--
+<blockquote>
+<h1>Foo</h1>
+<p>bar
+baz</p>
+</blockquote>
+
+>> Block quotes
+   > # Foo
+   > bar
+ > baz
+--
+<blockquote>
+<h1>Foo</h1>
+<p>bar
+baz</p>
+</blockquote>
+
+>> Block quotes
+    > # Foo
+    > bar
+    > baz
+--
+<pre><code>&gt; # Foo
+&gt; bar
+&gt; baz
+</code></pre>
+
+>> Block quotes
+> # Foo
+> bar
+baz
+--
+<blockquote>
+<h1>Foo</h1>
+<p>bar
+baz</p>
+</blockquote>
+
+>> Block quotes
+> bar
+baz
+> foo
+--
+<blockquote>
+<p>bar
+baz
+foo</p>
+</blockquote>
+
+>> Block quotes
+> foo
+---
+--
+<blockquote>
+<p>foo</p>
+</blockquote>
+<hr />
+
+>> Block quotes
+> - foo
+- bar
+--
+<blockquote>
+<ul>
+<li>foo</li>
+</ul>
+</blockquote>
+<ul>
+<li>bar</li>
+</ul>
+
+>> Block quotes
+>     foo
+    bar
+--
+<blockquote>
+<pre><code>foo
+</code></pre>
+</blockquote>
+<pre><code>bar
+</code></pre>
+
+>> Block quotes
+> ```
+foo
+```
+--
+<blockquote>
+<pre><code></code></pre>
+</blockquote>
+<p>foo</p>
+<pre><code></code></pre>
+
+>> Block quotes
+> foo
+    - bar
+--
+<blockquote>
+<p>foo
+- bar</p>
+</blockquote>
+
+>> Block quotes
+>
+--
+<blockquote>
+</blockquote>
+
+>> Block quotes
+>
+>  
+> 
+--
+<blockquote>
+</blockquote>
+
+>> Block quotes
+>
+> foo
+>  
+--
+<blockquote>
+<p>foo</p>
+</blockquote>
+
+>> Block quotes
+> foo
+
+> bar
+--
+<blockquote>
+<p>foo</p>
+</blockquote>
+<blockquote>
+<p>bar</p>
+</blockquote>
+
+>> Block quotes
+> foo
+> bar
+--
+<blockquote>
+<p>foo
+bar</p>
+</blockquote>
+
+>> Block quotes
+> foo
+>
+> bar
+--
+<blockquote>
+<p>foo</p>
+<p>bar</p>
+</blockquote>
+
+>> Block quotes
+foo
+> bar
+--
+<p>foo</p>
+<blockquote>
+<p>bar</p>
+</blockquote>
+
+>> Block quotes
+> aaa
+***
+> bbb
+--
+<blockquote>
+<p>aaa</p>
+</blockquote>
+<hr />
+<blockquote>
+<p>bbb</p>
+</blockquote>
+
+>> Block quotes
+> bar
+baz
+--
+<blockquote>
+<p>bar
+baz</p>
+</blockquote>
+
+>> Block quotes
+> bar
+
+baz
+--
+<blockquote>
+<p>bar</p>
+</blockquote>
+<p>baz</p>
+
+>> Block quotes
+> bar
+>
+baz
+--
+<blockquote>
+<p>bar</p>
+</blockquote>
+<p>baz</p>
+
+>> Block quotes
+> > > foo
+bar
+--
+<blockquote>
+<blockquote>
+<blockquote>
+<p>foo
+bar</p>
+</blockquote>
+</blockquote>
+</blockquote>
+
+>> Block quotes
+>>> foo
+> bar
+>>baz
+--
+<blockquote>
+<blockquote>
+<blockquote>
+<p>foo
+bar
+baz</p>
+</blockquote>
+</blockquote>
+</blockquote>
+
+>> Block quotes
+>     code
+
+>    not code
+--
+<blockquote>
+<pre><code>code
+</code></pre>
+</blockquote>
+<blockquote>
+<p>not code</p>
+</blockquote>
+
+>> List items
+A paragraph
+with two lines.
+
+    indented code
+
+> A block quote.
+--
+<p>A paragraph
+with two lines.</p>
+<pre><code>indented code
+</code></pre>
+<blockquote>
+<p>A block quote.</p>
+</blockquote>
+
+>> List items
+1.  A paragraph
+    with two lines.
+
+        indented code
+
+    > A block quote.
+--
+<ol>
+<li>
+<p>A paragraph
+with two lines.</p>
+<pre><code>indented code
+</code></pre>
+<blockquote>
+<p>A block quote.</p>
+</blockquote>
+</li>
+</ol>
+
+>> List items
+- one
+
+ two
+--
+<ul>
+<li>one</li>
+</ul>
+<p>two</p>
+
+>> List items
+- one
+
+  two
+--
+<ul>
+<li>
+<p>one</p>
+<p>two</p>
+</li>
+</ul>
+
+>> List items
+ -    one
+
+     two
+--
+<ul>
+<li>one</li>
+</ul>
+<pre><code> two
+</code></pre>
+
+>> List items
+ -    one
+
+      two
+--
+<ul>
+<li>
+<p>one</p>
+<p>two</p>
+</li>
+</ul>
+
+>> List items
+   > > 1.  one
+>>
+>>     two
+--
+<blockquote>
+<blockquote>
+<ol>
+<li>
+<p>one</p>
+<p>two</p>
+</li>
+</ol>
+</blockquote>
+</blockquote>
+
+>> List items
+>>- one
+>>
+  >  > two
+--
+<blockquote>
+<blockquote>
+<ul>
+<li>one</li>
+</ul>
+<p>two</p>
+</blockquote>
+</blockquote>
+
+>> List items
+-one
+
+2.two
+--
+<p>-one</p>
+<p>2.two</p>
+
+>> List items
+- foo
+
+
+  bar
+--
+<ul>
+<li>
+<p>foo</p>
+<p>bar</p>
+</li>
+</ul>
+
+>> List items
+1.  foo
+
+    ```
+    bar
+    ```
+
+    baz
+
+    > bam
+--
+<ol>
+<li>
+<p>foo</p>
+<pre><code>bar
+</code></pre>
+<p>baz</p>
+<blockquote>
+<p>bam</p>
+</blockquote>
+</li>
+</ol>
+
+>> List items
+- Foo
+
+      bar
+
+
+      baz
+--
+<ul>
+<li>
+<p>Foo</p>
+<pre><code>bar
+
+
+baz
+</code></pre>
+</li>
+</ul>
+
+>> List items
+123456789. ok
+--
+<ol start="123456789">
+<li>ok</li>
+</ol>
+
+>> List items
+1234567890. not ok
+--
+<p>1234567890. not ok</p>
+
+>> List items
+0. ok
+--
+<ol start="0">
+<li>ok</li>
+</ol>
+
+>> List items
+003. ok
+--
+<ol start="3">
+<li>ok</li>
+</ol>
+
+>> List items
+-1. not ok
+--
+<p>-1. not ok</p>
+
+>> List items
+- foo
+
+      bar
+--
+<ul>
+<li>
+<p>foo</p>
+<pre><code>bar
+</code></pre>
+</li>
+</ul>
+
+>> List items
+  10.  foo
+
+           bar
+--
+<ol start="10">
+<li>
+<p>foo</p>
+<pre><code>bar
+</code></pre>
+</li>
+</ol>
+
+>> List items
+    indented code
+
+paragraph
+
+    more code
+--
+<pre><code>indented code
+</code></pre>
+<p>paragraph</p>
+<pre><code>more code
+</code></pre>
+
+>> List items
+1.     indented code
+
+   paragraph
+
+       more code
+--
+<ol>
+<li>
+<pre><code>indented code
+</code></pre>
+<p>paragraph</p>
+<pre><code>more code
+</code></pre>
+</li>
+</ol>
+
+>> List items
+1.      indented code
+
+   paragraph
+
+       more code
+--
+<ol>
+<li>
+<pre><code> indented code
+</code></pre>
+<p>paragraph</p>
+<pre><code>more code
+</code></pre>
+</li>
+</ol>
+
+>> List items
+   foo
+
+bar
+--
+<p>foo</p>
+<p>bar</p>
+
+>> List items
+-    foo
+
+  bar
+--
+<ul>
+<li>foo</li>
+</ul>
+<p>bar</p>
+
+>> List items
+-  foo
+
+   bar
+--
+<ul>
+<li>
+<p>foo</p>
+<p>bar</p>
+</li>
+</ul>
+
+>> List items
+-
+  foo
+-
+  ```
+  bar
+  ```
+-
+      baz
+--
+<ul>
+<li>foo</li>
+<li>
+<pre><code>bar
+</code></pre>
+</li>
+<li>
+<pre><code>baz
+</code></pre>
+</li>
+</ul>
+
+>> List items
+-   
+  foo
+--
+<ul>
+<li>foo</li>
+</ul>
+
+>> List items
+-
+
+  foo
+--
+<ul>
+<li></li>
+</ul>
+<p>foo</p>
+
+>> List items
+- foo
+-
+- bar
+--
+<ul>
+<li>foo</li>
+<li></li>
+<li>bar</li>
+</ul>
+
+>> List items
+- foo
+-   
+- bar
+--
+<ul>
+<li>foo</li>
+<li></li>
+<li>bar</li>
+</ul>
+
+>> List items
+1. foo
+2.
+3. bar
+--
+<ol>
+<li>foo</li>
+<li></li>
+<li>bar</li>
+</ol>
+
+>> List items
+*
+--
+<ul>
+<li></li>
+</ul>
+
+>> List items
+foo
+*
+
+foo
+1.
+--
+<p>foo
+*</p>
+<p>foo
+1.</p>
+
+>> List items
+ 1.  A paragraph
+     with two lines.
+
+         indented code
+
+     > A block quote.
+--
+<ol>
+<li>
+<p>A paragraph
+with two lines.</p>
+<pre><code>indented code
+</code></pre>
+<blockquote>
+<p>A block quote.</p>
+</blockquote>
+</li>
+</ol>
+
+>> List items
+  1.  A paragraph
+      with two lines.
+
+          indented code
+
+      > A block quote.
+--
+<ol>
+<li>
+<p>A paragraph
+with two lines.</p>
+<pre><code>indented code
+</code></pre>
+<blockquote>
+<p>A block quote.</p>
+</blockquote>
+</li>
+</ol>
+
+>> List items
+   1.  A paragraph
+       with two lines.
+
+           indented code
+
+       > A block quote.
+--
+<ol>
+<li>
+<p>A paragraph
+with two lines.</p>
+<pre><code>indented code
+</code></pre>
+<blockquote>
+<p>A block quote.</p>
+</blockquote>
+</li>
+</ol>
+
+>> List items
+    1.  A paragraph
+        with two lines.
+
+            indented code
+
+        > A block quote.
+--
+<pre><code>1.  A paragraph
+    with two lines.
+
+        indented code
+
+    &gt; A block quote.
+</code></pre>
+
+>> List items
+  1.  A paragraph
+with two lines.
+
+          indented code
+
+      > A block quote.
+--
+<ol>
+<li>
+<p>A paragraph
+with two lines.</p>
+<pre><code>indented code
+</code></pre>
+<blockquote>
+<p>A block quote.</p>
+</blockquote>
+</li>
+</ol>
+
+>> List items
+  1.  A paragraph
+    with two lines.
+--
+<ol>
+<li>A paragraph
+with two lines.</li>
+</ol>
+
+>> List items
+> 1. > Blockquote
+continued here.
+--
+<blockquote>
+<ol>
+<li>
+<blockquote>
+<p>Blockquote
+continued here.</p>
+</blockquote>
+</li>
+</ol>
+</blockquote>
+
+>> List items
+> 1. > Blockquote
+> continued here.
+--
+<blockquote>
+<ol>
+<li>
+<blockquote>
+<p>Blockquote
+continued here.</p>
+</blockquote>
+</li>
+</ol>
+</blockquote>
+
+>> List items
+- foo
+  - bar
+    - baz
+      - boo
+--
+<ul>
+<li>foo
+<ul>
+<li>bar
+<ul>
+<li>baz
+<ul>
+<li>boo</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+>> List items
+- foo
+ - bar
+  - baz
+   - boo
+--
+<ul>
+<li>foo</li>
+<li>bar</li>
+<li>baz</li>
+<li>boo</li>
+</ul>
+
+>> List items
+10) foo
+    - bar
+--
+<ol start="10">
+<li>foo
+<ul>
+<li>bar</li>
+</ul>
+</li>
+</ol>
+
+>> List items
+10) foo
+   - bar
+--
+<ol start="10">
+<li>foo</li>
+</ol>
+<ul>
+<li>bar</li>
+</ul>
+
+>> List items
+- - foo
+--
+<ul>
+<li>
+<ul>
+<li>foo</li>
+</ul>
+</li>
+</ul>
+
+>> List items
+1. - 2. foo
+--
+<ol>
+<li>
+<ul>
+<li>
+<ol start="2">
+<li>foo</li>
+</ol>
+</li>
+</ul>
+</li>
+</ol>
+
+>> List items
+- # Foo
+- Bar
+  ---
+  baz
+--
+<ul>
+<li>
+<h1>Foo</h1>
+</li>
+<li>
+<h2>Bar</h2>
+baz</li>
+</ul>
+
+>> Lists
+- foo
+- bar
++ baz
+--
+<ul>
+<li>foo</li>
+<li>bar</li>
+</ul>
+<ul>
+<li>baz</li>
+</ul>
+
+>> Lists
+1. foo
+2. bar
+3) baz
+--
+<ol>
+<li>foo</li>
+<li>bar</li>
+</ol>
+<ol start="3">
+<li>baz</li>
+</ol>
+
+>> Lists
+Foo
+- bar
+- baz
+--
+<p>Foo</p>
+<ul>
+<li>bar</li>
+<li>baz</li>
+</ul>
+
+>> Lists
+The number of windows in my house is
+14.  The number of doors is 6.
+--
+<p>The number of windows in my house is
+14.  The number of doors is 6.</p>
+
+>> Lists
+The number of windows in my house is
+1.  The number of doors is 6.
+--
+<p>The number of windows in my house is</p>
+<ol>
+<li>The number of doors is 6.</li>
+</ol>
+
+>> Lists
+- foo
+
+- bar
+
+
+- baz
+--
+<ul>
+<li>
+<p>foo</p>
+</li>
+<li>
+<p>bar</p>
+</li>
+<li>
+<p>baz</p>
+</li>
+</ul>
+
+>> Lists
+- foo
+  - bar
+    - baz
+
+
+      bim
+--
+<ul>
+<li>foo
+<ul>
+<li>bar
+<ul>
+<li>
+<p>baz</p>
+<p>bim</p>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+>> Lists
+- foo
+- bar
+
+<!-- -->
+
+- baz
+- bim
+--
+<ul>
+<li>foo</li>
+<li>bar</li>
+</ul>
+<!-- -->
+<ul>
+<li>baz</li>
+<li>bim</li>
+</ul>
+
+>> Lists
+-   foo
+
+    notcode
+
+-   foo
+
+<!-- -->
+
+    code
+--
+<ul>
+<li>
+<p>foo</p>
+<p>notcode</p>
+</li>
+<li>
+<p>foo</p>
+</li>
+</ul>
+<!-- -->
+<pre><code>code
+</code></pre>
+
+>> Lists
+- a
+ - b
+  - c
+   - d
+  - e
+ - f
+- g
+--
+<ul>
+<li>a</li>
+<li>b</li>
+<li>c</li>
+<li>d</li>
+<li>e</li>
+<li>f</li>
+<li>g</li>
+</ul>
+
+>> Lists
+1. a
+
+  2. b
+
+   3. c
+--
+<ol>
+<li>
+<p>a</p>
+</li>
+<li>
+<p>b</p>
+</li>
+<li>
+<p>c</p>
+</li>
+</ol>
+
+>> Lists
+- a
+ - b
+  - c
+   - d
+    - e
+--
+<ul>
+<li>a</li>
+<li>b</li>
+<li>c</li>
+<li>d
+- e</li>
+</ul>
+
+>> Lists
+1. a
+
+  2. b
+
+    3. c
+--
+<ol>
+<li>
+<p>a</p>
+</li>
+<li>
+<p>b</p>
+</li>
+</ol>
+<pre><code>3. c
+</code></pre>
+
+>> Lists
+- a
+- b
+
+- c
+--
+<ul>
+<li>
+<p>a</p>
+</li>
+<li>
+<p>b</p>
+</li>
+<li>
+<p>c</p>
+</li>
+</ul>
+
+>> Lists
+* a
+*
+
+* c
+--
+<ul>
+<li>
+<p>a</p>
+</li>
+<li></li>
+<li>
+<p>c</p>
+</li>
+</ul>
+
+>> Lists
+- a
+- b
+
+  c
+- d
+--
+<ul>
+<li>
+<p>a</p>
+</li>
+<li>
+<p>b</p>
+<p>c</p>
+</li>
+<li>
+<p>d</p>
+</li>
+</ul>
+
+>> Lists
+- a
+- b
+
+  [ref]: /url
+- d
+--
+<ul>
+<li>
+<p>a</p>
+</li>
+<li>
+<p>b</p>
+</li>
+<li>
+<p>d</p>
+</li>
+</ul>
+
+>> Lists
+- a
+- ```
+  b
+
+
+  ```
+- c
+--
+<ul>
+<li>a</li>
+<li>
+<pre><code>b
+
+
+</code></pre>
+</li>
+<li>c</li>
+</ul>
+
+>> Lists
+- a
+  - b
+
+    c
+- d
+--
+<ul>
+<li>a
+<ul>
+<li>
+<p>b</p>
+<p>c</p>
+</li>
+</ul>
+</li>
+<li>d</li>
+</ul>
+
+>> Lists
+* a
+  > b
+  >
+* c
+--
+<ul>
+<li>a
+<blockquote>
+<p>b</p>
+</blockquote>
+</li>
+<li>c</li>
+</ul>
+
+>> Lists
+- a
+  > b
+  ```
+  c
+  ```
+- d
+--
+<ul>
+<li>a
+<blockquote>
+<p>b</p>
+</blockquote>
+<pre><code>c
+</code></pre>
+</li>
+<li>d</li>
+</ul>
+
+>> Lists
+- a
+--
+<ul>
+<li>a</li>
+</ul>
+
+>> Lists
+- a
+  - b
+--
+<ul>
+<li>a
+<ul>
+<li>b</li>
+</ul>
+</li>
+</ul>
+
+>> Lists
+1. ```
+   foo
+   ```
+
+   bar
+--
+<ol>
+<li>
+<pre><code>foo
+</code></pre>
+<p>bar</p>
+</li>
+</ol>
+
+>> Lists
+* foo
+  * bar
+
+  baz
+--
+<ul>
+<li>
+<p>foo</p>
+<ul>
+<li>bar</li>
+</ul>
+<p>baz</p>
+</li>
+</ul>
+
+>> Lists
+- a
+  - b
+  - c
+
+- d
+  - e
+  - f
+--
+<ul>
+<li>
+<p>a</p>
+<ul>
+<li>b</li>
+<li>c</li>
+</ul>
+</li>
+<li>
+<p>d</p>
+<ul>
+<li>e</li>
+<li>f</li>
+</ul>
+</li>
+</ul>
+
+>> Inlines
+`hi`lo`
+--
+<p><code>hi</code>lo`</p>
+
+>> Code spans
+`foo`
+--
+<p><code>foo</code></p>
+
+>> Code spans
+`` foo ` bar ``
+--
+<p><code>foo ` bar</code></p>
+
+>> Code spans
+` `` `
+--
+<p><code>``</code></p>
+
+>> Code spans
+`  ``  `
+--
+<p><code> `` </code></p>
+
+>> Code spans
+` a`
+--
+<p><code> a</code></p>
+
+>> Code spans
+` b `
+--
+<p><code> b </code></p>
+
+>> Code spans
+` `
+`  `
+--
+<p><code> </code>
+<code>  </code></p>
+
+>> Code spans
+``
+foo
+bar  
+baz
+``
+--
+<p><code>foo bar   baz</code></p>
+
+>> Code spans
+``
+foo 
+``
+--
+<p><code>foo </code></p>
+
+>> Code spans
+`foo   bar 
+baz`
+--
+<p><code>foo   bar  baz</code></p>
+
+>> Code spans
+`foo\`bar`
+--
+<p><code>foo\</code>bar`</p>
+
+>> Code spans
+``foo`bar``
+--
+<p><code>foo`bar</code></p>
+
+>> Code spans
+` foo `` bar `
+--
+<p><code>foo `` bar</code></p>
+
+>> Code spans
+*foo`*`
+--
+<p>*foo<code>*</code></p>
+
+>> Code spans
+[not a `link](/foo`)
+--
+<p>[not a <code>link](/foo</code>)</p>
+
+>> Code spans
+`<a href="`">`
+--
+<p><code>&lt;a href=&quot;</code>&quot;&gt;`</p>
+
+>> Code spans
+<a href="`">`
+--
+<p><a href="`">`</p>
+
+>> Code spans
+`<https://foo.bar.`baz>`
+--
+<p><code>&lt;https://foo.bar.</code>baz&gt;`</p>
+
+>> Code spans
+<https://foo.bar.`baz>`
+--
+<p><a href="https://foo.bar.%60baz">https://foo.bar.`baz</a>`</p>
+
+>> Code spans
+```foo``
+--
+<p>```foo``</p>
+
+>> Code spans
+`foo
+--
+<p>`foo</p>
+
+>> Code spans
+`foo``bar``
+--
+<p>`foo<code>bar</code></p>
+
+>> Emphasis and strong emphasis
+*foo bar*
+--
+<p><em>foo bar</em></p>
+
+>> Emphasis and strong emphasis
+a * foo bar*
+--
+<p>a * foo bar*</p>
+
+>> Emphasis and strong emphasis
+a*"foo"*
+--
+<p>a*&quot;foo&quot;*</p>
+
+>> Emphasis and strong emphasis
+* a *
+--
+<p>* a *</p>
+
+>> Emphasis and strong emphasis
+*$*alpha.
+
+*£*bravo.
+
+*€*charlie.
+--
+<p>*$*alpha.</p>
+<p>*£*bravo.</p>
+<p>*€*charlie.</p>
+
+>> Emphasis and strong emphasis
+foo*bar*
+--
+<p>foo<em>bar</em></p>
+
+>> Emphasis and strong emphasis
+5*6*78
+--
+<p>5<em>6</em>78</p>
+
+>> Emphasis and strong emphasis
+_foo bar_
+--
+<p><em>foo bar</em></p>
+
+>> Emphasis and strong emphasis
+_ foo bar_
+--
+<p>_ foo bar_</p>
+
+>> Emphasis and strong emphasis
+a_"foo"_
+--
+<p>a_&quot;foo&quot;_</p>
+
+>> Emphasis and strong emphasis
+foo_bar_
+--
+<p>foo_bar_</p>
+
+>> Emphasis and strong emphasis
+5_6_78
+--
+<p>5_6_78</p>
+
+>> Emphasis and strong emphasis
+пристаням_стремятся_
+--
+<p>пристаням_стремятся_</p>
+
+>> Emphasis and strong emphasis
+aa_"bb"_cc
+--
+<p>aa_&quot;bb&quot;_cc</p>
+
+>> Emphasis and strong emphasis
+foo-_(bar)_
+--
+<p>foo-<em>(bar)</em></p>
+
+>> Emphasis and strong emphasis
+_foo*
+--
+<p>_foo*</p>
+
+>> Emphasis and strong emphasis
+*foo bar *
+--
+<p>*foo bar *</p>
+
+>> Emphasis and strong emphasis
+*foo bar
+*
+--
+<p>*foo bar
+*</p>
+
+>> Emphasis and strong emphasis
+*(*foo)
+--
+<p>*(*foo)</p>
+
+>> Emphasis and strong emphasis
+*(*foo*)*
+--
+<p><em>(<em>foo</em>)</em></p>
+
+>> Emphasis and strong emphasis
+*foo*bar
+--
+<p><em>foo</em>bar</p>
+
+>> Emphasis and strong emphasis
+_foo bar _
+--
+<p>_foo bar _</p>
+
+>> Emphasis and strong emphasis
+_(_foo)
+--
+<p>_(_foo)</p>
+
+>> Emphasis and strong emphasis
+_(_foo_)_
+--
+<p><em>(<em>foo</em>)</em></p>
+
+>> Emphasis and strong emphasis
+_foo_bar
+--
+<p>_foo_bar</p>
+
+>> Emphasis and strong emphasis
+_пристаням_стремятся
+--
+<p>_пристаням_стремятся</p>
+
+>> Emphasis and strong emphasis
+_foo_bar_baz_
+--
+<p><em>foo_bar_baz</em></p>
+
+>> Emphasis and strong emphasis
+_(bar)_.
+--
+<p><em>(bar)</em>.</p>
+
+>> Emphasis and strong emphasis
+**foo bar**
+--
+<p><strong>foo bar</strong></p>
+
+>> Emphasis and strong emphasis
+** foo bar**
+--
+<p>** foo bar**</p>
+
+>> Emphasis and strong emphasis
+a**"foo"**
+--
+<p>a**&quot;foo&quot;**</p>
+
+>> Emphasis and strong emphasis
+foo**bar**
+--
+<p>foo<strong>bar</strong></p>
+
+>> Emphasis and strong emphasis
+__foo bar__
+--
+<p><strong>foo bar</strong></p>
+
+>> Emphasis and strong emphasis
+__ foo bar__
+--
+<p>__ foo bar__</p>
+
+>> Emphasis and strong emphasis
+__
+foo bar__
+--
+<p>__
+foo bar__</p>
+
+>> Emphasis and strong emphasis
+a__"foo"__
+--
+<p>a__&quot;foo&quot;__</p>
+
+>> Emphasis and strong emphasis
+foo__bar__
+--
+<p>foo__bar__</p>
+
+>> Emphasis and strong emphasis
+5__6__78
+--
+<p>5__6__78</p>
+
+>> Emphasis and strong emphasis
+пристаням__стремятся__
+--
+<p>пристаням__стремятся__</p>
+
+>> Emphasis and strong emphasis
+__foo, __bar__, baz__
+--
+<p><strong>foo, <strong>bar</strong>, baz</strong></p>
+
+>> Emphasis and strong emphasis
+foo-__(bar)__
+--
+<p>foo-<strong>(bar)</strong></p>
+
+>> Emphasis and strong emphasis
+**foo bar **
+--
+<p>**foo bar **</p>
+
+>> Emphasis and strong emphasis
+**(**foo)
+--
+<p>**(**foo)</p>
+
+>> Emphasis and strong emphasis
+*(**foo**)*
+--
+<p><em>(<strong>foo</strong>)</em></p>
+
+>> Emphasis and strong emphasis
+**Gomphocarpus (*Gomphocarpus physocarpus*, syn.
+*Asclepias physocarpa*)**
+--
+<p><strong>Gomphocarpus (<em>Gomphocarpus physocarpus</em>, syn.
+<em>Asclepias physocarpa</em>)</strong></p>
+
+>> Emphasis and strong emphasis
+**foo "*bar*" foo**
+--
+<p><strong>foo &quot;<em>bar</em>&quot; foo</strong></p>
+
+>> Emphasis and strong emphasis
+**foo**bar
+--
+<p><strong>foo</strong>bar</p>
+
+>> Emphasis and strong emphasis
+__foo bar __
+--
+<p>__foo bar __</p>
+
+>> Emphasis and strong emphasis
+__(__foo)
+--
+<p>__(__foo)</p>
+
+>> Emphasis and strong emphasis
+_(__foo__)_
+--
+<p><em>(<strong>foo</strong>)</em></p>
+
+>> Emphasis and strong emphasis
+__foo__bar
+--
+<p>__foo__bar</p>
+
+>> Emphasis and strong emphasis
+__пристаням__стремятся
+--
+<p>__пристаням__стремятся</p>
+
+>> Emphasis and strong emphasis
+__foo__bar__baz__
+--
+<p><strong>foo__bar__baz</strong></p>
+
+>> Emphasis and strong emphasis
+__(bar)__.
+--
+<p><strong>(bar)</strong>.</p>
+
+>> Emphasis and strong emphasis
+*foo [bar](/url)*
+--
+<p><em>foo <a href="/url">bar</a></em></p>
+
+>> Emphasis and strong emphasis
+*foo
+bar*
+--
+<p><em>foo
+bar</em></p>
+
+>> Emphasis and strong emphasis
+_foo __bar__ baz_
+--
+<p><em>foo <strong>bar</strong> baz</em></p>
+
+>> Emphasis and strong emphasis
+_foo _bar_ baz_
+--
+<p><em>foo <em>bar</em> baz</em></p>
+
+>> Emphasis and strong emphasis
+__foo_ bar_
+--
+<p><em><em>foo</em> bar</em></p>
+
+>> Emphasis and strong emphasis
+*foo *bar**
+--
+<p><em>foo <em>bar</em></em></p>
+
+>> Emphasis and strong emphasis
+*foo **bar** baz*
+--
+<p><em>foo <strong>bar</strong> baz</em></p>
+
+>> Emphasis and strong emphasis
+*foo**bar**baz*
+--
+<p><em>foo<strong>bar</strong>baz</em></p>
+
+>> Emphasis and strong emphasis
+*foo**bar*
+--
+<p><em>foo**bar</em></p>
+
+>> Emphasis and strong emphasis
+***foo** bar*
+--
+<p><em><strong>foo</strong> bar</em></p>
+
+>> Emphasis and strong emphasis
+*foo **bar***
+--
+<p><em>foo <strong>bar</strong></em></p>
+
+>> Emphasis and strong emphasis
+*foo**bar***
+--
+<p><em>foo<strong>bar</strong></em></p>
+
+>> Emphasis and strong emphasis
+foo***bar***baz
+--
+<p>foo<em><strong>bar</strong></em>baz</p>
+
+>> Emphasis and strong emphasis
+foo******bar*********baz
+--
+<p>foo<strong><strong><strong>bar</strong></strong></strong>***baz</p>
+
+>> Emphasis and strong emphasis
+*foo **bar *baz* bim** bop*
+--
+<p><em>foo <strong>bar <em>baz</em> bim</strong> bop</em></p>
+
+>> Emphasis and strong emphasis
+*foo [*bar*](/url)*
+--
+<p><em>foo <a href="/url"><em>bar</em></a></em></p>
+
+>> Emphasis and strong emphasis
+** is not an empty emphasis
+--
+<p>** is not an empty emphasis</p>
+
+>> Emphasis and strong emphasis
+**** is not an empty strong emphasis
+--
+<p>**** is not an empty strong emphasis</p>
+
+>> Emphasis and strong emphasis
+**foo [bar](/url)**
+--
+<p><strong>foo <a href="/url">bar</a></strong></p>
+
+>> Emphasis and strong emphasis
+**foo
+bar**
+--
+<p><strong>foo
+bar</strong></p>
+
+>> Emphasis and strong emphasis
+__foo _bar_ baz__
+--
+<p><strong>foo <em>bar</em> baz</strong></p>
+
+>> Emphasis and strong emphasis
+__foo __bar__ baz__
+--
+<p><strong>foo <strong>bar</strong> baz</strong></p>
+
+>> Emphasis and strong emphasis
+____foo__ bar__
+--
+<p><strong><strong>foo</strong> bar</strong></p>
+
+>> Emphasis and strong emphasis
+**foo **bar****
+--
+<p><strong>foo <strong>bar</strong></strong></p>
+
+>> Emphasis and strong emphasis
+**foo *bar* baz**
+--
+<p><strong>foo <em>bar</em> baz</strong></p>
+
+>> Emphasis and strong emphasis
+**foo*bar*baz**
+--
+<p><strong>foo<em>bar</em>baz</strong></p>
+
+>> Emphasis and strong emphasis
+***foo* bar**
+--
+<p><strong><em>foo</em> bar</strong></p>
+
+>> Emphasis and strong emphasis
+**foo *bar***
+--
+<p><strong>foo <em>bar</em></strong></p>
+
+>> Emphasis and strong emphasis
+**foo *bar **baz**
+bim* bop**
+--
+<p><strong>foo <em>bar <strong>baz</strong>
+bim</em> bop</strong></p>
+
+>> Emphasis and strong emphasis
+**foo [*bar*](/url)**
+--
+<p><strong>foo <a href="/url"><em>bar</em></a></strong></p>
+
+>> Emphasis and strong emphasis
+__ is not an empty emphasis
+--
+<p>__ is not an empty emphasis</p>
+
+>> Emphasis and strong emphasis
+____ is not an empty strong emphasis
+--
+<p>____ is not an empty strong emphasis</p>
+
+>> Emphasis and strong emphasis
+foo ***
+--
+<p>foo ***</p>
+
+>> Emphasis and strong emphasis
+foo *\**
+--
+<p>foo <em>*</em></p>
+
+>> Emphasis and strong emphasis
+foo *_*
+--
+<p>foo <em>_</em></p>
+
+>> Emphasis and strong emphasis
+foo *****
+--
+<p>foo *****</p>
+
+>> Emphasis and strong emphasis
+foo **\***
+--
+<p>foo <strong>*</strong></p>
+
+>> Emphasis and strong emphasis
+foo **_**
+--
+<p>foo <strong>_</strong></p>
+
+>> Emphasis and strong emphasis
+**foo*
+--
+<p>*<em>foo</em></p>
+
+>> Emphasis and strong emphasis
+*foo**
+--
+<p><em>foo</em>*</p>
+
+>> Emphasis and strong emphasis
+***foo**
+--
+<p>*<strong>foo</strong></p>
+
+>> Emphasis and strong emphasis
+****foo*
+--
+<p>***<em>foo</em></p>
+
+>> Emphasis and strong emphasis
+**foo***
+--
+<p><strong>foo</strong>*</p>
+
+>> Emphasis and strong emphasis
+*foo****
+--
+<p><em>foo</em>***</p>
+
+>> Emphasis and strong emphasis
+foo ___
+--
+<p>foo ___</p>
+
+>> Emphasis and strong emphasis
+foo _\__
+--
+<p>foo <em>_</em></p>
+
+>> Emphasis and strong emphasis
+foo _*_
+--
+<p>foo <em>*</em></p>
+
+>> Emphasis and strong emphasis
+foo _____
+--
+<p>foo _____</p>
+
+>> Emphasis and strong emphasis
+foo __\___
+--
+<p>foo <strong>_</strong></p>
+
+>> Emphasis and strong emphasis
+foo __*__
+--
+<p>foo <strong>*</strong></p>
+
+>> Emphasis and strong emphasis
+__foo_
+--
+<p>_<em>foo</em></p>
+
+>> Emphasis and strong emphasis
+_foo__
+--
+<p><em>foo</em>_</p>
+
+>> Emphasis and strong emphasis
+___foo__
+--
+<p>_<strong>foo</strong></p>
+
+>> Emphasis and strong emphasis
+____foo_
+--
+<p>___<em>foo</em></p>
+
+>> Emphasis and strong emphasis
+__foo___
+--
+<p><strong>foo</strong>_</p>
+
+>> Emphasis and strong emphasis
+_foo____
+--
+<p><em>foo</em>___</p>
+
+>> Emphasis and strong emphasis
+**foo**
+--
+<p><strong>foo</strong></p>
+
+>> Emphasis and strong emphasis
+*_foo_*
+--
+<p><em><em>foo</em></em></p>
+
+>> Emphasis and strong emphasis
+__foo__
+--
+<p><strong>foo</strong></p>
+
+>> Emphasis and strong emphasis
+_*foo*_
+--
+<p><em><em>foo</em></em></p>
+
+>> Emphasis and strong emphasis
+****foo****
+--
+<p><strong><strong>foo</strong></strong></p>
+
+>> Emphasis and strong emphasis
+____foo____
+--
+<p><strong><strong>foo</strong></strong></p>
+
+>> Emphasis and strong emphasis
+******foo******
+--
+<p><strong><strong><strong>foo</strong></strong></strong></p>
+
+>> Emphasis and strong emphasis
+***foo***
+--
+<p><em><strong>foo</strong></em></p>
+
+>> Emphasis and strong emphasis
+_____foo_____
+--
+<p><em><strong><strong>foo</strong></strong></em></p>
+
+>> Emphasis and strong emphasis
+*foo _bar* baz_
+--
+<p><em>foo _bar</em> baz_</p>
+
+>> Emphasis and strong emphasis
+*foo __bar *baz bim__ bam*
+--
+<p><em>foo <strong>bar *baz bim</strong> bam</em></p>
+
+>> Emphasis and strong emphasis
+**foo **bar baz**
+--
+<p>**foo <strong>bar baz</strong></p>
+
+>> Emphasis and strong emphasis
+*foo *bar baz*
+--
+<p>*foo <em>bar baz</em></p>
+
+>> Emphasis and strong emphasis
+*[bar*](/url)
+--
+<p>*<a href="/url">bar*</a></p>
+
+>> Emphasis and strong emphasis
+_foo [bar_](/url)
+--
+<p>_foo <a href="/url">bar_</a></p>
+
+>> Emphasis and strong emphasis
+*<img src="foo" title="*"/>
+--
+<p>*<img src="foo" title="*"/></p>
+
+>> Emphasis and strong emphasis
+**<a href="**">
+--
+<p>**<a href="**"></p>
+
+>> Emphasis and strong emphasis
+__<a href="__">
+--
+<p>__<a href="__"></p>
+
+>> Emphasis and strong emphasis
+*a `*`*
+--
+<p><em>a <code>*</code></em></p>
+
+>> Emphasis and strong emphasis
+_a `_`_
+--
+<p><em>a <code>_</code></em></p>
+
+>> Emphasis and strong emphasis
+**a<https://foo.bar/?q=**>
+--
+<p>**a<a href="https://foo.bar/?q=**">https://foo.bar/?q=**</a></p>
+
+>> Emphasis and strong emphasis
+__a<https://foo.bar/?q=__>
+--
+<p>__a<a href="https://foo.bar/?q=__">https://foo.bar/?q=__</a></p>
+
+>> Links
+[link](/uri "title")
+--
+<p><a href="/uri" title="title">link</a></p>
+
+>> Links
+[link](/uri)
+--
+<p><a href="/uri">link</a></p>
+
+>> Links
+[](./target.md)
+--
+<p><a href="./target.md"></a></p>
+
+>> Links
+[link]()
+--
+<p><a href="">link</a></p>
+
+>> Links
+[link](<>)
+--
+<p><a href="">link</a></p>
+
+>> Links
+[]()
+--
+<p><a href=""></a></p>
+
+>> Links
+[link](/my uri)
+--
+<p>[link](/my uri)</p>
+
+>> Links
+[link](</my uri>)
+--
+<p><a href="/my%20uri">link</a></p>
+
+>> Links
+[link](foo
+bar)
+--
+<p>[link](foo
+bar)</p>
+
+>> Links
+[link](<foo
+bar>)
+--
+<p>[link](<foo
+bar>)</p>
+
+>> Links
+[a](<b)c>)
+--
+<p><a href="b)c">a</a></p>
+
+>> Links
+[link](<foo\>)
+--
+<p>[link](&lt;foo&gt;)</p>
+
+>> Links
+[a](<b)c
+[a](<b)c>
+[a](<b>c)
+--
+<p>[a](&lt;b)c
+[a](&lt;b)c&gt;
+[a](<b>c)</p>
+
+>> Links
+[link](\(foo\))
+--
+<p><a href="(foo)">link</a></p>
+
+>> Links
+[link](foo(and(bar)))
+--
+<p><a href="foo(and(bar))">link</a></p>
+
+>> Links
+[link](foo(and(bar))
+--
+<p>[link](foo(and(bar))</p>
+
+>> Links
+[link](foo\(and\(bar\))
+--
+<p><a href="foo(and(bar)">link</a></p>
+
+>> Links
+[link](<foo(and(bar)>)
+--
+<p><a href="foo(and(bar)">link</a></p>
+
+>> Links
+[link](foo\)\:)
+--
+<p><a href="foo):">link</a></p>
+
+>> Links
+[link](#fragment)
+
+[link](https://example.com#fragment)
+
+[link](https://example.com?foo=3#frag)
+--
+<p><a href="#fragment">link</a></p>
+<p><a href="https://example.com#fragment">link</a></p>
+<p><a href="https://example.com?foo=3#frag">link</a></p>
+
+>> Links
+[link](foo\bar)
+--
+<p><a href="foo%5Cbar">link</a></p>
+
+>> Links
+[link](foo%20b&auml;)
+--
+<p><a href="foo%20b%C3%A4">link</a></p>
+
+>> Links
+[link]("title")
+--
+<p><a href="%22title%22">link</a></p>
+
+>> Links
+[link](/url "title")
+[link](/url 'title')
+[link](/url (title))
+--
+<p><a href="/url" title="title">link</a>
+<a href="/url" title="title">link</a>
+<a href="/url" title="title">link</a></p>
+
+>> Links
+[link](/url "title \"&quot;")
+--
+<p><a href="/url" title="title &quot;&quot;">link</a></p>
+
+>> Links
+[link](/url "title")
+--
+<p><a href="/url%C2%A0%22title%22">link</a></p>
+
+>> Links
+[link](/url "title "and" title")
+--
+<p>[link](/url &quot;title &quot;and&quot; title&quot;)</p>
+
+>> Links
+[link](/url 'title "and" title')
+--
+<p><a href="/url" title="title &quot;and&quot; title">link</a></p>
+
+>> Links
+[link](   /uri
+  "title"  )
+--
+<p><a href="/uri" title="title">link</a></p>
+
+>> Links
+[link] (/uri)
+--
+<p>[link] (/uri)</p>
+
+>> Links
+[link [foo [bar]]](/uri)
+--
+<p><a href="/uri">link [foo [bar]]</a></p>
+
+>> Links
+[link] bar](/uri)
+--
+<p>[link] bar](/uri)</p>
+
+>> Links
+[link [bar](/uri)
+--
+<p>[link <a href="/uri">bar</a></p>
+
+>> Links
+[link \[bar](/uri)
+--
+<p><a href="/uri">link [bar</a></p>
+
+>> Links
+[link *foo **bar** `#`*](/uri)
+--
+<p><a href="/uri">link <em>foo <strong>bar</strong> <code>#</code></em></a></p>
+
+>> Links
+[![moon](moon.jpg)](/uri)
+--
+<p><a href="/uri"><img src="moon.jpg" alt="moon" /></a></p>
+
+>> Links
+[foo [bar](/uri)](/uri)
+--
+<p>[foo <a href="/uri">bar</a>](/uri)</p>
+
+>> Links
+[foo *[bar [baz](/uri)](/uri)*](/uri)
+--
+<p>[foo <em>[bar <a href="/uri">baz</a>](/uri)</em>](/uri)</p>
+
+>> Links
+![[[foo](uri1)](uri2)](uri3)
+--
+<p><img src="uri3" alt="[foo](uri2)" /></p>
+
+>> Links
+*[foo*](/uri)
+--
+<p>*<a href="/uri">foo*</a></p>
+
+>> Links
+[foo *bar](baz*)
+--
+<p><a href="baz*">foo *bar</a></p>
+
+>> Links
+*foo [bar* baz]
+--
+<p><em>foo [bar</em> baz]</p>
+
+>> Links
+[foo <bar attr="](baz)">
+--
+<p>[foo <bar attr="](baz)"></p>
+
+>> Links
+[foo`](/uri)`
+--
+<p>[foo<code>](/uri)</code></p>
+
+>> Links
+[foo<https://example.com/?search=](uri)>
+--
+<p>[foo<a href="https://example.com/?search=%5D(uri)">https://example.com/?search=](uri)</a></p>
+
+>> Links
+[foo][bar]
+
+[bar]: /url "title"
+--
+<p><a href="/url" title="title">foo</a></p>
+
+>> Links
+[link [foo [bar]]][ref]
+
+[ref]: /uri
+--
+<p><a href="/uri">link [foo [bar]]</a></p>
+
+>> Links
+[link \[bar][ref]
+
+[ref]: /uri
+--
+<p><a href="/uri">link [bar</a></p>
+
+>> Links
+[link *foo **bar** `#`*][ref]
+
+[ref]: /uri
+--
+<p><a href="/uri">link <em>foo <strong>bar</strong> <code>#</code></em></a></p>
+
+>> Links
+[![moon](moon.jpg)][ref]
+
+[ref]: /uri
+--
+<p><a href="/uri"><img src="moon.jpg" alt="moon" /></a></p>
+
+>> Links
+[foo [bar](/uri)][ref]
+
+[ref]: /uri
+--
+<p>[foo <a href="/uri">bar</a>]<a href="/uri">ref</a></p>
+
+>> Links
+[foo *bar [baz][ref]*][ref]
+
+[ref]: /uri
+--
+<p>[foo <em>bar <a href="/uri">baz</a></em>]<a href="/uri">ref</a></p>
+
+>> Links
+*[foo*][ref]
+
+[ref]: /uri
+--
+<p>*<a href="/uri">foo*</a></p>
+
+>> Links
+[foo *bar][ref]*
+
+[ref]: /uri
+--
+<p><a href="/uri">foo *bar</a>*</p>
+
+>> Links
+[foo <bar attr="][ref]">
+
+[ref]: /uri
+--
+<p>[foo <bar attr="][ref]"></p>
+
+>> Links
+[foo`][ref]`
+
+[ref]: /uri
+--
+<p>[foo<code>][ref]</code></p>
+
+>> Links
+[foo<https://example.com/?search=][ref]>
+
+[ref]: /uri
+--
+<p>[foo<a href="https://example.com/?search=%5D%5Bref%5D">https://example.com/?search=][ref]</a></p>
+
+>> Links
+[foo][BaR]
+
+[bar]: /url "title"
+--
+<p><a href="/url" title="title">foo</a></p>
+
+>> Links
+[ẞ]
+
+[SS]: /url
+--
+<p><a href="/url">ẞ</a></p>
+
+>> Links
+[Foo
+  bar]: /url
+
+[Baz][Foo bar]
+--
+<p><a href="/url">Baz</a></p>
+
+>> Links
+[foo] [bar]
+
+[bar]: /url "title"
+--
+<p>[foo] <a href="/url" title="title">bar</a></p>
+
+>> Links
+[foo]
+[bar]
+
+[bar]: /url "title"
+--
+<p>[foo]
+<a href="/url" title="title">bar</a></p>
+
+>> Links
+[foo]: /url1
+
+[foo]: /url2
+
+[bar][foo]
+--
+<p><a href="/url1">bar</a></p>
+
+>> Links
+[bar][foo\!]
+
+[foo!]: /url
+--
+<p>[bar][foo!]</p>
+
+>> Links
+[foo][ref[]
+
+[ref[]: /uri
+--
+<p>[foo][ref[]</p>
+<p>[ref[]: /uri</p>
+
+>> Links
+[foo][ref[bar]]
+
+[ref[bar]]: /uri
+--
+<p>[foo][ref[bar]]</p>
+<p>[ref[bar]]: /uri</p>
+
+>> Links
+[[[foo]]]
+
+[[[foo]]]: /url
+--
+<p>[[[foo]]]</p>
+<p>[[[foo]]]: /url</p>
+
+>> Links
+[foo][ref\[]
+
+[ref\[]: /uri
+--
+<p><a href="/uri">foo</a></p>
+
+>> Links
+[bar\\]: /uri
+
+[bar\\]
+--
+<p><a href="/uri">bar\</a></p>
+
+>> Links
+[]
+
+[]: /uri
+--
+<p>[]</p>
+<p>[]: /uri</p>
+
+>> Links
+[
+ ]
+
+[
+ ]: /uri
+--
+<p>[
+]</p>
+<p>[
+]: /uri</p>
+
+>> Links
+[foo][]
+
+[foo]: /url "title"
+--
+<p><a href="/url" title="title">foo</a></p>
+
+>> Links
+[*foo* bar][]
+
+[*foo* bar]: /url "title"
+--
+<p><a href="/url" title="title"><em>foo</em> bar</a></p>
+
+>> Links
+[Foo][]
+
+[foo]: /url "title"
+--
+<p><a href="/url" title="title">Foo</a></p>
+
+>> Links
+[foo] 
+[]
+
+[foo]: /url "title"
+--
+<p><a href="/url" title="title">foo</a>
+[]</p>
+
+>> Links
+[foo]
+
+[foo]: /url "title"
+--
+<p><a href="/url" title="title">foo</a></p>
+
+>> Links
+[*foo* bar]
+
+[*foo* bar]: /url "title"
+--
+<p><a href="/url" title="title"><em>foo</em> bar</a></p>
+
+>> Links
+[[*foo* bar]]
+
+[*foo* bar]: /url "title"
+--
+<p>[<a href="/url" title="title"><em>foo</em> bar</a>]</p>
+
+>> Links
+[[bar [foo]
+
+[foo]: /url
+--
+<p>[[bar <a href="/url">foo</a></p>
+
+>> Links
+[Foo]
+
+[foo]: /url "title"
+--
+<p><a href="/url" title="title">Foo</a></p>
+
+>> Links
+[foo] bar
+
+[foo]: /url
+--
+<p><a href="/url">foo</a> bar</p>
+
+>> Links
+\[foo]
+
+[foo]: /url "title"
+--
+<p>[foo]</p>
+
+>> Links
+[foo*]: /url
+
+*[foo*]
+--
+<p>*<a href="/url">foo*</a></p>
+
+>> Links
+[foo][bar]
+
+[foo]: /url1
+[bar]: /url2
+--
+<p><a href="/url2">foo</a></p>
+
+>> Links
+[foo][]
+
+[foo]: /url1
+--
+<p><a href="/url1">foo</a></p>
+
+>> Links
+[foo]()
+
+[foo]: /url1
+--
+<p><a href="">foo</a></p>
+
+>> Links
+[foo](not a link)
+
+[foo]: /url1
+--
+<p><a href="/url1">foo</a>(not a link)</p>
+
+>> Links
+[foo][bar][baz]
+
+[baz]: /url
+--
+<p>[foo]<a href="/url">bar</a></p>
+
+>> Links
+[foo][bar][baz]
+
+[baz]: /url1
+[bar]: /url2
+--
+<p><a href="/url2">foo</a><a href="/url1">baz</a></p>
+
+>> Links
+[foo][bar][baz]
+
+[baz]: /url1
+[foo]: /url2
+--
+<p>[foo]<a href="/url1">bar</a></p>
+
+>> Images
+![foo](/url "title")
+--
+<p><img src="/url" alt="foo" title="title" /></p>
+
+>> Images
+![foo *bar*]
+
+[foo *bar*]: train.jpg "train & tracks"
+--
+<p><img src="train.jpg" alt="foo bar" title="train &amp; tracks" /></p>
+
+>> Images
+![foo ![bar](/url)](/url2)
+--
+<p><img src="/url2" alt="foo bar" /></p>
+
+>> Images
+![foo [bar](/url)](/url2)
+--
+<p><img src="/url2" alt="foo bar" /></p>
+
+>> Images
+![foo *bar*][]
+
+[foo *bar*]: train.jpg "train & tracks"
+--
+<p><img src="train.jpg" alt="foo bar" title="train &amp; tracks" /></p>
+
+>> Images
+![foo *bar*][foobar]
+
+[FOOBAR]: train.jpg "train & tracks"
+--
+<p><img src="train.jpg" alt="foo bar" title="train &amp; tracks" /></p>
+
+>> Images
+![foo](train.jpg)
+--
+<p><img src="train.jpg" alt="foo" /></p>
+
+>> Images
+My ![foo bar](/path/to/train.jpg  "title"   )
+--
+<p>My <img src="/path/to/train.jpg" alt="foo bar" title="title" /></p>
+
+>> Images
+![foo](<url>)
+--
+<p><img src="url" alt="foo" /></p>
+
+>> Images
+![](/url)
+--
+<p><img src="/url" alt="" /></p>
+
+>> Images
+![foo][bar]
+
+[bar]: /url
+--
+<p><img src="/url" alt="foo" /></p>
+
+>> Images
+![foo][bar]
+
+[BAR]: /url
+--
+<p><img src="/url" alt="foo" /></p>
+
+>> Images
+![foo][]
+
+[foo]: /url "title"
+--
+<p><img src="/url" alt="foo" title="title" /></p>
+
+>> Images
+![*foo* bar][]
+
+[*foo* bar]: /url "title"
+--
+<p><img src="/url" alt="foo bar" title="title" /></p>
+
+>> Images
+![Foo][]
+
+[foo]: /url "title"
+--
+<p><img src="/url" alt="Foo" title="title" /></p>
+
+>> Images
+![foo] 
+[]
+
+[foo]: /url "title"
+--
+<p><img src="/url" alt="foo" title="title" />
+[]</p>
+
+>> Images
+![foo]
+
+[foo]: /url "title"
+--
+<p><img src="/url" alt="foo" title="title" /></p>
+
+>> Images
+![*foo* bar]
+
+[*foo* bar]: /url "title"
+--
+<p><img src="/url" alt="foo bar" title="title" /></p>
+
+>> Images
+![[foo]]
+
+[[foo]]: /url "title"
+--
+<p>![[foo]]</p>
+<p>[[foo]]: /url &quot;title&quot;</p>
+
+>> Images
+![Foo]
+
+[foo]: /url "title"
+--
+<p><img src="/url" alt="Foo" title="title" /></p>
+
+>> Images
+!\[foo]
+
+[foo]: /url "title"
+--
+<p>![foo]</p>
+
+>> Images
+\![foo]
+
+[foo]: /url "title"
+--
+<p>!<a href="/url" title="title">foo</a></p>
+
+>> Autolinks
+<http://foo.bar.baz>
+--
+<p><a href="http://foo.bar.baz">http://foo.bar.baz</a></p>
+
+>> Autolinks
+<https://foo.bar.baz/test?q=hello&id=22&boolean>
+--
+<p><a href="https://foo.bar.baz/test?q=hello&amp;id=22&amp;boolean">https://foo.bar.baz/test?q=hello&amp;id=22&amp;boolean</a></p>
+
+>> Autolinks
+<irc://foo.bar:2233/baz>
+--
+<p><a href="irc://foo.bar:2233/baz">irc://foo.bar:2233/baz</a></p>
+
+>> Autolinks
+<MAILTO:FOO@BAR.BAZ>
+--
+<p><a href="MAILTO:FOO@BAR.BAZ">MAILTO:FOO@BAR.BAZ</a></p>
+
+>> Autolinks
+<a+b+c:d>
+--
+<p><a href="a+b+c:d">a+b+c:d</a></p>
+
+>> Autolinks
+<made-up-scheme://foo,bar>
+--
+<p><a href="made-up-scheme://foo,bar">made-up-scheme://foo,bar</a></p>
+
+>> Autolinks
+<https://../>
+--
+<p><a href="https://../">https://../</a></p>
+
+>> Autolinks
+<localhost:5001/foo>
+--
+<p><a href="localhost:5001/foo">localhost:5001/foo</a></p>
+
+>> Autolinks
+<https://foo.bar/baz bim>
+--
+<p>&lt;https://foo.bar/baz bim&gt;</p>
+
+>> Autolinks
+<https://example.com/\[\>
+--
+<p><a href="https://example.com/%5C%5B%5C">https://example.com/\[\</a></p>
+
+>> Autolinks
+<foo@bar.example.com>
+--
+<p><a href="mailto:foo@bar.example.com">foo@bar.example.com</a></p>
+
+>> Autolinks
+<foo+special@Bar.baz-bar0.com>
+--
+<p><a href="mailto:foo+special@Bar.baz-bar0.com">foo+special@Bar.baz-bar0.com</a></p>
+
+>> Autolinks
+<foo\+@bar.example.com>
+--
+<p>&lt;foo+@bar.example.com&gt;</p>
+
+>> Autolinks
+<>
+--
+<p>&lt;&gt;</p>
+
+>> Autolinks
+< https://foo.bar >
+--
+<p>&lt; https://foo.bar &gt;</p>
+
+>> Autolinks
+<m:abc>
+--
+<p>&lt;m:abc&gt;</p>
+
+>> Autolinks
+<foo.bar.baz>
+--
+<p>&lt;foo.bar.baz&gt;</p>
+
+>> Autolinks
+https://example.com
+--
+<p>https://example.com</p>
+
+>> Autolinks
+foo@bar.example.com
+--
+<p>foo@bar.example.com</p>
+
+>> Raw HTML
+<a><bab><c2c>
+--
+<p><a><bab><c2c></p>
+
+>> Raw HTML
+<a/><b2/>
+--
+<p><a/><b2/></p>
+
+>> Raw HTML
+<a  /><b2
+data="foo" >
+--
+<p><a  /><b2
+data="foo" ></p>
+
+>> Raw HTML
+<a foo="bar" bam = 'baz <em>"</em>'
+_boolean zoop:33=zoop:33 />
+--
+<p><a foo="bar" bam = 'baz <em>"</em>'
+_boolean zoop:33=zoop:33 /></p>
+
+>> Raw HTML
+Foo <responsive-image src="foo.jpg" />
+--
+<p>Foo <responsive-image src="foo.jpg" /></p>
+
+>> Raw HTML
+<33> <__>
+--
+<p>&lt;33&gt; &lt;__&gt;</p>
+
+>> Raw HTML
+<a h*#ref="hi">
+--
+<p>&lt;a h*#ref=&quot;hi&quot;&gt;</p>
+
+>> Raw HTML
+<a href="hi'> <a href=hi'>
+--
+<p>&lt;a href=&quot;hi'&gt; &lt;a href=hi'&gt;</p>
+
+>> Raw HTML
+< a><
+foo><bar/ >
+<foo bar=baz
+bim!bop />
+--
+<p>&lt; a&gt;&lt;
+foo&gt;&lt;bar/ &gt;
+&lt;foo bar=baz
+bim!bop /&gt;</p>
+
+>> Raw HTML
+<a href='bar'title=title>
+--
+<p>&lt;a href='bar'title=title&gt;</p>
+
+>> Raw HTML
+</a></foo >
+--
+<p></a></foo ></p>
+
+>> Raw HTML
+</a href="foo">
+--
+<p>&lt;/a href=&quot;foo&quot;&gt;</p>
+
+>> Raw HTML
+foo <!-- this is a --
+comment - with hyphens -->
+--
+<p>foo <!-- this is a --
+comment - with hyphens --></p>
+
+>> Raw HTML
+foo <!--> foo -->
+
+foo <!---> foo -->
+--
+<p>foo <!--> foo --&gt;</p>
+<p>foo <!---> foo --&gt;</p>
+
+>> Raw HTML
+foo <?php echo $a; ?>
+--
+<p>foo <?php echo $a; ?></p>
+
+>> Raw HTML
+foo <!ELEMENT br EMPTY>
+--
+<p>foo <!ELEMENT br EMPTY></p>
+
+>> Raw HTML
+foo <![CDATA[>&<]]>
+--
+<p>foo <![CDATA[>&<]]></p>
+
+>> Raw HTML
+foo <a href="&ouml;">
+--
+<p>foo <a href="&ouml;"></p>
+
+>> Raw HTML
+foo <a href="\*">
+--
+<p>foo <a href="\*"></p>
+
+>> Raw HTML
+<a href="\"">
+--
+<p>&lt;a href=&quot;&quot;&quot;&gt;</p>
+
+>> Hard line breaks
+foo  
+baz
+--
+<p>foo<br />
+baz</p>
+
+>> Hard line breaks
+foo\
+baz
+--
+<p>foo<br />
+baz</p>
+
+>> Hard line breaks
+foo       
+baz
+--
+<p>foo<br />
+baz</p>
+
+>> Hard line breaks
+foo  
+     bar
+--
+<p>foo<br />
+bar</p>
+
+>> Hard line breaks
+foo\
+     bar
+--
+<p>foo<br />
+bar</p>
+
+>> Hard line breaks
+*foo  
+bar*
+--
+<p><em>foo<br />
+bar</em></p>
+
+>> Hard line breaks
+*foo\
+bar*
+--
+<p><em>foo<br />
+bar</em></p>
+
+>> Hard line breaks
+`code  
+span`
+--
+<p><code>code   span</code></p>
+
+>> Hard line breaks
+`code\
+span`
+--
+<p><code>code\ span</code></p>
+
+>> Hard line breaks
+<a href="foo  
+bar">
+--
+<p><a href="foo  
+bar"></p>
+
+>> Hard line breaks
+<a href="foo\
+bar">
+--
+<p><a href="foo\
+bar"></p>
+
+>> Hard line breaks
+foo\
+--
+<p>foo\</p>
+
+>> Hard line breaks
+foo  
+--
+<p>foo</p>
+
+>> Hard line breaks
+### foo\
+--
+<h3>foo\</h3>
+
+>> Hard line breaks
+### foo  
+--
+<h3>foo</h3>
+
+>> Soft line breaks
+foo
+baz
+--
+<p>foo
+baz</p>
+
+>> Soft line breaks
+foo 
+ baz
+--
+<p>foo
+baz</p>
+
+>> Textual content
+hello $.;'there
+--
+<p>hello $.;'there</p>
+
+>> Textual content
+Foo χρῆν
+--
+<p>Foo χρῆν</p>
+
+>> Textual content
+Multiple     spaces
+--
+<p>Multiple     spaces</p>
+

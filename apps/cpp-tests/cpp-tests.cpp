@@ -16,7 +16,10 @@ void runParserTests() {
     MemStream out;
     for (;;) {
         String line;
-        while (line = readLine(in)) {
+        for (;;) {
+            line = readLine(in);
+            if (!line)
+                break;
             if (line.startsWith(">>"))
                 break;
         }
@@ -25,7 +28,10 @@ void runParserTests() {
 
         out.write(line);
         MemStream src;
-        while (line = readLine(in)) {
+        for (;;) {
+            line = readLine(in);
+            if (!line)
+                break;
             if (line.startsWith("--"))
                 break;
             src.write(line);
@@ -53,7 +59,10 @@ void runPreprocessorTests() {
     MemStream out;
     for (;;) {
         String line;
-        while (line = readLine(in)) {
+        for (;;) {
+            line = readLine(in);
+            if (!line)
+                break;
             if (line.startsWith(">>"))
                 break;
         }
@@ -62,7 +71,10 @@ void runPreprocessorTests() {
 
         out.write(line);
         MemStream src;
-        while (line = readLine(in)) {
+        for (;;) {
+            line = readLine(in);
+            if (!line)
+                break;
             if (line.startsWith("--"))
                 break;
             src.write(line);

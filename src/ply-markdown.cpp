@@ -800,7 +800,7 @@ Owned<Element> parseLine(Parser* parser, StringView line) {
 
     // Untabify the input line (if needed) to simplify internal processing.
     String untabified;
-    if (line.find(' ') >= 0) {
+    if (line.find('\t') >= 0) {
         constexpr u32 tabSize = 4;
         untabified = untabify(line, tabSize);
         line = untabified;
