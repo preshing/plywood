@@ -19,10 +19,10 @@ int main(int argc, const char* argv[]) {
     String src = Filesystem::loadTextAutodetect(path);
     json::Parser::Result result = json::Parser{}.parse(path, src);
 
-    for (const json::Node* testCase : result.root->array_) {
-        String converted = markdown::convertToHtml(testCase->get("markdown")->text());
+    for (const json::Node& testCase : result.root.arrayView()) {
+        String converted = markdown::convertToHtml(testCase.get("markdown").text());
         getStdOut().write("---------------------\n");
         getStdOut().write(converted);
-        getStdOut().write(testCase->get("html")->text());
+        getStdOut().write(testCase.get("html").text());
     }
 }
