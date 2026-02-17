@@ -3847,6 +3847,9 @@ struct Stream {
         else
             return makeWritableInternal(minBytes);
     }
+    bool hasRemainingBytes() const {
+        return this->endByte > this->curByte;
+    }
     u32 numRemainingBytes() const {
         return numericCast<u32>(this->endByte - this->curByte);
     }

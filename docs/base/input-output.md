@@ -54,6 +54,7 @@ explicit operator bool()
 void close()
 bool makeReadable(u32 minBytes = 1)
 bool makeWritable(u32 minBytes = 1)
+bool hasRemainingBytes() const
 u32 numRemainingBytes() const
 StringView viewRemainingBytes() const
 MutStringView viewRemainingBytesMut()
@@ -112,6 +113,11 @@ Ensures at least `minBytes` are available in the read buffer. Returns `false` if
 bool makeWritable(u32 minBytes = 1)
 --
 Ensures at least `minBytes` of space are available in the write buffer.
+
+>>
+bool hasRemainingBytes() bool
+--
+Returns `true` if there are any bytes remaining in the read buffer.
 
 >>
 u32 numRemainingBytes() const

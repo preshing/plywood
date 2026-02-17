@@ -2333,7 +2333,7 @@ void printNumber(Stream& outs, double value, u32 radix, bool capitalize) {
 
 void printEscapedString(Stream& out, StringView str) {
     ViewStream vin{str};
-    while (vin.numRemainingBytes() > 0) {
+    while (vin.hasRemainingBytes()) {
         const char* start = vin.curByte;
         DecodeResult decoded = decodeUnicode(vin, UTF8);
         switch (decoded.point) {
@@ -2374,7 +2374,7 @@ void printEscapedString(Stream& out, StringView str) {
 
 void printXmlEscapedString(Stream& out, StringView str) {
     ViewStream vin{str};
-    while (vin.numRemainingBytes() > 0) {
+    while (vin.hasRemainingBytes()) {
         const char* start = vin.curByte;
         DecodeResult decoded = decodeUnicode(vin, UTF8);
         switch (decoded.point) {

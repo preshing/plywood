@@ -273,7 +273,7 @@ void readStringLiteral(Tokenizer& tkr, ViewStream& in, char quotePunc) {
 }
 
 bool readDelimiterAndRawStringLiteral(Tokenizer& tkr, ViewStream& in) {
-    PLY_ASSERT((in.numRemainingBytes() > 0) && (*in.curByte == '"'));
+    PLY_ASSERT(in.hasRemainingBytes() && (*in.curByte == '"'));
     in.curByte++;
 
     // read delimiter
@@ -344,7 +344,7 @@ bool readDelimiterAndRawStringLiteral(Tokenizer& tkr, ViewStream& in) {
 Token::Type readIdentifierOrLiteral(Tokenizer& tkr, ViewStream& in) {
     // FIXME: Optionally skip line continuations inside here.
     // This implementation is a little too obfuscated anyway.
-    PLY_ASSERT(in.numRemainingBytes() > 0);
+    PLY_ASSERT(in.hasRemainingBytes());
 
     u32 mask[8] = {0, 0, 0x87fffffe, 0x7fffffe, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff};
     mask[1] |= 0x10;      // '$'
@@ -447,7 +447,7 @@ retry:
                     if (c == '\n')
                         break;
                     // Skip \ newline escapes.
-                    if (c == '\\' && (in.numRemainingBytes() > 0) && (*in.curByte == '\n')) {
+                    if (c == '\\' && in.hasRemainingBytes() && (*in.curByte == '\n')) {
                         in.curByte++;
                     }
                 }

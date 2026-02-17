@@ -86,7 +86,7 @@ struct ParserDetails : Parser {
 // consuming indentation and blockquote '>' markers that match the element stack.
 void matchExistingIndentation(ParserDetails* parser, LineParser& lp) {
     // Consume leading spaces.
-    while (lp.in.numRemainingBytes() > 0 && (*lp.in.curByte == ' ')) {
+    while (lp.in.hasRemainingBytes() && (*lp.in.curByte == ' ')) {
         lp.in.curByte++;
         lp.indent++;
     }
@@ -97,11 +97,11 @@ void matchExistingIndentation(ParserDetails* parser, LineParser& lp) {
         Element* element = parser->elementStack[lp.stackDepth];
         if (element->type == Element::BlockQuote) {
             // If there is a '>' within 3 columns of outerIndent, match this BlockQuote element.
-            if ((lp.in.numRemainingBytes() > 0) && (*lp.in.curByte == '>') && (lp.innerIndent() <= 3)) {
+            if (lp.in.hasRemainingBytes() && (*lp.in.curByte == '>') && (lp.innerIndent() <= 3)) {
                 lp.stackDepth++;
                 lp.in.curByte++;
                 lp.indent++;
-                if (lp.in.numRemainingBytes() > 0 && (*lp.in.curByte == ' ')) {
+                if (lp.in.hasRemainingBytes() && (*lp.in.curByte == ' ')) {
                     // Read optional space after '>'.
                     lp.in.curByte++;
                     lp.indent++;
@@ -110,7 +110,7 @@ void matchExistingIndentation(ParserDetails* parser, LineParser& lp) {
                 continue;
             }
             // Consume additional spaces.
-            while (lp.in.numRemainingBytes() > 0 && (*lp.in.curByte == ' ')) {
+            while (lp.in.hasRemainingBytes() && (*lp.in.curByte == ' ')) {
                 lp.in.curByte++;
                 lp.indent++;
             }
@@ -189,7 +189,7 @@ void parseNewMarkers(ParserDetails* parser, LineParser& lp) {
     PLY_ASSERT(!lp.in.viewRemainingBytes().trim().isEmpty());
 
     // Attempt to parse new Element markers
-    while (lp.in.numRemainingBytes() > 0) {
+    while (lp.in.hasRemainingBytes()) {
         if (lp.innerIndent() >= 4)
             break;
 
@@ -240,7 +240,7 @@ void parseNewMarkers(ParserDetails* parser, LineParser& lp) {
             parser->elementStack.append(Heap::create<Element>(parent, Element::BlockQuote));
             lp.in.readByte();
             lp.indent++;
-            if ((lp.in.numRemainingBytes() > 0) && (*lp.in.curByte == ' ')) {
+            if (lp.in.hasRemainingBytes() && (*lp.in.curByte == ' ')) {
                 lp.in.curByte++;
                 lp.indent++;
             }
@@ -299,7 +299,7 @@ void parseNewMarkers(ParserDetails* parser, LineParser& lp) {
         }
 
         // Consume whitespace
-        while ((lp.in.numRemainingBytes() > 0) && (*lp.in.curByte == ' ')) {
+        while (lp.in.hasRemainingBytes() && (*lp.in.curByte == ' ')) {
             lp.in.curByte++;
             lp.indent++;
         }
@@ -355,7 +355,7 @@ void parseParagraphText(ParserDetails* parser, LineParser& lp) {
             if (*lp.in.curByte == '#' && lp.innerIndent() <= 3) {
                 // Attempt to parse a heading
                 char* startByte = lp.in.curByte;
-                while (lp.in.numRemainingBytes() > 0 && *lp.in.curByte == '#') {
+                while (lp.in.hasRemainingBytes() && *lp.in.curByte == '#') {
                     lp.in.curByte++;
                 }
                 StringView poundSeq{startByte, lp.in.curByte};
