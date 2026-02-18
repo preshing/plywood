@@ -89,8 +89,12 @@ String extractCodeLine(StringView line, u32 fromIndent) {
     return {};
 }
 
-// ParserDetails extends Parser with internal state not exposed in the public API.
-struct ParserDetails : Parser {
+// Private Parser implementation not exposed in the public API.
+struct Parser {
+    Array<Block*> elementStack;
+    Block* leafElement = nullptr;
+    Block rootBlock;
+
     // Only used if leafElement is CodeBlock:
     u32 numBlankLinesInCodeBlock = 0;
 
@@ -102,7 +106,7 @@ struct ParserDetails : Parser {
 
 // This is called at the start of each line. It figures out which of the existing elements we are still inside by
 // consuming indentation and blockquote '>' markers that match the element stack.
-void matchExistingIndentation(ParserDetails* parser, LineParser& lp) {
+void matchExistingIndentation(Parser* parser, LineParser& lp) {
     // Consume leading spaces.
     while (lp.in.hasRemainingBytes() && (*lp.in.curByte == ' ')) {
         lp.in.curByte++;
@@ -148,7 +152,7 @@ void matchExistingIndentation(ParserDetails* parser, LineParser& lp) {
 }
 
 // This is called after matchExistingIndentation() if the remainder of the line is blank.
-void handleBlankLine(ParserDetails* parser, LineParser& lp) {
+void handleBlankLine(Parser* parser, LineParser& lp) {
     // Terminate paragraph if any.
     if (parser->leafElement && parser->leafElement->var.is<Block::Paragraph>()) {
         parser->leafElement = nullptr;
@@ -204,7 +208,7 @@ void handleBlankLine(ParserDetails* parser, LineParser& lp) {
 
 // This is called after matchExistingIndentation() if the remainder of the line is not blank. It consumes new
 // blockquote '>' markers and list item markers such as '*', creating new list elements for each marker encountered.
-void parseNewMarkers(ParserDetails* parser, LineParser& lp) {
+void parseNewMarkers(Parser* parser, LineParser& lp) {
     // Line must not be blank.
     PLY_ASSERT(!lp.in.viewRemainingBytes().trim().isEmpty());
 
@@ -336,7 +340,7 @@ void parseNewMarkers(ParserDetails* parser, LineParser& lp) {
     }
 }
 
-void parseParagraphText(ParserDetails* parser, LineParser& lp) {
+void parseParagraphText(Parser* parser, LineParser& lp) {
     StringView remainingText = lp.in.viewRemainingBytes().trim();
     bool hasPara = parser->leafElement && parser->leafElement->var.is<Block::Paragraph>();
     if (!hasPara && lp.innerIndent() >= 4) {
@@ -800,7 +804,7 @@ static void doInlines(Block* block) {
 //
 
 Owned<Parser> createParser() {
-    Owned<ParserDetails> parser = Heap::create<ParserDetails>();
+    Owned<Parser> parser = Heap::create<Parser>();
     parser->rootBlock.var.switchTo<Block::BlockQuote>();
     return parser;
 }
@@ -828,8 +832,6 @@ String untabify(StringView str, u32 tabSize) {
 }
 
 Owned<Block> parseLine(Parser* parser, StringView line) {
-    ParserDetails* details = static_cast<ParserDetails*>(parser);
-
     // Untabify the input line (if needed) to simplify internal processing.
     String untabified;
     if (line.find('\t') >= 0) {
@@ -841,23 +843,23 @@ Owned<Block> parseLine(Parser* parser, StringView line) {
     LineParser lp{line};
 
     // Match existing indentation and blockquote '>' markers.
-    matchExistingIndentation(details, lp);
+    matchExistingIndentation(parser, lp);
 
     if (lp.in.viewRemainingBytes().trim().isEmpty()) {
         // The rest of the line is blank.
-        handleBlankLine(details, lp);
+        handleBlankLine(parser, lp);
     } else {
         // There's more text on the current line.
-        if (lp.stackDepth < details->elementStack.numItems()) {
-            details->elementStack.resize(lp.stackDepth);
-            details->leafElement = nullptr;
-            details->numBlankLinesInCodeBlock = 0;
+        if (lp.stackDepth < parser->elementStack.numItems()) {
+            parser->elementStack.resize(lp.stackDepth);
+            parser->leafElement = nullptr;
+            parser->numBlankLinesInCodeBlock = 0;
         }
-        parseNewMarkers(details, lp);
-        parseParagraphText(details, lp);
+        parseNewMarkers(parser, lp);
+        parseParagraphText(parser, lp);
     }
 
-    auto& rootChildren = details->rootBlock.asInner()->childBlocks;
+    auto& rootChildren = parser->rootBlock.asInner()->childBlocks;
     if (rootChildren.numItems() > 1) {
         // parseParagraphText can only add one child element, so rootBlock can only have
         // exactly 2 elements at this point. Pop the first one and return it.
@@ -871,13 +873,12 @@ Owned<Block> parseLine(Parser* parser, StringView line) {
 }
 
 Owned<Block> flush(Parser* parser) {
-    ParserDetails* details = static_cast<ParserDetails*>(parser);
     // Terminate all existing elements.
-    details->elementStack.clear();
-    details->leafElement = nullptr;
-    details->numBlankLinesInCodeBlock = 0;
+    parser->elementStack.clear();
+    parser->leafElement = nullptr;
+    parser->numBlankLinesInCodeBlock = 0;
 
-    auto& rootChildren = details->rootBlock.asInner()->childBlocks;
+    auto& rootChildren = parser->rootBlock.asInner()->childBlocks;
     if (rootChildren) {
         // There cannot be more than one child element at this point.
         PLY_ASSERT(rootChildren.numItems() == 1);
@@ -891,7 +892,7 @@ Owned<Block> flush(Parser* parser) {
 }
 
 void destroy(Parser* parser) {
-    Heap::destroy(static_cast<ParserDetails*>(parser));
+    Heap::destroy(parser);
 }
 
 Array<Owned<Block>> parseWholeDocument(StringView markdown) {

@@ -130,11 +130,7 @@ struct Span {
 //  ██     ▀█▄▄██ ██      ▄▄▄█▀ ▀█▄▄▄  ██
 //
 
-struct Parser {
-    Array<Block*> elementStack;
-    Block* leafElement = nullptr;
-    Block rootBlock;
-};
+struct Parser;
 
 // Creation and Destruction
 
