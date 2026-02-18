@@ -273,7 +273,7 @@ void parseNewMarkers(ParserDetails* parser, LineParser& lp) {
             lp.in.readByte();
             lp.indent++;
             u32 indentAfterStar = lp.indent;
-            if ((lp.in.numRemainingBytes() == 0) || (*lp.in.curByte != ' '))
+            if (!lp.in.hasRemainingBytes() || (*lp.in.curByte != ' '))
                 goto notMarker;
             lp.in.curByte++;
             lp.indent++;
@@ -305,7 +305,7 @@ void parseNewMarkers(ParserDetails* parser, LineParser& lp) {
             lp.in.readByte();
             lp.indent++;
             u32 indentAfterMarker = lp.indent;
-            if ((lp.in.numRemainingBytes() == 0) || (*lp.in.curByte != ' '))
+            if (!lp.in.hasRemainingBytes() || (*lp.in.curByte != ' '))
                 goto notMarker;
             lp.in.curByte++;
             lp.indent++;
@@ -385,7 +385,7 @@ void parseParagraphText(ParserDetails* parser, LineParser& lp) {
                 }
                 StringView poundSeq{startByte, lp.in.curByte};
                 StringView space = readWhitespace(lp.in);
-                if (poundSeq.numBytes() <= 6 && (!space.isEmpty() || lp.in.numRemainingBytes() == 0)) {
+                if (poundSeq.numBytes() <= 6 && (!space.isEmpty() || !lp.in.hasRemainingBytes())) {
                     // Got a heading
                     Block* parent = parser->elementStack ? parser->elementStack.back() : &parser->rootBlock;
                     Block* headingBlock = addBlock<Block::Heading>(parent);

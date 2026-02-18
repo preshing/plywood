@@ -1348,7 +1348,7 @@ u32 InPipeNewLineFilter::read(MutStringView buf) {
         if (numBytesWritten > 0)
             return numBytesWritten;
 
-        PLY_ASSERT(this->in.numRemainingBytes() == 0);
+        PLY_ASSERT(!this->in.hasRemainingBytes());
         if (!this->in.makeReadable())
             return 0;
     }
@@ -1528,7 +1528,7 @@ bool Stream::makeReadableInternal(u32 minBytes) {
             // Load data into the buffer.
             u32 numBytesLoaded = this->pipe.pipe->read({this->endByte, BUFFER_SIZE - this->numRemainingBytes()});
             if (numBytesLoaded == 0) {
-                if (this->numRemainingBytes() == 0) {
+                if (!this->hasRemainingBytes()) {
                     this->atEof = true;
                 }
                 return false;
@@ -1541,7 +1541,7 @@ bool Stream::makeReadableInternal(u32 minBytes) {
     } else if (this->type == Type::Mem) {
         this->flushMemWrites();
 
-        if (this->numRemainingBytes() == 0) {
+        if (!this->hasRemainingBytes()) {
             if (this->mem.bufferIndex + 1 < this->mem.buffers.numItems()) {
                 this->mem.bufferIndex++;
                 this->curByte = this->mem.buffers[this->mem.bufferIndex];
@@ -1570,7 +1570,7 @@ bool Stream::makeReadableInternal(u32 minBytes) {
                 this->endByte = this->mem.tempBuffer + numBytesToExpose;
             }
         }
-        if (this->numRemainingBytes() == 0) {
+        if (!this->hasRemainingBytes()) {
             this->atEof = true;
         }
         return (this->numRemainingBytes() >= minBytes);
@@ -1606,7 +1606,7 @@ bool Stream::makeWritableInternal(u32 minBytes) {
     } else if (this->type == Type::Mem) {
         this->flushMemWrites();
 
-        if (this->numRemainingBytes() == 0) {
+        if (!this->hasRemainingBytes()) {
             this->mem.bufferIndex++;
             if (this->mem.bufferIndex >= this->mem.buffers.numItems()) {
                 this->mem.buffers.append((char*) Heap::alloc(BUFFER_SIZE));
@@ -2777,7 +2777,7 @@ DecodeResult decodeUnicode(StringView str, UnicodeType unicodeType, ExtendedText
 DecodeResult decodeUnicode(Stream& in, UnicodeType unicodeType, ExtendedTextParams* extParams) {
     // Try to get at least four bytes to read.
     in.makeReadable(4);
-    if (in.numRemainingBytes() == 0)
+    if (!in.hasRemainingBytes())
         return {-1, 0, DS_NOT_ENOUGH_DATA};
 
     DecodeResult result = decodeUnicode(in.viewRemainingBytes(), unicodeType, extParams);

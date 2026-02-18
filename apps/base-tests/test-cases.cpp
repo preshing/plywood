@@ -1368,7 +1368,7 @@ TEST_CASE("Mem stream temp buffer") {
             u32 numConsecutiveBytes =
                 (random.generateU32() % (Stream::MAX_CONSECUTIVE_BYTES / 2)) + (Stream::MAX_CONSECUTIVE_BYTES / 2);
             mem.makeReadable(numConsecutiveBytes);
-            check(mem.atEof == (mem.numRemainingBytes() == 0));
+            check(mem.atEof == !mem.hasRemainingBytes());
             if (mem.atEof)
                 break;
             while (mem.curByte < mem.endByte) {
