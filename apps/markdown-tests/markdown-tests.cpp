@@ -14,29 +14,15 @@ int main(int argc, const char* argv[]) {
     SetConsoleOutputCP(CP_UTF8);
 #endif
 
-    // Open the serialized markdown test suite (">>" markdown, "--" html).
+    // Open the markdown test suite.
     String path = joinPath(MARKDOWN_TESTS_PATH, "test-suite.txt");
     Stream in = Filesystem::openTextForReadAutodetect(path);
-    bool haveSeparator = false;
+    String separatorLine = readLine(in);
     u32 numTests = 0;
     u32 numPassed = 0;
-    for (;;) {
+    while (separatorLine) {
+        PLY_ASSERT(separatorLine.startsWith("--------------------- #"));
         String line;
-
-        // Find the next test case start marker (">>"), unless we've already consumed it.
-        if (!haveSeparator) {
-            for (;;) {
-                line = readLine(in);
-                if (!line)
-                    break;
-                if (line.startsWith(">> "))
-                    break;
-            }
-            if (!line)
-                break;
-        } else {
-            haveSeparator = false;
-        }
 
         // Read markdown input until the expected-html marker ("--").
         MemStream markdownSrc;
@@ -51,11 +37,11 @@ int main(int argc, const char* argv[]) {
         if (!line)
             break;
 
-        // Read expected HTML output until the next test-case marker (">> ") or EOF.
+        // Read expected HTML output until the next test-case marker or EOF.
         MemStream expectedHtml;
         for (;;) {
             line = readLine(in);
-            if (line.startsWith(">> "))
+            if (line.startsWith("--------------------- #"))
                 break;
             if (line.trim()) {
                 expectedHtml.write(line);
@@ -69,15 +55,12 @@ int main(int argc, const char* argv[]) {
         if (converted == expected) {
             numPassed++;
         }
-        getStdOut().write("---------------------\n");
+        getStdOut().write(separatorLine);
         getStdOut().write(converted);
         getStdOut().format("({}/{} passed)\n", numPassed, numTests);
 
-        // If we stopped on ">> ", carry that state into the next loop iteration.
-        if (line)
-            haveSeparator = true;
-        else
-            break;
+        // If we stopped on a separator line, carry that state into the next loop iteration.
+        separatorLine = line;
     }
 
     in.close();
