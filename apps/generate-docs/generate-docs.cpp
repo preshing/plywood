@@ -182,14 +182,14 @@ void parseApiDescriptions(Stream& out, const Map<StringView, String>& args, View
         } else {
             if (line.startsWith(">>")) {
                 // Flush current markdown block.
-                if (Owned<markdown::Element> node = flush(md)) {
+                if (Owned<markdown::Block> node = flush(md)) {
                     convertToHtml(&out, node, options);
                 }
                 out.write("</dd>\n<dt>");
                 inTitle = true;
                 firstDecl = true;
             } else {
-                if (Owned<markdown::Element> node = parseLine(md, line)) {
+                if (Owned<markdown::Block> node = parseLine(md, line)) {
                     convertToHtml(&out, node, options);
                 }
             }
@@ -199,7 +199,7 @@ void parseApiDescriptions(Stream& out, const Map<StringView, String>& args, View
         out.write("</dt></dl>\n");
     } else {
         // Flush current markdown block.
-        if (Owned<markdown::Element> node = flush(md)) {
+        if (Owned<markdown::Block> node = flush(md)) {
             convertToHtml(&out, node, options);
         }
         out.write("</dd></dl>\n");
@@ -254,7 +254,7 @@ void parseMarkdown(Stream& out, ViewStream& in) {
         StringView cmd;
         if (lineIn.match("'{%i", &cmd)) {
             // Flush current markdown block.
-            if (Owned<markdown::Element> node = flush(parser)) {
+            if (Owned<markdown::Block> node = flush(parser)) {
                 convertToHtml(&out, node, options);
             }
 
@@ -279,7 +279,7 @@ void parseMarkdown(Stream& out, ViewStream& in) {
             } else if (cmd == "example") {
                 parseExample(out, in);
             } else if (cmd == "output") {
-                if (Owned<markdown::Element> node = flush(parser)) {
+                if (Owned<markdown::Block> node = flush(parser)) {
                     convertToHtml(&out, node, options);
                 }
                 parseOutput(out, in);
@@ -291,12 +291,12 @@ void parseMarkdown(Stream& out, ViewStream& in) {
                 PLY_ASSERT(0); // Unrecognized section type
             }
         } else {
-            if (Owned<markdown::Element> node = parseLine(parser, line)) {
+            if (Owned<markdown::Block> node = parseLine(parser, line)) {
                 convertToHtml(&out, node, options);
             }
         }
     }
-    if (Owned<markdown::Element> node = flush(parser)) {
+    if (Owned<markdown::Block> node = flush(parser)) {
         convertToHtml(&out, node, options);
     }
 }
