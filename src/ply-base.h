@@ -1454,8 +1454,10 @@ struct Heap {
 
     template <typename T>
     static void destroy(T* obj) {
-        obj->~T();
-        free(obj);
+        if (obj) {
+            obj->~T();
+            free(obj);
+        }
     }
 };
 
