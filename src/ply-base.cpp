@@ -1634,6 +1634,13 @@ bool Stream::makeWritableInternal(u32 minBytes) {
     return !this->atEof;
 }
 
+char Stream::peekByteInternal() {
+    if (!this->makeReadable())
+        return 0;
+    PLY_ASSERT(this->curByte < this->endByte);
+    return *this->curByte;
+}
+
 char Stream::readByteInternal() {
     if (!this->makeReadable())
         return 0;

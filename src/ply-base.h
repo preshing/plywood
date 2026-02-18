@@ -3865,6 +3865,12 @@ struct Stream {
 
     //--------------------------------------------
     // Read wrappers
+    char peekByte() {
+        if (this->curByte < this->endByte)
+            return *this->curByte;
+        else
+            return this->peekByteInternal();
+    }
     char readByte() {
         if (this->curByte < this->endByte)
             return *this->curByte++;
@@ -3907,6 +3913,7 @@ struct Stream {
 protected:
     bool makeReadableInternal(u32 numBytes);
     bool makeWritableInternal(u32 numBytes);
+    char peekByteInternal();
     char readByteInternal();
     void flushMemWrites();
     u32 readInternal(MutStringView dst);

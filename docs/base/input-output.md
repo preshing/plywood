@@ -59,6 +59,7 @@ u32 numRemainingBytes() const
 StringView viewRemainingBytes() const
 MutStringView viewRemainingBytesMut()
 void flush(bool toDevice = false)
+char peekByte()
 char readByte()
 u32 read(MutStringView dst)
 u32 skip(u32 numBytes)
@@ -138,6 +139,11 @@ Returns a mutable view of the read buffer.
 void flush(bool toDevice = false)
 --
 Writes any buffered data to the underlying pipe. If `toDevice` is true, also flushes the pipe to the physical device.
+
+>>
+char peekByte()
+--
+Returns the next byte in the input stream, or `0` if at end-of-file.
 
 >>
 char readByte()
