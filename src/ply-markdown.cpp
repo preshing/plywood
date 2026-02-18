@@ -40,21 +40,21 @@ struct LineParser {
 
     // Keeps track of how many entries in Parser::activeBlocks were matched by current line's indentation and
     // blockquote > markers.
-    u32 stackDepth = 0;
+    u32 blockDepth = 0;
 
     // If the last matching stack entry was a blockquote, this is the column number after the > marker and optional
     // following single space (if any). If the last matching stack entry was a list item, this is the column number
     // where sufficient indentation was reached for the rest of the line to be considered part of the list item. Note
-    // that different lines can have different outerIndent numbers for the same stack entry, because blockquote >
+    // that different lines can have different outerColumn numbers for the same stack entry, because blockquote >
     // markers can be preceded by a different number (from 0 to 3) of spaces on each line.
-    u32 outerIndent = 0;
+    u32 outerColumn = 0;
 
     // The number of columns of leading indentation (including blockquote > markers) that have been read on this line.
-    u32 indent = 0;
+    u32 column = 0;
 
-    // How much leading space was encountered on this line after outerIndent.
-    u32 innerIndent() const {
-        return this->indent - this->outerIndent;
+    // How much leading space was encountered on this line after outerColumn.
+    u32 relativeIndent() const {
+        return this->column - this->outerColumn;
     }
 
     // Constructor.
@@ -121,37 +121,37 @@ void matchExistingIndentation(LineParser& lp) {
     // Consume leading spaces.
     while (lp.in.hasRemainingBytes() && (*lp.in.curByte == ' ')) {
         lp.in.curByte++;
-        lp.indent++;
+        lp.column++;
     }
 
     // Iterate over stack items, matching as much leading indentation and BlockQuote '>' markers as possible.
-    PLY_ASSERT(lp.stackDepth == 0);
-    while (lp.stackDepth < parser->activeBlocks.numItems()) {
-        Block* block = parser->activeBlocks[lp.stackDepth];
+    PLY_ASSERT(lp.blockDepth == 0);
+    while (lp.blockDepth < parser->activeBlocks.numItems()) {
+        Block* block = parser->activeBlocks[lp.blockDepth];
         if (block->var.is<Block::BlockQuote>()) {
-            // If there is a '>' within 3 columns of outerIndent, match this BlockQuote.
-            if (lp.in.hasRemainingBytes() && (*lp.in.curByte == '>') && (lp.innerIndent() <= 3)) {
-                lp.stackDepth++;
+            // If there is a '>' within 3 columns of outerColumn, match this BlockQuote.
+            if (lp.in.hasRemainingBytes() && (*lp.in.curByte == '>') && (lp.relativeIndent() <= 3)) {
+                lp.blockDepth++;
                 lp.in.curByte++;
-                lp.indent++;
+                lp.column++;
                 if (lp.in.hasRemainingBytes() && (*lp.in.curByte == ' ')) {
                     // Read optional space after '>'.
                     lp.in.curByte++;
-                    lp.indent++;
+                    lp.column++;
                 }
-                lp.outerIndent = lp.indent;
+                lp.outerColumn = lp.column;
                 continue;
             }
             // Consume additional spaces.
             while (lp.in.hasRemainingBytes() && (*lp.in.curByte == ' ')) {
                 lp.in.curByte++;
-                lp.indent++;
+                lp.column++;
             }
         } else if (auto* listItem = block->var.as<Block::ListItem>()) {
             // If the line's indentation surpasses the list item's indentation, match this ListItem.
-            if (lp.innerIndent() >= listItem->relativeIndent) {
-                lp.stackDepth++;
-                lp.outerIndent += listItem->relativeIndent;
+            if (lp.relativeIndent() >= listItem->relativeIndent) {
+                lp.blockDepth++;
+                lp.outerColumn += listItem->relativeIndent;
                 continue;
             }
         } else {
@@ -173,15 +173,15 @@ void handleBlankLine(LineParser& lp) {
     }
 
     // Stay inside lists.
-    while ((lp.stackDepth < parser->activeBlocks.numItems()) &&
-           parser->activeBlocks[lp.stackDepth]->var.is<Block::ListItem>()) {
-        lp.stackDepth++;
+    while ((lp.blockDepth < parser->activeBlocks.numItems()) &&
+           parser->activeBlocks[lp.blockDepth]->var.is<Block::ListItem>()) {
+        lp.blockDepth++;
     }
 
     // If there's another entry in activeBlocks, it must be a BlockQuote. Terminate it.
-    if (lp.stackDepth < parser->activeBlocks.numItems()) {
-        PLY_ASSERT(parser->activeBlocks[lp.stackDepth]->var.is<Block::BlockQuote>());
-        parser->activeBlocks.resize(lp.stackDepth);
+    if (lp.blockDepth < parser->activeBlocks.numItems()) {
+        PLY_ASSERT(parser->activeBlocks[lp.blockDepth]->var.is<Block::BlockQuote>());
+        parser->activeBlocks.resize(lp.blockDepth);
         parser->leafBlock = nullptr;
         parser->numBlankLinesInCodeBlock = 0;
     }
@@ -192,13 +192,13 @@ void handleBlankLine(LineParser& lp) {
         PLY_ASSERT(parser->leafBlock->var.is<Block::CodeBlock>());
         Block::Leaf* leaf = parser->leafBlock->asLeaf();
         // Count blank lines in CodeBlocks
-        if (lp.indent - lp.outerIndent > 4) {
+        if (lp.column - lp.outerColumn > 4) {
             // Add intermediate blank lines.
             for (u32 i = 0; i < parser->numBlankLinesInCodeBlock; i++) {
                 leaf->rawLines.append("\n");
             }
             parser->numBlankLinesInCodeBlock = 0;
-            String codeLine = extractCodeLine({lp.in.view.startByte, lp.in.endByte}, lp.outerIndent + 4);
+            String codeLine = extractCodeLine({lp.in.view.startByte, lp.in.endByte}, lp.outerColumn + 4);
             leaf->rawLines.append(std::move(codeLine));
         } else {
             parser->numBlankLinesInCodeBlock++;
@@ -229,11 +229,11 @@ void parseNewMarkers(LineParser& lp) {
 
     // Attempt to parse new Block markers
     while (lp.in.hasRemainingBytes()) {
-        if (lp.innerIndent() >= 4)
+        if (lp.relativeIndent() >= 4)
             break;
 
         char* startByte = lp.in.curByte;
-        u32 savedIndent = lp.indent;
+        u32 savedColumn = lp.column;
 
         // This code block will handle any list markers encountered:
         auto gotListMarker = [&](char bullet, u32 startNumber) {
@@ -270,7 +270,7 @@ void parseNewMarkers(LineParser& lp) {
                 parentInner->childBlocks.append(listBlock);
             }
             Block* listItemBlock = addBlock<Block::ListItem>(listBlock);
-            listItemBlock->var.as<Block::ListItem>()->relativeIndent = lp.outerIndent;
+            listItemBlock->var.as<Block::ListItem>()->relativeIndent = lp.outerColumn;
             parser->activeBlocks.append(listItemBlock);
         };
 
@@ -282,27 +282,27 @@ void parseNewMarkers(LineParser& lp) {
             Block* bqBlock = addBlock<Block::BlockQuote>(parent);
             parser->activeBlocks.append(bqBlock);
             lp.in.readByte();
-            lp.indent++;
+            lp.column++;
             if (lp.in.hasRemainingBytes() && (*lp.in.curByte == ' ')) {
                 lp.in.curByte++;
-                lp.indent++;
+                lp.column++;
             }
-            lp.outerIndent = lp.indent;
+            lp.outerColumn = lp.column;
         } else if (c == '*' || c == '-' || c == '+') {
             lp.in.readByte();
-            lp.indent++;
-            u32 indentAfterStar = lp.indent;
+            lp.column++;
+            u32 indentAfterStar = lp.column;
             if (!lp.in.hasRemainingBytes() || (*lp.in.curByte != ' '))
                 goto notMarker;
             lp.in.curByte++;
-            lp.indent++;
+            lp.column++;
             if (parser->leafBlock && lp.in.viewRemainingBytes().trim().isEmpty())
                 // If the list item interrupts a paragraph, it must not begin with a
                 // blank line.
                 goto notMarker;
 
             // It's an unordered list item.
-            lp.outerIndent = indentAfterStar + 1;
+            lp.outerColumn = indentAfterStar + 1;
             gotListMarker(c, 0);
         } else if (c >= '0' && c <= '9') {
             u64 num = readU64FromText(lp.in);
@@ -313,7 +313,7 @@ void parseNewMarkers(LineParser& lp) {
             uptr markerLength = (lp.in.curByte - startByte);
             if (markerLength > 9)
                 goto notMarker; // marker too long
-            lp.indent += numericCast<u32>(markerLength);
+            lp.column += numericCast<u32>(markerLength);
             if (lp.in.numRemainingBytes() < 2)
                 goto notMarker;
             char punc = *lp.in.curByte;
@@ -322,12 +322,12 @@ void parseNewMarkers(LineParser& lp) {
             if (punc != '.' && punc != ')')
                 goto notMarker;
             lp.in.readByte();
-            lp.indent++;
-            u32 indentAfterMarker = lp.indent;
+            lp.column++;
+            u32 indentAfterMarker = lp.column;
             if (!lp.in.hasRemainingBytes() || (*lp.in.curByte != ' '))
                 goto notMarker;
             lp.in.curByte++;
-            lp.indent++;
+            lp.column++;
             if (parser->leafBlock && lp.in.viewRemainingBytes().trim().isEmpty()) {
                 // If the list item interrupts a paragraph, it must not begin with a blank line.
                 goto notMarker;
@@ -335,7 +335,7 @@ void parseNewMarkers(LineParser& lp) {
 
             // It's an ordered list item.
             // 32-bit demotion is safe because we know the marker is 9 digits or less.
-            lp.outerIndent = indentAfterMarker + 1;
+            lp.outerColumn = indentAfterMarker + 1;
             gotListMarker(0, numericCast<u32>(num));
         } else {
             goto notMarker;
@@ -344,13 +344,13 @@ void parseNewMarkers(LineParser& lp) {
         // Consume whitespace
         while (lp.in.hasRemainingBytes() && (*lp.in.curByte == ' ')) {
             lp.in.curByte++;
-            lp.indent++;
+            lp.column++;
         }
         continue;
 
     notMarker:
         lp.in.seekTo(startByte);
-        lp.indent = savedIndent;
+        lp.column = savedColumn;
         break;
     }
 }
@@ -360,7 +360,7 @@ void parseParagraphText(LineParser& lp) {
 
     StringView remainingText = lp.in.viewRemainingBytes().trim();
     bool hasPara = parser->leafBlock && parser->leafBlock->var.is<Block::Paragraph>();
-    if (!hasPara && lp.innerIndent() >= 4) {
+    if (!hasPara && lp.relativeIndent() >= 4) {
         // Potentially begin or append to code block
         if (remainingText && !parser->leafBlock) {
             Block* parent = parser->activeBlocks ? parser->activeBlocks.back() : &parser->rootBlock;
@@ -375,7 +375,7 @@ void parseParagraphText(LineParser& lp) {
                 leaf->rawLines.append("\n");
             }
             parser->numBlankLinesInCodeBlock = 0;
-            String codeLine = extractCodeLine({lp.in.view.startByte, lp.in.endByte}, lp.outerIndent + 4);
+            String codeLine = extractCodeLine({lp.in.view.startByte, lp.in.endByte}, lp.outerColumn + 4);
             leaf->rawLines.append(std::move(codeLine));
         }
     } else {
@@ -398,7 +398,7 @@ void parseParagraphText(LineParser& lp) {
                 parser->checkListContinuations = false;
             }
 
-            if (*lp.in.curByte == '#' && lp.innerIndent() <= 3) {
+            if (*lp.in.curByte == '#' && lp.relativeIndent() <= 3) {
                 // Attempt to parse a heading
                 char* startByte = lp.in.curByte;
                 while (lp.in.hasRemainingBytes() && *lp.in.curByte == '#') {
@@ -867,8 +867,8 @@ Owned<Block> parseLine(Parser* parser, StringView line) {
         handleBlankLine(lp);
     } else {
         // There's more text on the current line.
-        if (lp.stackDepth < parser->activeBlocks.numItems()) {
-            parser->activeBlocks.resize(lp.stackDepth);
+        if (lp.blockDepth < parser->activeBlocks.numItems()) {
+            parser->activeBlocks.resize(lp.blockDepth);
             parser->leafBlock = nullptr;
             parser->numBlankLinesInCodeBlock = 0;
         }
