@@ -10,13 +10,65 @@
 namespace ply {
 namespace markdown {
 
-//  ▄▄▄▄▄  ▄▄▄               ▄▄         ▄▄▄▄▄ ▄▄▄                                 ▄▄
-//  ██  ██  ██   ▄▄▄▄   ▄▄▄▄ ██  ▄▄     ██     ██   ▄▄▄▄  ▄▄▄▄▄▄▄   ▄▄▄▄  ▄▄▄▄▄  ▄██▄▄  ▄▄▄▄
-//  ██▀▀█▄  ██  ██  ██ ██    ██▄█▀      ██▀▀   ██  ██▄▄██ ██ ██ ██ ██▄▄██ ██  ██  ██   ▀█▄▄▄
-//  ██▄▄█▀ ▄██▄ ▀█▄▄█▀ ▀█▄▄▄ ██ ▀█▄     ██▄▄▄ ▄██▄ ▀█▄▄▄  ██ ██ ██ ▀█▄▄▄  ██  ██  ▀█▄▄  ▄▄▄█▀
-//
+//------------------------------------------------------------------
+// Private Parser implementation not exposed in the public API.
+//------------------------------------------------------------------
 
-// Code to parse block elements (first pass).
+struct Parser {
+    Array<Block*> activeBlocks;
+    Block* leafBlock = nullptr;
+    Block rootBlock;
+
+    // Only used if leafBlock is CodeBlock:
+    u32 numBlankLinesInCodeBlock = 0;
+
+    // This flag indicates that some Lists on the stack have their isLooseIfContinued flag set: (Alternatively, we
+    // *could* store the number of such Lists on the stack, and eliminate the isLooseIfContinued flag completely, but
+    // it would complicate matchExistingIndentation a little bit. Sticking with this approach for now.)
+    bool checkListContinuations = false;
+};
+
+//------------------------------------------------------------------
+// LineParser contains all the internal state used while parsing a single line of input.
+//------------------------------------------------------------------
+
+struct LineParser {
+    Parser* parser = nullptr;
+
+    // Keeps track of the current read position.
+    ViewStream in;
+
+    // Keeps track of how many entries in Parser::activeBlocks were matched by current line's indentation and
+    // blockquote > markers.
+    u32 stackDepth = 0;
+
+    // If the last matching stack entry was a blockquote, this is the column number after the > marker and optional
+    // following single space (if any). If the last matching stack entry was a list item, this is the column number
+    // where sufficient indentation was reached for the rest of the line to be considered part of the list item. Note
+    // that different lines can have different outerIndent numbers for the same stack entry, because blockquote >
+    // markers can be preceded by a different number (from 0 to 3) of spaces on each line.
+    u32 outerIndent = 0;
+
+    // The number of columns of leading indentation (including blockquote > markers) that have been read on this line.
+    u32 indent = 0;
+
+    // How much leading space was encountered on this line after outerIndent.
+    u32 innerIndent() const {
+        return this->indent - this->outerIndent;
+    }
+
+    // Constructor.
+    LineParser(Parser* parser, StringView line) : parser{parser}, in{line} {
+    }
+};
+
+//  ▄▄▄▄▄  ▄▄▄               ▄▄         ▄▄▄▄▄                       ▄▄
+//  ██  ██  ██   ▄▄▄▄   ▄▄▄▄ ██  ▄▄     ██  ██  ▄▄▄▄  ▄▄▄▄▄   ▄▄▄▄  ▄▄ ▄▄▄▄▄   ▄▄▄▄▄
+//  ██▀▀█▄  ██  ██  ██ ██    ██▄█▀      ██▀▀▀   ▄▄▄██ ██  ▀▀ ▀█▄▄▄  ██ ██  ██ ██  ██
+//  ██▄▄█▀ ▄██▄ ▀█▄▄█▀ ▀█▄▄▄ ██ ▀█▄     ██     ▀█▄▄██ ██      ▄▄▄█▀ ██ ██  ██ ▀█▄▄██
+//                                                                             ▄▄▄█▀
+
+// Code to parse blocks (first pass).
 
 // Helper to create a block, set its variant, attach it to a parent, and return it.
 template <typename T>
@@ -35,34 +87,6 @@ Owned<Span> makeSpan() {
     s->var.switchTo<T>();
     return s;
 }
-
-struct LineParser {
-    // Keeps track of the current read position.
-    ViewStream in;
-
-    // Keeps track of how many elements in Parser::elementStack were matched by current line's indentation and
-    // blockquote > markers.
-    u32 stackDepth = 0;
-
-    // If the last matching stack element was a blockquote, this is the column number after the > marker and optional
-    // following single space (if any). If the last matching stack element was a list item, this is the column number
-    // where sufficient indentation was reached for the rest of the line to be considered part of the list item. Note
-    // that different lines can have different outerIndent numbers for the same stack element, because blockquote >
-    // markers can be preceded by a different number (from 0 to 3) of spaces on each line.
-    u32 outerIndent = 0;
-
-    // The number of columns of leading indentation (including blockquote > markers) that have been read on this line.
-    u32 indent = 0;
-
-    // How much leading space was encountered on this line after outerIndent.
-    u32 innerIndent() const {
-        return this->indent - this->outerIndent;
-    }
-
-    // Constructor.
-    LineParser(StringView line) : in{line} {
-    }
-};
 
 // Helper function to extract a line from a code block without leading indentation.
 String extractCodeLine(StringView line, u32 fromIndent) {
@@ -89,24 +113,11 @@ String extractCodeLine(StringView line, u32 fromIndent) {
     return {};
 }
 
-// Private Parser implementation not exposed in the public API.
-struct Parser {
-    Array<Block*> elementStack;
-    Block* leafElement = nullptr;
-    Block rootBlock;
+// This is called at the start of each line. It figures out which of the existing blocks we are still inside by
+// consuming indentation and blockquote '>' markers that match activeBlocks.
+void matchExistingIndentation(LineParser& lp) {
+    Parser* parser = lp.parser;
 
-    // Only used if leafElement is CodeBlock:
-    u32 numBlankLinesInCodeBlock = 0;
-
-    // This flag indicates that some Lists on the stack have their isLooseIfContinued flag set: (Alternatively, we
-    // *could* store the number of such Lists on the stack, and eliminate the isLooseIfContinued flag completely, but
-    // it would complicate matchExistingIndentation a little bit. Sticking with this approach for now.)
-    bool checkListContinuations = false;
-};
-
-// This is called at the start of each line. It figures out which of the existing elements we are still inside by
-// consuming indentation and blockquote '>' markers that match the element stack.
-void matchExistingIndentation(Parser* parser, LineParser& lp) {
     // Consume leading spaces.
     while (lp.in.hasRemainingBytes() && (*lp.in.curByte == ' ')) {
         lp.in.curByte++;
@@ -115,10 +126,10 @@ void matchExistingIndentation(Parser* parser, LineParser& lp) {
 
     // Iterate over stack items, matching as much leading indentation and BlockQuote '>' markers as possible.
     PLY_ASSERT(lp.stackDepth == 0);
-    while (lp.stackDepth < parser->elementStack.numItems()) {
-        Block* block = parser->elementStack[lp.stackDepth];
+    while (lp.stackDepth < parser->activeBlocks.numItems()) {
+        Block* block = parser->activeBlocks[lp.stackDepth];
         if (block->var.is<Block::BlockQuote>()) {
-            // If there is a '>' within 3 columns of outerIndent, match this BlockQuote element.
+            // If there is a '>' within 3 columns of outerIndent, match this BlockQuote.
             if (lp.in.hasRemainingBytes() && (*lp.in.curByte == '>') && (lp.innerIndent() <= 3)) {
                 lp.stackDepth++;
                 lp.in.curByte++;
@@ -137,14 +148,14 @@ void matchExistingIndentation(Parser* parser, LineParser& lp) {
                 lp.indent++;
             }
         } else if (auto* listItem = block->var.as<Block::ListItem>()) {
-            // If the line's indentation surpasses the list item's indentation, match this ListItem element.
+            // If the line's indentation surpasses the list item's indentation, match this ListItem.
             if (lp.innerIndent() >= listItem->relativeIndent) {
                 lp.stackDepth++;
                 lp.outerIndent += listItem->relativeIndent;
                 continue;
             }
         } else {
-            // elementStack can only hold BlockQuote and ListItem elements.
+            // activeBlocks can only hold BlockQuote and ListItem blocks.
             PLY_ASSERT(0);
         }
         break;
@@ -152,32 +163,34 @@ void matchExistingIndentation(Parser* parser, LineParser& lp) {
 }
 
 // This is called after matchExistingIndentation() if the remainder of the line is blank.
-void handleBlankLine(Parser* parser, LineParser& lp) {
+void handleBlankLine(LineParser& lp) {
+    Parser* parser = lp.parser;
+
     // Terminate paragraph if any.
-    if (parser->leafElement && parser->leafElement->var.is<Block::Paragraph>()) {
-        parser->leafElement = nullptr;
+    if (parser->leafBlock && parser->leafBlock->var.is<Block::Paragraph>()) {
+        parser->leafBlock = nullptr;
         PLY_ASSERT(parser->numBlankLinesInCodeBlock == 0);
     }
 
     // Stay inside lists.
-    while ((lp.stackDepth < parser->elementStack.numItems()) &&
-           parser->elementStack[lp.stackDepth]->var.is<Block::ListItem>()) {
+    while ((lp.stackDepth < parser->activeBlocks.numItems()) &&
+           parser->activeBlocks[lp.stackDepth]->var.is<Block::ListItem>()) {
         lp.stackDepth++;
     }
 
-    // If there's another element in elementStack, it must be a BlockQuote. Terminate it.
-    if (lp.stackDepth < parser->elementStack.numItems()) {
-        PLY_ASSERT(parser->elementStack[lp.stackDepth]->var.is<Block::BlockQuote>());
-        parser->elementStack.resize(lp.stackDepth);
-        parser->leafElement = nullptr;
+    // If there's another entry in activeBlocks, it must be a BlockQuote. Terminate it.
+    if (lp.stackDepth < parser->activeBlocks.numItems()) {
+        PLY_ASSERT(parser->activeBlocks[lp.stackDepth]->var.is<Block::BlockQuote>());
+        parser->activeBlocks.resize(lp.stackDepth);
+        parser->leafBlock = nullptr;
         parser->numBlankLinesInCodeBlock = 0;
     }
 
-    if (parser->leafElement) {
-        // At this point, the only possible leaf element is a CodeBlock, because Paragraphs are terminated above, and
+    if (parser->leafBlock) {
+        // At this point, the only possible leaf block is a CodeBlock, because Paragraphs are terminated above, and
         // Headings don't persist across lines.
-        PLY_ASSERT(parser->leafElement->var.is<Block::CodeBlock>());
-        Block::Leaf* leaf = parser->leafElement->asLeaf();
+        PLY_ASSERT(parser->leafBlock->var.is<Block::CodeBlock>());
+        Block::Leaf* leaf = parser->leafBlock->asLeaf();
         // Count blank lines in CodeBlocks
         if (lp.indent - lp.outerIndent > 4) {
             // Add intermediate blank lines.
@@ -191,9 +204,9 @@ void handleBlankLine(Parser* parser, LineParser& lp) {
             parser->numBlankLinesInCodeBlock++;
         }
     } else {
-        // There's no leaf element and the remainder of the line is blank.
+        // There's no leaf block and the remainder of the line is blank.
         // Walk the stack and set the "isLooseIfContinued" flag on all Lists.
-        for (Block* block : parser->elementStack) {
+        for (Block* block : parser->activeBlocks) {
             if (block->var.is<Block::ListItem>()) {
                 auto* parentList = block->parent->var.as<Block::List>();
                 PLY_ASSERT(parentList);
@@ -207,8 +220,10 @@ void handleBlankLine(Parser* parser, LineParser& lp) {
 }
 
 // This is called after matchExistingIndentation() if the remainder of the line is not blank. It consumes new
-// blockquote '>' markers and list item markers such as '*', creating new list elements for each marker encountered.
-void parseNewMarkers(Parser* parser, LineParser& lp) {
+// blockquote '>' markers and list item markers such as '*', creating new list blocks for each marker encountered.
+void parseNewMarkers(LineParser& lp) {
+    Parser* parser = lp.parser;
+
     // Line must not be blank.
     PLY_ASSERT(!lp.in.viewRemainingBytes().trim().isEmpty());
 
@@ -222,12 +237,12 @@ void parseNewMarkers(Parser* parser, LineParser& lp) {
 
         // This code block will handle any list markers encountered:
         auto gotListMarker = [&](char bullet, u32 startNumber) {
-            parser->leafElement = nullptr;
+            parser->leafBlock = nullptr;
             parser->numBlankLinesInCodeBlock = 0;
             Block* listBlock = nullptr;
             Block* parentCtr = &parser->rootBlock;
-            if (parser->elementStack) {
-                parentCtr = parser->elementStack.back();
+            if (parser->activeBlocks) {
+                parentCtr = parser->activeBlocks.back();
             }
             Block::Inner* parentInner = parentCtr->asInner();
             PLY_ASSERT(parentInner);
@@ -256,16 +271,16 @@ void parseNewMarkers(Parser* parser, LineParser& lp) {
             }
             Block* listItemBlock = addBlock<Block::ListItem>(listBlock);
             listItemBlock->var.as<Block::ListItem>()->relativeIndent = lp.outerIndent;
-            parser->elementStack.append(listItemBlock);
+            parser->activeBlocks.append(listItemBlock);
         };
 
         char c = *lp.in.curByte;
         PLY_ASSERT(!isWhitespace(c));
         if (c == '>') {
             // Begin a new blockquote
-            Block* parent = parser->elementStack ? parser->elementStack.back() : &parser->rootBlock;
+            Block* parent = parser->activeBlocks ? parser->activeBlocks.back() : &parser->rootBlock;
             Block* bqBlock = addBlock<Block::BlockQuote>(parent);
-            parser->elementStack.append(bqBlock);
+            parser->activeBlocks.append(bqBlock);
             lp.in.readByte();
             lp.indent++;
             if (lp.in.hasRemainingBytes() && (*lp.in.curByte == ' ')) {
@@ -281,7 +296,7 @@ void parseNewMarkers(Parser* parser, LineParser& lp) {
                 goto notMarker;
             lp.in.curByte++;
             lp.indent++;
-            if (parser->leafElement && lp.in.viewRemainingBytes().trim().isEmpty())
+            if (parser->leafBlock && lp.in.viewRemainingBytes().trim().isEmpty())
                 // If the list item interrupts a paragraph, it must not begin with a
                 // blank line.
                 goto notMarker;
@@ -291,7 +306,7 @@ void parseNewMarkers(Parser* parser, LineParser& lp) {
             gotListMarker(c, 0);
         } else if (c >= '0' && c <= '9') {
             u64 num = readU64FromText(lp.in);
-            if (parser->leafElement && num != 1) {
+            if (parser->leafBlock && num != 1) {
                 // If list item interrupts a paragraph, the start number must be 1.
                 goto notMarker;
             }
@@ -313,7 +328,7 @@ void parseNewMarkers(Parser* parser, LineParser& lp) {
                 goto notMarker;
             lp.in.curByte++;
             lp.indent++;
-            if (parser->leafElement && lp.in.viewRemainingBytes().trim().isEmpty()) {
+            if (parser->leafBlock && lp.in.viewRemainingBytes().trim().isEmpty()) {
                 // If the list item interrupts a paragraph, it must not begin with a blank line.
                 goto notMarker;
             }
@@ -340,19 +355,21 @@ void parseNewMarkers(Parser* parser, LineParser& lp) {
     }
 }
 
-void parseParagraphText(Parser* parser, LineParser& lp) {
+void parseParagraphText(LineParser& lp) {
+    Parser* parser = lp.parser;
+
     StringView remainingText = lp.in.viewRemainingBytes().trim();
-    bool hasPara = parser->leafElement && parser->leafElement->var.is<Block::Paragraph>();
+    bool hasPara = parser->leafBlock && parser->leafBlock->var.is<Block::Paragraph>();
     if (!hasPara && lp.innerIndent() >= 4) {
         // Potentially begin or append to code block
-        if (remainingText && !parser->leafElement) {
-            Block* parent = parser->elementStack ? parser->elementStack.back() : &parser->rootBlock;
-            parser->leafElement = addBlock<Block::CodeBlock>(parent);
+        if (remainingText && !parser->leafBlock) {
+            Block* parent = parser->activeBlocks ? parser->activeBlocks.back() : &parser->rootBlock;
+            parser->leafBlock = addBlock<Block::CodeBlock>(parent);
             PLY_ASSERT(parser->numBlankLinesInCodeBlock == 0);
         }
-        if (parser->leafElement) {
-            PLY_ASSERT(parser->leafElement->var.is<Block::CodeBlock>());
-            Block::Leaf* leaf = parser->leafElement->asLeaf();
+        if (parser->leafBlock) {
+            PLY_ASSERT(parser->leafBlock->var.is<Block::CodeBlock>());
+            Block::Leaf* leaf = parser->leafBlock->asLeaf();
             // Add intermediate blank lines
             for (u32 i = 0; i < parser->numBlankLinesInCodeBlock; i++) {
                 leaf->rawLines.append("\n");
@@ -363,12 +380,12 @@ void parseParagraphText(Parser* parser, LineParser& lp) {
         }
     } else {
         if (remainingText) {
-            // We're going to create or extend a leaf element. First, check if any Lists should be marked loose:
+            // We're going to create or extend a leaf block. First, check if any Lists should be marked loose:
             if (parser->checkListContinuations) {
-                // Yes, we should mark some (possibly zero) lists loose. It's impossible for a leaf element to exist at
+                // Yes, we should mark some (possibly zero) lists loose. It's impossible for a leaf block to exist at
                 // this point:
-                PLY_ASSERT(!parser->leafElement);
-                for (Block* block : parser->elementStack) {
+                PLY_ASSERT(!parser->leafBlock);
+                for (Block* block : parser->activeBlocks) {
                     if (block->var.is<Block::ListItem>()) {
                         auto* parentList = block->parent->var.as<Block::List>();
                         PLY_ASSERT(parentList);
@@ -391,40 +408,40 @@ void parseParagraphText(Parser* parser, LineParser& lp) {
                 StringView space = readWhitespace(lp.in);
                 if (poundSeq.numBytes() <= 6 && (!space.isEmpty() || !lp.in.hasRemainingBytes())) {
                     // Got a heading
-                    Block* parent = parser->elementStack ? parser->elementStack.back() : &parser->rootBlock;
+                    Block* parent = parser->activeBlocks ? parser->activeBlocks.back() : &parser->rootBlock;
                     Block* headingBlock = addBlock<Block::Heading>(parent);
                     auto* heading = headingBlock->var.as<Block::Heading>();
                     heading->level = poundSeq.numBytes();
                     if (StringView remainingText = lp.in.viewRemainingBytes().trim()) {
                         heading->rawLines.append(remainingText);
                     }
-                    parser->leafElement = nullptr;
+                    parser->leafBlock = nullptr;
                     parser->numBlankLinesInCodeBlock = 0;
                     return;
                 }
                 lp.in.seekTo(startByte);
             }
-            // If parser->leafElement already exists, it's a lazy paragraph continuation
+            // If parser->leafBlock already exists, it's a lazy paragraph continuation
             if (!hasPara) {
                 // Begin new paragraph
-                Block* parent = parser->elementStack ? parser->elementStack.back() : &parser->rootBlock;
-                parser->leafElement = addBlock<Block::Paragraph>(parent);
+                Block* parent = parser->activeBlocks ? parser->activeBlocks.back() : &parser->rootBlock;
+                parser->leafBlock = addBlock<Block::Paragraph>(parent);
                 parser->numBlankLinesInCodeBlock = 0;
             }
-            parser->leafElement->asLeaf()->rawLines.append(remainingText);
+            parser->leafBlock->asLeaf()->rawLines.append(remainingText);
         } else {
-            PLY_ASSERT(!parser->leafElement); // Should already be cleared by this point
+            PLY_ASSERT(!parser->leafBlock); // Should already be cleared by this point
         }
     }
 }
 
-//  ▄▄▄▄        ▄▄▄  ▄▄                   ▄▄▄▄▄ ▄▄▄                                 ▄▄
-//   ██  ▄▄▄▄▄   ██  ▄▄ ▄▄▄▄▄   ▄▄▄▄      ██     ██   ▄▄▄▄  ▄▄▄▄▄▄▄   ▄▄▄▄  ▄▄▄▄▄  ▄██▄▄  ▄▄▄▄
-//   ██  ██  ██  ██  ██ ██  ██ ██▄▄██     ██▀▀   ██  ██▄▄██ ██ ██ ██ ██▄▄██ ██  ██  ██   ▀█▄▄▄
-//  ▄██▄ ██  ██ ▄██▄ ██ ██  ██ ▀█▄▄▄      ██▄▄▄ ▄██▄ ▀█▄▄▄  ██ ██ ██ ▀█▄▄▄  ██  ██  ▀█▄▄  ▄▄▄█▀
-//
+//   ▄▄▄▄                           ▄▄▄▄▄                       ▄▄
+//  ██  ▀▀ ▄▄▄▄▄   ▄▄▄▄  ▄▄▄▄▄      ██  ██  ▄▄▄▄  ▄▄▄▄▄   ▄▄▄▄  ▄▄ ▄▄▄▄▄   ▄▄▄▄▄
+//   ▀▀▀█▄ ██  ██  ▄▄▄██ ██  ██     ██▀▀▀   ▄▄▄██ ██  ▀▀ ▀█▄▄▄  ██ ██  ██ ██  ██
+//  ▀█▄▄█▀ ██▄▄█▀ ▀█▄▄██ ██  ██     ██     ▀█▄▄██ ██      ▄▄▄█▀ ██ ██  ██ ▀█▄▄██
+//         ██                                                              ▄▄▄█▀
 
-// Code to parse inline elements (second pass)
+// Code to parse inline spans (second pass)
 
 struct InlineConsumer {
     ArrayView<const String> rawLines;
@@ -679,7 +696,7 @@ Array<Owned<Span>> processEmphasis(Array<Delimiter>& delimiters, u32 bottomPos) 
     return result;
 }
 
-Array<Owned<Span>> expandInlineElements(ArrayView<const String> rawLines) {
+Array<Owned<Span>> expandInlineSpans(ArrayView<const String> rawLines) {
     Array<Delimiter> delimiters;
     InlineConsumer ic{rawLines};
     u32 flushedIndex = 0;
@@ -791,7 +808,7 @@ static void doInlines(Block* block) {
         Block::Leaf* leaf = block->asLeaf();
         PLY_ASSERT(leaf);
         if (!block->var.is<Block::CodeBlock>()) {
-            leaf->spans = expandInlineElements(leaf->rawLines);
+            leaf->spans = expandInlineSpans(leaf->rawLines);
             leaf->rawLines.clear();
         }
     }
@@ -840,29 +857,29 @@ Owned<Block> parseLine(Parser* parser, StringView line) {
         line = untabified;
     }
 
-    LineParser lp{line};
+    LineParser lp{parser, line};
 
     // Match existing indentation and blockquote '>' markers.
-    matchExistingIndentation(parser, lp);
+    matchExistingIndentation(lp);
 
     if (lp.in.viewRemainingBytes().trim().isEmpty()) {
         // The rest of the line is blank.
-        handleBlankLine(parser, lp);
+        handleBlankLine(lp);
     } else {
         // There's more text on the current line.
-        if (lp.stackDepth < parser->elementStack.numItems()) {
-            parser->elementStack.resize(lp.stackDepth);
-            parser->leafElement = nullptr;
+        if (lp.stackDepth < parser->activeBlocks.numItems()) {
+            parser->activeBlocks.resize(lp.stackDepth);
+            parser->leafBlock = nullptr;
             parser->numBlankLinesInCodeBlock = 0;
         }
-        parseNewMarkers(parser, lp);
-        parseParagraphText(parser, lp);
+        parseNewMarkers(lp);
+        parseParagraphText(lp);
     }
 
     auto& rootChildren = parser->rootBlock.asInner()->childBlocks;
     if (rootChildren.numItems() > 1) {
-        // parseParagraphText can only add one child element, so rootBlock can only have
-        // exactly 2 elements at this point. Pop the first one and return it.
+        // parseParagraphText can only add one child block, so rootBlock can only have
+        // exactly 2 blocks at this point. Pop the first one and return it.
         PLY_ASSERT(rootChildren.numItems() == 2);
         Owned<Block> out = std::move(rootChildren[0]);
         rootChildren.erase(0);
@@ -873,14 +890,14 @@ Owned<Block> parseLine(Parser* parser, StringView line) {
 }
 
 Owned<Block> flush(Parser* parser) {
-    // Terminate all existing elements.
-    parser->elementStack.clear();
-    parser->leafElement = nullptr;
+    // Terminate all existing blocks.
+    parser->activeBlocks.clear();
+    parser->leafBlock = nullptr;
     parser->numBlankLinesInCodeBlock = 0;
 
     auto& rootChildren = parser->rootBlock.asInner()->childBlocks;
     if (rootChildren) {
-        // There cannot be more than one child element at this point.
+        // There cannot be more than one child block at this point.
         PLY_ASSERT(rootChildren.numItems() == 1);
         Owned<Block> block = std::move(rootChildren[0]);
         rootChildren.erase(0);
