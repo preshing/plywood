@@ -55,22 +55,22 @@ int main(int argc, const char* argv[]) {
         MemStream expectedHtml;
         for (;;) {
             line = readLine(in);
-            if (!line)
-                break;
             if (line.startsWith(">> "))
                 break;
-            expectedHtml.write(line);
+            if (line.trim()) {
+                expectedHtml.write(line);
+            }
         }
 
         // Convert markdown, update counters from an exact string match, and print case output.
         String converted = markdown::convertToHtml(markdownSrc.moveToString());
         String expected = expectedHtml.moveToString();
         numTests++;
-        if (converted == expected)
+        if (converted == expected) {
             numPassed++;
+        }
         getStdOut().write("---------------------\n");
         getStdOut().write(converted);
-        getStdOut().write(expected);
         getStdOut().format("({}/{} passed)\n", numPassed, numTests);
 
         // If we stopped on ">> ", carry that state into the next loop iteration.
