@@ -70,7 +70,7 @@ struct LineReader {
         this->curByte += numBytes;
         this->column += numBytes;
         this->prefetch();
-    }    
+    }
     bool atEnd() {
         return (this->point < 0);
     }
@@ -391,7 +391,7 @@ void parseNewMarkers(LineParser& lp) {
 
             // Read space after unordered list marker.
             if (lr.point != ' ' && lr.point != '\t')
-                goto notMarker;     // No space encountered.
+                goto notMarker; // No space encountered.
             lr.advance();
 
             // If the list item interrupts a paragraph, it must not begin with a blank line.
@@ -422,7 +422,7 @@ void parseNewMarkers(LineParser& lp) {
 
             // Read space after punctuation.
             if (lr.point != ' ' && lr.point != '\t')
-                goto notMarker;     // No space encountered.
+                goto notMarker; // No space encountered.
             lr.advance();
 
             // If the list item interrupts a paragraph, it must not begin with a blank line.
@@ -452,7 +452,8 @@ void parseNewMarkers(LineParser& lp) {
 void parseParagraphText(LineParser& lp) {
     Parser* parser = lp.parser;
 
-    StringView remainingText = lp.reader.viewRemaining().trim();
+    StringView remainingText =
+        lp.reader.viewRemaining().trimLeft().trimRight([](char c) { return c == '\n' || c == '\r'; });
     bool hasPara = parser->leafBlock && parser->leafBlock->var.is<Block::Paragraph>();
     if (!hasPara && lp.relativeIndent() >= 4) {
         // Potentially begin or append to code block
@@ -823,6 +824,13 @@ Array<Owned<Span>> expandInlineSpans(ArrayView<const String> rawLines) {
     };
     for (;;) {
         if (ic.i >= ic.rawLine.numBytes()) {
+            // We've reached the end of a line. Check to see whether to emit a hard break or a soft break. When there
+            // are two or more spaces before the end of the line, it's a hard break.
+            u32 savedPos = ic.i;
+            while (ic.i > flushedIndex && ic.rawLine[ic.i - 1] == ' ') {
+                ic.i--;
+            }
+            bool hardBreakFromSpaces = (savedPos - ic.i >= 2);
             flushText();
             ic.i = 0;
             flushedIndex = 0;
@@ -830,7 +838,11 @@ Array<Owned<Span>> expandInlineSpans(ArrayView<const String> rawLines) {
             if (ic.lineIndex >= ic.rawLines.numItems())
                 break;
             ic.rawLine = ic.rawLines[ic.lineIndex];
-            delimiters.append(makeSpan<Span::SoftBreak>());
+            if (hardBreakFromSpaces) {
+                delimiters.append(makeSpan<Span::HardBreak>());
+            } else {
+                delimiters.append(makeSpan<Span::SoftBreak>());
+            }
         }
 
         char c = ic.rawLine[ic.i];
@@ -868,6 +880,24 @@ Array<Owned<Span>> expandInlineSpans(ArrayView<const String> rawLines) {
             }
             delimiters.append(Delimiter::makeRun(Delimiter::Underscores, ic.rawLine, ic.i - runLength, runLength));
             flushedIndex = ic.i;
+        } else if (c == '\\') {
+            flushText();
+            ic.i++;
+            InlineConsumer::ValidIndexResult res = ic.validIndex();
+            if (res == InlineConsumer::End) {
+                delimiters.append({Delimiter::RawText, StringView{"\\"}});
+                flushedIndex = ic.i;
+            } else if (res == InlineConsumer::NextLine) {
+                delimiters.append(makeSpan<Span::HardBreak>());
+                flushedIndex = ic.i;
+            } else if (isAscPunc(ic.rawLine[ic.i])) {
+                delimiters.append({Delimiter::RawText, ic.rawLine.substr(ic.i, 1)});
+                ic.i++;
+                flushedIndex = ic.i;
+            } else {
+                delimiters.append({Delimiter::RawText, StringView{"\\"}});
+                flushedIndex = ic.i;
+            }
         } else if (c == '[') {
             flushText();
             delimiters.append({Delimiter::OpenLink, ic.rawLine.substr(ic.i, 1)});
@@ -1057,6 +1087,8 @@ void dumpSpan(Stream* outs, const Span* span, u32 level) {
         outs->write('"');
     } else if (span->var.is<Span::SoftBreak>()) {
         outs->write("softbreak");
+    } else if (span->var.is<Span::HardBreak>()) {
+        outs->write("hardbreak");
     } else if (span->var.is<Span::Italic>()) {
         outs->write("italic");
     } else if (span->var.is<Span::Bold>()) {
@@ -1146,6 +1178,8 @@ void convertSpanToHtml(Stream* outs, const Span* span, const HTML_Options& optio
         outs->write("</code>");
     } else if (span->var.is<Span::SoftBreak>()) {
         outs->write("\n");
+    } else if (span->var.is<Span::HardBreak>()) {
+        outs->write("<br />\n");
     } else if (auto* emph = span->var.as<Span::Italic>()) {
         outs->write("<em>");
         for (const Span* child : emph->childSpans) {

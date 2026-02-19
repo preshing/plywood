@@ -85,7 +85,7 @@ struct Block {
 };
 
 //------------------------------------------------------
-// A Span can be a Link, Italic, Bold, Code or SoftBreak.
+// A Span can be a Link, Italic, Bold, Code, SoftBreak or HardBreak.
 //------------------------------------------------------
 
 struct Span {
@@ -107,8 +107,9 @@ struct Span {
         String text;
     };
     struct SoftBreak {};
+    struct HardBreak {};
 
-    Variant<Link, Italic, Bold, Text, Code, SoftBreak> var;
+    Variant<Link, Italic, Bold, Text, Code, SoftBreak, HardBreak> var;
 
     // Convenience functions:
     Container* asContainer() {
