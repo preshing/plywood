@@ -66,7 +66,7 @@ struct LineReader {
         this->prefetch();
     }
     void skipPlainAscii(u32 numBytes) {
-        PLY_ASSERT(this->endByte - this->curByte <= numBytes);
+        PLY_ASSERT(this->endByte - this->curByte >= numBytes);
         this->curByte += numBytes;
         this->column += numBytes;
         this->prefetch();
@@ -280,6 +280,8 @@ void parseNewMarkers(LineParser& lp) {
     while (!lr.atEnd()) {
         if (lp.relativeIndent() >= 4)
             break;
+        if (lr.viewRemaining().trim().isEmpty())
+            break;
 
         LineReader savedPos = lr;
 
@@ -322,7 +324,6 @@ void parseNewMarkers(LineParser& lp) {
             parser->activeBlocks.append(listItemBlock);
         };
 
-        PLY_ASSERT(!isWhitespace(lr.point));
         if (lr.point == '>') {
             // Begin a new blockquote
             Block* parent = parser->activeBlocks ? parser->activeBlocks.back() : &parser->rootBlock;
@@ -497,9 +498,9 @@ struct InlineConsumer {
     u32 i = 0;
 
     InlineConsumer(ArrayView<const String> rawLines) : rawLines{rawLines} {
-        PLY_ASSERT(rawLines.numItems() > 0);
-        rawLine = rawLines[0];
-        PLY_ASSERT(rawLine);
+        if (rawLines) {
+            rawLine = rawLines[0];
+        }
     }
 
     enum ValidIndexResult { SameLine, NextLine, End };
@@ -1113,7 +1114,7 @@ void convertToHtml(Stream* outs, const Block* block, const HTML_Options& options
     } else if (auto* listItem = block->var.as<Block::ListItem>()) {
         auto* parentList = block->parent->var.as<Block::List>();
         outs->write("<li>");
-        if (!parentList->isLoose && listItem->childBlocks[0]->var.is<Block::Paragraph>()) {
+        if (!parentList->isLoose && listItem->childBlocks && listItem->childBlocks[0]->var.is<Block::Paragraph>()) {
             // Don't output a newline before the paragraph in a tight list.
         } else {
             outs->write("\n");
