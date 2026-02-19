@@ -41,6 +41,8 @@ int main(int argc, const char* argv[]) {
         MemStream expectedHtml;
         for (;;) {
             line = readLine(in);
+            if (!line)
+                break;
             if (line.startsWith("--------------------- #"))
                 break;
             if (line.trim()) {

@@ -326,6 +326,8 @@ void parseNewMarkers(LineParser& lp) {
 
         if (lr.point == '>') {
             // Begin a new blockquote
+            parser->leafBlock = nullptr;
+            parser->numBlankLinesInCodeBlock = 0;
             Block* parent = parser->activeBlocks ? parser->activeBlocks.back() : &parser->rootBlock;
             Block* bqBlock = addBlock<Block::BlockQuote>(parent);
             parser->activeBlocks.append(bqBlock);
