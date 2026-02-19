@@ -27,7 +27,7 @@ Plywood is a low-level C++ base library for building cross-platform native softw
 ## Coding Conventions
 
 - Follow the style of existing code such as `src/ply-base.cpp`
-- Types use CamelCase; functions/variables use camelCase
+- Types use PascalCase; functions/variables use camelCase
 - C++14 features only
 - `.clang-format`: 120 character line limit, 4-space indentation, Attach-style braces
 - All library types/functions are defined in the `ply` namespace; dependent apps use `using namespace ply`
