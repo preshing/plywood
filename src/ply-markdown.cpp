@@ -141,18 +141,16 @@ Owned<Span> makeSpan() {
 String extractCodeLine(StringView line, u32 fromIndent) {
     u32 indent = 0;
     for (u32 i = 0; i < line.numBytes(); i++) {
-        if (indent == fromIndent) {
+        if (indent == fromIndent)
             return line.substr(i);
-        }
         u8 c = line[i];
         PLY_ASSERT(c < 128);              // No high code points
         PLY_ASSERT(c >= 32 || c == '\t'); // No control characters
         if (c == '\t') {
             u32 tabSize = 4;
             u32 newIndent = indent + tabSize - (indent % tabSize);
-            if (newIndent > fromIndent) {
+            if (newIndent > fromIndent)
                 return StringView{" "} * (newIndent - fromIndent) + line.substr(i + 1);
-            }
             indent = newIndent;
         } else {
             indent++;
@@ -166,13 +164,11 @@ String extractCodeLine(StringView line, u32 fromIndent) {
 // up to 3 columns of indentation, followed by at least 3 matching '-', '*' or '_' markers
 // separated only by spaces/tabs.
 bool isThematicBreak(StringView remainingLine, u32 relativeIndent) {
-    if (relativeIndent > 3) {
+    if (relativeIndent > 3)
         return false;
-    }
     StringView text = remainingLine.trim();
-    if (text.isEmpty()) {
+    if (text.isEmpty())
         return false;
-    }
 
     char punctuator = 0;
     u32 numPunctuators = 0;
@@ -181,16 +177,32 @@ bool isThematicBreak(StringView remainingLine, u32 relativeIndent) {
             continue;
         }
         if (!punctuator) {
-            if (c != '-' && c != '*' && c != '_') {
+            if (c != '-' && c != '*' && c != '_')
                 return false;
-            }
             punctuator = numericCast<char>(c);
-        } else if (c != punctuator) {
+        } else if (c != punctuator)
             return false;
-        }
         numPunctuators++;
     }
     return numPunctuators >= 3;
+}
+
+// Returns true if the remaining line is a Setext underline (level 1 for '=', level 2 for '-').
+bool isSetextUnderline(StringView remainingLine, u32 relativeIndent, u32* level) {
+    if (relativeIndent > 3)
+        return false;
+    StringView text = remainingLine.trim();
+    if (text.isEmpty())
+        return false;
+    char marker = text[0];
+    if (marker != '=' && marker != '-')
+        return false;
+    for (char c : text) {
+        if (c != marker)
+            return false;
+    }
+    *level = (marker == '=') ? 1u : 2u;
+    return true;
 }
 
 // This is called at the start of each line. It figures out which of the existing blocks we are still inside by
@@ -480,6 +492,19 @@ void parseParagraphText(LineParser& lp) {
                 parser->checkListContinuations = false;
             }
 
+            u32 setextLevel = 0;
+            if (hasPara && isSetextUnderline(lp.reader.viewRemaining(), lp.relativeIndent(), &setextLevel)) {
+                // Convert current paragraph block to a Setext heading.
+                PLY_ASSERT(parser->leafBlock->var.is<Block::Paragraph>());
+                Array<String> paraLines = std::move(parser->leafBlock->asLeaf()->rawLines);
+                auto& heading = parser->leafBlock->var.switchTo<Block::Heading>();
+                heading.level = setextLevel;
+                heading.rawLines = std::move(paraLines);
+                parser->leafBlock = nullptr;
+                PLY_ASSERT(parser->numBlankLinesInCodeBlock == 0);
+                return;
+            }
+
             if (isThematicBreak(lp.reader.viewRemaining(), lp.relativeIndent())) {
                 // Thematic breaks terminate an open paragraph and become a standalone block.
                 if (hasPara) {
@@ -554,9 +579,8 @@ struct InlineConsumer {
 
     ValidIndexResult validIndex() {
         if (this->i >= this->rawLine.numBytes()) {
-            if (this->lineIndex >= this->rawLines.numItems()) {
+            if (this->lineIndex >= this->rawLines.numItems())
                 return End;
-            }
             this->i = 0;
             this->lineIndex++;
             if (this->lineIndex >= this->rawLines.numItems()) {
@@ -657,9 +681,8 @@ LinkDestination parseLinkDestination(InlineConsumer& ic) {
     // Skip initial whitespace
     for (;;) {
         InlineConsumer::ValidIndexResult res = ic.validIndex();
-        if (res == InlineConsumer::End) {
+        if (res == InlineConsumer::End)
             return {false, String{}};
-        }
         if (!isWhitespace(ic.rawLine[ic.i]))
             break;
         ic.i++;
@@ -696,31 +719,28 @@ LinkDestination parseLinkDestination(InlineConsumer& ic) {
             } else {
                 break;
             }
-        } else if (c >= 0 && c <= 32) {
+        } else if (c >= 0 && c <= 32)
             break;
-        } else {
+        else {
             ic.i++;
             mout.write(c);
         }
     }
 
-    if (parenNestLevel != 0) {
+    if (parenNestLevel != 0)
         return {false, String{}};
-    }
 
     // Skip trailing whitespace
     for (;;) {
         InlineConsumer::ValidIndexResult res = ic.validIndex();
-        if (res == InlineConsumer::End) {
+        if (res == InlineConsumer::End)
             return {false, String{}};
-        }
         char c = ic.rawLine[ic.i];
         if (c == ')') {
             ic.i++;
             return {true, mout.moveToString()};
-        } else if (!isWhitespace(c)) {
+        } else if (!isWhitespace(c))
             return {false, String{}};
-        }
         ic.i++;
     }
 }

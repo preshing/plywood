@@ -30,6 +30,7 @@ Plywood is a low-level C++ base library for building cross-platform native softw
 - Types use PascalCase; functions/variables use camelCase
 - C++14 features only
 - `.clang-format`: 120 character line limit, 4-space indentation, Attach-style braces
+- For `if` statements whose body is exactly one `continue`, `return`, or `break`, omit curly braces.
 - All library types/functions are defined in the `ply` namespace; dependent apps use `using namespace ply`
 - **Important**: Avoid using C/C++ Standard Library functions. Always use `ply-base.h` primitives instead.
 
@@ -131,4 +132,3 @@ Plywood is a low-level C++ base library for building cross-platform native softw
 - `Filesystem` - Filesystem operations, opening files, text format detection
 - Path manipulation: `getPathSeparator getDriveLetter isAbsolutePath isRelativePath makeAbsolutePath makeRelativePath splitPath splitFileExtension splitPathFull joinPath`
 - `DirectoryWatcher` - Watches a directory for changes
-
