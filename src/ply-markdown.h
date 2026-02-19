@@ -29,10 +29,10 @@ struct Block {
         Array<Owned<Block>> childBlocks;
     };
     struct List : Inner {
-        // If bullet == 0, it's an ordered list.
-        // Otherwise, bullet can be '-' or '*'.
-        char bullet = 0;
-        u32 startNumber = 1;
+        // If startNumber < 0, it's an unordered list and punctuator can be '-', '*' or '+'.
+        // Otherwise, it's an ordered list and punctuator can be '.' or ')'.
+        char punctuator = '-';
+        s32 startNumber = -1;
         bool isLooseIfContinued = false;
         bool isLoose = false;
     };

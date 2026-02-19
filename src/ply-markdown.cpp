@@ -286,7 +286,7 @@ void parseNewMarkers(LineParser& lp) {
         LineReader savedPos = lr;
 
         // This code block will handle any list markers encountered:
-        auto gotListMarker = [&](char bullet, u32 startNumber) {
+        auto gotListMarker = [&](char punctuator, s32 startNumber) {
             parser->leafBlock = nullptr;
             parser->numBlankLinesInCodeBlock = 0;
             Block* listBlock = nullptr;
@@ -299,7 +299,7 @@ void parseNewMarkers(LineParser& lp) {
             if (!parentInner->childBlocks.isEmpty()) {
                 Block* potentialParent = parentInner->childBlocks.back();
                 if (auto* potentialList = potentialParent->var.as<Block::List>()) {
-                    if (potentialList->bullet == bullet) {
+                    if (potentialList->punctuator == punctuator) {
                         // Add item to existing list
                         listBlock = potentialParent;
                     }
@@ -315,7 +315,7 @@ void parseNewMarkers(LineParser& lp) {
                 listBlock = Heap::create<Block>();
                 listBlock->parent = parentCtr;
                 auto& list = listBlock->var.switchTo<Block::List>();
-                list.bullet = bullet;
+                list.punctuator = punctuator;
                 list.startNumber = startNumber;
                 parentInner->childBlocks.append(listBlock);
             }
@@ -340,7 +340,7 @@ void parseNewMarkers(LineParser& lp) {
                 lp.outerColumn++;
             }
         } else if (lr.point == '*' || lr.point == '-' || lr.point == '+') {
-            char bullet = numericCast<char>(lr.point);
+            char punctuator = numericCast<char>(lr.point);
             lr.advance();
             u32 indentAfterStar = lr.column;
 
@@ -355,7 +355,7 @@ void parseNewMarkers(LineParser& lp) {
 
             // It's an unordered list item.
             lp.outerColumn = indentAfterStar + 1;
-            gotListMarker(bullet, 0);
+            gotListMarker(punctuator, -1);
         } else if (lr.point >= '0' && lr.point <= '9') {
             // Read number.
             ViewStream in(lr.viewRemaining());
@@ -369,9 +369,9 @@ void parseNewMarkers(LineParser& lp) {
             lr.skipPlainAscii(numericCast<u32>(in.getSeekPos()));
 
             // Read '.' or ')' punctuator after number.
-            // FIXME: If the punctuator doesn't match, it should start a new list.
             if (lr.point != '.' && lr.point != ')')
                 goto notMarker;
+            char punctuator = numericCast<char>(lr.point);
             lr.advance();
             u32 indentAfterMarker = lr.column;
 
@@ -387,7 +387,7 @@ void parseNewMarkers(LineParser& lp) {
             // It's an ordered list item.
             // 32-bit demotion is safe because we know the marker is 9 digits or less.
             lp.outerColumn = indentAfterMarker + 1;
-            gotListMarker(0, numericCast<u32>(num));
+            gotListMarker(punctuator, numericCast<s32>(num));
         } else {
             goto notMarker;
         }
@@ -1016,7 +1016,7 @@ void dump(Stream* outs, const Block* block, u32 level) {
         } else {
             outs->write(" (tight");
         }
-        if (list->bullet == 0) {
+        if (list->startNumber >= 0) {
             outs->format(", ordered, start={})", list->startNumber);
         } else {
             outs->write(", unordered)");
@@ -1096,7 +1096,7 @@ void convertSpanToHtml(Stream* outs, const Span* span, const HTML_Options& optio
 
 void convertToHtml(Stream* outs, const Block* block, const HTML_Options& options) {
     if (auto* list = block->var.as<Block::List>()) {
-        if (list->bullet == 0) {
+        if (list->startNumber >= 0) {
             if (list->startNumber != 1) {
                 outs->format("<ol start=\"{}\">\n", list->startNumber);
             } else {
@@ -1108,7 +1108,7 @@ void convertToHtml(Stream* outs, const Block* block, const HTML_Options& options
         for (const Block* child : list->childBlocks) {
             convertToHtml(outs, child, options);
         }
-        if (list->bullet == 0) {
+        if (list->startNumber >= 0) {
             outs->write("</ol>\n");
         } else {
             outs->write("</ul>\n");
