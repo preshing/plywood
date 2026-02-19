@@ -38,16 +38,23 @@ int main(int argc, const char* argv[]) {
             break;
 
         // Read expected HTML output until the next test-case marker or EOF.
-        MemStream expectedHtml;
+        Array<String> expectedLines;
         for (;;) {
             line = readLine(in);
             if (!line)
                 break;
             if (line.startsWith("--------------------- #"))
                 break;
-            if (line.trim()) {
-                expectedHtml.write(line);
-            }
+            expectedLines.append(line);
+        }
+
+        // Drop the blank line before the separator.
+        if (expectedLines && expectedLines.back().trim().isEmpty()) {
+            expectedLines.pop();
+        }
+        MemStream expectedHtml;
+        for (StringView expectedLine : expectedLines) {
+            expectedHtml.write(expectedLine);
         }
 
         // Convert markdown, update counters from an exact string match, and print case output.
