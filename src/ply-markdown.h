@@ -20,7 +20,7 @@ namespace markdown {
 struct Span;
 
 //------------------------------------------------------
-// A Block can be a List, ListItem, BlockQuote, Heading, Paragraph or CodeBlock.
+// A Block can be a List, ListItem, BlockQuote, Heading, Paragraph, CodeBlock or ThematicBreak.
 //------------------------------------------------------
 
 struct Block {
@@ -52,8 +52,9 @@ struct Block {
     };
     struct Paragraph : Leaf {};
     struct CodeBlock : Leaf {};
+    struct ThematicBreak {};
 
-    Variant<List, ListItem, BlockQuote, Heading, Paragraph, CodeBlock> var;
+    Variant<List, ListItem, BlockQuote, Heading, Paragraph, CodeBlock, ThematicBreak> var;
     Block* parent = nullptr;
 
     // Convenience functions:

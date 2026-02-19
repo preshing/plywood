@@ -162,6 +162,37 @@ String extractCodeLine(StringView line, u32 fromIndent) {
     return {};
 }
 
+// Returns true if the remaining line is a thematic break, according to basic CommonMark rules:
+// up to 3 columns of indentation, followed by at least 3 matching '-', '*' or '_' markers
+// separated only by spaces/tabs.
+bool isThematicBreak(StringView remainingLine, u32 relativeIndent) {
+    if (relativeIndent > 3) {
+        return false;
+    }
+    StringView text = remainingLine.trim();
+    if (text.isEmpty()) {
+        return false;
+    }
+
+    char punctuator = 0;
+    u32 numPunctuators = 0;
+    for (char c : text) {
+        if (c == ' ' || c == '\t') {
+            continue;
+        }
+        if (!punctuator) {
+            if (c != '-' && c != '*' && c != '_') {
+                return false;
+            }
+            punctuator = numericCast<char>(c);
+        } else if (c != punctuator) {
+            return false;
+        }
+        numPunctuators++;
+    }
+    return numPunctuators >= 3;
+}
+
 // This is called at the start of each line. It figures out which of the existing blocks we are still inside by
 // consuming indentation and blockquote '>' markers that match activeBlocks.
 void matchExistingIndentation(LineParser& lp) {
@@ -281,6 +312,8 @@ void parseNewMarkers(LineParser& lp) {
         if (lp.relativeIndent() >= 4)
             break;
         if (lr.viewRemaining().trim().isEmpty())
+            break;
+        if (isThematicBreak(lr.viewRemaining(), lp.relativeIndent()))
             break;
 
         LineReader savedPos = lr;
@@ -445,6 +478,18 @@ void parseParagraphText(LineParser& lp) {
                     }
                 }
                 parser->checkListContinuations = false;
+            }
+
+            if (isThematicBreak(lp.reader.viewRemaining(), lp.relativeIndent())) {
+                // Thematic breaks terminate an open paragraph and become a standalone block.
+                if (hasPara) {
+                    parser->leafBlock = nullptr;
+                    PLY_ASSERT(parser->numBlankLinesInCodeBlock == 0);
+                }
+                Block* parent = parser->activeBlocks ? parser->activeBlocks.back() : &parser->rootBlock;
+                addBlock<Block::ThematicBreak>(parent);
+                parser->numBlankLinesInCodeBlock = 0;
+                return;
             }
 
             if (remainingText.startsWith('#') && (lp.relativeIndent() <= 3)) {
@@ -854,6 +899,8 @@ static void doInlines(Block* block) {
         for (Block* child : inner->childBlocks) {
             doInlines(child);
         }
+    } else if (block->var.is<Block::ThematicBreak>()) {
+        // No inline parsing needed.
     } else {
         Block::Leaf* leaf = block->asLeaf();
         PLY_ASSERT(leaf);
@@ -1031,6 +1078,8 @@ void dump(Stream* outs, const Block* block, u32 level) {
         outs->write("paragraph");
     } else if (block->var.is<Block::CodeBlock>()) {
         outs->write("code_block");
+    } else if (block->var.is<Block::ThematicBreak>()) {
+        outs->write("thematic_break");
     } else {
         PLY_ASSERT(0);
         outs->write("???");
@@ -1180,6 +1229,8 @@ void convertToHtml(Stream* outs, const Block* block, const HTML_Options& options
             printXmlEscapedString(*outs, rawLine);
         }
         outs->write("</code></pre>\n");
+    } else if (block->var.is<Block::ThematicBreak>()) {
+        outs->write("<hr />\n");
     } else {
         PLY_ASSERT(0);
     }
