@@ -43,7 +43,6 @@ struct Block {
 
     // Leaf block types are leaves and can only contain text.
     struct Leaf {
-        Array<String> rawLines;
         Array<Owned<Span>> spans;
     };
     struct Heading : Leaf {

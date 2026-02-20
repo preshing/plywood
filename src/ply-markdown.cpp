@@ -17,6 +17,7 @@ namespace markdown {
 struct Parser {
     Array<Block*> activeBlocks;
     Block* leafBlock = nullptr;
+    Array<String> leafRawLines;
     Block rootBlock;
 
     // Only used if leafBlock is CodeBlock:
@@ -29,10 +30,10 @@ struct Parser {
 };
 
 //------------------------------------------------------------------
-// LineReader keeps track of the column index while reading UTF-8 codepoints from an input string.
+// ColumnTrackingReader keeps track of the column index while reading UTF-8 codepoints from an input string.
 //------------------------------------------------------------------
 
-struct LineReader {
+struct ColumnTrackingReader {
     static constexpr u32 TabSize = 4;
 
     char* startByte = nullptr;
@@ -47,7 +48,7 @@ struct LineReader {
         this->point = result.point;
         this->nextAdvance = result.numBytes;
     }
-    LineReader(StringView line) {
+    ColumnTrackingReader(StringView line) {
         this->startByte = line.bytes();
         this->curByte = line.bytes();
         this->endByte = line.end();
@@ -87,8 +88,8 @@ struct LineParser {
     // Parser
     Parser* parser = nullptr;
 
-    // LineReader
-    LineReader reader;
+    // ColumnTrackingReader
+    ColumnTrackingReader ctReader;
 
     // Keeps track of how many entries in Parser::activeBlocks were matched by current line's indentation and
     // blockquote > markers.
@@ -103,11 +104,11 @@ struct LineParser {
 
     // How much leading space was encountered on this line after outerColumn.
     u32 relativeIndent() const {
-        return this->reader.column - this->outerColumn;
+        return this->ctReader.column - this->outerColumn;
     }
 
     // Constructor.
-    LineParser(Parser* parser, StringView line) : parser{parser}, reader{line} {
+    LineParser(Parser* parser, StringView line) : parser{parser}, ctReader{line} {
     }
 };
 
@@ -136,6 +137,9 @@ Owned<Span> makeSpan() {
     s->var.switchTo<T>();
     return s;
 }
+
+// Forward declaration.
+void finalizeLeafBlock(Parser* parser);
 
 // Helper function to extract a line from a code block without leading indentation.
 String extractCodeLine(StringView line, u32 fromIndent) {
@@ -209,11 +213,11 @@ bool isSetextUnderline(StringView remainingLine, u32 relativeIndent, u32* level)
 // consuming indentation and blockquote '>' markers that match activeBlocks.
 void matchExistingIndentation(LineParser& lp) {
     Parser* parser = lp.parser;
-    LineReader& lr = lp.reader;
+    ColumnTrackingReader& ctReader = lp.ctReader;
 
     // Consume leading whitespace.
-    while (lr.point == ' ' || lr.point == '\t') {
-        lr.advance();
+    while (ctReader.point == ' ' || ctReader.point == '\t') {
+        ctReader.advance();
     }
 
     // Iterate over stack items, matching as much leading indentation and BlockQuote '>' markers as possible.
@@ -222,20 +226,20 @@ void matchExistingIndentation(LineParser& lp) {
         Block* block = parser->activeBlocks[lp.blockDepth];
         if (block->var.is<Block::BlockQuote>()) {
             // If there is a '>' within 3 columns of outerColumn, match this BlockQuote.
-            if ((lr.point == '>') && (lp.relativeIndent() <= 3)) {
+            if ((ctReader.point == '>') && (lp.relativeIndent() <= 3)) {
                 lp.blockDepth++;
-                lr.advance();
-                lp.outerColumn = lr.column;
-                if (lr.point == ' ' || lr.point == '\t') {
+                ctReader.advance();
+                lp.outerColumn = ctReader.column;
+                if (ctReader.point == ' ' || ctReader.point == '\t') {
                     // Read optional space after '>'.
-                    lr.advance();
+                    ctReader.advance();
                     lp.outerColumn++;
                 }
                 continue;
             }
             // Consume additional spaces.
-            while (lr.point == ' ' || lr.point == '\t') {
-                lr.advance();
+            while (ctReader.point == ' ' || ctReader.point == '\t') {
+                ctReader.advance();
             }
         } else if (auto* listItem = block->var.as<Block::ListItem>()) {
             // If the line's indentation surpasses the list item's indentation, match this ListItem.
@@ -255,12 +259,11 @@ void matchExistingIndentation(LineParser& lp) {
 // This is called after matchExistingIndentation() if the remainder of the line is blank.
 void handleBlankLine(LineParser& lp) {
     Parser* parser = lp.parser;
-    LineReader& lr = lp.reader;
+    ColumnTrackingReader& ctReader = lp.ctReader;
 
     // Terminate paragraph if any.
     if (parser->leafBlock && parser->leafBlock->var.is<Block::Paragraph>()) {
-        parser->leafBlock = nullptr;
-        PLY_ASSERT(parser->numBlankLinesInCodeBlock == 0);
+        finalizeLeafBlock(parser);
     }
 
     // Stay inside lists.
@@ -273,24 +276,22 @@ void handleBlankLine(LineParser& lp) {
     if (lp.blockDepth < parser->activeBlocks.numItems()) {
         PLY_ASSERT(parser->activeBlocks[lp.blockDepth]->var.is<Block::BlockQuote>());
         parser->activeBlocks.resize(lp.blockDepth);
-        parser->leafBlock = nullptr;
-        parser->numBlankLinesInCodeBlock = 0;
+        finalizeLeafBlock(parser);
     }
 
     if (parser->leafBlock) {
         // At this point, the only possible leaf block is a CodeBlock, because Paragraphs are terminated above, and
         // Headings don't persist across lines.
         PLY_ASSERT(parser->leafBlock->var.is<Block::CodeBlock>());
-        Block::Leaf* leaf = parser->leafBlock->asLeaf();
         // Count blank lines in CodeBlocks
-        if (lr.column - lp.outerColumn > 4) {
+        if (ctReader.column - lp.outerColumn > 4) {
             // Add intermediate blank lines.
             for (u32 i = 0; i < parser->numBlankLinesInCodeBlock; i++) {
-                leaf->rawLines.append("\n");
+                parser->leafRawLines.append("\n");
             }
             parser->numBlankLinesInCodeBlock = 0;
-            String codeLine = extractCodeLine({lr.startByte, lr.endByte}, lp.outerColumn + 4);
-            leaf->rawLines.append(std::move(codeLine));
+            String codeLine = extractCodeLine({ctReader.startByte, ctReader.endByte}, lp.outerColumn + 4);
+            parser->leafRawLines.append(std::move(codeLine));
         } else {
             parser->numBlankLinesInCodeBlock++;
         }
@@ -314,26 +315,25 @@ void handleBlankLine(LineParser& lp) {
 // blockquote '>' markers and list item markers such as '*', creating new list blocks for each marker encountered.
 void parseNewMarkers(LineParser& lp) {
     Parser* parser = lp.parser;
-    LineReader& lr = lp.reader;
+    ColumnTrackingReader& ctReader = lp.ctReader;
 
     // Line must not be blank.
-    PLY_ASSERT(!lr.viewRemaining().trim().isEmpty());
+    PLY_ASSERT(!ctReader.viewRemaining().trim().isEmpty());
 
     // Attempt to parse new Block markers
-    while (!lr.atEnd()) {
+    while (!ctReader.atEnd()) {
         if (lp.relativeIndent() >= 4)
             break;
-        if (lr.viewRemaining().trim().isEmpty())
+        if (ctReader.viewRemaining().trim().isEmpty())
             break;
-        if (isThematicBreak(lr.viewRemaining(), lp.relativeIndent()))
+        if (isThematicBreak(ctReader.viewRemaining(), lp.relativeIndent()))
             break;
 
-        LineReader savedPos = lr;
+        ColumnTrackingReader savedPos = ctReader;
 
         // This code block will handle any list markers encountered:
         auto gotListMarker = [&](char punctuator, s32 startNumber) {
-            parser->leafBlock = nullptr;
-            parser->numBlankLinesInCodeBlock = 0;
+            finalizeLeafBlock(parser);
             Block* listBlock = nullptr;
             Block* parentCtr = &parser->rootBlock;
             if (parser->activeBlocks) {
@@ -369,41 +369,40 @@ void parseNewMarkers(LineParser& lp) {
             parser->activeBlocks.append(listItemBlock);
         };
 
-        if (lr.point == '>') {
+        if (ctReader.point == '>') {
             // Begin a new blockquote
-            parser->leafBlock = nullptr;
-            parser->numBlankLinesInCodeBlock = 0;
+            finalizeLeafBlock(parser);
             Block* parent = parser->activeBlocks ? parser->activeBlocks.back() : &parser->rootBlock;
             Block* bqBlock = addBlock<Block::BlockQuote>(parent);
             parser->activeBlocks.append(bqBlock);
-            lr.advance();
-            lp.outerColumn = lr.column;
+            ctReader.advance();
+            lp.outerColumn = ctReader.column;
 
             // Consume optional space after '>'.
-            if (lr.point == ' ' || lr.point == '\t') {
-                lr.advance();
+            if (ctReader.point == ' ' || ctReader.point == '\t') {
+                ctReader.advance();
                 lp.outerColumn++;
             }
-        } else if (lr.point == '*' || lr.point == '-' || lr.point == '+') {
-            char punctuator = numericCast<char>(lr.point);
-            lr.advance();
-            u32 indentAfterStar = lr.column;
+        } else if (ctReader.point == '*' || ctReader.point == '-' || ctReader.point == '+') {
+            char punctuator = numericCast<char>(ctReader.point);
+            ctReader.advance();
+            u32 indentAfterStar = ctReader.column;
 
             // Read space after unordered list marker.
-            if (lr.point != ' ' && lr.point != '\t')
+            if (ctReader.point != ' ' && ctReader.point != '\t')
                 goto notMarker; // No space encountered.
-            lr.advance();
+            ctReader.advance();
 
             // If the list item interrupts a paragraph, it must not begin with a blank line.
-            if (parser->leafBlock && lr.viewRemaining().trim().isEmpty())
+            if (parser->leafBlock && ctReader.viewRemaining().trim().isEmpty())
                 goto notMarker;
 
             // It's an unordered list item.
             lp.outerColumn = indentAfterStar + 1;
             gotListMarker(punctuator, -1);
-        } else if (lr.point >= '0' && lr.point <= '9') {
+        } else if (ctReader.point >= '0' && ctReader.point <= '9') {
             // Read number.
-            ViewStream in(lr.viewRemaining());
+            ViewStream in(ctReader.viewRemaining());
             u64 num = readU64FromText(in);
             if (parser->leafBlock && num != 1) {
                 // If list item interrupts a paragraph, the start number must be 1.
@@ -411,22 +410,22 @@ void parseNewMarkers(LineParser& lp) {
             }
             if (in.getSeekPos() > 9)
                 goto notMarker; // marker too long
-            lr.skipPlainAscii(numericCast<u32>(in.getSeekPos()));
+            ctReader.skipPlainAscii(numericCast<u32>(in.getSeekPos()));
 
             // Read '.' or ')' punctuator after number.
-            if (lr.point != '.' && lr.point != ')')
+            if (ctReader.point != '.' && ctReader.point != ')')
                 goto notMarker;
-            char punctuator = numericCast<char>(lr.point);
-            lr.advance();
-            u32 indentAfterMarker = lr.column;
+            char punctuator = numericCast<char>(ctReader.point);
+            ctReader.advance();
+            u32 indentAfterMarker = ctReader.column;
 
             // Read space after punctuation.
-            if (lr.point != ' ' && lr.point != '\t')
+            if (ctReader.point != ' ' && ctReader.point != '\t')
                 goto notMarker; // No space encountered.
-            lr.advance();
+            ctReader.advance();
 
             // If the list item interrupts a paragraph, it must not begin with a blank line.
-            if (parser->leafBlock && lr.viewRemaining().trim().isEmpty())
+            if (parser->leafBlock && ctReader.viewRemaining().trim().isEmpty())
                 goto notMarker;
 
             // It's an ordered list item.
@@ -438,13 +437,13 @@ void parseNewMarkers(LineParser& lp) {
         }
 
         // Consume whitespace
-        while (lr.point == ' ' || lr.point == '\t') {
-            lr.advance();
+        while (ctReader.point == ' ' || ctReader.point == '\t') {
+            ctReader.advance();
         }
         continue;
 
     notMarker:
-        lr = savedPos;
+        ctReader = savedPos;
         break;
     }
 }
@@ -453,25 +452,25 @@ void parseParagraphText(LineParser& lp) {
     Parser* parser = lp.parser;
 
     StringView remainingText =
-        lp.reader.viewRemaining().trimLeft().trimRight([](char c) { return c == '\n' || c == '\r'; });
+        lp.ctReader.viewRemaining().trimLeft().trimRight([](char c) { return c == '\n' || c == '\r'; });
     bool hasPara = parser->leafBlock && parser->leafBlock->var.is<Block::Paragraph>();
     if (!hasPara && lp.relativeIndent() >= 4) {
         // Potentially begin or append to code block
         if (remainingText && !parser->leafBlock) {
             Block* parent = parser->activeBlocks ? parser->activeBlocks.back() : &parser->rootBlock;
             parser->leafBlock = addBlock<Block::CodeBlock>(parent);
+            PLY_ASSERT(parser->leafRawLines.isEmpty());
             PLY_ASSERT(parser->numBlankLinesInCodeBlock == 0);
         }
         if (parser->leafBlock) {
             PLY_ASSERT(parser->leafBlock->var.is<Block::CodeBlock>());
-            Block::Leaf* leaf = parser->leafBlock->asLeaf();
             // Add intermediate blank lines
             for (u32 i = 0; i < parser->numBlankLinesInCodeBlock; i++) {
-                leaf->rawLines.append("\n");
+                parser->leafRawLines.append("\n");
             }
             parser->numBlankLinesInCodeBlock = 0;
-            String codeLine = extractCodeLine({lp.reader.startByte, lp.reader.endByte}, lp.outerColumn + 4);
-            leaf->rawLines.append(std::move(codeLine));
+            String codeLine = extractCodeLine({lp.ctReader.startByte, lp.ctReader.endByte}, lp.outerColumn + 4);
+            parser->leafRawLines.append(std::move(codeLine));
         }
     } else {
         if (remainingText) {
@@ -494,27 +493,22 @@ void parseParagraphText(LineParser& lp) {
             }
 
             u32 setextLevel = 0;
-            if (hasPara && isSetextUnderline(lp.reader.viewRemaining(), lp.relativeIndent(), &setextLevel)) {
+            if (hasPara && isSetextUnderline(lp.ctReader.viewRemaining(), lp.relativeIndent(), &setextLevel)) {
                 // Convert current paragraph block to a Setext heading.
                 PLY_ASSERT(parser->leafBlock->var.is<Block::Paragraph>());
-                Array<String> paraLines = std::move(parser->leafBlock->asLeaf()->rawLines);
                 auto& heading = parser->leafBlock->var.switchTo<Block::Heading>();
                 heading.level = setextLevel;
-                heading.rawLines = std::move(paraLines);
-                parser->leafBlock = nullptr;
-                PLY_ASSERT(parser->numBlankLinesInCodeBlock == 0);
+                finalizeLeafBlock(parser);
                 return;
             }
 
-            if (isThematicBreak(lp.reader.viewRemaining(), lp.relativeIndent())) {
+            if (isThematicBreak(lp.ctReader.viewRemaining(), lp.relativeIndent())) {
                 // Thematic breaks terminate an open paragraph and become a standalone block.
                 if (hasPara) {
-                    parser->leafBlock = nullptr;
-                    PLY_ASSERT(parser->numBlankLinesInCodeBlock == 0);
+                    finalizeLeafBlock(parser);
                 }
                 Block* parent = parser->activeBlocks ? parser->activeBlocks.back() : &parser->rootBlock;
                 addBlock<Block::ThematicBreak>(parent);
-                parser->numBlankLinesInCodeBlock = 0;
                 return;
             }
 
@@ -529,15 +523,18 @@ void parseParagraphText(LineParser& lp) {
                 StringView space = readWhitespace(in);
                 if ((poundCount <= 6) && (!space.isEmpty() || !in.hasRemainingBytes())) {
                     // Got a heading
+                    if (hasPara)
+                        finalizeLeafBlock(parser);
                     Block* parent = parser->activeBlocks ? parser->activeBlocks.back() : &parser->rootBlock;
                     Block* headingBlock = addBlock<Block::Heading>(parent);
                     auto* heading = headingBlock->var.as<Block::Heading>();
                     heading->level = poundCount;
+                    parser->leafBlock = headingBlock;
+                    PLY_ASSERT(parser->leafRawLines.isEmpty());
                     if (StringView remainingText = in.viewRemainingBytes().trim()) {
-                        heading->rawLines.append(remainingText);
+                        parser->leafRawLines.append(remainingText);
                     }
-                    parser->leafBlock = nullptr;
-                    parser->numBlankLinesInCodeBlock = 0;
+                    finalizeLeafBlock(parser);
                     return;
                 }
             }
@@ -547,9 +544,9 @@ void parseParagraphText(LineParser& lp) {
                 // Begin new paragraph
                 Block* parent = parser->activeBlocks ? parser->activeBlocks.back() : &parser->rootBlock;
                 parser->leafBlock = addBlock<Block::Paragraph>(parent);
-                parser->numBlankLinesInCodeBlock = 0;
+                PLY_ASSERT(parser->leafRawLines.isEmpty());
             }
-            parser->leafBlock->asLeaf()->rawLines.append(remainingText);
+            parser->leafRawLines.append(remainingText);
         } else {
             PLY_ASSERT(!parser->leafBlock); // Should already be cleared by this point
         }
@@ -944,21 +941,25 @@ Array<Owned<Span>> expandInlineSpans(ArrayView<const String> rawLines) {
     return processEmphasis(delimiters, 0);
 }
 
-static void doInlines(Block* block) {
-    if (Block::Inner* inner = block->asInner()) {
-        for (Block* child : inner->childBlocks) {
-            doInlines(child);
+void finalizeLeafBlock(Parser* parser) {
+    if (!parser->leafBlock)
+        return;
+
+    Block::Leaf* leaf = parser->leafBlock->asLeaf();
+    PLY_ASSERT(leaf);
+    PLY_ASSERT(leaf->spans.isEmpty());
+    if (parser->leafBlock->var.is<Block::CodeBlock>()) {
+        for (String& rawLine : parser->leafRawLines) {
+            Owned<Span> textSpan = makeSpan<Span::Text>();
+            textSpan->var.as<Span::Text>()->text = std::move(rawLine);
+            leaf->spans.append(std::move(textSpan));
         }
-    } else if (block->var.is<Block::ThematicBreak>()) {
-        // No inline parsing needed.
     } else {
-        Block::Leaf* leaf = block->asLeaf();
-        PLY_ASSERT(leaf);
-        if (!block->var.is<Block::CodeBlock>()) {
-            leaf->spans = expandInlineSpans(leaf->rawLines);
-            leaf->rawLines.clear();
-        }
+        leaf->spans = expandInlineSpans(parser->leafRawLines);
     }
+    parser->leafRawLines.clear();
+    parser->leafBlock = nullptr;
+    parser->numBlankLinesInCodeBlock = 0;
 }
 
 //  ▄▄▄▄▄         ▄▄     ▄▄▄  ▄▄            ▄▄▄▄  ▄▄▄▄▄  ▄▄▄▄
@@ -979,15 +980,17 @@ Owned<Block> parseLine(Parser* parser, StringView line) {
     // Match existing indentation and blockquote '>' markers.
     matchExistingIndentation(lp);
 
-    if (lp.reader.viewRemaining().trim().isEmpty()) {
+    if (lp.ctReader.viewRemaining().trim().isEmpty()) {
         // The rest of the line is blank.
         handleBlankLine(lp);
     } else {
         // There's more text on the current line.
         if (lp.blockDepth < parser->activeBlocks.numItems()) {
+            finalizeLeafBlock(parser);
             parser->activeBlocks.resize(lp.blockDepth);
-            parser->leafBlock = nullptr;
-            parser->numBlankLinesInCodeBlock = 0;
+        }
+        if (parser->leafBlock && parser->leafBlock->var.is<Block::CodeBlock>() && lp.relativeIndent() < 4) {
+            finalizeLeafBlock(parser);
         }
         parseNewMarkers(lp);
         parseParagraphText(lp);
@@ -1000,7 +1003,6 @@ Owned<Block> parseLine(Parser* parser, StringView line) {
         PLY_ASSERT(rootChildren.numItems() == 2);
         Owned<Block> out = std::move(rootChildren[0]);
         rootChildren.erase(0);
-        doInlines(out);
         return out;
     }
     return {};
@@ -1008,9 +1010,8 @@ Owned<Block> parseLine(Parser* parser, StringView line) {
 
 Owned<Block> flush(Parser* parser) {
     // Terminate all existing blocks.
+    finalizeLeafBlock(parser);
     parser->activeBlocks.clear();
-    parser->leafBlock = nullptr;
-    parser->numBlankLinesInCodeBlock = 0;
 
     auto& rootChildren = parser->rootBlock.asInner()->childBlocks;
     if (rootChildren) {
@@ -1018,7 +1019,6 @@ Owned<Block> flush(Parser* parser) {
         PLY_ASSERT(rootChildren.numItems() == 1);
         Owned<Block> block = std::move(rootChildren[0]);
         rootChildren.erase(0);
-        doInlines(block);
         block->parent = nullptr;
         return block;
     }
@@ -1138,11 +1138,6 @@ void dump(Stream* outs, const Block* block, u32 level) {
     }
     outs->write("\n");
     if (const Block::Leaf* leaf = block->asLeaf()) {
-        for (StringView text : leaf->rawLines) {
-            outs->format("{}  \"", indent);
-            printEscapedString(*outs, text);
-            outs->write("\"\n");
-        }
         for (const Span* span : leaf->spans) {
             dumpSpan(outs, span, level + 1);
         }
@@ -1255,7 +1250,6 @@ void convertToHtml(Stream* outs, const Block* block, const HTML_Options& options
         } else {
             outs->write('>');
         }
-        PLY_ASSERT(heading->rawLines.isEmpty());
         for (const Span* span : heading->spans) {
             convertSpanToHtml(outs, span, options);
         }
@@ -1269,7 +1263,6 @@ void convertToHtml(Stream* outs, const Block* block, const HTML_Options& options
         if (!isInsideTight) {
             outs->write("<p>");
         }
-        PLY_ASSERT(para->rawLines.isEmpty());
         for (const Span* span : para->spans) {
             convertSpanToHtml(outs, span, options);
         }
@@ -1278,9 +1271,10 @@ void convertToHtml(Stream* outs, const Block* block, const HTML_Options& options
         }
     } else if (auto* codeBlock = block->var.as<Block::CodeBlock>()) {
         outs->write("<pre><code>");
-        PLY_ASSERT(codeBlock->spans.isEmpty());
-        for (StringView rawLine : codeBlock->rawLines) {
-            printXmlEscapedString(*outs, rawLine);
+        for (const Span* span : codeBlock->spans) {
+            auto* text = span->var.as<Span::Text>();
+            PLY_ASSERT(text);
+            printXmlEscapedString(*outs, text->text);
         }
         outs->write("</code></pre>\n");
     } else if (block->var.is<Block::ThematicBreak>()) {
