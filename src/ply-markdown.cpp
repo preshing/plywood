@@ -11,16 +11,25 @@ namespace ply {
 namespace markdown {
 
 //------------------------------------------------------------------
-// Private Parser implementation not exposed in the public API.
+// Private Parser implementation details not exposed in the public API.
 //------------------------------------------------------------------
 
 struct Parser {
+    // The current stack of nested Markdown blocks based on the content of previous lines.
+    // Consists of ListItems and BlockQuotes.
     Array<Block*> activeBlocks;
+
+    // The current leaf block, if any; Paragraphs, Headings and CodeBlocks go here.
     Block* leafBlock = nullptr;
-    Array<String> leafRawLines;
+
+    // Accumulates raw text to be added to the leaf block.
+    // Inline delimiter spans are parsed when the leaf block is flushed.
+    MemStream rawLeafText;
+
+    // Root block of the document. Top-level blocks are popped from the front and returned to the caller as we go.
     Block rootBlock;
 
-    // Only used if leafBlock is CodeBlock:
+    // Only used if leafBlock is CodeBlock.
     u32 numBlankLinesInCodeBlock = 0;
 
     // This flag indicates that some Lists on the stack have their isLooseIfContinued flag set: (Alternatively, we
@@ -31,6 +40,7 @@ struct Parser {
 
 //------------------------------------------------------------------
 // ColumnTrackingReader keeps track of the column index while reading UTF-8 codepoints from an input string.
+// Used to determine the indentation of markers and text so we know which block each line belongs to.
 //------------------------------------------------------------------
 
 struct ColumnTrackingReader {
@@ -81,7 +91,8 @@ struct ColumnTrackingReader {
 };
 
 //------------------------------------------------------------------
-// LineParser contains all the internal state used while parsing a single line of input.
+// LineParser contains all the internal state that's used while parsing a single line of input, but doesn't need to be
+// persisted in the Parser itself.
 //------------------------------------------------------------------
 
 struct LineParser {
@@ -117,8 +128,6 @@ struct LineParser {
 //  ██▀▀█▄  ██  ██  ██ ██    ██▄█▀      ██▀▀▀   ▄▄▄██ ██  ▀▀ ▀█▄▄▄  ██ ██  ██ ██  ██
 //  ██▄▄█▀ ▄██▄ ▀█▄▄█▀ ▀█▄▄▄ ██ ▀█▄     ██     ▀█▄▄██ ██      ▄▄▄█▀ ██ ██  ██ ▀█▄▄██
 //                                                                             ▄▄▄█▀
-
-// Code to parse blocks (first pass).
 
 // Helper to create a block, set its variant, attach it to a parent, and return it.
 template <typename T>
@@ -287,11 +296,11 @@ void handleBlankLine(LineParser& lp) {
         if (ctReader.column - lp.outerColumn > 4) {
             // Add intermediate blank lines.
             for (u32 i = 0; i < parser->numBlankLinesInCodeBlock; i++) {
-                parser->leafRawLines.append("\n");
+                parser->rawLeafText.write('\n');
             }
             parser->numBlankLinesInCodeBlock = 0;
             String codeLine = extractCodeLine({ctReader.startByte, ctReader.endByte}, lp.outerColumn + 4);
-            parser->leafRawLines.append(std::move(codeLine));
+            parser->rawLeafText.write(codeLine);
         } else {
             parser->numBlankLinesInCodeBlock++;
         }
@@ -448,6 +457,8 @@ void parseNewMarkers(LineParser& lp) {
     }
 }
 
+// Parse non-blank line content into leaf blocks. This can create or extend paragraphs, detect headings/thematic
+// breaks, or append indented code, while also updating list looseness state when needed.
 void parseParagraphText(LineParser& lp) {
     Parser* parser = lp.parser;
 
@@ -459,18 +470,18 @@ void parseParagraphText(LineParser& lp) {
         if (remainingText && !parser->leafBlock) {
             Block* parent = parser->activeBlocks ? parser->activeBlocks.back() : &parser->rootBlock;
             parser->leafBlock = addBlock<Block::CodeBlock>(parent);
-            PLY_ASSERT(parser->leafRawLines.isEmpty());
+            PLY_ASSERT(parser->rawLeafText.getSeekPos() == 0);
             PLY_ASSERT(parser->numBlankLinesInCodeBlock == 0);
         }
         if (parser->leafBlock) {
             PLY_ASSERT(parser->leafBlock->var.is<Block::CodeBlock>());
             // Add intermediate blank lines
             for (u32 i = 0; i < parser->numBlankLinesInCodeBlock; i++) {
-                parser->leafRawLines.append("\n");
+                parser->rawLeafText.write('\n');
             }
             parser->numBlankLinesInCodeBlock = 0;
             String codeLine = extractCodeLine({lp.ctReader.startByte, lp.ctReader.endByte}, lp.outerColumn + 4);
-            parser->leafRawLines.append(std::move(codeLine));
+            parser->rawLeafText.write(codeLine);
         }
     } else {
         if (remainingText) {
@@ -530,9 +541,9 @@ void parseParagraphText(LineParser& lp) {
                     auto* heading = headingBlock->var.as<Block::Heading>();
                     heading->level = poundCount;
                     parser->leafBlock = headingBlock;
-                    PLY_ASSERT(parser->leafRawLines.isEmpty());
+                    PLY_ASSERT(parser->rawLeafText.getSeekPos() == 0);
                     if (StringView remainingText = in.viewRemainingBytes().trim()) {
-                        parser->leafRawLines.append(remainingText);
+                        parser->rawLeafText.write(remainingText);
                     }
                     finalizeLeafBlock(parser);
                     return;
@@ -544,9 +555,11 @@ void parseParagraphText(LineParser& lp) {
                 // Begin new paragraph
                 Block* parent = parser->activeBlocks ? parser->activeBlocks.back() : &parser->rootBlock;
                 parser->leafBlock = addBlock<Block::Paragraph>(parent);
-                PLY_ASSERT(parser->leafRawLines.isEmpty());
+                PLY_ASSERT(parser->rawLeafText.getSeekPos() == 0);
             }
-            parser->leafRawLines.append(remainingText);
+            if (parser->rawLeafText.getSeekPos() > 0)
+                parser->rawLeafText.write('\n');
+            parser->rawLeafText.write(remainingText);
         } else {
             PLY_ASSERT(!parser->leafBlock); // Should already be cleared by this point
         }
@@ -559,57 +572,24 @@ void parseParagraphText(LineParser& lp) {
 //  ▀█▄▄█▀ ██▄▄█▀ ▀█▄▄██ ██  ██     ██     ▀█▄▄██ ██      ▄▄▄█▀ ██ ██  ██ ▀█▄▄██
 //         ██                                                              ▄▄▄█▀
 
-// Code to parse inline spans (second pass)
-
-struct InlineConsumer {
-    ArrayView<const String> rawLines;
-    StringView rawLine;
-    u32 lineIndex = 0;
-    u32 i = 0;
-
-    InlineConsumer(ArrayView<const String> rawLines) : rawLines{rawLines} {
-        if (rawLines) {
-            rawLine = rawLines[0];
-        }
-    }
-
-    enum ValidIndexResult { SameLine, NextLine, End };
-
-    ValidIndexResult validIndex() {
-        if (this->i >= this->rawLine.numBytes()) {
-            if (this->lineIndex >= this->rawLines.numItems())
-                return End;
-            this->i = 0;
-            this->lineIndex++;
-            if (this->lineIndex >= this->rawLines.numItems()) {
-                this->rawLine = {};
-                return End;
-            }
-            this->rawLine = this->rawLines[this->lineIndex];
-            PLY_ASSERT(this->rawLine);
-            return NextLine;
-        }
-        return SameLine;
-    }
-};
-
-String getCodeSpan(InlineConsumer& ic, u32 endTickCount) {
+// Optimistically parses a backtick code span until a matching closing backtick run, advancing pos on success.
+String getCodeSpan(StringView rawText, u32* pos, u32 endTickCount) {
     MemStream mout;
-    for (;;) {
-        InlineConsumer::ValidIndexResult res = ic.validIndex();
-        if (res == InlineConsumer::End)
-            return {};
-        if (res == InlineConsumer::NextLine) {
+    u32 i = *pos;
+    while (i < rawText.numBytes()) {
+        char c = rawText[i];
+        if (c == '\n') {
             mout.write(' ');
+            i++;
+            continue;
         }
-        char c = ic.rawLine[ic.i];
-        ic.i++;
         if (c == '`') {
             u32 tickCount = 1;
-            for (; ic.i < ic.rawLine.numBytes() && ic.rawLine[ic.i] == '`'; ic.i++) {
+            for (i++; i < rawText.numBytes() && rawText[i] == '`'; i++) {
                 tickCount++;
             }
             if (tickCount == endTickCount) {
+                *pos = i;
                 String result = mout.moveToString();
                 PLY_ASSERT(result);
                 if (result[0] == ' ' && result.back() == ' ' && result.find([](char c) { return c != ' '; }) >= 0) {
@@ -617,17 +597,22 @@ String getCodeSpan(InlineConsumer& ic, u32 endTickCount) {
                 }
                 return result;
             }
-            mout.write(ic.rawLine.substr(ic.i - tickCount, tickCount));
+            mout.write(rawText.substr(i - tickCount, tickCount));
         } else {
             mout.write(c);
+            i++;
         }
     }
+    return {};
 }
 
+// Returns true if c is an ASCII punctuation character.
+// Used when determining whether a neighboring delimiter is left or right-flanking.
 inline bool isAscPunc(char c) {
     return (c >= 0x21 && c <= 0x2f) || (c >= 0x3a && c <= 0x40) || (c >= 0x5b && c <= 0x60) || (c >= 0x7b && c <= 0x7e);
 }
 
+// Token produced by inline scanning. It can represent raw text, emphasis runs, link markers, or a completed span.
 struct Delimiter {
     enum Type {
         RawText,
@@ -640,7 +625,7 @@ struct Delimiter {
     Type type = RawText;
     bool leftFlanking = false;  // Stars & Underscores only
     bool rightFlanking = false; // Stars & Underscores only
-    bool active = true;         // Open_Link only
+    bool active = true;         // OpenLink only
     String textStorage;
     StringView text;
     Owned<Span> span; // InlineElem only
@@ -667,51 +652,49 @@ struct Delimiter {
     }
 };
 
+// Result of parsing a link destination after a closing ']'.
 struct LinkDestination {
     bool success = false;
     String dest;
 };
 
-LinkDestination parseLinkDestination(InlineConsumer& ic) {
+// Parses a link destination from rawText starting at pos and advances pos past the closing ')' on success.
+LinkDestination parseLinkDestination(StringView rawText, u32* pos) {
     // FIXME: Support < > destinations
     // FIXME: Support link titles
 
+    u32 i = *pos;
+
     // Skip initial whitespace
-    for (;;) {
-        InlineConsumer::ValidIndexResult res = ic.validIndex();
-        if (res == InlineConsumer::End)
-            return {false, String{}};
-        if (!isWhitespace(ic.rawLine[ic.i]))
-            break;
-        ic.i++;
+    while (i < rawText.numBytes() && isWhitespace(rawText[i])) {
+        i++;
     }
+    if (i >= rawText.numBytes())
+        return {false, String{}};
 
     MemStream mout;
     u32 parenNestLevel = 0;
-    for (;;) {
-        InlineConsumer::ValidIndexResult res = ic.validIndex();
-        if (res != InlineConsumer::SameLine)
+    for (; i < rawText.numBytes(); i++) {
+        char c = rawText[i];
+        if (c == '\n')
             break;
 
-        char c = ic.rawLine[ic.i];
         if (c == '\\') {
-            ic.i++;
-            if (ic.validIndex() != InlineConsumer::SameLine) {
+            i++;
+            if (i >= rawText.numBytes() || rawText[i] == '\n') {
                 mout.write('\\');
                 break;
             }
-            c = ic.rawLine[ic.i];
+            c = rawText[i];
             if (!isAscPunc(c)) {
                 mout.write('\\');
             }
             mout.write(c);
         } else if (c == '(') {
-            ic.i++;
             mout.write(c);
             parenNestLevel++;
         } else if (c == ')') {
             if (parenNestLevel > 0) {
-                ic.i++;
                 mout.write(c);
                 parenNestLevel--;
             } else {
@@ -720,7 +703,6 @@ LinkDestination parseLinkDestination(InlineConsumer& ic) {
         } else if (c >= 0 && c <= 32)
             break;
         else {
-            ic.i++;
             mout.write(c);
         }
     }
@@ -729,20 +711,18 @@ LinkDestination parseLinkDestination(InlineConsumer& ic) {
         return {false, String{}};
 
     // Skip trailing whitespace
-    for (;;) {
-        InlineConsumer::ValidIndexResult res = ic.validIndex();
-        if (res == InlineConsumer::End)
-            return {false, String{}};
-        char c = ic.rawLine[ic.i];
-        if (c == ')') {
-            ic.i++;
-            return {true, mout.moveToString()};
-        } else if (!isWhitespace(c))
-            return {false, String{}};
-        ic.i++;
+    while (i < rawText.numBytes() && isWhitespace(rawText[i])) {
+        i++;
     }
+    if (i >= rawText.numBytes() || rawText[i] != ')')
+        return {false, String{}};
+
+    i++;
+    *pos = i;
+    return {true, mout.moveToString()};
 }
 
+// Converts delimiters to spans, merging plain-text delimiters into adjacent Span::Text nodes.
 Array<Owned<Span>> convertToInlineElems(ArrayView<Delimiter> delimiters) {
     Array<Owned<Span>> spans;
     for (Delimiter& delimiter : delimiters) {
@@ -758,6 +738,7 @@ Array<Owned<Span>> convertToInlineElems(ArrayView<Delimiter> delimiters) {
     return spans;
 }
 
+// Resolves '*' and '_' delimiter runs into italic/bold spans in-place, then returns inline elems from bottomPos.
 Array<Owned<Span>> processEmphasis(Array<Delimiter>& delimiters, u32 bottomPos) {
     u32 starOpener = bottomPos;
     u32 underscoreOpener = bottomPos;
@@ -809,120 +790,119 @@ Array<Owned<Span>> processEmphasis(Array<Delimiter>& delimiters, u32 bottomPos) 
     return result;
 }
 
-Array<Owned<Span>> expandInlineSpans(ArrayView<const String> rawLines) {
+// Parses inline Markdown spans within rawText and returns the expanded span sequence.
+Array<Owned<Span>> expandInlineSpans(StringView rawText) {
     Array<Delimiter> delimiters;
-    InlineConsumer ic{rawLines};
+    u32 i = 0;
     u32 flushedIndex = 0;
-    auto flushText = [&] {
-        if (ic.i > flushedIndex) {
-            delimiters.append({Delimiter::RawText, ic.rawLine.substr(flushedIndex, ic.i - flushedIndex)});
-            flushedIndex = ic.i;
+    auto flushText = [&]() {
+        if (i > flushedIndex) {
+            delimiters.append({Delimiter::RawText, rawText.substr(flushedIndex, i - flushedIndex)});
+            flushedIndex = i;
         }
     };
-    for (;;) {
-        if (ic.i >= ic.rawLine.numBytes()) {
-            // We've reached the end of a line. Check to see whether to emit a hard break or a soft break. When there
-            // are two or more spaces before the end of the line, it's a hard break.
-            u32 savedPos = ic.i;
-            while (ic.i > flushedIndex && ic.rawLine[ic.i - 1] == ' ') {
-                ic.i--;
+    while (i < rawText.numBytes()) {
+        char c = rawText[i];
+        if (c == '\n') {
+            // At line boundaries, trailing spaces are trimmed and can convert to hard breaks.
+            u32 savedPos = i;
+            while (i > flushedIndex && rawText[i - 1] == ' ') {
+                i--;
             }
-            bool hardBreakFromSpaces = (savedPos - ic.i >= 2);
+            bool hardBreakFromSpaces = (savedPos - i >= 2);
             flushText();
-            ic.i = 0;
-            flushedIndex = 0;
-            ic.lineIndex++;
-            if (ic.lineIndex >= ic.rawLines.numItems())
-                break;
-            ic.rawLine = ic.rawLines[ic.lineIndex];
-            if (hardBreakFromSpaces) {
-                delimiters.append(makeSpan<Span::HardBreak>());
-            } else {
-                delimiters.append(makeSpan<Span::SoftBreak>());
+            i = savedPos + 1;
+            flushedIndex = i;
+            if (i < rawText.numBytes()) {
+                if (hardBreakFromSpaces) {
+                    delimiters.append(makeSpan<Span::HardBreak>());
+                } else {
+                    delimiters.append(makeSpan<Span::SoftBreak>());
+                }
             }
+            continue;
         }
 
-        char c = ic.rawLine[ic.i];
         if (c == '`') {
             flushText();
             u32 tickCount = 1;
-            for (ic.i++; ic.i < ic.rawLine.numBytes() && ic.rawLine[ic.i] == '`'; ic.i++) {
+            for (i++; i < rawText.numBytes() && rawText[i] == '`'; i++) {
                 tickCount++;
             }
             // Try consuming code span
-            InlineConsumer backup = ic;
-            String codeStr = getCodeSpan(ic, tickCount);
+            u32 backup = i;
+            String codeStr = getCodeSpan(rawText, &i, tickCount);
             if (codeStr) {
                 Owned<Span> codeSpan = makeSpan<Span::Code>();
                 codeSpan->var.as<Span::Code>()->text = std::move(codeStr);
                 delimiters.append(std::move(codeSpan));
-                flushedIndex = ic.i;
+                flushedIndex = i;
             } else {
-                ic = backup;
+                i = backup;
                 flushText();
             }
         } else if (c == '*') {
             flushText();
             u32 runLength = 1;
-            for (ic.i++; ic.i < ic.rawLine.numBytes() && ic.rawLine[ic.i] == '*'; ic.i++) {
+            for (i++; i < rawText.numBytes() && rawText[i] == '*'; i++) {
                 runLength++;
             }
-            delimiters.append(Delimiter::makeRun(Delimiter::Stars, ic.rawLine, ic.i - runLength, runLength));
-            flushedIndex = ic.i;
+            delimiters.append(Delimiter::makeRun(Delimiter::Stars, rawText, i - runLength, runLength));
+            flushedIndex = i;
         } else if (c == '_') {
             flushText();
             u32 runLength = 1;
-            for (ic.i++; ic.i < ic.rawLine.numBytes() && ic.rawLine[ic.i] == '_'; ic.i++) {
+            for (i++; i < rawText.numBytes() && rawText[i] == '_'; i++) {
                 runLength++;
             }
-            delimiters.append(Delimiter::makeRun(Delimiter::Underscores, ic.rawLine, ic.i - runLength, runLength));
-            flushedIndex = ic.i;
+            delimiters.append(Delimiter::makeRun(Delimiter::Underscores, rawText, i - runLength, runLength));
+            flushedIndex = i;
         } else if (c == '\\') {
             flushText();
-            ic.i++;
-            InlineConsumer::ValidIndexResult res = ic.validIndex();
-            if (res == InlineConsumer::End) {
+            i++;
+            if (i >= rawText.numBytes()) {
                 delimiters.append({Delimiter::RawText, StringView{"\\"}});
-                flushedIndex = ic.i;
-            } else if (res == InlineConsumer::NextLine) {
+                flushedIndex = i;
+            } else if (rawText[i] == '\n') {
                 delimiters.append(makeSpan<Span::HardBreak>());
-                flushedIndex = ic.i;
-            } else if (isAscPunc(ic.rawLine[ic.i])) {
-                delimiters.append({Delimiter::RawText, ic.rawLine.substr(ic.i, 1)});
-                ic.i++;
-                flushedIndex = ic.i;
+                i++;
+                flushedIndex = i;
+            } else if (isAscPunc(rawText[i])) {
+                delimiters.append({Delimiter::RawText, rawText.substr(i, 1)});
+                i++;
+                flushedIndex = i;
             } else {
                 delimiters.append({Delimiter::RawText, StringView{"\\"}});
-                flushedIndex = ic.i;
+                flushedIndex = i;
             }
         } else if (c == '[') {
             flushText();
-            delimiters.append({Delimiter::OpenLink, ic.rawLine.substr(ic.i, 1)});
-            ic.i++;
-            flushedIndex = ic.i;
+            delimiters.append({Delimiter::OpenLink, rawText.substr(i, 1)});
+            i++;
+            flushedIndex = i;
         } else if (c == ']') {
             // Try to parse an inline link
             flushText();
-            ic.i++;
-            if (!(ic.i < ic.rawLine.numBytes() && ic.rawLine[ic.i] == '('))
+            i++;
+            if (!(i < rawText.numBytes() && rawText[i] == '('))
                 continue; // No parenthesis
 
             // Got opening parenthesis
-            ic.i++;
+            i++;
 
-            // Look for preceding Open_Link delimiter
+            // Look for preceding OpenLink delimiter
             s32 openLink =
                 reverseFind(delimiters, [](const Delimiter& delim) { return delim.type == Delimiter::OpenLink; });
             if (openLink < 0)
-                continue; // No preceding Open_Link delimiter
+                continue; // No preceding OpenLink delimiter
 
-            // Found a preceding Open_Link delimiter
+            // Found a preceding OpenLink delimiter
             // Try to parse link destination
-            InlineConsumer backup = ic;
-            LinkDestination linkDest = parseLinkDestination(ic);
+            u32 backup = i;
+            LinkDestination linkDest = parseLinkDestination(rawText, &i);
             if (!linkDest.success) {
                 // Couldn't parse link destination
-                ic = backup;
+                i = backup;
                 continue;
             }
 
@@ -932,15 +912,17 @@ Array<Owned<Span>> expandInlineSpans(ArrayView<const String> rawLines) {
             linkSpan->asContainer()->childSpans = processEmphasis(delimiters, openLink + 1);
             delimiters.resize(openLink);
             delimiters.append(std::move(linkSpan));
-            flushedIndex = ic.i;
+            flushedIndex = i;
         } else {
-            ic.i++;
+            i++;
         }
     }
 
+    flushText();
     return processEmphasis(delimiters, 0);
 }
 
+// Finalizes parser->leafBlock by moving raw text into spans, then clears leaf parsing state.
 void finalizeLeafBlock(Parser* parser) {
     if (!parser->leafBlock)
         return;
@@ -948,16 +930,17 @@ void finalizeLeafBlock(Parser* parser) {
     Block::Leaf* leaf = parser->leafBlock->asLeaf();
     PLY_ASSERT(leaf);
     PLY_ASSERT(leaf->spans.isEmpty());
+    String rawText = parser->rawLeafText.moveToString();
+    new (&parser->rawLeafText) MemStream;
     if (parser->leafBlock->var.is<Block::CodeBlock>()) {
-        for (String& rawLine : parser->leafRawLines) {
+        if (rawText) {
             Owned<Span> textSpan = makeSpan<Span::Text>();
-            textSpan->var.as<Span::Text>()->text = std::move(rawLine);
+            textSpan->var.as<Span::Text>()->text = std::move(rawText);
             leaf->spans.append(std::move(textSpan));
         }
     } else {
-        leaf->spans = expandInlineSpans(parser->leafRawLines);
+        leaf->spans = expandInlineSpans(rawText);
     }
-    parser->leafRawLines.clear();
     parser->leafBlock = nullptr;
     parser->numBlankLinesInCodeBlock = 0;
 }
@@ -968,12 +951,14 @@ void finalizeLeafBlock(Parser* parser) {
 //  ██     ▀█▄▄██ ██▄▄█▀ ▄██▄ ██ ▀█▄▄▄     ██  ██ ██     ▄██▄
 //
 
+// Creates a parser with an initialized root container block.
 Owned<Parser> createParser() {
     Owned<Parser> parser = Heap::create<Parser>();
     parser->rootBlock.var.switchTo<Block::BlockQuote>();
     return parser;
 }
 
+// Parses one source line and returns the next completed top-level block, if one becomes available.
 Owned<Block> parseLine(Parser* parser, StringView line) {
     LineParser lp{parser, line};
 
@@ -1008,6 +993,7 @@ Owned<Block> parseLine(Parser* parser, StringView line) {
     return {};
 }
 
+// Finishes parsing at end-of-input and returns the final remaining top-level block, if any.
 Owned<Block> flush(Parser* parser) {
     // Terminate all existing blocks.
     finalizeLeafBlock(parser);
@@ -1025,10 +1011,12 @@ Owned<Block> flush(Parser* parser) {
     return {};
 }
 
+// Destroys a parser created with createParser().
 void destroy(Parser* parser) {
     Heap::destroy(parser);
 }
 
+// Convenience helper that parses an entire Markdown string into a list of top-level blocks.
 Array<Owned<Block>> parseWholeDocument(StringView markdown) {
     Array<Owned<Block>> blocks;
     Owned<Parser> parser = createParser();
@@ -1046,6 +1034,7 @@ Array<Owned<Block>> parseWholeDocument(StringView markdown) {
     return blocks;
 }
 
+// Convenience helper that parses Markdown source and returns rendered HTML.
 String convertToHtml(StringView src) {
     ViewStream in{src};
     MemStream out;
@@ -1070,6 +1059,7 @@ String convertToHtml(StringView src) {
 //  ██▄▄█▀ ▀█▄▄▄  ██▄▄█▀ ▀█▄▄██ ▀█▄▄██ ▀█▄▄██ ██ ██  ██ ▀█▄▄██
 //                               ▄▄▄█▀  ▄▄▄█▀            ▄▄▄█▀
 
+// Debug printer for a span subtree.
 void dumpSpan(Stream* outs, const Span* span, u32 level) {
     String indent = StringView{"  "} * level;
     outs->write(indent);
@@ -1105,6 +1095,7 @@ void dumpSpan(Stream* outs, const Span* span, u32 level) {
     }
 }
 
+// Debug printer for a block subtree, including nested spans for leaf blocks.
 void dump(Stream* outs, const Block* block, u32 level) {
     String indent = StringView{"  "} * level;
     outs->write(indent);
@@ -1156,6 +1147,7 @@ void dump(Stream* outs, const Block* block, u32 level) {
 //  ██  ██   ██   ██   ██ ██▄▄▄
 //
 
+// Renders one inline span subtree to HTML.
 void convertSpanToHtml(Stream* outs, const Span* span, const HTML_Options& options) {
     if (auto* text = span->var.as<Span::Text>()) {
         printXmlEscapedString(*outs, text->text);
@@ -1192,6 +1184,7 @@ void convertSpanToHtml(Stream* outs, const Span* span, const HTML_Options& optio
     }
 }
 
+// Renders one block subtree to HTML.
 void convertToHtml(Stream* outs, const Block* block, const HTML_Options& options) {
     if (auto* list = block->var.as<Block::List>()) {
         if (list->startNumber >= 0) {
