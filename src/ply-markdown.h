@@ -50,10 +50,15 @@ struct Block {
         String id;
     };
     struct Paragraph : Leaf {};
-    struct CodeBlock : Leaf {};
+    struct IndentedCodeBlock : Leaf {};
+    struct FencedCodeBlock : Leaf {
+        String fenceMarker; // Indented code blocks leave this empty.
+        String infoString;  // Optional info string for fenced code blocks.
+        u32 relativeIndent = 0;
+    };
     struct ThematicBreak {};
 
-    Variant<List, ListItem, BlockQuote, Heading, Paragraph, CodeBlock, ThematicBreak> var;
+    Variant<List, ListItem, BlockQuote, Heading, Paragraph, IndentedCodeBlock, FencedCodeBlock, ThematicBreak> var;
     Block* parent = nullptr;
 
     // Convenience functions:
@@ -74,7 +79,9 @@ struct Block {
             return p;
         if (auto* p = var.as<Paragraph>())
             return p;
-        if (auto* p = var.as<CodeBlock>())
+        if (auto* p = var.as<IndentedCodeBlock>())
+            return p;
+        if (auto* p = var.as<FencedCodeBlock>())
             return p;
         return nullptr;
     }

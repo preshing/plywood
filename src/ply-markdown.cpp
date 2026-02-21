@@ -19,7 +19,7 @@ struct Parser {
     // Consists of ListItems and BlockQuotes.
     Array<Block*> activeBlocks;
 
-    // The current leaf block, if any; Paragraphs, Headings and CodeBlocks go here.
+    // The current leaf block, if any; Paragraphs, Headings, IndentedCodeBlocks and FencedCodeBlocks go here.
     Block* leafBlock = nullptr;
 
     // Accumulates raw text to be added to the leaf block.
@@ -29,8 +29,8 @@ struct Parser {
     // Root block of the document. Top-level blocks are popped from the front and returned to the caller as we go.
     Block rootBlock;
 
-    // Only used if leafBlock is CodeBlock.
-    u32 numBlankLinesInCodeBlock = 0;
+    // Only used if leafBlock is IndentedCodeBlock.
+    u32 numBlankLinesInIndentedCodeBlock = 0;
 
     // This flag indicates that some Lists on the stack have their isLooseIfContinued flag set: (Alternatively, we
     // *could* store the number of such Lists on the stack, and eliminate the isLooseIfContinued flag completely, but
@@ -151,26 +151,104 @@ Owned<Span> makeSpan() {
 void finalizeLeafBlock(Parser* parser);
 
 // Helper function to extract a line from a code block without leading indentation.
-String extractCodeLine(StringView line, u32 fromIndent) {
+String extractCodeLine(StringView line, u32 startColumn, u32 optionalSpace = 0) {
+    u32 startColWithSpace = startColumn + optionalSpace;
     u32 indent = 0;
     for (u32 i = 0; i < line.numBytes(); i++) {
-        if (indent == fromIndent)
+        if (indent == startColWithSpace)
             return line.substr(i);
         u8 c = line[i];
-        PLY_ASSERT(c < 128);              // No high code points
-        PLY_ASSERT(c >= 32 || c == '\t'); // No control characters
-        if (c == '\t') {
+        if (c == ' ') {
+            indent++;
+        } else if (c == '\t') {
             u32 tabSize = 4;
             u32 newIndent = indent + tabSize - (indent % tabSize);
-            if (newIndent > fromIndent)
-                return StringView{" "} * (newIndent - fromIndent) + line.substr(i + 1);
+            if (newIndent > startColWithSpace)
+                return StringView{" "} * (newIndent - startColWithSpace) + line.substr(i + 1);
             indent = newIndent;
         } else {
+            if (indent >= startColumn)
+                return line.substr(i);
             indent++;
         }
     }
     PLY_ASSERT(0);
     return {};
+}
+
+// Parsed pieces of a line that begins with a potential fenced code marker.
+struct FenceLine {
+    char marker = 0;
+    u32 markerCount = 0;
+    StringView suffix;
+};
+
+// Parses an initial run of ``` or ~~~ (length >= 3) and returns the remaining suffix.
+bool parseFenceLineStart(StringView remainingLine, FenceLine* outFence) {
+    if (!remainingLine)
+        return false;
+    char marker = remainingLine[0];
+    if (marker != '`' && marker != '~')
+        return false;
+
+    u32 i = 0;
+    while ((i < remainingLine.numBytes()) && (remainingLine[i] == marker)) {
+        i++;
+    }
+    if (i < 3)
+        return false;
+
+    outFence->marker = marker;
+    outFence->markerCount = i;
+    outFence->suffix = remainingLine.substr(i);
+    return true;
+}
+
+// Parses an opening fenced code line and fills marker/info metadata for the fenced block.
+bool parseOpeningFence(StringView remainingLine, u32 relativeIndent, Block::FencedCodeBlock& outFenced) {
+    if (relativeIndent > 3)
+        return false;
+
+    FenceLine fence;
+    if (!parseFenceLineStart(remainingLine, &fence))
+        return false;
+
+    StringView suffix = fence.suffix.trimRight([](char c) { return c == '\n' || c == '\r'; });
+    if (fence.marker == '`' && suffix.find('`') >= 0)
+        return false;
+
+    StringView info = suffix.trim();
+    s32 spacePos = info.find([](char c) { return c == ' ' || c == '\t'; });
+    if (spacePos >= 0) {
+        info = info.left(spacePos);
+    }
+
+    outFenced.fenceMarker = remainingLine.left(fence.markerCount);
+    outFenced.infoString = String{info};
+    outFenced.relativeIndent = relativeIndent;
+    return true;
+}
+
+// Returns true if remainingLine is a valid closing fence for the given opening marker.
+bool isClosingFence(StringView remainingLine, u32 relativeIndent, StringView openingFenceMarker) {
+    if (relativeIndent > 3)
+        return false;
+    PLY_ASSERT(openingFenceMarker);
+
+    FenceLine fence;
+    if (!parseFenceLineStart(remainingLine, &fence))
+        return false;
+    if (fence.marker != openingFenceMarker[0])
+        return false;
+    if (fence.markerCount < openingFenceMarker.numBytes())
+        return false;
+
+    StringView suffix = fence.suffix.trimRight([](char c) { return c == '\n' || c == '\r'; });
+    for (char c : suffix) {
+        if (c != ' ' && c != '\t')
+            return false;
+    }
+    return true;
 }
 
 // Returns true if the remaining line is a thematic break, according to basic CommonMark rules:
@@ -289,20 +367,27 @@ void handleBlankLine(LineParser& lp) {
     }
 
     if (parser->leafBlock) {
-        // At this point, the only possible leaf block is a CodeBlock, because Paragraphs are terminated above, and
+        // At this point, the leaf block must be a code block, because Paragraphs are terminated above, and
         // Headings don't persist across lines.
-        PLY_ASSERT(parser->leafBlock->var.is<Block::CodeBlock>());
-        // Count blank lines in CodeBlocks
-        if (ctReader.column - lp.outerColumn > 4) {
-            // Add intermediate blank lines.
-            for (u32 i = 0; i < parser->numBlankLinesInCodeBlock; i++) {
-                parser->rawLeafText.write('\n');
+        if (parser->leafBlock->var.is<Block::IndentedCodeBlock>()) {
+            // Count blank lines in IndentedCodeBlocks
+            if (ctReader.column - lp.outerColumn > 4) {
+                // Add intermediate blank lines.
+                for (u32 i = 0; i < parser->numBlankLinesInIndentedCodeBlock; i++) {
+                    parser->rawLeafText.write('\n');
+                }
+                parser->numBlankLinesInIndentedCodeBlock = 0;
+                String codeLine = extractCodeLine({ctReader.startByte, ctReader.endByte}, lp.outerColumn + 4);
+                parser->rawLeafText.write(codeLine);
+            } else {
+                parser->numBlankLinesInIndentedCodeBlock++;
             }
-            parser->numBlankLinesInCodeBlock = 0;
-            String codeLine = extractCodeLine({ctReader.startByte, ctReader.endByte}, lp.outerColumn + 4);
-            parser->rawLeafText.write(codeLine);
         } else {
-            parser->numBlankLinesInCodeBlock++;
+            auto* fenced = parser->leafBlock->var.as<Block::FencedCodeBlock>();
+            PLY_ASSERT(fenced);
+            String codeLine =
+                extractCodeLine({ctReader.startByte, ctReader.endByte}, lp.outerColumn, fenced->relativeIndent);
+            parser->rawLeafText.write(codeLine);
         }
     } else {
         // There's no leaf block and the remainder of the line is blank.
@@ -469,17 +554,17 @@ void parseParagraphText(LineParser& lp) {
         // Potentially begin or append to code block
         if (remainingText && !parser->leafBlock) {
             Block* parent = parser->activeBlocks ? parser->activeBlocks.back() : &parser->rootBlock;
-            parser->leafBlock = addBlock<Block::CodeBlock>(parent);
+            parser->leafBlock = addBlock<Block::IndentedCodeBlock>(parent);
             PLY_ASSERT(parser->rawLeafText.getSeekPos() == 0);
-            PLY_ASSERT(parser->numBlankLinesInCodeBlock == 0);
+            PLY_ASSERT(parser->numBlankLinesInIndentedCodeBlock == 0);
         }
         if (parser->leafBlock) {
-            PLY_ASSERT(parser->leafBlock->var.is<Block::CodeBlock>());
+            PLY_ASSERT(parser->leafBlock->var.is<Block::IndentedCodeBlock>());
             // Add intermediate blank lines
-            for (u32 i = 0; i < parser->numBlankLinesInCodeBlock; i++) {
+            for (u32 i = 0; i < parser->numBlankLinesInIndentedCodeBlock; i++) {
                 parser->rawLeafText.write('\n');
             }
-            parser->numBlankLinesInCodeBlock = 0;
+            parser->numBlankLinesInIndentedCodeBlock = 0;
             String codeLine = extractCodeLine({lp.ctReader.startByte, lp.ctReader.endByte}, lp.outerColumn + 4);
             parser->rawLeafText.write(codeLine);
         }
@@ -501,6 +586,21 @@ void parseParagraphText(LineParser& lp) {
                     }
                 }
                 parser->checkListContinuations = false;
+            }
+
+            Block::FencedCodeBlock newFenced;
+            if (parseOpeningFence(lp.ctReader.viewRemaining(), lp.relativeIndent(), newFenced)) {
+                if (hasPara) {
+                    finalizeLeafBlock(parser);
+                }
+                Block* parent = parser->activeBlocks ? parser->activeBlocks.back() : &parser->rootBlock;
+                Block* fencedBlock = addBlock<Block::FencedCodeBlock>(parent);
+                auto* fenced = fencedBlock->var.as<Block::FencedCodeBlock>();
+                PLY_ASSERT(fenced);
+                *fenced = std::move(newFenced);
+                parser->leafBlock = fencedBlock;
+                PLY_ASSERT(parser->rawLeafText.getSeekPos() == 0);
+                return;
             }
 
             u32 setextLevel = 0;
@@ -932,7 +1032,7 @@ void finalizeLeafBlock(Parser* parser) {
     PLY_ASSERT(leaf->spans.isEmpty());
     String rawText = parser->rawLeafText.moveToString();
     new (&parser->rawLeafText) MemStream;
-    if (parser->leafBlock->var.is<Block::CodeBlock>()) {
+    if (parser->leafBlock->var.is<Block::IndentedCodeBlock>() || parser->leafBlock->var.is<Block::FencedCodeBlock>()) {
         if (rawText) {
             Owned<Span> textSpan = makeSpan<Span::Text>();
             textSpan->var.as<Span::Text>()->text = std::move(rawText);
@@ -942,7 +1042,7 @@ void finalizeLeafBlock(Parser* parser) {
         leaf->spans = expandInlineSpans(rawText);
     }
     parser->leafBlock = nullptr;
-    parser->numBlankLinesInCodeBlock = 0;
+    parser->numBlankLinesInIndentedCodeBlock = 0;
 }
 
 //  ▄▄▄▄▄         ▄▄     ▄▄▄  ▄▄            ▄▄▄▄  ▄▄▄▄▄  ▄▄▄▄
@@ -965,20 +1065,37 @@ Owned<Block> parseLine(Parser* parser, StringView line) {
     // Match existing indentation and blockquote '>' markers.
     matchExistingIndentation(lp);
 
-    if (lp.ctReader.viewRemaining().trim().isEmpty()) {
-        // The rest of the line is blank.
-        handleBlankLine(lp);
-    } else {
-        // There's more text on the current line.
-        if (lp.blockDepth < parser->activeBlocks.numItems()) {
-            finalizeLeafBlock(parser);
-            parser->activeBlocks.resize(lp.blockDepth);
+    bool handledFencedLine = false;
+    if (auto* fenced = parser->leafBlock ? parser->leafBlock->var.as<Block::FencedCodeBlock>() : nullptr) {
+        if (lp.blockDepth == parser->activeBlocks.numItems()) {
+            if (isClosingFence(lp.ctReader.viewRemaining(), lp.relativeIndent(), fenced->fenceMarker)) {
+                finalizeLeafBlock(parser);
+            } else {
+                String codeLine = extractCodeLine(
+                    {lp.ctReader.startByte, lp.ctReader.endByte}, lp.outerColumn, fenced->relativeIndent);
+                parser->rawLeafText.write(codeLine);
+            }
+            handledFencedLine = true;
         }
-        if (parser->leafBlock && parser->leafBlock->var.is<Block::CodeBlock>() && lp.relativeIndent() < 4) {
-            finalizeLeafBlock(parser);
+    }
+
+    if (!handledFencedLine) {
+        if (lp.ctReader.viewRemaining().trim().isEmpty()) {
+            // The rest of the line is blank.
+            handleBlankLine(lp);
+        } else {
+            // There's more text on the current line.
+            // Auto-close blockquotes and list items that we are no longer inside.
+            if (lp.blockDepth < parser->activeBlocks.numItems()) {
+                finalizeLeafBlock(parser);
+                parser->activeBlocks.resize(lp.blockDepth);
+            }
+            if (parser->leafBlock && parser->leafBlock->var.is<Block::IndentedCodeBlock>() && lp.relativeIndent() < 4) {
+                finalizeLeafBlock(parser);
+            }
+            parseNewMarkers(lp);
+            parseParagraphText(lp);
         }
-        parseNewMarkers(lp);
-        parseParagraphText(lp);
     }
 
     auto& rootChildren = parser->rootBlock.asInner()->childBlocks;
@@ -1119,8 +1236,10 @@ void dump(Stream* outs, const Block* block, u32 level) {
         outs->format("heading level={}", heading->level);
     } else if (block->var.is<Block::Paragraph>()) {
         outs->write("paragraph");
-    } else if (block->var.is<Block::CodeBlock>()) {
-        outs->write("code_block");
+    } else if (block->var.is<Block::IndentedCodeBlock>()) {
+        outs->write("indented_code_block");
+    } else if (block->var.is<Block::FencedCodeBlock>()) {
+        outs->write("fenced_code_block");
     } else if (block->var.is<Block::ThematicBreak>()) {
         outs->write("thematic_break");
     } else {
@@ -1262,9 +1381,21 @@ void convertToHtml(Stream* outs, const Block* block, const HTML_Options& options
         if (!isInsideTight) {
             outs->write("</p>\n");
         }
-    } else if (auto* codeBlock = block->var.as<Block::CodeBlock>()) {
+    } else if (auto* indented = block->var.as<Block::IndentedCodeBlock>()) {
         outs->write("<pre><code>");
-        for (const Span* span : codeBlock->spans) {
+        for (const Span* span : indented->spans) {
+            auto* text = span->var.as<Span::Text>();
+            PLY_ASSERT(text);
+            printXmlEscapedString(*outs, text->text);
+        }
+        outs->write("</code></pre>\n");
+    } else if (auto* fenced = block->var.as<Block::FencedCodeBlock>()) {
+        outs->write("<pre><code");
+        if (fenced->infoString) {
+            outs->format(" class=\"language-{&}\"", fenced->infoString);
+        }
+        outs->write(">");
+        for (const Span* span : fenced->spans) {
             auto* text = span->var.as<Span::Text>();
             PLY_ASSERT(text);
             printXmlEscapedString(*outs, text->text);
