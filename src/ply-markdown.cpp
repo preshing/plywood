@@ -343,6 +343,20 @@ void matchExistingIndentation(LineParser& lp) {
     }
 }
 
+// Marks ancestor lists as "loose if continued" when a blank line is seen inside them.
+void markContainingListsLooseIfContinued(Parser* parser) {
+    for (Block* block : parser->activeBlocks) {
+        if (block->var.is<Block::ListItem>()) {
+            auto* parentList = block->parent->var.as<Block::List>();
+            PLY_ASSERT(parentList);
+            if (!parentList->isLoose) {
+                parentList->isLooseIfContinued = true;
+                parser->checkListContinuations = true;
+            }
+        }
+    }
+}
+
 // This is called after matchExistingIndentation() if the remainder of the line is blank.
 void handleBlankLine(LineParser& lp) {
     Parser* parser = lp.parser;
@@ -391,18 +405,83 @@ void handleBlankLine(LineParser& lp) {
         }
     } else {
         // There's no leaf block and the remainder of the line is blank.
-        // Walk the stack and set the "isLooseIfContinued" flag on all Lists.
-        for (Block* block : parser->activeBlocks) {
-            if (block->var.is<Block::ListItem>()) {
-                auto* parentList = block->parent->var.as<Block::List>();
-                PLY_ASSERT(parentList);
-                if (!parentList->isLoose) {
-                    parentList->isLooseIfContinued = true;
-                    parser->checkListContinuations = true;
-                }
+        markContainingListsLooseIfContinued(parser);
+    }
+}
+
+// Tries to start a list item after parsing its marker.
+// On success, updates lp.outerColumn and appends the corresponding List/ListItem blocks.
+bool tryStartListItem(Parser* parser, LineParser& lp, char punctuator, s32 startNumber) {
+    ColumnTrackingReader& ctReader = lp.ctReader;
+    u32 markerBaseOuter = lp.outerColumn;
+    u32 markerEndColumn = ctReader.column;
+
+    // A list marker can be followed by whitespace, or end the line to represent an empty item.
+    if (!(ctReader.point == ' ' || ctReader.point == '\t' || ctReader.point == '\n' || ctReader.atEnd()))
+        return false;
+
+    if (ctReader.point == ' ' || ctReader.point == '\t') {
+        // Consume all whitespace after the marker. Padding <= 4 defines item indentation.
+        // Padding > 4 means we only count one column as list indentation, and the extra
+        // indentation belongs to content (usually an indented code block).
+        ctReader.advance();
+        while (ctReader.point == ' ' || ctReader.point == '\t') {
+            ctReader.advance();
+        }
+        u32 padding = ctReader.column - markerEndColumn;
+        if (ctReader.point == '\n' || ctReader.atEnd()) {
+            lp.outerColumn = markerEndColumn + 1;
+        } else if (padding <= 4) {
+            lp.outerColumn = ctReader.column;
+        } else {
+            lp.outerColumn = markerEndColumn + 1;
+        }
+    } else {
+        lp.outerColumn = markerEndColumn + 1;
+    }
+
+    // If list item interrupts a paragraph, it can't be empty.
+    if (parser->leafBlock && ctReader.viewRemaining().trim().isEmpty())
+        return false;
+
+    PLY_ASSERT(lp.outerColumn >= markerBaseOuter);
+    u32 relativeIndent = lp.outerColumn - markerBaseOuter;
+
+    finalizeLeafBlock(parser);
+    Block* listBlock = nullptr;
+    Block* parentCtr = &parser->rootBlock;
+    if (parser->activeBlocks) {
+        parentCtr = parser->activeBlocks.back();
+    }
+    Block::Inner* parentInner = parentCtr->asInner();
+    PLY_ASSERT(parentInner);
+    if (!parentInner->childBlocks.isEmpty()) {
+        Block* potentialParent = parentInner->childBlocks.back();
+        if (auto* potentialList = potentialParent->var.as<Block::List>()) {
+            if (potentialList->punctuator == punctuator) {
+                // Add item to existing list
+                listBlock = potentialParent;
             }
         }
+    } else if (parentCtr->var.is<Block::ListItem>()) {
+        // Begin new list as a sublist of existing list
+        parentCtr = parentCtr->parent;
+        PLY_ASSERT(parentCtr->var.is<Block::List>());
+        parentInner = parentCtr->asInner();
     }
+    if (!listBlock) {
+        // Begin new list
+        listBlock = Heap::create<Block>();
+        listBlock->parent = parentCtr;
+        auto& list = listBlock->var.switchTo<Block::List>();
+        list.punctuator = punctuator;
+        list.startNumber = startNumber;
+        parentInner->childBlocks.append(listBlock);
+    }
+    Block* listItemBlock = addBlock<Block::ListItem>(listBlock);
+    listItemBlock->var.as<Block::ListItem>()->relativeIndent = relativeIndent;
+    parser->activeBlocks.append(listItemBlock);
+    return true;
 }
 
 // This is called after matchExistingIndentation() if the remainder of the line is not blank. It consumes new
@@ -425,44 +504,6 @@ void parseNewMarkers(LineParser& lp) {
 
         ColumnTrackingReader savedPos = ctReader;
 
-        // This code block will handle any list markers encountered:
-        auto gotListMarker = [&](char punctuator, s32 startNumber) {
-            finalizeLeafBlock(parser);
-            Block* listBlock = nullptr;
-            Block* parentCtr = &parser->rootBlock;
-            if (parser->activeBlocks) {
-                parentCtr = parser->activeBlocks.back();
-            }
-            Block::Inner* parentInner = parentCtr->asInner();
-            PLY_ASSERT(parentInner);
-            if (!parentInner->childBlocks.isEmpty()) {
-                Block* potentialParent = parentInner->childBlocks.back();
-                if (auto* potentialList = potentialParent->var.as<Block::List>()) {
-                    if (potentialList->punctuator == punctuator) {
-                        // Add item to existing list
-                        listBlock = potentialParent;
-                    }
-                }
-            } else if (parentCtr->var.is<Block::ListItem>()) {
-                // Begin new list as a sublist of existing list
-                parentCtr = parentCtr->parent;
-                PLY_ASSERT(parentCtr->var.is<Block::List>());
-                parentInner = parentCtr->asInner();
-            }
-            if (!listBlock) {
-                // Begin new list
-                listBlock = Heap::create<Block>();
-                listBlock->parent = parentCtr;
-                auto& list = listBlock->var.switchTo<Block::List>();
-                list.punctuator = punctuator;
-                list.startNumber = startNumber;
-                parentInner->childBlocks.append(listBlock);
-            }
-            Block* listItemBlock = addBlock<Block::ListItem>(listBlock);
-            listItemBlock->var.as<Block::ListItem>()->relativeIndent = lp.outerColumn;
-            parser->activeBlocks.append(listItemBlock);
-        };
-
         if (ctReader.point == '>') {
             // Begin a new blockquote
             finalizeLeafBlock(parser);
@@ -480,20 +521,9 @@ void parseNewMarkers(LineParser& lp) {
         } else if (ctReader.point == '*' || ctReader.point == '-' || ctReader.point == '+') {
             char punctuator = numericCast<char>(ctReader.point);
             ctReader.advance();
-            u32 indentAfterStar = ctReader.column;
-
-            // Read space after unordered list marker.
-            if (ctReader.point != ' ' && ctReader.point != '\t')
-                goto notMarker; // No space encountered.
-            ctReader.advance();
-
-            // If the list item interrupts a paragraph, it must not begin with a blank line.
-            if (parser->leafBlock && ctReader.viewRemaining().trim().isEmpty())
-                goto notMarker;
-
             // It's an unordered list item.
-            lp.outerColumn = indentAfterStar + 1;
-            gotListMarker(punctuator, -1);
+            if (!tryStartListItem(parser, lp, punctuator, -1))
+                goto notMarker;
         } else if (ctReader.point >= '0' && ctReader.point <= '9') {
             // Read number.
             ViewStream in(ctReader.viewRemaining());
@@ -511,21 +541,10 @@ void parseNewMarkers(LineParser& lp) {
                 goto notMarker;
             char punctuator = numericCast<char>(ctReader.point);
             ctReader.advance();
-            u32 indentAfterMarker = ctReader.column;
-
-            // Read space after punctuation.
-            if (ctReader.point != ' ' && ctReader.point != '\t')
-                goto notMarker; // No space encountered.
-            ctReader.advance();
-
-            // If the list item interrupts a paragraph, it must not begin with a blank line.
-            if (parser->leafBlock && ctReader.viewRemaining().trim().isEmpty())
-                goto notMarker;
-
             // It's an ordered list item.
             // 32-bit demotion is safe because we know the marker is 9 digits or less.
-            lp.outerColumn = indentAfterMarker + 1;
-            gotListMarker(punctuator, numericCast<s32>(num));
+            if (!tryStartListItem(parser, lp, punctuator, numericCast<s32>(num)))
+                goto notMarker;
         } else {
             goto notMarker;
         }
@@ -550,6 +569,20 @@ void parseParagraphText(LineParser& lp) {
     StringView remainingText =
         lp.ctReader.viewRemaining().trimLeft().trimRight([](char c) { return c == '\n' || c == '\r'; });
     bool hasPara = parser->leafBlock && parser->leafBlock->var.is<Block::Paragraph>();
+    if (remainingText && parser->checkListContinuations) {
+        // A non-blank continuation after a blank line turns pending lists loose.
+        for (Block* block : parser->activeBlocks) {
+            if (block->var.is<Block::ListItem>()) {
+                auto* parentList = block->parent->var.as<Block::List>();
+                PLY_ASSERT(parentList);
+                if (parentList->isLooseIfContinued) {
+                    parentList->isLoose = true;
+                    parentList->isLooseIfContinued = false;
+                }
+            }
+        }
+        parser->checkListContinuations = false;
+    }
     if (!hasPara && lp.relativeIndent() >= 4) {
         // Potentially begin or append to code block
         if (remainingText && !parser->leafBlock) {
@@ -570,24 +603,6 @@ void parseParagraphText(LineParser& lp) {
         }
     } else {
         if (remainingText) {
-            // We're going to create or extend a leaf block. First, check if any Lists should be marked loose:
-            if (parser->checkListContinuations) {
-                // Yes, we should mark some (possibly zero) lists loose. It's impossible for a leaf block to exist at
-                // this point:
-                PLY_ASSERT(!parser->leafBlock);
-                for (Block* block : parser->activeBlocks) {
-                    if (block->var.is<Block::ListItem>()) {
-                        auto* parentList = block->parent->var.as<Block::List>();
-                        PLY_ASSERT(parentList);
-                        if (parentList->isLooseIfContinued) {
-                            parentList->isLoose = true;
-                            parentList->isLooseIfContinued = false;
-                        }
-                    }
-                }
-                parser->checkListContinuations = false;
-            }
-
             Block::FencedCodeBlock newFenced;
             if (parseOpeningFence(lp.ctReader.viewRemaining(), lp.relativeIndent(), newFenced)) {
                 if (hasPara) {
@@ -1045,6 +1060,42 @@ void finalizeLeafBlock(Parser* parser) {
     parser->numBlankLinesInIndentedCodeBlock = 0;
 }
 
+// For non-blank lines that no longer match all open containers, either keep a paragraph as a lazy continuation
+// (by restoring full block depth) or finalize the current leaf and trim active containers to the matched depth.
+void closeBlocksIfNotLazyContinuation(LineParser& lp) {
+    Parser* parser = lp.parser;
+    if (lp.blockDepth >= parser->activeBlocks.numItems())
+        return;
+
+    bool canLazyContinueParagraph = parser->leafBlock && parser->leafBlock->var.is<Block::Paragraph>();
+    if (canLazyContinueParagraph) {
+        Block::FencedCodeBlock maybeFence;
+        u32 maybeSetextLevel = 0;
+        for (u32 i = lp.blockDepth; i < parser->activeBlocks.numItems(); i++) {
+            if (!parser->activeBlocks[i]->var.is<Block::BlockQuote>()) {
+                canLazyContinueParagraph = false;
+                break;
+            }
+        }
+        if (canLazyContinueParagraph && parseOpeningFence(lp.ctReader.viewRemaining(), lp.relativeIndent(), maybeFence)) {
+            canLazyContinueParagraph = false;
+        }
+        if (canLazyContinueParagraph && isThematicBreak(lp.ctReader.viewRemaining(), lp.relativeIndent())) {
+            canLazyContinueParagraph = false;
+        }
+        if (canLazyContinueParagraph && isSetextUnderline(lp.ctReader.viewRemaining(), lp.relativeIndent(), &maybeSetextLevel)) {
+            canLazyContinueParagraph = false;
+        }
+    }
+
+    if (canLazyContinueParagraph) {
+        lp.blockDepth = parser->activeBlocks.numItems();
+    } else {
+        finalizeLeafBlock(parser);
+        parser->activeBlocks.resize(lp.blockDepth);
+    }
+}
+
 //  ▄▄▄▄▄         ▄▄     ▄▄▄  ▄▄            ▄▄▄▄  ▄▄▄▄▄  ▄▄▄▄
 //  ██  ██ ▄▄  ▄▄ ██▄▄▄   ██  ▄▄  ▄▄▄▄     ██  ██ ██  ██  ██
 //  ██▀▀▀  ██  ██ ██  ██  ██  ██ ██        ██▀▀██ ██▀▀▀   ██
@@ -1085,15 +1136,18 @@ Owned<Block> parseLine(Parser* parser, StringView line) {
             handleBlankLine(lp);
         } else {
             // There's more text on the current line.
-            // Auto-close blockquotes and list items that we are no longer inside.
-            if (lp.blockDepth < parser->activeBlocks.numItems()) {
-                finalizeLeafBlock(parser);
-                parser->activeBlocks.resize(lp.blockDepth);
-            }
+            // Close blockquotes and list items that we are no longer inside.
+            closeBlocksIfNotLazyContinuation(lp);
+            // Close indented code blocks that we are no longer inside.
             if (parser->leafBlock && parser->leafBlock->var.is<Block::IndentedCodeBlock>() && lp.relativeIndent() < 4) {
+                if (parser->numBlankLinesInIndentedCodeBlock > 0) {
+                    markContainingListsLooseIfContinued(parser);
+                }
                 finalizeLeafBlock(parser);
             }
+            // Parse new markers.
             parseNewMarkers(lp);
+            // Handle remaining paragraph text.
             parseParagraphText(lp);
         }
     }
