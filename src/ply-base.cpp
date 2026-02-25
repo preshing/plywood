@@ -582,6 +582,10 @@ void VirtualMemory::freeRegion(void* addr, uptr numBytes) {
 
 Functor<void()> Heap::outOfMemoryHandler;
 
+void Heap::setOutOfMemoryHandler(Functor<void()> handler) {
+    outOfMemoryHandler = std::move(handler);
+}
+
 void* Heap::alloc(uptr numBytes) {
     void* ptr = dlmalloc(numBytes);
     if (!ptr && outOfMemoryHandler) {
@@ -608,10 +612,6 @@ void* Heap::allocAligned(uptr numBytes, u32 alignment) {
         outOfMemoryHandler();
     }
     return ptr;
-}
-
-void Heap::setOutOfMemoryHandler(Functor<void()> handler) {
-    outOfMemoryHandler = std::move(handler);
 }
 
 Heap::Stats Heap::getStats() {
