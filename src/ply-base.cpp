@@ -34,6 +34,7 @@
 #endif
 #endif
 
+#if !PLY_USE_NEW_ALLOCATOR
 extern "C" {
 void* dlmalloc(ply::uptr);
 void* dlrealloc(void*, ply::uptr);
@@ -46,6 +47,7 @@ struct DLMallocStats {
 };
 void dlget_heap_stats(DLMallocStats* stats);
 }
+#endif
 
 namespace ply {
 
@@ -586,6 +588,1211 @@ void Heap::setOutOfMemoryHandler(Functor<void()> handler) {
     outOfMemoryHandler = std::move(handler);
 }
 
+#if PLY_USE_NEW_ALLOCATOR
+
+// Implements the bespoke heap allocator used by ply::Heap.
+class HeapImpl {
+private:
+    //--------------------------------------------------------------------
+    // 1. Constants
+    //--------------------------------------------------------------------
+
+    // Small bins use 8-byte size classes for chunk sizes below 256 bytes.
+    static constexpr u32 NumSmallBins = 32;
+    // Tree bins store larger free chunks with size-ordered search trees.
+    static constexpr u32 NumTreeBins = 32;
+    // The width of each small-bin size class.
+    static constexpr uptr SmallBinStep = 8;
+    // The largest chunk size routed through small bins.
+    static constexpr uptr SmallBinLimit = NumSmallBins * SmallBinStep;
+    // All chunk payload addresses are aligned to 16 bytes.
+    static constexpr uptr ChunkAlignment = 16;
+    // Boundary-tag flag marking an allocated chunk.
+    static constexpr uptr InUseBit = 1;
+    // Boundary-tag flag marking that the previous chunk is allocated.
+    static constexpr uptr PrevInUseBit = 2;
+    // Boundary-tag flag marking a chunk directly mapped from the OS.
+    static constexpr uptr DirectMappedBit = 4;
+    // Mask of all boundary-tag flags.
+    static constexpr uptr FlagMask = InUseBit | PrevInUseBit | DirectMappedBit;
+    // Requests at or above this chunk size are mapped directly from the OS.
+    static constexpr uptr DirectMapThreshold = 256 * 1024;
+    // Default size used when provisioning a new virtual-memory segment.
+    static constexpr uptr DefaultSegmentBytes = 1024 * 1024;
+
+    //--------------------------------------------------------------------
+    // 2. Types
+    //--------------------------------------------------------------------
+
+    // Header words common to regular chunks and fence-post sentinels.
+    struct ChunkHeader {
+        uptr prevFoot = 0;
+        uptr head = 0;
+    };
+
+    // A heap chunk with boundary tags and intrusive free-list/tree metadata.
+    struct Chunk : ChunkHeader {
+        union {
+            struct {
+                Chunk* smallPrev;
+                Chunk* smallNext;
+            };
+            struct {
+                Chunk* treeParent;
+                Chunk* treeLeft;
+                Chunk* treeRight;
+            };
+        };
+
+        // Returns the chunk size encoded in the boundary tag.
+        uptr getSize() const {
+            return this->head & ~FlagMask;
+        }
+        // Returns true if the chunk is currently allocated.
+        bool getInUse() const {
+            return (this->head & InUseBit) != 0;
+        }
+        // Returns true if the previous chunk is currently allocated.
+        bool getPrevInUse() const {
+            return (this->head & PrevInUseBit) != 0;
+        }
+        // Returns true if the chunk came from direct virtual-memory mapping.
+        bool getDirectMapped() const {
+            return (this->head & DirectMappedBit) != 0;
+        }
+        // Returns the user pointer associated with this chunk.
+        void* memFromChunk() {
+            return (void*) (((u8*) this) + sizeof(ChunkHeader));
+        }
+        // Returns the immutable user pointer associated with this chunk.
+        const void* memFromChunk() const {
+            return (const void*) (((const u8*) this) + sizeof(ChunkHeader));
+        }
+        // Converts a user pointer back to its owning chunk.
+        static Chunk* chunkFromMem(void* mem) {
+            return (Chunk*) (((u8*) mem) - sizeof(ChunkHeader));
+        }
+        // Returns the next chunk in memory.
+        Chunk* nextChunk() {
+            return (Chunk*) (((u8*) this) + this->getSize());
+        }
+        // Returns the next chunk header in memory.
+        ChunkHeader* nextHeader() {
+            return (ChunkHeader*) (((u8*) this) + this->getSize());
+        }
+        // Returns the previous chunk in memory. Caller must ensure prev is free.
+        Chunk* prevChunk() {
+            return (Chunk*) (((u8*) this) - this->prevFoot);
+        }
+        // Sets the full boundary tag for this chunk.
+        void setSizeAndFlags(uptr size, bool inUse, bool prevInUse, bool directMapped = false) {
+            this->head = size | (inUse ? InUseBit : 0) | (prevInUse ? PrevInUseBit : 0) |
+                         (directMapped ? DirectMappedBit : 0);
+        }
+    };
+
+    // Tracks a reserved/committed virtual-memory segment used for regular chunks.
+    struct Segment {
+        Segment* prev = nullptr;
+        Segment* next = nullptr;
+        uptr numBytes = 0;
+        Chunk* firstChunk = nullptr;
+        ChunkHeader* fence = nullptr;
+    };
+
+    // Tracks a large direct-mapped chunk and its backing virtual-memory mapping.
+    struct DirectChunk {
+        DirectChunk* prev = nullptr;
+        DirectChunk* next = nullptr;
+        uptr mappingSize = 0;
+        Chunk chunk;
+    };
+
+    // Tracks metadata for pointers returned from Heap::allocAligned.
+    struct AlignedAllocHeader {
+        AlignedAllocHeader* prev = nullptr;
+        AlignedAllocHeader* next = nullptr;
+        void* alignedPtr = nullptr;
+        void* basePtr = nullptr;
+        uptr requestedBytes = 0;
+    };
+
+    //--------------------------------------------------------------------
+    // 3. Chunk headers
+    //--------------------------------------------------------------------
+
+    // Returns the aligned minimum chunk size that can hold free-chunk metadata.
+    static uptr minChunkSize() {
+        return uptr(alignToPowerOf2((u64) sizeof(Chunk), (u64) ChunkAlignment));
+    }
+
+    // Converts a chunk size request into an aligned chunk size including header.
+    static uptr requestToChunkSize(uptr numBytes) {
+        if (numBytes == 0) {
+            numBytes = 1;
+        }
+        if (numBytes > getMaxValue<uptr>() - sizeof(ChunkHeader) - ChunkAlignment) {
+            return 0;
+        }
+        uptr chunkSize = numBytes + sizeof(ChunkHeader);
+        chunkSize = uptr(alignToPowerOf2((u64) chunkSize, (u64) ChunkAlignment));
+        if (chunkSize < minChunkSize()) {
+            chunkSize = minChunkSize();
+        }
+        return chunkSize;
+    }
+
+    // Returns true when a chunk should be managed by small bins.
+    static bool isSmallChunk(uptr chunkSize) {
+        return chunkSize < SmallBinLimit;
+    }
+
+    // Returns the small-bin index for a given chunk size.
+    static u32 smallBinIndex(uptr chunkSize) {
+        PLY_ASSERT(chunkSize < SmallBinLimit);
+        return numericCast<u32>(chunkSize / SmallBinStep);
+    }
+
+    // Returns floor(log2(value)) for non-zero inputs.
+    static u32 floorLog2(uptr value) {
+        PLY_ASSERT(value > 0);
+        u32 log2 = 0;
+        while (value >>= 1) {
+            log2++;
+        }
+        return log2;
+    }
+
+    // Returns the tree-bin index for a chunk size of at least 256 bytes.
+    static u32 treeBinIndex(uptr chunkSize) {
+        PLY_ASSERT(chunkSize >= SmallBinLimit);
+        u32 lg = floorLog2(chunkSize);
+        if (lg <= 8) {
+            return 0;
+        }
+        u32 idx = (lg - 8) * 2;
+        idx += numericCast<u32>((chunkSize >> (lg - 1)) & 1);
+        if (idx >= NumTreeBins) {
+            idx = NumTreeBins - 1;
+        }
+        return idx;
+    }
+
+    // Returns the first set-bit index of a non-zero bitmap.
+    static u32 firstSetBit(u32 bits) {
+        PLY_ASSERT(bits != 0);
+        u32 idx = 0;
+        while ((bits & 1) == 0) {
+            bits >>= 1;
+            idx++;
+        }
+        return idx;
+    }
+
+    // Writes boundary tags for a free chunk and updates its successor's back-link.
+    static void writeFreeChunkHeader(Chunk* chunk, uptr chunkSize, bool prevInUse) {
+        chunk->setSizeAndFlags(chunkSize, false, prevInUse, false);
+        ChunkHeader* next = chunk->nextHeader();
+        next->prevFoot = chunkSize;
+        next->head &= ~PrevInUseBit;
+    }
+
+    // Writes boundary tags for an allocated chunk and updates successor state.
+    static void writeInUseChunkHeader(Chunk* chunk, uptr chunkSize, bool prevInUse) {
+        chunk->setSizeAndFlags(chunkSize, true, prevInUse, false);
+        ChunkHeader* next = chunk->nextHeader();
+        next->prevFoot = chunkSize;
+        next->head |= PrevInUseBit;
+    }
+
+    //--------------------------------------------------------------------
+    // 4. Global heap state
+    //--------------------------------------------------------------------
+
+    // Synchronizes all allocator state.
+    Mutex mutex;
+    // Lazily initializes VM settings and initial segment metadata.
+    bool initialized = false;
+    // Caches system page and region alignment details.
+    VirtualMemory::Properties vmProps;
+    // Head of the linked list of regular VM segments.
+    Segment* segmentHead = nullptr;
+    // Tail of the linked list of regular VM segments.
+    Segment* segmentTail = nullptr;
+    // Heads of small-bin free lists.
+    Chunk* smallBins[NumSmallBins] = {};
+    // Roots of size-ordered tree bins.
+    Chunk* treeBins[NumTreeBins] = {};
+    // Bitmask indicating non-empty small bins.
+    u32 smallMap = 0;
+    // Bitmask indicating non-empty tree bins.
+    u32 treeMap = 0;
+    // Designated-victim free chunk kept out of bins.
+    Chunk* designatedVictim = nullptr;
+    // Top/wilderness free chunk at the end of one segment.
+    Chunk* top = nullptr;
+    // Linked list of direct-mapped large chunks.
+    DirectChunk* directHead = nullptr;
+    // Linked list of explicitly aligned allocations.
+    AlignedAllocHeader* alignedHead = nullptr;
+    // Cached allocator counters returned by Heap::getStats().
+    Heap::Stats stats;
+
+    //--------------------------------------------------------------------
+    // 5. Small bin functions
+    //--------------------------------------------------------------------
+
+    // Inserts a free chunk into the appropriate small bin.
+    void insertSmallChunk(Chunk* chunk) {
+        PLY_ASSERT(isSmallChunk(chunk->getSize()));
+        u32 idx = smallBinIndex(chunk->getSize());
+        chunk->smallPrev = nullptr;
+        chunk->smallNext = this->smallBins[idx];
+        if (this->smallBins[idx]) {
+            this->smallBins[idx]->smallPrev = chunk;
+        }
+        this->smallBins[idx] = chunk;
+        this->smallMap |= (1u << idx);
+    }
+
+    // Removes a free chunk from its small-bin linked list.
+    void unlinkSmallChunk(Chunk* chunk) {
+        PLY_ASSERT(isSmallChunk(chunk->getSize()));
+        u32 idx = smallBinIndex(chunk->getSize());
+        if (chunk->smallPrev) {
+            chunk->smallPrev->smallNext = chunk->smallNext;
+        } else {
+            PLY_ASSERT(this->smallBins[idx] == chunk);
+            this->smallBins[idx] = chunk->smallNext;
+        }
+        if (chunk->smallNext) {
+            chunk->smallNext->smallPrev = chunk->smallPrev;
+        }
+        if (!this->smallBins[idx]) {
+            this->smallMap &= ~(1u << idx);
+        }
+        chunk->smallPrev = nullptr;
+        chunk->smallNext = nullptr;
+    }
+
+    //--------------------------------------------------------------------
+    // 6. Tree bin functions
+    //--------------------------------------------------------------------
+
+    // Inserts a free chunk into the appropriate tree bin.
+    void insertTreeChunk(Chunk* chunk) {
+        PLY_ASSERT(!isSmallChunk(chunk->getSize()));
+        u32 idx = treeBinIndex(chunk->getSize());
+        Chunk*& root = this->treeBins[idx];
+        chunk->treeParent = nullptr;
+        chunk->treeLeft = nullptr;
+        chunk->treeRight = nullptr;
+        if (!root) {
+            root = chunk;
+            this->treeMap |= (1u << idx);
+            return;
+        }
+        Chunk* node = root;
+        for (;;) {
+            bool goLeft = (chunk->getSize() < node->getSize()) ||
+                          ((chunk->getSize() == node->getSize()) && (chunk < node));
+            Chunk*& child = goLeft ? node->treeLeft : node->treeRight;
+            if (!child) {
+                child = chunk;
+                chunk->treeParent = node;
+                break;
+            }
+            node = child;
+        }
+        this->treeMap |= (1u << idx);
+    }
+
+    // Removes a free chunk from its tree bin.
+    void unlinkTreeChunk(Chunk* chunk) {
+        PLY_ASSERT(!isSmallChunk(chunk->getSize()));
+        u32 idx = treeBinIndex(chunk->getSize());
+        Chunk*& root = this->treeBins[idx];
+        Chunk* replacement = nullptr;
+        if (!chunk->treeLeft) {
+            replacement = chunk->treeRight;
+        } else if (!chunk->treeRight) {
+            replacement = chunk->treeLeft;
+        } else {
+            Chunk* successor = chunk->treeRight;
+            while (successor->treeLeft) {
+                successor = successor->treeLeft;
+            }
+            if (successor->treeParent != chunk) {
+                Chunk* successorRight = successor->treeRight;
+                successor->treeParent->treeLeft = successorRight;
+                if (successorRight) {
+                    successorRight->treeParent = successor->treeParent;
+                }
+                successor->treeRight = chunk->treeRight;
+                successor->treeRight->treeParent = successor;
+            }
+            successor->treeLeft = chunk->treeLeft;
+            successor->treeLeft->treeParent = successor;
+            replacement = successor;
+        }
+
+        if (replacement) {
+            replacement->treeParent = chunk->treeParent;
+        }
+        if (!chunk->treeParent) {
+            root = replacement;
+        } else if (chunk->treeParent->treeLeft == chunk) {
+            chunk->treeParent->treeLeft = replacement;
+        } else {
+            chunk->treeParent->treeRight = replacement;
+        }
+        chunk->treeParent = nullptr;
+        chunk->treeLeft = nullptr;
+        chunk->treeRight = nullptr;
+        if (!root) {
+            this->treeMap &= ~(1u << idx);
+        }
+    }
+
+    // Removes a free chunk from whichever bin structure currently owns it.
+    void unlinkBinnedChunk(Chunk* chunk) {
+        if (isSmallChunk(chunk->getSize())) {
+            unlinkSmallChunk(chunk);
+        } else {
+            unlinkTreeChunk(chunk);
+        }
+    }
+
+    // Inserts a free chunk into the appropriate small or tree bin.
+    void insertBinnedChunk(Chunk* chunk) {
+        if (isSmallChunk(chunk->getSize())) {
+            insertSmallChunk(chunk);
+        } else {
+            insertTreeChunk(chunk);
+        }
+    }
+
+    // Returns the best-fit free chunk from tree bins for a minimum chunk size.
+    Chunk* findBestTreeChunk(uptr chunkSize) {
+        Chunk* best = nullptr;
+        uptr bestSize = getMaxValue<uptr>();
+        u32 startBin = isSmallChunk(chunkSize) ? 0u : treeBinIndex(chunkSize);
+        for (u32 i = startBin; i < NumTreeBins; i++) {
+            Chunk* node = this->treeBins[i];
+            if (!node) {
+                continue;
+            }
+            Chunk* candidate = nullptr;
+            while (node) {
+                if (node->getSize() >= chunkSize) {
+                    candidate = node;
+                    node = node->treeLeft;
+                } else {
+                    node = node->treeRight;
+                }
+            }
+            if (candidate && (candidate->getSize() < bestSize ||
+                              (candidate->getSize() == bestSize && candidate < best))) {
+                best = candidate;
+                bestSize = candidate->getSize();
+                if (bestSize == chunkSize) {
+                    break;
+                }
+            }
+        }
+        return best;
+    }
+
+    //--------------------------------------------------------------------
+    // 7. Virtual memory segment management
+    //--------------------------------------------------------------------
+
+    // Initializes VM configuration and allocator bookkeeping.
+    void ensureInitialized() {
+        if (this->initialized) {
+            return;
+        }
+        this->vmProps = VirtualMemory::getProperties();
+        this->initialized = true;
+    }
+
+    // Returns the segment that owns a regular chunk pointer.
+    Segment* findSegmentForChunk(const Chunk* chunk) const {
+        const u8* ptr = (const u8*) chunk;
+        for (Segment* seg = this->segmentHead; seg; seg = seg->next) {
+            const u8* begin = (const u8*) seg;
+            const u8* end = begin + seg->numBytes;
+            if (ptr >= begin && ptr < end) {
+                return seg;
+            }
+        }
+        return nullptr;
+    }
+
+    // Provisions a new VM segment and installs its free space as the top chunk.
+    bool addSegment(uptr minimumTopBytes) {
+        uptr neededBytes = sizeof(Segment) + minimumTopBytes + sizeof(ChunkHeader) + ChunkAlignment;
+        uptr regionBytes = max(DefaultSegmentBytes, neededBytes);
+        regionBytes = uptr(alignToPowerOf2((u64) regionBytes, (u64) this->vmProps.regionAlignment));
+        void* region = VirtualMemory::allocRegion(regionBytes);
+        if (!region) {
+            return false;
+        }
+
+        Segment* segment = (Segment*) region;
+        segment->prev = this->segmentTail;
+        segment->next = nullptr;
+        segment->numBytes = regionBytes;
+        if (this->segmentTail) {
+            this->segmentTail->next = segment;
+        } else {
+            this->segmentHead = segment;
+        }
+        this->segmentTail = segment;
+
+        u8* chunkStart = (u8*) region + sizeof(Segment);
+        chunkStart = (u8*) (uptr(alignToPowerOf2((u64) (uptr) chunkStart, (u64) ChunkAlignment)));
+        ChunkHeader* fence = (ChunkHeader*) (((u8*) region) + regionBytes - sizeof(ChunkHeader));
+        uptr topBytes = uptr((u8*) fence - chunkStart);
+        if (topBytes < minChunkSize()) {
+            if (segment->prev) {
+                segment->prev->next = nullptr;
+            } else {
+                this->segmentHead = nullptr;
+            }
+            this->segmentTail = segment->prev;
+            VirtualMemory::freeRegion(region, regionBytes);
+            return false;
+        }
+
+        Chunk* newTop = (Chunk*) chunkStart;
+        writeFreeChunkHeader(newTop, topBytes, true);
+        fence->head = InUseBit;
+
+        segment->firstChunk = newTop;
+        segment->fence = fence;
+
+        if (this->top) {
+            if (this->designatedVictim) {
+                insertBinnedChunk(this->designatedVictim);
+            }
+            this->designatedVictim = this->top;
+        }
+        this->top = newTop;
+        this->stats.totalSystemMemoryUsed += regionBytes;
+        return true;
+    }
+
+    // Releases a fully free segment back to the operating system.
+    bool releaseSegmentIfCompletelyFree(Chunk* chunk) {
+        Segment* segment = findSegmentForChunk(chunk);
+        if (!segment) {
+            return false;
+        }
+        if (chunk != segment->firstChunk) {
+            return false;
+        }
+        if (chunk->nextHeader() != segment->fence) {
+            return false;
+        }
+
+        if (this->top == chunk) {
+            this->top = nullptr;
+        }
+        if (this->designatedVictim == chunk) {
+            this->designatedVictim = nullptr;
+        }
+
+        if (segment->prev) {
+            segment->prev->next = segment->next;
+        } else {
+            this->segmentHead = segment->next;
+        }
+        if (segment->next) {
+            segment->next->prev = segment->prev;
+        } else {
+            this->segmentTail = segment->prev;
+        }
+
+        this->stats.totalSystemMemoryUsed -= segment->numBytes;
+        VirtualMemory::freeRegion(segment, segment->numBytes);
+        return true;
+    }
+
+    //--------------------------------------------------------------------
+    // 8. Large chunk functions that use the system's virtual memory API directly
+    //--------------------------------------------------------------------
+
+    // Converts an in-use direct-mapped chunk pointer to its direct-map header.
+    static DirectChunk* directFromChunk(Chunk* chunk) {
+        return (DirectChunk*) (((u8*) chunk) - PLY_OFFSET_OF(DirectChunk, chunk));
+    }
+
+    // Allocates a large chunk directly from the operating system.
+    void* allocateDirectMappedChunk(uptr chunkSize) {
+        uptr payloadBytes = chunkSize - sizeof(ChunkHeader);
+        uptr mapBytes = sizeof(DirectChunk) + payloadBytes;
+        mapBytes = uptr(alignToPowerOf2((u64) mapBytes, (u64) this->vmProps.regionAlignment));
+        DirectChunk* direct = (DirectChunk*) VirtualMemory::allocRegion(mapBytes);
+        if (!direct) {
+            return nullptr;
+        }
+        direct->mappingSize = mapBytes;
+        direct->prev = nullptr;
+        direct->next = this->directHead;
+        if (this->directHead) {
+            this->directHead->prev = direct;
+        }
+        this->directHead = direct;
+
+        direct->chunk.setSizeAndFlags(chunkSize, true, true, true);
+        this->stats.totalBytesConsumed += chunkSize;
+        this->stats.totalSystemMemoryUsed += mapBytes;
+        return direct->chunk.memFromChunk();
+    }
+
+    // Frees a direct-mapped chunk and releases its virtual-memory mapping.
+    void freeDirectMappedChunk(Chunk* chunk) {
+        DirectChunk* direct = directFromChunk(chunk);
+        if (direct->prev) {
+            direct->prev->next = direct->next;
+        } else {
+            this->directHead = direct->next;
+        }
+        if (direct->next) {
+            direct->next->prev = direct->prev;
+        }
+        this->stats.totalBytesConsumed -= chunk->getSize();
+        this->stats.totalSystemMemoryUsed -= direct->mappingSize;
+        VirtualMemory::freeRegion(direct, direct->mappingSize);
+    }
+
+    //--------------------------------------------------------------------
+    // 9. Internal allocation and free functions that wrap all of the above
+    //--------------------------------------------------------------------
+
+    // Looks up aligned-allocation metadata for an exact user pointer.
+    AlignedAllocHeader* findAlignedHeader(void* ptr) const {
+        for (AlignedAllocHeader* header = this->alignedHead; header; header = header->next) {
+            if (header->alignedPtr == ptr) {
+                return header;
+            }
+        }
+        return nullptr;
+    }
+
+    // Adds a header to the aligned-allocation metadata list.
+    void linkAlignedHeader(AlignedAllocHeader* header) {
+        header->prev = nullptr;
+        header->next = this->alignedHead;
+        if (this->alignedHead) {
+            this->alignedHead->prev = header;
+        }
+        this->alignedHead = header;
+    }
+
+    // Removes a header from the aligned-allocation metadata list.
+    void unlinkAlignedHeader(AlignedAllocHeader* header) {
+        if (header->prev) {
+            header->prev->next = header->next;
+        } else {
+            this->alignedHead = header->next;
+        }
+        if (header->next) {
+            header->next->prev = header->prev;
+        }
+        header->prev = nullptr;
+        header->next = nullptr;
+    }
+
+    // Places a single free chunk in designated-victim storage.
+    void storeDesignatedVictim(Chunk* chunk) {
+        PLY_ASSERT(!chunk->getInUse());
+        if (this->designatedVictim) {
+            insertBinnedChunk(this->designatedVictim);
+        }
+        this->designatedVictim = chunk;
+    }
+
+    // Splits a free chunk for allocation and routes any remainder to designated-victim storage.
+    Chunk* useFreeChunk(Chunk* chunk, uptr neededSize) {
+        uptr chunkBytes = chunk->getSize();
+        bool prevInUse = chunk->getPrevInUse();
+        uptr remainderBytes = chunkBytes - neededSize;
+        if (remainderBytes >= minChunkSize()) {
+            Chunk* remainder = (Chunk*) (((u8*) chunk) + neededSize);
+            writeFreeChunkHeader(remainder, remainderBytes, true);
+            writeInUseChunkHeader(chunk, neededSize, prevInUse);
+            storeDesignatedVictim(remainder);
+        } else {
+            writeInUseChunkHeader(chunk, chunkBytes, prevInUse);
+        }
+        this->stats.totalBytesConsumed += chunk->getSize();
+        return chunk;
+    }
+
+    // Attempts to satisfy an allocation from small bins.
+    Chunk* takeSmallBinChunk(uptr neededSize) {
+        if (!isSmallChunk(neededSize)) {
+            return nullptr;
+        }
+        u32 idx = smallBinIndex(neededSize);
+        u32 bits = this->smallMap & (~0u << idx);
+        if (!bits) {
+            return nullptr;
+        }
+        u32 chosen = firstSetBit(bits);
+        Chunk* chunk = this->smallBins[chosen];
+        unlinkSmallChunk(chunk);
+        return useFreeChunk(chunk, neededSize);
+    }
+
+    // Attempts to satisfy an allocation from the designated-victim chunk.
+    Chunk* takeDesignatedVictimChunk(uptr neededSize) {
+        if (!this->designatedVictim || (this->designatedVictim->getSize() < neededSize)) {
+            return nullptr;
+        }
+        Chunk* chunk = this->designatedVictim;
+        this->designatedVictim = nullptr;
+        return useFreeChunk(chunk, neededSize);
+    }
+
+    // Attempts to satisfy an allocation from tree bins.
+    Chunk* takeTreeBinChunk(uptr neededSize) {
+        Chunk* chunk = findBestTreeChunk(neededSize);
+        if (!chunk) {
+            return nullptr;
+        }
+        unlinkTreeChunk(chunk);
+        return useFreeChunk(chunk, neededSize);
+    }
+
+    // Allocates from the wilderness chunk, provisioning a new segment if needed.
+    Chunk* takeTopChunk(uptr neededSize) {
+        while (!this->top || (this->top->getSize() < neededSize)) {
+            if (!addSegment(neededSize)) {
+                return nullptr;
+            }
+        }
+
+        Chunk* chunk = this->top;
+        uptr topBytes = chunk->getSize();
+        bool prevInUse = chunk->getPrevInUse();
+        uptr remainderBytes = topBytes - neededSize;
+        if (remainderBytes >= minChunkSize()) {
+            Chunk* remainder = (Chunk*) (((u8*) chunk) + neededSize);
+            writeFreeChunkHeader(remainder, remainderBytes, true);
+            writeInUseChunkHeader(chunk, neededSize, prevInUse);
+            this->top = remainder;
+        } else {
+            writeInUseChunkHeader(chunk, topBytes, prevInUse);
+            this->top = nullptr;
+        }
+        this->stats.totalBytesConsumed += chunk->getSize();
+        return chunk;
+    }
+
+    // Allocates a regular (non-direct-mapped) chunk using bins, DV, and top.
+    Chunk* allocRegularChunk(uptr neededSize) {
+        Chunk* chunk = takeSmallBinChunk(neededSize);
+        if (!chunk) {
+            chunk = takeDesignatedVictimChunk(neededSize);
+        }
+        if (!chunk) {
+            chunk = takeTreeBinChunk(neededSize);
+        }
+        if (!chunk) {
+            chunk = takeTopChunk(neededSize);
+        }
+        return chunk;
+    }
+
+    // Coalesces and stores a free chunk after deallocation or shrink-split.
+    void recycleFreeChunk(Chunk* chunk) {
+        Chunk* base = chunk;
+        uptr chunkBytes = chunk->getSize();
+
+        if (!base->getPrevInUse()) {
+            Chunk* prev = base->prevChunk();
+            if (prev == this->designatedVictim) {
+                this->designatedVictim = nullptr;
+            } else if (prev == this->top) {
+                this->top = nullptr;
+            } else {
+                unlinkBinnedChunk(prev);
+            }
+            chunkBytes += prev->getSize();
+            base = prev;
+        }
+
+        ChunkHeader* nextHeader = (ChunkHeader*) (((u8*) base) + chunkBytes);
+        if ((nextHeader->head & InUseBit) == 0) {
+            Chunk* next = (Chunk*) nextHeader;
+            if (next == this->designatedVictim) {
+                this->designatedVictim = nullptr;
+            } else if (next == this->top) {
+                this->top = nullptr;
+            } else {
+                unlinkBinnedChunk(next);
+            }
+            chunkBytes += next->getSize();
+        }
+
+        writeFreeChunkHeader(base, chunkBytes, base->getPrevInUse());
+
+        if (releaseSegmentIfCompletelyFree(base)) {
+            return;
+        }
+        if (this->top && (base->nextHeader() == findSegmentForChunk(base)->fence) && (this->top != base)) {
+            storeDesignatedVictim(base);
+            return;
+        }
+        if (!this->top && (base->nextHeader() == findSegmentForChunk(base)->fence)) {
+            this->top = base;
+            return;
+        }
+        if (base == this->top) {
+            return;
+        }
+        storeDesignatedVictim(base);
+    }
+
+    // Allocates a chunk with default alignment from all allocator structures.
+    void* allocLocked(uptr numBytes) {
+        ensureInitialized();
+        uptr neededSize = requestToChunkSize(numBytes);
+        if (neededSize == 0) {
+            return nullptr;
+        }
+        if (neededSize >= DirectMapThreshold) {
+            return allocateDirectMappedChunk(neededSize);
+        }
+        Chunk* chunk = allocRegularChunk(neededSize);
+        return chunk ? chunk->memFromChunk() : nullptr;
+    }
+
+    // Frees a chunk allocated from either segment storage or direct mapping.
+    void freeLocked(void* ptr) {
+        if (!ptr) {
+            return;
+        }
+        if (AlignedAllocHeader* header = findAlignedHeader(ptr)) {
+            ptr = header->basePtr;
+            unlinkAlignedHeader(header);
+        }
+        Chunk* chunk = Chunk::chunkFromMem(ptr);
+        if (chunk->getDirectMapped()) {
+            freeDirectMappedChunk(chunk);
+            return;
+        }
+        this->stats.totalBytesConsumed -= chunk->getSize();
+        writeFreeChunkHeader(chunk, chunk->getSize(), chunk->getPrevInUse());
+        recycleFreeChunk(chunk);
+    }
+
+    // Reallocates a chunk while preserving existing contents.
+    void* reallocLocked(void* ptr, uptr numBytes) {
+        if (!ptr) {
+            return allocLocked(numBytes);
+        }
+        if (numBytes == 0) {
+            freeLocked(ptr);
+            return nullptr;
+        }
+
+        if (AlignedAllocHeader* header = findAlignedHeader(ptr)) {
+            void* newPtr = allocLocked(numBytes);
+            if (!newPtr) {
+                return nullptr;
+            }
+            memcpy(newPtr, ptr, min(header->requestedBytes, numBytes));
+            void* basePtr = header->basePtr;
+            unlinkAlignedHeader(header);
+            freeLocked(basePtr);
+            return newPtr;
+        }
+
+        Chunk* chunk = Chunk::chunkFromMem(ptr);
+        uptr neededSize = requestToChunkSize(numBytes);
+        if (neededSize == 0) {
+            return nullptr;
+        }
+
+        if (chunk->getDirectMapped()) {
+            uptr oldPayloadBytes = chunk->getSize() - sizeof(ChunkHeader);
+            if (neededSize <= chunk->getSize()) {
+                uptr oldSize = chunk->getSize();
+                chunk->setSizeAndFlags(neededSize, true, true, true);
+                this->stats.totalBytesConsumed -= (oldSize - neededSize);
+                return ptr;
+            }
+            void* newPtr = allocLocked(numBytes);
+            if (!newPtr) {
+                return nullptr;
+            }
+            memcpy(newPtr, ptr, min(oldPayloadBytes, numBytes));
+            freeDirectMappedChunk(chunk);
+            return newPtr;
+        }
+
+        uptr oldSize = chunk->getSize();
+        uptr oldPayloadBytes = oldSize - sizeof(ChunkHeader);
+        if (neededSize <= oldSize) {
+            uptr remainderBytes = oldSize - neededSize;
+            if (remainderBytes >= minChunkSize()) {
+                bool prevInUse = chunk->getPrevInUse();
+                writeInUseChunkHeader(chunk, neededSize, prevInUse);
+                Chunk* remainder = (Chunk*) (((u8*) chunk) + neededSize);
+                writeFreeChunkHeader(remainder, remainderBytes, true);
+                this->stats.totalBytesConsumed -= remainderBytes;
+                recycleFreeChunk(remainder);
+            }
+            return ptr;
+        }
+
+        ChunkHeader* nextHeader = chunk->nextHeader();
+        if ((nextHeader->head & InUseBit) == 0) {
+            Chunk* next = (Chunk*) nextHeader;
+            uptr combined = oldSize + next->getSize();
+            if (combined >= neededSize) {
+                if (next == this->designatedVictim) {
+                    this->designatedVictim = nullptr;
+                } else if (next == this->top) {
+                    this->top = nullptr;
+                } else {
+                    unlinkBinnedChunk(next);
+                }
+
+                uptr remainderBytes = combined - neededSize;
+                bool prevInUse = chunk->getPrevInUse();
+                if (remainderBytes >= minChunkSize()) {
+                    writeInUseChunkHeader(chunk, neededSize, prevInUse);
+                    Chunk* remainder = (Chunk*) (((u8*) chunk) + neededSize);
+                    writeFreeChunkHeader(remainder, remainderBytes, true);
+                    recycleFreeChunk(remainder);
+                    this->stats.totalBytesConsumed += (neededSize - oldSize);
+                } else {
+                    writeInUseChunkHeader(chunk, combined, prevInUse);
+                    this->stats.totalBytesConsumed += (combined - oldSize);
+                }
+                return ptr;
+            }
+        }
+
+        void* newPtr = allocLocked(numBytes);
+        if (!newPtr) {
+            return nullptr;
+        }
+        memcpy(newPtr, ptr, min(oldPayloadBytes, numBytes));
+        freeLocked(ptr);
+        return newPtr;
+    }
+
+    // Allocates a chunk with explicit alignment and tracks metadata for safe free/realloc.
+    void* allocAlignedLocked(uptr numBytes, u32 alignment) {
+        ensureInitialized();
+        if (alignment < ChunkAlignment) {
+            alignment = numericCast<u32>(ChunkAlignment);
+        } else {
+            PLY_ASSERT(isPowerOf2(alignment));
+        }
+        if (alignment == ChunkAlignment) {
+            return allocLocked(numBytes);
+        }
+        if (numBytes > getMaxValue<uptr>() - alignment - sizeof(AlignedAllocHeader)) {
+            return nullptr;
+        }
+        uptr requestBytes = numBytes + alignment + sizeof(AlignedAllocHeader);
+        void* basePtr = allocLocked(requestBytes);
+        if (!basePtr) {
+            return nullptr;
+        }
+        uptr alignedAddr = uptr(alignToPowerOf2((u64) (uptr(basePtr) + sizeof(AlignedAllocHeader)), (u64) alignment));
+        AlignedAllocHeader* header = (AlignedAllocHeader*) (alignedAddr - sizeof(AlignedAllocHeader));
+        header->alignedPtr = (void*) alignedAddr;
+        header->basePtr = basePtr;
+        header->requestedBytes = numBytes;
+        linkAlignedHeader(header);
+        return header->alignedPtr;
+    }
+
+    //--------------------------------------------------------------------
+    // 10. Validation helpers
+    //--------------------------------------------------------------------
+
+#if defined(PLY_WITH_ASSERTS)
+    // Counts occurrences of a chunk pointer in all small bins.
+    u32 countChunkInSmallBins(const Chunk* target) const {
+        u32 count = 0;
+        for (u32 i = 0; i < NumSmallBins; i++) {
+            for (Chunk* node = this->smallBins[i]; node; node = node->smallNext) {
+                if (node == target) {
+                    count++;
+                }
+            }
+        }
+        return count;
+    }
+
+    // Counts occurrences of a chunk pointer in a single tree.
+    static u32 countChunkInTree(const Chunk* root, const Chunk* target) {
+        if (!root) {
+            return 0;
+        }
+        u32 count = (root == target) ? 1u : 0u;
+        count += countChunkInTree(root->treeLeft, target);
+        count += countChunkInTree(root->treeRight, target);
+        return count;
+    }
+
+    // Counts occurrences of a chunk pointer in all tree bins.
+    u32 countChunkInTreeBins(const Chunk* target) const {
+        u32 count = 0;
+        for (u32 i = 0; i < NumTreeBins; i++) {
+            count += countChunkInTree(this->treeBins[i], target);
+        }
+        return count;
+    }
+
+    // Validates ordering and parent links of one tree bin.
+    static void validateTree(Chunk* node, Chunk* parent, uptr minSize, const Chunk* minPtr, uptr maxSize,
+                             const Chunk* maxPtr, u32 expectedBin, uptr* nodeCount) {
+        if (!node) {
+            return;
+        }
+        (*nodeCount)++;
+        PLY_ASSERT(node->treeParent == parent);
+        PLY_ASSERT(!node->getInUse());
+        PLY_ASSERT(!isSmallChunk(node->getSize()));
+        PLY_ASSERT(treeBinIndex(node->getSize()) == expectedBin);
+
+        bool aboveMin = (node->getSize() > minSize) || ((node->getSize() == minSize) && (node > minPtr));
+        bool belowMax = (node->getSize() < maxSize) || ((node->getSize() == maxSize) && (node < maxPtr));
+        PLY_ASSERT(aboveMin);
+        PLY_ASSERT(belowMax);
+
+        validateTree(node->treeLeft, node, minSize, minPtr, node->getSize(), node, expectedBin, nodeCount);
+        validateTree(node->treeRight, node, node->getSize(), node, maxSize, maxPtr, expectedBin, nodeCount);
+    }
+
+    // Validates complete allocator consistency and counter integrity.
+    void validateLocked() const {
+        uptr recomputedAllocatedBytes = 0;
+        uptr recomputedSystemBytes = 0;
+        uptr freeChunksExpectedInBins = 0;
+
+        if (this->top) {
+            PLY_ASSERT(!this->top->getInUse());
+            PLY_ASSERT(!this->top->getDirectMapped());
+            Segment* topSeg = this->findSegmentForChunk(this->top);
+            PLY_ASSERT(topSeg != nullptr);
+            PLY_ASSERT(this->top->nextHeader() == topSeg->fence);
+        }
+        if (this->designatedVictim) {
+            PLY_ASSERT(!this->designatedVictim->getInUse());
+            PLY_ASSERT(!this->designatedVictim->getDirectMapped());
+            PLY_ASSERT(this->findSegmentForChunk(this->designatedVictim) != nullptr);
+        }
+        if (this->top && this->designatedVictim) {
+            PLY_ASSERT(this->top != this->designatedVictim);
+        }
+
+        for (Segment* seg = this->segmentHead; seg; seg = seg->next) {
+            recomputedSystemBytes += seg->numBytes;
+            PLY_ASSERT(seg->firstChunk != nullptr);
+            PLY_ASSERT(seg->fence != nullptr);
+            Chunk* chunk = seg->firstChunk;
+            while ((ChunkHeader*) chunk != seg->fence) {
+                uptr chunkSize = chunk->getSize();
+                PLY_ASSERT(chunkSize >= minChunkSize());
+                PLY_ASSERT(isAlignedToPowerOf2((u64) chunkSize, (u64) ChunkAlignment));
+                PLY_ASSERT((chunk->head & DirectMappedBit) == 0);
+                ChunkHeader* next = chunk->nextHeader();
+                PLY_ASSERT(next->prevFoot == chunkSize);
+                PLY_ASSERT(((next->head & PrevInUseBit) != 0) == chunk->getInUse());
+
+                if (chunk->getInUse()) {
+                    recomputedAllocatedBytes += chunkSize;
+                } else {
+                    PLY_ASSERT((next->head & InUseBit) != 0);
+                    u32 smallCount = countChunkInSmallBins(chunk);
+                    u32 treeCount = countChunkInTreeBins(chunk);
+                    if (chunk == this->top || chunk == this->designatedVictim) {
+                        PLY_ASSERT(smallCount == 0);
+                        PLY_ASSERT(treeCount == 0);
+                    } else if (isSmallChunk(chunkSize)) {
+                        PLY_ASSERT(smallCount == 1);
+                        PLY_ASSERT(treeCount == 0);
+                        freeChunksExpectedInBins++;
+                    } else {
+                        PLY_ASSERT(smallCount == 0);
+                        PLY_ASSERT(treeCount == 1);
+                        freeChunksExpectedInBins++;
+                    }
+                }
+                chunk = (Chunk*) next;
+            }
+            PLY_ASSERT((seg->fence->head & InUseBit) != 0);
+        }
+
+        uptr countedSmallNodes = 0;
+        for (u32 i = 0; i < NumSmallBins; i++) {
+            bool hasNodes = (this->smallBins[i] != nullptr);
+            PLY_ASSERT(((this->smallMap >> i) & 1u) == (hasNodes ? 1u : 0u));
+            Chunk* prev = nullptr;
+            for (Chunk* node = this->smallBins[i]; node; node = node->smallNext) {
+                countedSmallNodes++;
+                PLY_ASSERT(!node->getInUse());
+                PLY_ASSERT(isSmallChunk(node->getSize()));
+                PLY_ASSERT(smallBinIndex(node->getSize()) == i);
+                PLY_ASSERT(node->smallPrev == prev);
+                PLY_ASSERT(node != this->top);
+                PLY_ASSERT(node != this->designatedVictim);
+                PLY_ASSERT(this->findSegmentForChunk(node) != nullptr);
+                prev = node;
+            }
+        }
+
+        uptr countedTreeNodes = 0;
+        for (u32 i = 0; i < NumTreeBins; i++) {
+            bool hasNodes = (this->treeBins[i] != nullptr);
+            PLY_ASSERT(((this->treeMap >> i) & 1u) == (hasNodes ? 1u : 0u));
+            if (!this->treeBins[i]) {
+                continue;
+            }
+            PLY_ASSERT(this->treeBins[i]->treeParent == nullptr);
+            validateTree(this->treeBins[i], nullptr, 0, nullptr, getMaxValue<uptr>(), (const Chunk*) -1, i,
+                         &countedTreeNodes);
+        }
+
+        PLY_ASSERT(countedSmallNodes + countedTreeNodes == freeChunksExpectedInBins);
+
+        for (DirectChunk* direct = this->directHead; direct; direct = direct->next) {
+            if (direct->next) {
+                PLY_ASSERT(direct->next->prev == direct);
+            }
+            if (direct->prev) {
+                PLY_ASSERT(direct->prev->next == direct);
+            }
+            PLY_ASSERT(direct->chunk.getInUse());
+            PLY_ASSERT(direct->chunk.getDirectMapped());
+            recomputedAllocatedBytes += direct->chunk.getSize();
+            recomputedSystemBytes += direct->mappingSize;
+        }
+
+        for (AlignedAllocHeader* header = this->alignedHead; header; header = header->next) {
+            if (header->next) {
+                PLY_ASSERT(header->next->prev == header);
+            }
+            if (header->prev) {
+                PLY_ASSERT(header->prev->next == header);
+            }
+            PLY_ASSERT(header->alignedPtr != nullptr);
+            PLY_ASSERT(header->basePtr != nullptr);
+            PLY_ASSERT((uptr) header->alignedPtr >= (uptr) header->basePtr + sizeof(AlignedAllocHeader));
+            Chunk* base = Chunk::chunkFromMem(header->basePtr);
+            PLY_ASSERT(base->getInUse());
+        }
+
+        PLY_ASSERT(recomputedAllocatedBytes == this->stats.totalBytesConsumed);
+        PLY_ASSERT(recomputedSystemBytes == this->stats.totalSystemMemoryUsed);
+    }
+#endif
+
+public:
+    // Allocates memory from the heap under a lock.
+    void* alloc(uptr numBytes) {
+        LockGuard<Mutex> lock{this->mutex};
+        return allocLocked(numBytes);
+    }
+
+    // Reallocates memory from the heap under a lock.
+    void* realloc(void* ptr, uptr numBytes) {
+        LockGuard<Mutex> lock{this->mutex};
+        return reallocLocked(ptr, numBytes);
+    }
+
+    // Frees memory from the heap under a lock.
+    void free(void* ptr) {
+        LockGuard<Mutex> lock{this->mutex};
+        freeLocked(ptr);
+    }
+
+    // Allocates aligned memory from the heap under a lock.
+    void* allocAligned(uptr numBytes, u32 alignment) {
+        LockGuard<Mutex> lock{this->mutex};
+        return allocAlignedLocked(numBytes, alignment);
+    }
+
+    // Returns heap usage counters under a lock.
+    Heap::Stats getStats() {
+        LockGuard<Mutex> lock{this->mutex};
+        ensureInitialized();
+        return this->stats;
+    }
+
+#if defined(PLY_WITH_ASSERTS)
+    // Validates heap internal invariants under a lock.
+    void validate() {
+        LockGuard<Mutex> lock{this->mutex};
+        ensureInitialized();
+        validateLocked();
+    }
+#endif
+};
+
+// Returns the singleton allocator implementation instance.
+static HeapImpl& getHeapImpl() {
+    static HeapImpl impl;
+    return impl;
+}
+
+// Allocates memory from the selected allocator implementation.
+void* Heap::alloc(uptr numBytes) {
+    void* ptr = getHeapImpl().alloc(numBytes);
+    if (!ptr && outOfMemoryHandler) {
+        outOfMemoryHandler();
+    }
+    return ptr;
+}
+
+// Reallocates memory from the selected allocator implementation.
+void* Heap::realloc(void* ptr, uptr numBytes) {
+    void* newPtr = getHeapImpl().realloc(ptr, numBytes);
+    if (!newPtr && numBytes != 0 && outOfMemoryHandler) {
+        outOfMemoryHandler();
+    }
+    return newPtr;
+}
+
+// Frees memory from the selected allocator implementation.
+void Heap::free(void* ptr) {
+    getHeapImpl().free(ptr);
+}
+
+// Allocates aligned memory from the selected allocator implementation.
+void* Heap::allocAligned(uptr numBytes, u32 alignment) {
+    void* ptr = getHeapImpl().allocAligned(numBytes, alignment);
+    if (!ptr && outOfMemoryHandler) {
+        outOfMemoryHandler();
+    }
+    return ptr;
+}
+
+// Returns allocator statistics from the selected allocator implementation.
+Heap::Stats Heap::getStats() {
+    return getHeapImpl().getStats();
+}
+
+// Validates allocator invariants when assertions are enabled.
+void Heap::validate() {
+#if defined(PLY_WITH_ASSERTS)
+    getHeapImpl().validate();
+#endif
+}
+
+#else
+
 void* Heap::alloc(uptr numBytes) {
     void* ptr = dlmalloc(numBytes);
     if (!ptr && outOfMemoryHandler) {
@@ -607,7 +1814,7 @@ void Heap::free(void* ptr) {
 }
 
 void* Heap::allocAligned(uptr numBytes, u32 alignment) {
-    void* ptr = dlmemalign(numBytes, alignment);
+    void* ptr = dlmemalign(alignment, numBytes);
     if (!ptr && outOfMemoryHandler) {
         outOfMemoryHandler();
     }
@@ -621,6 +1828,14 @@ Heap::Stats Heap::getStats() {
     dlget_heap_stats((DLMallocStats*) &stats);
     return stats;
 }
+
+void Heap::validate() {
+#if defined(PLY_WITH_ASSERTS)
+    // Validation is only implemented by the bespoke allocator.
+#endif
+}
+
+#endif
 
 #if !defined(PLY_OVERRIDE_NEW)
 #define PLY_OVERRIDE_NEW 1

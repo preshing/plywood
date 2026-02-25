@@ -7,4 +7,5 @@ You can customize Plywood by defining the following preprocessor macros in your 
 `PLY_WITH_ASSERTS` | Enables [assertions](/docs/base/macros#assertions). Default is 1 in debug builds, 0 otherwise.
 `PLY_WITH_DIRECTORY_WATCHER` | Enables the [`DirectoryWatcher`](/docs/base/filesystem#directory-watcher). Default is 0.
 `PLY_OVERRIDE_NEW` | Overrides the C++ `new` and `delete` operators to allocate from the [Plywood heap](/docs/base/memory#heap). Default is 1.
+`PLY_USE_NEW_ALLOCATOR` | Selects the heap backend. `1` uses Plywood's bespoke allocator, `0` uses legacy dlmalloc. Default is 1.
 {/table}

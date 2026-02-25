@@ -139,6 +139,179 @@ TEST_CASE("Heap::setOutOfMemoryHandler") {
     Heap::setOutOfMemoryHandler({});
 }
 
+TEST_CASE("Heap::allocAligned") {
+    const u32 alignments[] = {16, 32, 64, 128, 256};
+    for (u32 alignment : alignments) {
+        void* ptr = Heap::allocAligned(113, alignment);
+        check(ptr != nullptr);
+        check(isAlignedToPowerOf2((u64) (uptr) ptr, (u64) alignment));
+        if (ptr) {
+            memset(ptr, 0x5A, 113);
+            Heap::free(ptr);
+        }
+    }
+    Heap::validate();
+}
+
+TEST_CASE("Heap::realloc grow/shrink") {
+    u32 initialBytes = 96;
+    u8* ptr = (u8*) Heap::alloc(initialBytes);
+    check(ptr != nullptr);
+    if (!ptr) {
+        return;
+    }
+
+    for (u32 i = 0; i < initialBytes; i++) {
+        ptr[i] = (u8) (i ^ 0xA5);
+    }
+
+    u32 grownBytes = 2048;
+    u8* grown = (u8*) Heap::realloc(ptr, grownBytes);
+    check(grown != nullptr);
+    if (!grown) {
+        Heap::free(ptr);
+        return;
+    }
+    for (u32 i = 0; i < initialBytes; i++) {
+        check(grown[i] == (u8) (i ^ 0xA5));
+    }
+
+    u32 shrunkBytes = 64;
+    u8* shrunk = (u8*) Heap::realloc(grown, shrunkBytes);
+    check(shrunk != nullptr);
+    if (!shrunk) {
+        Heap::free(grown);
+        return;
+    }
+    for (u32 i = 0; i < shrunkBytes; i++) {
+        check(shrunk[i] == (u8) (i ^ 0xA5));
+    }
+
+    Heap::free(shrunk);
+    Heap::validate();
+}
+
+TEST_CASE("Heap coalescing") {
+    void* a = Heap::alloc(120);
+    void* b = Heap::alloc(120);
+    void* c = Heap::alloc(120);
+    check(a != nullptr);
+    check(b != nullptr);
+    check(c != nullptr);
+    if (!(a && b && c)) {
+        Heap::free(a);
+        Heap::free(b);
+        Heap::free(c);
+        return;
+    }
+
+    Heap::free(a);
+    Heap::free(b);
+    void* d = Heap::alloc(220);
+    check(d != nullptr);
+    check(d == a);
+
+    Heap::free(d);
+    Heap::free(c);
+    Heap::validate();
+}
+
+TEST_CASE("Heap stress") {
+    struct Block {
+        void* ptr = nullptr;
+        u32 numBytes = 0;
+    };
+
+    Random rand{0x12345678};
+    Array<Block> blocks;
+    for (u32 i = 0; i < 4000; i++) {
+        u32 action = rand.generateU32() % 3;
+        if (blocks.isEmpty() || action == 0) {
+            u32 numBytes = (rand.generateU32() % 4096) + 1;
+            if ((rand.generateU32() % 64) == 0) {
+                numBytes += 256 * 1024;
+            }
+            void* ptr = Heap::alloc(numBytes);
+            check(ptr != nullptr);
+            if (ptr) {
+                blocks.append({ptr, numBytes});
+            }
+        } else if (action == 1) {
+            u32 index = rand.generateU32() % blocks.numItems();
+            u32 newBytes = (rand.generateU32() % 4096) + 1;
+            if ((rand.generateU32() % 64) == 0) {
+                newBytes += 256 * 1024;
+            }
+            void* ptr = Heap::realloc(blocks[index].ptr, newBytes);
+            check(ptr != nullptr);
+            if (ptr) {
+                blocks[index].ptr = ptr;
+                blocks[index].numBytes = newBytes;
+            }
+        } else {
+            u32 index = rand.generateU32() % blocks.numItems();
+            Heap::free(blocks[index].ptr);
+            blocks.eraseQuick(index);
+        }
+
+        if ((i % 128) == 0) {
+            Heap::validate();
+        }
+    }
+
+    for (const Block& block : blocks) {
+        Heap::free(block.ptr);
+    }
+    Heap::validate();
+}
+
+TEST_CASE("Heap multithread smoke") {
+    Atomic<u32> failures = 0;
+    static constexpr u32 NumThreads = 4;
+    static constexpr u32 Iterations = 1200;
+    Thread threads[NumThreads];
+
+    for (u32 t = 0; t < NumThreads; t++) {
+        threads[t].run([&failures, t]() {
+            Random rand{t + 1};
+            Array<void*> ptrs;
+            for (u32 i = 0; i < Iterations; i++) {
+                if (ptrs.isEmpty() || (rand.generateU32() % 2) == 0) {
+                    u32 numBytes = (rand.generateU32() % 2048) + 1;
+                    void* ptr = Heap::alloc(numBytes);
+                    if (ptr) {
+                        ptrs.append(ptr);
+                    } else {
+                        failures.fetchAdd(1, AcqRel);
+                    }
+                } else {
+                    u32 index = rand.generateU32() % ptrs.numItems();
+                    Heap::free(ptrs[index]);
+                    ptrs.eraseQuick(index);
+                }
+            }
+            for (void* ptr : ptrs) {
+                Heap::free(ptr);
+            }
+        });
+    }
+    for (u32 t = 0; t < NumThreads; t++) {
+        threads[t].join();
+    }
+
+    check(failures.load(Acquire) == 0);
+    Heap::validate();
+}
+
+TEST_CASE("Heap::validate") {
+    Heap::validate();
+    void* ptr = Heap::alloc(256);
+    check(ptr != nullptr);
+    Heap::validate();
+    Heap::free(ptr);
+    Heap::validate();
+}
+
 //  ▄▄  ▄▄               ▄▄     ▄▄
 //  ██  ██  ▄▄▄▄   ▄▄▄▄  ██▄▄▄  ▄▄ ▄▄▄▄▄   ▄▄▄▄▄
 //  ██▀▀██  ▄▄▄██ ▀█▄▄▄  ██  ██ ██ ██  ██ ██  ██

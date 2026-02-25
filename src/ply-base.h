@@ -159,6 +159,10 @@
 #define PLY_CALL_MEMBER(obj, pmf) ((obj).*(pmf))
 #define PLY_STATIC_ASSERT(cond) static_assert(cond, #cond)
 
+#if !defined(PLY_USE_NEW_ALLOCATOR)
+#define PLY_USE_NEW_ALLOCATOR 1
+#endif
+
 namespace ply {
 
 //--------------------------------------------
@@ -1438,6 +1442,8 @@ struct Heap {
     static void setOutOfMemoryHandler(Functor<void()> handler);
     // Returns current heap allocation counters and system-memory usage totals.
     static Stats getStats();
+    // Validates internal heap invariants in assert-enabled builds.
+    static void validate();
 
     // Perfect forwarding
     template <typename T, typename... Args>

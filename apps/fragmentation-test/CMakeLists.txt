@@ -17,6 +17,9 @@ if(WIN32)
 endif()
 add_library(plywood ${PLYWOOD_SOURCES})
 target_include_directories(plywood PUBLIC "${CMAKE_CURRENT_LIST_DIR}/../../src")
+if(DEFINED PLY_USE_NEW_ALLOCATOR)
+    target_compile_definitions(plywood PUBLIC PLY_USE_NEW_ALLOCATOR=${PLY_USE_NEW_ALLOCATOR})
+endif()
 
 # fragmentation-test
 add_source_files(HEAP_STRESS_TEST_SOURCES "${CMAKE_CURRENT_LIST_DIR}" fragmentation-test.cpp)

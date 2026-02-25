@@ -23,7 +23,15 @@ static Heap::Stats getStats()
 static void validate()
 {/apiSummary}
 
-The Plywood heap is separate from the C Standard Library's heap. Both heaps can coexist in the same program, but memory allocated from a specific heap must always be freed using the same heap. Plywood's heap implementation uses [dlmalloc](https://gee.cs.oswego.edu/dl/html/malloc.html) under the hood.
+The Plywood heap is separate from the C Standard Library's heap. Both heaps can coexist in the same program, but
+memory allocated from a specific heap must always be freed using the same heap.
+
+Heap backend selection is controlled by `PLY_USE_NEW_ALLOCATOR`:
+
+- `PLY_USE_NEW_ALLOCATOR=1` (default): Uses Plywood's bespoke allocator in `ply::HeapImpl`.
+- `PLY_USE_NEW_ALLOCATOR=0`: Uses the legacy [dlmalloc](https://gee.cs.oswego.edu/dl/html/malloc.html) backend.
+
+For internal implementation details of the bespoke allocator, see [Heap Design](/docs/base/heap-design).
 
 `Heap` is thread-safe. All member functions can be called concurrently from separate threads.
 
@@ -101,7 +109,11 @@ struct Heap::Stats {
 >>
 static void validate()
 --
-Validates the heap's internal consistency. Useful for debugging. Will force an immediate crash if the heap is corrupted, which is usually caused by a memory overrun or dangling pointer. Inserting calls to `validate` can help track down the cause of the corruption.
+Validates the heap's internal consistency. Useful for debugging. Will force an immediate crash if the heap is
+corrupted, which is usually caused by a memory overrun or dangling pointer. Inserting calls to `validate` can help
+track down the cause of the corruption.
+
+`validate` performs checks only when `PLY_WITH_ASSERTS` is enabled.
 {/apiDescriptions}
 
 ## `VirtualMemory`
