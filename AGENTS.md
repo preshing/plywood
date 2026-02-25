@@ -31,17 +31,17 @@ Additional components for 2D/3D math, networking and text parsing are also inclu
 ## Building and Running Sample Apps
 
 Each subdirectory in `apps/` is a standalone CMake project. These apps require ongoing maintenance, so prefer Debug builds when doing general development. On Linux and macOS, CMake will generate a Debug-configured makefile by default:
-```bash
+```
 $ cmake -B apps/<sample-name>/build apps/<sample-name>
 $ cmake --build apps/<sample-name>/build
 $ apps/<sample-name>/build/<sample-name>
 ```
 
 On Windows, CMake will generate a multi-configuration Visual Studio solution by default:
-```cmd
+```
 > cmake -B apps\<sample-name>\build apps\<sample-name>
 > cmake --build plywood\apps\<sample-name>\build --config=Debug
-> plywood\apps\<sample-name>\build\Debug<sample-name>
+> plywood\apps\<sample-name>\build\Debug\<sample-name>.exe
 ```
 
 ## Coding Conventions
@@ -72,6 +72,7 @@ Feel free to improve any existing code that you end up touching!)
 - For each of these categories and subcategories, there should up-to-date documentation that is easily found in the Markdown files located in the `docs` folder.
 - Leave a brief comment before each significant block of code in a function body to describe the role it plays within the enclosing code section.
 - Avoid adding too many small helper functions. Prefer to use direct C++ expressions when the meaning of those expression is clear from the surrounding comments.
+- When the body of an `if` statement consists of exactly one `continue`, `return`, or `break` statement, omit curly braces.
 
 ## Overview of `ply-base.h`
 
