@@ -8,6 +8,9 @@
 #include <ply-base.h>
 using namespace ply;
 
+// Using an unnamed namespace to avoid redefinition errors on macOS
+namespace {
+
 // Configuration
 static constexpr bool AllowLargeAllocs = true;
 static constexpr u32 LargeBlockMin = 100000;
@@ -57,6 +60,8 @@ void freeRandomBlock() {
         logStatus();
     }
 }
+
+} // unnamed namespace
 
 // Main
 int main(int argc, const char* argv[]) {
