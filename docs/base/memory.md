@@ -91,10 +91,13 @@ static Heap::Stats getStats()
 --
 Returns statistics about heap usage. `numBytesAllocated` is the sum of the sizes of all allocated blocks. `virtualMemorySize`, a larger number, is the total amount of system memory used to store those blocks, including bookkeeping overhead and unused space.
 
-{table caption="`Heap::Stats` members"}
-`uptr`|numBytesAllocated
-`uptr`|virtualMemorySize
-{/table}
+```cpp
+struct Heap::Stats {
+    uptr totalBytesConsumed;     // Total number of bytes consumed by heap allocations including chunk headers.
+    uptr totalSystemMemoryUsed;  // Total number of bytes currently committed via the system's VirtualMemory API.
+}
+```
+
 >>
 static void validate()
 --
@@ -204,4 +207,3 @@ static Atomic<uptr> totalCommittedBytes
 --
 The current total amount of memory that was committed using `allocRegion` or `commitPages`.
 {/apiDescriptions}
-

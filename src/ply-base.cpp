@@ -34,6 +34,19 @@
 #endif
 #endif
 
+extern "C" {
+void* dlmalloc(ply::uptr);
+void* dlrealloc(void*, ply::uptr);
+void dlfree(void*);
+void* dlmemalign(ply::uptr, ply::uptr);
+
+struct DLMallocStats {
+    ply::uptr totalBytesConsumed;
+    ply::uptr totalSystemMemoryUsed;
+};
+void dlget_heap_stats(DLMallocStats* stats);
+}
+
 namespace ply {
 
 //  ▄▄▄▄▄▄ ▄▄                      ▄▄▄        ▄▄▄▄▄          ▄▄
@@ -566,6 +579,48 @@ void VirtualMemory::freeRegion(void* addr, uptr numBytes) {
 //  ██▀▀██ ██▄▄██  ▄▄▄██ ██  ██
 //  ██  ██ ▀█▄▄▄  ▀█▄▄██ ██▄▄█▀
 //                       ██
+
+Functor<void()> Heap::outOfMemoryHandler;
+
+void* Heap::alloc(uptr numBytes) {
+    void* ptr = dlmalloc(numBytes);
+    if (!ptr && outOfMemoryHandler) {
+        outOfMemoryHandler();
+    }
+    return ptr;
+}
+
+void* Heap::realloc(void* ptr, uptr numBytes) {
+    void* newPtr = dlrealloc(ptr, numBytes);
+    if (!newPtr && outOfMemoryHandler) {
+        outOfMemoryHandler();
+    }
+    return newPtr;
+}
+
+void Heap::free(void* ptr) {
+    dlfree(ptr);
+}
+
+void* Heap::allocAligned(uptr numBytes, u32 alignment) {
+    void* ptr = dlmemalign(numBytes, alignment);
+    if (!ptr && outOfMemoryHandler) {
+        outOfMemoryHandler();
+    }
+    return ptr;
+}
+
+void Heap::setOutOfMemoryHandler(Functor<void()> handler) {
+    outOfMemoryHandler = std::move(handler);
+}
+
+Heap::Stats Heap::getStats() {
+    Heap::Stats stats;
+    static_assert(sizeof(DLMallocStats) == sizeof(Heap::Stats), "DLMallocStats layout mismatch");
+    static_assert(alignof(DLMallocStats) == alignof(Heap::Stats), "DLMallocStats alignment mismatch");
+    dlget_heap_stats((DLMallocStats*) &stats);
+    return stats;
+}
 
 #if !defined(PLY_OVERRIDE_NEW)
 #define PLY_OVERRIDE_NEW 1

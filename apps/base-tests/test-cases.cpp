@@ -99,6 +99,46 @@ TEST_CASE("Thread join") {
     check(value == 42);
 }
 
+//  ▄▄  ▄▄
+//  ██  ██  ▄▄▄▄   ▄▄▄▄  ▄▄▄▄▄
+//  ██▀▀██ ██▄▄██  ▄▄▄██ ██  ██
+//  ██  ██ ▀█▄▄▄  ▀█▄▄██ ██▄▄█▀
+//                       ██
+
+#undef TEST_CASE_PREFIX
+#define TEST_CASE_PREFIX Heap_
+
+TEST_CASE("Heap::getStats") {
+    Heap::Stats beginStats = Heap::getStats();
+
+    void* a = Heap::alloc(64);
+    void* b = Heap::alloc(4096);
+    check(a != nullptr);
+    check(b != nullptr);
+
+    Heap::Stats duringStats = Heap::getStats();
+    check(duringStats.totalBytesConsumed >= beginStats.totalBytesConsumed + 64 + 4096);
+    check(duringStats.totalSystemMemoryUsed >= duringStats.totalBytesConsumed);
+
+    Heap::free(a);
+    Heap::free(b);
+
+    Heap::Stats endStats = Heap::getStats();
+    check(endStats.totalBytesConsumed <= duringStats.totalBytesConsumed);
+    check(endStats.totalSystemMemoryUsed >= endStats.totalBytesConsumed);
+}
+
+TEST_CASE("Heap::setOutOfMemoryHandler") {
+    u32 outOfMemoryHandlerCallCount = 0;
+    Heap::setOutOfMemoryHandler([&]() { outOfMemoryHandlerCallCount++; });
+
+    void* ptr = Heap::alloc(getMaxValue<uptr>());
+    check(ptr == nullptr);
+    check(outOfMemoryHandlerCallCount == 1);
+
+    Heap::setOutOfMemoryHandler({});
+}
+
 //  ▄▄  ▄▄               ▄▄     ▄▄
 //  ██  ██  ▄▄▄▄   ▄▄▄▄  ██▄▄▄  ▄▄ ▄▄▄▄▄   ▄▄▄▄▄
 //  ██▀▀██  ▄▄▄██ ▀█▄▄▄  ██  ██ ██ ██  ██ ██  ██

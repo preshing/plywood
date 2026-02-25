@@ -1421,28 +1421,23 @@ struct VirtualMemory {
 
 } // namespace ply
 
-extern "C" {
-void* dlmalloc(ply::uptr);
-void* dlrealloc(void*, ply::uptr);
-void dlfree(void*);
-void* dlmemalign(ply::uptr, ply::uptr);
-};
-
 namespace ply {
 
 struct Heap {
-    static void* alloc(uptr numBytes) {
-        return dlmalloc(numBytes);
-    }
-    static void* realloc(void* ptr, uptr numBytes) {
-        return dlrealloc(ptr, numBytes);
-    }
-    static void free(void* ptr) {
-        dlfree(ptr);
-    }
-    static void* allocAligned(uptr numBytes, u32 alignment) {
-        return dlmemalign(numBytes, alignment);
-    }
+    struct Stats {
+        uptr totalBytesConsumed = 0;
+        uptr totalSystemMemoryUsed = 0;
+    };
+
+    static void* alloc(uptr numBytes);
+    static void* realloc(void* ptr, uptr numBytes);
+    static void free(void* ptr);
+    static void* allocAligned(uptr numBytes, u32 alignment);
+
+    // Sets a callback that will be invoked whenever a heap allocation fails.
+    static void setOutOfMemoryHandler(Functor<void()> handler);
+    // Returns current heap allocation counters and system-memory usage totals.
+    static Stats getStats();
 
     // Perfect forwarding
     template <typename T, typename... Args>
@@ -1459,6 +1454,9 @@ struct Heap {
             free(obj);
         }
     }
+
+private:
+    static Functor<void()> outOfMemoryHandler;
 };
 
 #if defined(PLY_WINDOWS)

@@ -42,17 +42,15 @@ int main() {
     for (u32 i = 0; i < testCases.numItems(); i++) {
         out.format("[{}/{}] {}... ", (i + 1), testCases.numItems(), testCases[i].name);
         gTestState.success = true;
-#if PLY_USE_DLMALLOC
-        auto beginStats = getHeapStats();
-#endif
+
+        // Check for memory leaks while running the test case.
+        Heap::Stats beginStats = Heap::getStats();
         testCases[i].func();
-#if PLY_USE_DLMALLOC
-        // Check for memory leaks
-        auto endStats = getHeapStats();
-        if (beginStats.inUseBytes != endStats.inUseBytes) {
+        Heap::Stats endStats = Heap::getStats();
+        if (beginStats.totalBytesConsumed != endStats.totalBytesConsumed) {
             gTestState.success = false;
         }
-#endif
+
         out.write(gTestState.success ? "success\n" : "***FAIL***\n");
         if (gTestState.success) {
             numPassed++;

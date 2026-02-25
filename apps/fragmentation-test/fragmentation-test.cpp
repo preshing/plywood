@@ -8,10 +8,6 @@
 #include <ply-base.h>
 using namespace ply;
 
-#if !PLY_USE_NEW_ALLOCATOR
-extern "C" uptr dlget_total_system_memory_used();
-#endif
-
 // Configuration
 static constexpr bool AllowLargeAllocs = true;
 static constexpr u32 LargeBlockMin = 100000;
@@ -40,11 +36,7 @@ u32 getRandomAllocationSize(bool allowLarge) {
 }
 
 void logStatus() {
-#if PLY_USE_NEW_ALLOCATOR
-    uptr totalSystemMemoryUsed = VirtualMemory::totalCommittedBytes.load(Relaxed);
-#else
-    uptr totalSystemMemoryUsed = dlget_total_system_memory_used();
-#endif
+    uptr totalSystemMemoryUsed = Heap::getStats().totalSystemMemoryUsed;
     getStdOut().format("{}, {}, {}\n", logCounter, totalAllocatedBytes, totalSystemMemoryUsed);
     logCounter++;
 }

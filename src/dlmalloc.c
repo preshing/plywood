@@ -6283,8 +6283,14 @@ History:
 
 */
 /* BEGIN Plywood modification */
-size_t dlget_total_system_memory_used(void) {
+struct DLMallocStats {
+    size_t totalBytesConsumed;
+    size_t totalSystemMemoryUsed;
+};
+
+void dlget_heap_stats(struct DLMallocStats* stats) {
     struct mallinfo info = internal_mallinfo(gm);
-    return info.arena + info.hblkhd;
+    stats->totalBytesConsumed = info.uordblks;
+    stats->totalSystemMemoryUsed = info.arena + info.hblkhd;
 }
 /* END Plywood modification */
