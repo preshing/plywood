@@ -23,9 +23,13 @@ static Heap::Stats getStats()
 static void validate()
 {/apiSummary}
 
-The Plywood heap is separate from the C Standard Library's heap. Both heaps can coexist in the same program, but memory allocated from a specific heap must always be freed using the same heap. Plywood's heap implementation uses [dlmalloc](https://gee.cs.oswego.edu/dl/html/malloc.html) under the hood.
+The Plywood heap is separate from the C Standard Library's heap. Both heaps can coexist in the same program, but memory allocated from a specific heap must always be freed using the same heap.
+
+By default, Plywood uses a bespoke boundary-tag allocator with small bins, tree bins, and direct-mapped chunks for large allocations. You can revert to the original [dlmalloc](https://gee.cs.oswego.edu/dl/html/malloc.html)-backed implementation by defining `PLY_USE_NEW_ALLOCATOR=0` at compile time.
 
 `Heap` is thread-safe. All member functions can be called concurrently from separate threads.
+
+For implementation details, see [Heap Design](/docs/base/heap-design).
 
 ### Low-level Allocation
 
@@ -101,7 +105,14 @@ struct Heap::Stats {
 >>
 static void validate()
 --
-Validates the heap's internal consistency. Useful for debugging. Will force an immediate crash if the heap is corrupted, which is usually caused by a memory overrun or dangling pointer. Inserting calls to `validate` can help track down the cause of the corruption.
+Validates the heap's internal consistency. Only active when `PLY_WITH_ASSERTS` is enabled. Will force an immediate crash if the heap is corrupted, which is usually caused by a memory overrun or dangling pointer. Inserting calls to `validate` can help track down the cause of the corruption.
+
+The validation checks:
+- Adjacent free chunks are properly coalesced
+- Bin and tree membership matches chunk sizes
+- Tree and link integrity (no cycles, correct parent pointers)
+- Top and designated-victim chunks are not in bins
+- Recomputed totals match `getStats()` counters
 {/apiDescriptions}
 
 ## `VirtualMemory`

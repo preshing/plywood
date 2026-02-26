@@ -1424,6 +1424,7 @@ struct VirtualMemory {
 namespace ply {
 
 struct Heap {
+    friend class HeapImpl;
     struct Stats {
         uptr totalBytesConsumed = 0;
         uptr totalSystemMemoryUsed = 0;
@@ -1438,6 +1439,8 @@ struct Heap {
     static void setOutOfMemoryHandler(Functor<void()> handler);
     // Returns current heap allocation counters and system-memory usage totals.
     static Stats getStats();
+    // Validates heap internal consistency (only when PLY_WITH_ASSERTS is enabled).
+    static void validate();
 
     // Perfect forwarding
     template <typename T, typename... Args>
@@ -1455,7 +1458,7 @@ struct Heap {
         }
     }
 
-private:
+    // Out-of-memory handler (public for HeapImpl access)
     static Functor<void()> outOfMemoryHandler;
 };
 

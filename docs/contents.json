@@ -10,6 +10,7 @@
         {"title": "Time and Date", "path": "base/time-date"},
         {"title": "Random Numbers", "path": "base/random"},
         {"title": "Memory", "path": "base/memory"},
+        {"title": "Heap Design", "path": "base/heap-design"},
         {"title": "Strings", "path": "base/strings"},
         {"title": "Arrays", "path": "base/arrays"},
         {"title": "Hash Maps", "path": "base/hash-maps"},
