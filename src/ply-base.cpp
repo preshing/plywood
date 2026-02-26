@@ -621,6 +621,8 @@ public:
     struct Chunk {
         Chunk* prevChunk;
         u64 sizeAndFlags;
+        // For large chunks: stores base address of VirtualMemory allocation
+        void* largeBaseAddr;
         uptr getSize() const { return sizeAndFlags & ~0x3ull; }
         bool getInUse() const { return (sizeAndFlags & 1ull) != 0; }
         bool getPrevInUse() const { return (sizeAndFlags & 2ull) != 0; }
@@ -644,12 +646,20 @@ private:
         Chunk* directMappedChunks = nullptr;
         Chunk* designatedVictim = nullptr;
         struct SegmentTop { VMSegment* segment; Chunk* topChunk; };
-        FixedArray<SegmentTop, 256> segmentTops;  // Fixed size to avoid recursion
+        FixedArray<SegmentTop, 4096> segmentTops;  // Fixed size to avoid recursion
         u32 numSegmentTops = 0;
         uptr totalBytesConsumed = 0;
         uptr totalSystemMemoryUsed = 0;
     };
-    static HeapState& getHeapState() { static HeapState hs; return hs; }
+    static HeapState& getHeapState() {
+        // Use placement new to avoid destructor running at program exit
+        static char hs_storage[sizeof(HeapState)] __attribute__((aligned(alignof(HeapState))));
+        static HeapState* hs = nullptr;
+        if (!hs) {
+            hs = new (hs_storage) HeapState();
+        }
+        return *hs;
+    }
 
     static uptr getSizeClass(uptr s) { return (s < SmallBinMax) ? (s >> SmallBinShift) : SmallBinCount; }
     static uptr binIndexToSize(uptr i) { return (i + 1) << SmallBinShift; }
@@ -821,9 +831,9 @@ HeapImpl::Chunk* HeapImpl::findFreeChunkInSegments(uptr minSize) {
 }
 HeapImpl::Chunk* HeapImpl::initFirstChunk(VMSegment* seg) {
     Chunk* c = (Chunk*)seg->baseAddr;
-    c->prevChunk = nullptr; c->sizeAndFlags = seg->numBytes | 1ull;
+    c->prevChunk = nullptr; c->sizeAndFlags = seg->numBytes | 1ull; c->largeBaseAddr = nullptr;
     auto& st = getHeapState();
-    PLY_ASSERT(st.numSegmentTops < 256);
+    PLY_ASSERT(st.numSegmentTops < 4096);
     st.segmentTops[st.numSegmentTops++] = {seg, nullptr};
     st.totalBytesConsumed += seg->numBytes + ChunkHeaderSize;
     return c;
@@ -847,6 +857,7 @@ HeapImpl::Chunk* HeapImpl::createLargeChunk(uptr numBytes) {
     if (!mem) return nullptr;
     Chunk* c = (Chunk*)mem;
     c->prevChunk = nullptr; c->sizeAndFlags = (total - ChunkHeaderSize) | 1ull;
+    c->largeBaseAddr = mem;  // Store base address for freeing
     addToDirectMapped(c);
     getHeapState().totalBytesConsumed += total;
     getHeapState().totalSystemMemoryUsed += total;
@@ -855,7 +866,7 @@ HeapImpl::Chunk* HeapImpl::createLargeChunk(uptr numBytes) {
 void HeapImpl::destroyLargeChunk(Chunk* c) {
     uptr total = alignToPowerOf2(c->getSize() + ChunkHeaderSize, VirtualMemory::getProperties().pageSize);
     removeFromDirectMapped(c);
-    VirtualMemory::freeRegion(c, total);
+    VirtualMemory::freeRegion(c->largeBaseAddr, total);  // Use stored base address
     getHeapState().totalBytesConsumed -= total;
     getHeapState().totalSystemMemoryUsed -= total;
 }
@@ -871,19 +882,19 @@ HeapImpl::Chunk* HeapImpl::allocateChunk(uptr numBytes) {
     auto& st = getHeapState();
     if (adj < SmallBinMax) {
         Chunk* c = findInSmallBins(adj);
-        if (c) { c->setInUse(true); st.totalBytesConsumed += adj + ChunkHeaderSize; return c; }
+        if (c) { c->setInUse(true); c->largeBaseAddr = nullptr; st.totalBytesConsumed += adj + ChunkHeaderSize; return c; }
     }
     Chunk* c = findBestFitInTreeBins(adj);
-    if (c) { c->setInUse(true); st.totalBytesConsumed += adj + ChunkHeaderSize; return c; }
+    if (c) { c->setInUse(true); c->largeBaseAddr = nullptr; st.totalBytesConsumed += adj + ChunkHeaderSize; return c; }
     if (st.designatedVictim && !st.designatedVictim->getInUse()) {
         if (st.designatedVictim->getSize() >= adj) {
-            c = st.designatedVictim; c->setInUse(true);
+            c = st.designatedVictim; c->setInUse(true); c->largeBaseAddr = nullptr;
             st.totalBytesConsumed += adj + ChunkHeaderSize;
             st.designatedVictim = nullptr; return c;
         }
     }
     c = findFreeChunkInSegments(adj);
-    if (c) { c->setInUse(true); st.totalBytesConsumed += adj + ChunkHeaderSize; return c; }
+    if (c) { c->setInUse(true); c->largeBaseAddr = nullptr; st.totalBytesConsumed += adj + ChunkHeaderSize; return c; }
     uptr segSize = max(alignToPowerOf2(adj * 4, 4096), (uptr)4096);
     VMSegment* seg = createVMSegment(segSize);
     if (!seg) return nullptr;
@@ -891,11 +902,16 @@ HeapImpl::Chunk* HeapImpl::allocateChunk(uptr numBytes) {
 }
 void HeapImpl::freeChunk(Chunk* chunk) {
     uptr size = chunk->getSize();
-    if (size >= LargeAllocThreshold) { destroyLargeChunk(chunk); return; }
+    // Only treat as large chunk if it has a valid largeBaseAddr (not null, not -1)
+    if (size >= LargeAllocThreshold && chunk->largeBaseAddr && chunk->largeBaseAddr != (void*)-1) { 
+        destroyLargeChunk(chunk); 
+        return; 
+    }
     LockGuard<Mutex> lock(getHeapState().mutex);
     auto& st = getHeapState();
     st.totalBytesConsumed -= size + ChunkHeaderSize;  // Subtract before coalescing
     chunk->setInUse(false);
+    chunk->largeBaseAddr = nullptr;  // Ensure largeBaseAddr is cleared
     Chunk* next = (Chunk*)((u8*)chunk + size + ChunkHeaderSize);
     if (!next->getInUse() && next->getPrevInUse()) {
         st.totalBytesConsumed -= next->getSize() + ChunkHeaderSize;  // Subtract coalesced chunk
