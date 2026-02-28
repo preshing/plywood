@@ -405,7 +405,8 @@ Owned<TCPConnection> TCPListener::accept() {
     socklen_t passedAddrLen = remoteAddrLen;
     int hostSocket = ::accept(this->listenSocket, (struct sockaddr*) &remoteAddr, &remoteAddrLen);
 
-    if (hostSocket <= 0) {
+    // `accept` returns -1 on failure; descriptor 0 is a valid accepted socket.
+    if (hostSocket < 0) {
         // FIXME: Check errno
         PLY_ASSERT(PLY_IPPOSIX_ALLOW_UNKNOWN_ERRORS);
         Network::lastResult_.store(IPResult::UNKNOWN);
@@ -427,8 +428,8 @@ Owned<TCPConnection> TCPListener::accept() {
         tcpConn->remoteAddr_ = IPAddress::from_ipv4(remoteAddrV4->sin_addr.s_addr);
     }
     tcpConn->remotePort_ = convertBigEndian(remoteAddr.sin6_port);
-    tcpConn->inPipe->fd = hostSocket;
-    tcpConn->outPipe->fd = hostSocket;
+    tcpConn->inPipe = Heap::create<Pipe_FD>(hostSocket, Pipe::HAS_READ_PERMISSION);
+    tcpConn->outPipe = Heap::create<Pipe_FD>(hostSocket, Pipe::HAS_WRITE_PERMISSION);
     Network::lastResult_.store(IPResult::OK);
     return tcpConn;
 }
@@ -576,8 +577,8 @@ Owned<TCPConnection> Network::connectTcp(const IPAddress& address, u16 port) {
         TCPConnection* tcpConn = Heap::create<TCPConnection>();
         tcpConn->remoteAddr_ = address;
         tcpConn->remotePort_ = port;
-        tcpConn->inPipe->fd = connectSocket;
-        tcpConn->outPipe->fd = connectSocket;
+        tcpConn->inPipe = Heap::create<Pipe_FD>(connectSocket, Pipe::HAS_READ_PERMISSION);
+        tcpConn->outPipe = Heap::create<Pipe_FD>(connectSocket, Pipe::HAS_WRITE_PERMISSION);
         Network::lastResult_.store(IPResult::OK);
         return tcpConn;
     }
