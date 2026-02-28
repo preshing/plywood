@@ -156,7 +156,8 @@ function updateSelectedItem(path) {
         path = path.substr(0, path.length - 1);
     }
 
-    // Find matching link in sidebar and select its <li>
+    // Find matching link in sidebar and select its TOC <li>.
+    // Some non-TOC links (for example, mobile nav "DOCS") can share the same href.
     var links = directory.getElementsByTagName('a');
     for (var i = 0; i < links.length; i++) {
         var href = links[i].getAttribute('href');
@@ -164,8 +165,8 @@ function updateSelectedItem(path) {
             var li = links[i].querySelector('li');
             if (li) {
                 li.classList.add('selected');
+                break;
             }
-            break;
         }
     }
 }
