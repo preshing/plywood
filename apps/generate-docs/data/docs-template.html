@@ -20,7 +20,7 @@
     <div class="title">
         <a href="/">
             <img class="logo" src="/static/plywood-house-small.png" srcset="/static/plywood-house-small.png 1x, /static/plywood-house-small@2x.png 2x" alt="Plywood logo" style="position: absolute; left: 19px; top: 5px;">
-            <span style="color: #e8e8e8; font-size: 22px; position: absolute; left: 73px; top: 10px;">Plywood</span>
+            <span style="color: var(--text-primary); font-size: 22px; position: absolute; left: 73px; top: 10px;">Plywood</span>
         </a>
         <span class="right">
           <div id="nav-links"><a href="/docs/intro"><span class="nav-link">DOCS</span></a><a href="https://github.com/preshing/plywood" target="_blank"><span class="nav-link">GITHUB</span></a>
@@ -34,8 +34,18 @@
   <div class="directory">
     <div class="scroller">
       <div class="inner">
+        <div class="docs-sidebar-header">
+          <a class="docs-sidebar-home" href="/">
+            <img class="logo" src="/static/plywood-house-small.png"
+                 srcset="/static/plywood-house-small.png 1x, /static/plywood-house-small@2x.png 2x" alt="Plywood logo">
+            <span class="docs-sidebar-home-label">Plywood</span>
+          </a>
+          <span class="docs-sidebar-actions">
+            <a href="https://github.com/preshing/plywood" target="_blank"><span class="nav-link">GITHUB</span></a>
+            <button class="theme-toggle" aria-label="Toggle dark mode" title="Toggle dark/light mode"></button>
+          </span>
+        </div>
         <div class="mobile-nav">
-          <a href="/docs/intro"><span class="nav-link">DOCS</span></a>
           <a href="https://github.com/preshing/plywood" target="_blank"><span class="nav-link">GITHUB</span></a>
           <button class="theme-toggle" aria-label="Toggle dark mode" title="Toggle dark/light mode"></button>
         </div>

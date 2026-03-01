@@ -119,7 +119,7 @@ html {
 :root {
     --bg-page: #ffffff;
     --bg-banner: #326d97;
-    --bg-sidebar: #ffffff;
+    --bg-sidebar: #e0e0e0;
     --bg-sidebar-hover: #dfebf3;
     --bg-sidebar-selected: #eeeeee;
     --bg-code-block: #f4f4f4;
@@ -143,6 +143,7 @@ html {
     --border-primary: #181818;
     --border-secondary: #d4d4d4;
     --border-sidebar: #999999;
+    --border-content: #aaaaaa;
     
     --scrollbar-thumb: #80868b42;
     --caret-icon: url(data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAiIGhlaWdodD0iMTAiIHZlcnNpb249IjEuMSIgdmlld0JveD0iMCAwIDEyIDEyIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPgogPHBhdGggZD0ibTYgMSA1IDUtNSA1IiBmaWxsPSJub25lIiBzdHJva2U9IiNhYWFhYWEiIHN0cm9rZS13aWR0aD0iMS44Ii8+Cjwvc3ZnPgo=);
@@ -155,7 +156,7 @@ html {
 [data-theme="dark"] {
     --bg-page: #202020;
     --bg-banner: #1c4e72;
-    --bg-sidebar: #202020;
+    --bg-sidebar: #2b2b2b;
     --bg-sidebar-hover: #2a2a4a;
     --bg-sidebar-selected: #263339;
     --bg-code-block: #0f0f0f;
@@ -178,6 +179,7 @@ html {
     --border-primary: #707070;
     --border-secondary: #404040;
     --border-sidebar: #707070;
+    --border-content: #404040;
     
     --scrollbar-thumb: #60606080;
     --caret-icon: url(data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAiIGhlaWdodD0iMTAiIHZlcnNpb249IjEuMSIgdmlld0JveD0iMCAwIDEyIDEyIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPgogPHBhdGggZD0ibTYgMSA1IDUtNSA1IiBmaWxsPSJub25lIiBzdHJva2U9IiM3MDcwNzAiIHN0cm9rZS13aWR0aD0iMS44Ii8+Cjwvc3ZnPgo=);
@@ -278,6 +280,8 @@ html {
 
 .content-parent {
     padding: 10px 20px;
+    background: var(--bg-page);
+    box-shadow: 3px 2px 2px rgba(0, 0, 0, 0.05);
 }
 
 .content {
@@ -290,11 +294,7 @@ html {
 .content h1 {
     font-family: "robotobold", "Helvetica Neue", Arial, sans-serif;
     font-size: 42px;
-    margin-top: 50px;
-    margin-bottom: 32px;
-    border-top: 1px solid var(--border-primary);
-    border-bottom: 4px double var(--border-primary);
-    padding-bottom: 5px;
+    margin-bottom: 20px;
     overflow: hidden;
 }
 .content h1 .right {
@@ -318,7 +318,6 @@ html {
     margin-top: 50px;
     margin-bottom: 28px;    
     border-bottom: 1px solid var(--border-primary);
-    padding-bottom: 3px;
 }
 .content h1 code {
     font-family: "jetbrains_mono", Courier, monospace, sans-serif;

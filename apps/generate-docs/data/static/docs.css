@@ -1,5 +1,6 @@
 ﻿html {
     overflow-y: scroll;
+    background: var(--bg-sidebar);
 }
 
 /*------------------------------------------------
@@ -7,15 +8,18 @@
 ------------------------------------------------*/
 
 .banner {
+    display: none;
     position: fixed;
     left: 0px;
     right: 0px;
     top: 0px;
     height: 40px;
     z-index: 2;
-    background: var(--bg-banner);
+    background: var(--bg-sidebar);
     color: var(--text-banner);
     font-family: "robotobold", "Helvetica Neue", Arial, sans-serif;
+    border-bottom: 1px solid var(--border-content);
+    box-shadow: 0px 2px 3px rgba(0, 0, 0, 0.3);
 }
 
 .banner a {
@@ -83,8 +87,8 @@
     display: none;
     color: var(--text-secondary);
     position: fixed;
-    width: 340px;
-    top: 42px;
+    width: 330px;
+    top: 0px;
     bottom: 0px;
     z-index: 1;
     overflow: hidden;
@@ -94,20 +98,105 @@
     font-family: "source_sans_3", "Helvetica Neue", Arial, sans-serif;
 }
 
+/* Fade desktop sidebar scrollbar in/out with hover */
+@media only screen and (min-width: 800px) {
+    .directory .scroller {
+        scrollbar-color: transparent transparent;
+        transition: scrollbar-color 0.3s ease;
+    }
+    .directory .scroller::-webkit-scrollbar-thumb {
+        background-color: transparent;
+        transition: background-color 0.3s ease;
+    }
+    .directory:hover .scroller {
+        scrollbar-color: var(--scrollbar-thumb) transparent;
+    }
+    .directory:hover .scroller::-webkit-scrollbar-thumb {
+        background-color: var(--scrollbar-thumb);
+    }
+}
+
+/* Desktop-only docs sidebar header */
+.docs-sidebar-header {
+    display: none;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px 8px;
+    margin-bottom: 6px;
+}
+
+.docs-sidebar-home {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.docs-sidebar-home .logo {
+}
+
+.docs-sidebar-home-label {
+    font-family: "robotobold", "Helvetica Neue", Arial, sans-serif;
+    font-size: 22px;
+    position: relative;
+    top: 1px;
+    color: var(--text-primary);
+}
+
+.docs-sidebar-actions {
+    display: inline-flex;
+    align-items: center;
+    margin-left: auto;
+    gap: 3px;
+}
+
+.docs-sidebar-actions a {
+    color: var(--text-secondary);
+}
+
+.docs-sidebar-actions .nav-link {
+    display: inline-block;
+    font-family: "robotobold", "Helvetica Neue", Arial, sans-serif;
+    font-size: 14px;
+    line-height: 24px;
+    padding: 3px 8px;
+    border-radius: 6px;
+}
+
+.docs-sidebar-actions .nav-link:hover {
+    background: var(--bg-sidebar-hover);
+}
+
+.docs-sidebar-actions .theme-toggle:hover {
+    background: var(--bg-sidebar-hover);
+}
+
+.docs-sidebar-actions .theme-toggle::before {
+    background-color: var(--text-secondary);
+}
+
 /*------------------------------------------------
    Media queries for different screen sizes
 ------------------------------------------------*/
 
 @media only screen and (min-width: 800px) {
     .directory {
-        padding-left: 8px;
         display: block;
-        top: 42px;
+        top: 0px;
         bottom: 0px;
     }
+    .directory .scroller .inner {
+        margin-top: 0px;
+    }
+    .docs-sidebar-header {
+        display: flex;
+    }
     .content-parent {
-        margin-left: 340px;
+        margin-left: 330px;
+        margin-top: 15px;
+        margin-bottom: 15px;
+        margin-right: 4px;
         padding: 15px 30px;
+        border: 1px solid var(--border-content);
     }
     .mobile-nav {
         display: none;
@@ -115,6 +204,12 @@
 }
 
 @media only screen and (max-width: 799px) {
+    .banner {
+        display: block;
+    }
+    .docs-sidebar-header {
+        display: none;
+    }
     .directory {
         right: 0px;
         top: 35px;
@@ -150,8 +245,6 @@
 .page-nav {
     margin-top: 36px;
     margin-bottom: 6px;
-    padding-top: 20px;
-    border-top: 1px solid var(--border-secondary);
     user-select: none;
 }
 
