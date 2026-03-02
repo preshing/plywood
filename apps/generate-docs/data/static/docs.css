@@ -15,10 +15,9 @@
     top: 0px;
     height: 40px;
     z-index: 2;
-    background: var(--bg-sidebar);
+    background: var(--bg-banner);
     color: var(--text-banner);
     font-family: "robotobold", "Helvetica Neue", Arial, sans-serif;
-    border-bottom: 1px solid var(--border-content);
     box-shadow: 0px 2px 3px rgba(0, 0, 0, 0.3);
 }
 
@@ -44,6 +43,36 @@
     position: absolute;        
     right: 0px;
     bottom: 0px;
+}
+
+.mobile-banner-actions {
+    display: none;
+    align-items: center;
+    height: 40px;
+    gap: 3px;
+    padding-top: 4px;
+    vertical-align: top;
+}
+
+.banner-github {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 6px;
+    color: var(--text-banner);
+    transition: background-color 0.2s ease;
+}
+
+.banner-github:hover {
+    background: rgba(255, 255, 255, 0.15);
+}
+
+.banner-github svg {
+    width: 22px;
+    height: 22px;
+    fill: currentColor;
 }
 
 #nav-links {
@@ -76,7 +105,8 @@
 }
 #hamburger {
     left: -10px;
-    top: -5px;
+    top: 8px;
+    margin-left: 11px;
 }
 
 /*------------------------------------------------
@@ -121,8 +151,11 @@
     display: none;
     align-items: center;
     gap: 8px;
-    padding: 6px 10px 8px;
-    margin-bottom: 6px;
+    padding: 6px 8px;
+    margin: 12px 10px 8px;
+    border-radius: 10px;
+    background: var(--bg-banner);
+    color: var(--text-banner);
 }
 
 .docs-sidebar-home {
@@ -139,7 +172,7 @@
     font-size: 22px;
     position: relative;
     top: 1px;
-    color: var(--text-primary);
+    color: var(--text-banner);
 }
 
 .docs-sidebar-actions {
@@ -149,29 +182,33 @@
     gap: 3px;
 }
 
-.docs-sidebar-actions a {
-    color: var(--text-secondary);
-}
-
-.docs-sidebar-actions .nav-link {
-    display: inline-block;
-    font-family: "robotobold", "Helvetica Neue", Arial, sans-serif;
-    font-size: 14px;
-    line-height: 24px;
-    padding: 3px 8px;
+.docs-sidebar-github {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
     border-radius: 6px;
+    color: var(--text-banner);
+    transition: background-color 0.2s ease;
 }
 
-.docs-sidebar-actions .nav-link:hover {
-    background: var(--bg-sidebar-hover);
+.docs-sidebar-github:hover {
+    background: rgba(255, 255, 255, 0.15);
+}
+
+.docs-sidebar-github svg {
+    width: 22px;
+    height: 22px;
+    fill: currentColor;
 }
 
 .docs-sidebar-actions .theme-toggle:hover {
-    background: var(--bg-sidebar-hover);
+    background: rgba(255, 255, 255, 0.15);
 }
 
 .docs-sidebar-actions .theme-toggle::before {
-    background-color: var(--text-secondary);
+    background-color: var(--text-banner);
 }
 
 /*------------------------------------------------
@@ -194,11 +231,15 @@
         margin-left: 330px;
         margin-top: 15px;
         margin-bottom: 15px;
-        margin-right: 4px;
+        margin-right: 8px;
         padding: 15px 30px;
         border: 1px solid var(--border-content);
+        box-shadow: 3px 2px 2px rgba(0, 0, 0, var(--shadow-opacity));
     }
     .mobile-nav {
+        display: none;
+    }
+    .mobile-banner-actions {
         display: none;
     }
 }
@@ -233,8 +274,17 @@
     #nav-links {
         display: none;
     }
+    .mobile-banner-actions {
+        display: inline-flex;
+    }
     #hamburger {
         display: inline-block;
+    }
+    html {
+        background: var(--bg-page);
+    }
+    .content-parent {
+        padding-top: 48px;
     }
 }
 

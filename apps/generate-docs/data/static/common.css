@@ -118,7 +118,7 @@ html {
 
 :root {
     --bg-page: #ffffff;
-    --bg-banner: #326d97;
+    --bg-banner: #417294;
     --bg-sidebar: #e0e0e0;
     --bg-sidebar-hover: #dfebf3;
     --bg-sidebar-selected: #eeeeee;
@@ -144,6 +144,7 @@ html {
     --border-secondary: #d4d4d4;
     --border-sidebar: #999999;
     --border-content: #aaaaaa;
+    --shadow-opacity: 0.05;
     
     --scrollbar-thumb: #80868b42;
     --caret-icon: url(data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAiIGhlaWdodD0iMTAiIHZlcnNpb249IjEuMSIgdmlld0JveD0iMCAwIDEyIDEyIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPgogPHBhdGggZD0ibTYgMSA1IDUtNSA1IiBmaWxsPSJub25lIiBzdHJva2U9IiNhYWFhYWEiIHN0cm9rZS13aWR0aD0iMS44Ii8+Cjwvc3ZnPgo=);
@@ -155,7 +156,7 @@ html {
 
 [data-theme="dark"] {
     --bg-page: #202020;
-    --bg-banner: #1c4e72;
+    --bg-banner: #2a4a67;
     --bg-sidebar: #2b2b2b;
     --bg-sidebar-hover: #2a2a4a;
     --bg-sidebar-selected: #263339;
@@ -180,6 +181,7 @@ html {
     --border-secondary: #404040;
     --border-sidebar: #707070;
     --border-content: #404040;
+    --shadow-opacity: 0.1;
     
     --scrollbar-thumb: #60606080;
     --caret-icon: url(data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAiIGhlaWdodD0iMTAiIHZlcnNpb249IjEuMSIgdmlld0JveD0iMCAwIDEyIDEyIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPgogPHBhdGggZD0ibTYgMSA1IDUtNSA1IiBmaWxsPSJub25lIiBzdHJva2U9IiM3MDcwNzAiIHN0cm9rZS13aWR0aD0iMS44Ii8+Cjwvc3ZnPgo=);
@@ -281,7 +283,6 @@ html {
 .content-parent {
     padding: 10px 20px;
     background: var(--bg-page);
-    box-shadow: 3px 2px 2px rgba(0, 0, 0, 0.05);
 }
 
 .content {
