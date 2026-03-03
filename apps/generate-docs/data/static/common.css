@@ -118,22 +118,22 @@ html {
 
 :root {
     --bg-page: #ffffff;
-    --bg-banner: #417294;
+    --bg-banner: #5d8cac;
     --bg-sidebar: #e0e0e0;
-    --bg-sidebar-hover: #dfebf3;
+    --bg-sidebar-hover: #c8d1d7;
     --bg-sidebar-selected: #eeeeee;
     --bg-code-block: #f4f4f4;
     --bg-highlight: #ffffd0;
     --bg-api-table: #fffffc;
     
-    --text-banner: #e0e0e0;
+    --text-banner: #ffffff;
     --text-primary: #181818;
     --text-secondary: #404040;
     --text-wip: #d73030;
     --text-muted: #909090;
     --text-code: #7d7d7d;
     --text-code-inline: #909090;
-    
+
     --link-color: #269eff;
     --type-color: #28b6b6;
     --symbol-color: #269eff;
@@ -155,10 +155,10 @@ html {
 ------------------------------------------------*/
 
 [data-theme="dark"] {
-    --bg-page: #202020;
+    --bg-page: #1a1a1a;
     --bg-banner: #2a4a67;
-    --bg-sidebar: #2b2b2b;
-    --bg-sidebar-hover: #2a2a4a;
+    --bg-sidebar: #282828;
+    --bg-sidebar-hover: #2b3945;
     --bg-sidebar-selected: #263339;
     --bg-code-block: #0f0f0f;
     --bg-highlight: #3a3a20;
@@ -252,11 +252,7 @@ html {
     mask-size: contain;
     -webkit-mask-repeat: no-repeat;
     mask-repeat: no-repeat;
-    transition: background-color 0.2s ease, transform 0.3s ease;
-}
-
-.theme-toggle:hover::before {
-    transform: rotate(15deg);
+    transition: background-color 0.2s ease;
 }
 
 /* Sun icon (shown in dark mode) */
@@ -318,7 +314,7 @@ html {
     font-size: 31px;
     margin-top: 50px;
     margin-bottom: 28px;    
-    border-bottom: 1px solid var(--border-primary);
+    border-bottom: 1px solid var(--border-secondary);
 }
 .content h1 code {
     font-family: "jetbrains_mono", Courier, monospace, sans-serif;
@@ -494,29 +490,29 @@ html {
     transition: transform 0.1s linear;
 }
 .directory li {
-    padding-left: 1.7em;
-    padding-right: 0.5em;
+    padding-left: 22px;
 }
 .directory ul ul li {
-    padding-left: 2.9em;
+    padding-left: 40px;
 }
 .directory ul ul ul li {
-    padding-left: 4.1em;
+    padding-left: 58px;
 }
 .directory ul ul ul ul li {
-    padding-left: 5.3em;
+    padding-left: 76px;
 }
 .directory ul ul ul ul ul li {
-    padding-left: 6.5em;
+    padding-left: 92px;
 }
 .directory ul ul ul ul ul ul li {
-    padding-left: 7.7em;
+    padding-left: 112px;
 }
 .directory li.selected > span:first-child {
     font-weight: bold;
 }
 .directory li.selectable:hover {
     background: var(--bg-sidebar-hover);
+    border-radius: 6px;
 }
 .directory a {
     color: inherit;
@@ -535,7 +531,7 @@ html {
 }
 
 .scroller .inner {
-    margin: 8px 0px;
+    margin: 8px 2px 8px 6px;
     white-space: nowrap;
 }
 .scroller ul {

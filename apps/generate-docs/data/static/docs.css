@@ -18,7 +18,7 @@
     background: var(--bg-banner);
     color: var(--text-banner);
     font-family: "robotobold", "Helvetica Neue", Arial, sans-serif;
-    box-shadow: 0px 2px 3px rgba(0, 0, 0, 0.3);
+    box-shadow: 0px 2px 3px rgba(0, 0, 0, var(--shadow-opacity));
 }
 
 .banner a {
@@ -223,6 +223,7 @@
     }
     .directory .scroller .inner {
         margin-top: 0px;
+        width: 308px;
     }
     .docs-sidebar-header {
         display: flex;
