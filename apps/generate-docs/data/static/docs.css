@@ -361,28 +361,105 @@
 ------------------------------------------------*/
 
 .page-nav {
-    margin-top: 36px;
-    margin-bottom: 6px;
+    margin-top: 42px;
+    margin-bottom: 8px;
     user-select: none;
+    display: flex;
+    gap: 12px;
 }
 
-.page-nav a {
+.page-nav .nav-card {
+    flex: 0 0 calc((100% - 12px) / 2);
+    min-width: 0;
+    display: block;
+    box-sizing: border-box;
+    position: relative;
+    border: 1px solid var(--border-secondary);
+    border-radius: 10px;
+    background: var(--bg-page);
     color: var(--text-secondary);
-    font-family: "source_sans_3", "Helvetica Neue", Arial, sans-serif;
-    font-size: 85%;
-}
-
-.page-nav a:hover {
+    padding: 10px 13px 11px;
     text-decoration: none;
 }
 
-.page-nav .nav-button {
-    background-color: var(--button-background);
-    padding: 2px 12px;
-    border-radius: 8px;
-    display: inline-block;
+.page-nav .nav-card:hover {
+    text-decoration: none;
 }
 
-.page-nav .nav-button.right {
-    float: right;
+.page-nav .nav-meta {
+    display: block;
+    font-family: "source_sans_3", "Helvetica Neue", Arial, sans-serif;
+    font-size: 14px;
+    font-weight: normal;
+    letter-spacing: 0;
+    text-transform: none;
+    color: var(--text-muted);
+}
+
+.page-nav .nav-title {
+    display: block;
+    font-family: "source_sans_3", "Helvetica Neue", Arial, sans-serif;
+    font-size: 16px;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.page-nav .nav-card:hover .nav-title {
+    color: var(--link-color);
+}
+
+.page-nav .nav-prev .nav-meta::before {
+    content: "";
+}
+
+.page-nav .nav-next {
+    text-align: left;
+    margin-left: auto;
+}
+
+.page-nav .nav-next .nav-meta::after {
+    content: "";
+}
+
+.page-nav .nav-prev {
+    text-align: right;
+    padding-left: 34px;
+}
+
+.page-nav .nav-next {
+    padding-right: 34px;
+}
+
+.page-nav .nav-prev::before,
+.page-nav .nav-next::after {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 30px;
+    line-height: 1;
+    color: var(--text-muted);
+}
+
+.page-nav .nav-prev::before {
+    content: "\2039";
+    left: 12px;
+}
+
+.page-nav .nav-next::after {
+    content: "\203A";
+    right: 12px;
+}
+
+@media only screen and (max-width: 560px) {
+    .page-nav {
+        flex-direction: column;
+    }
+    .page-nav .nav-card {
+        flex-basis: auto;
+    }
+    .page-nav .nav-next {
+        margin-left: 0;
+    }
 }

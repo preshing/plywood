@@ -351,12 +351,16 @@ void convertPage(const json::Node& item, const json::Node* prevPage, const json:
     // Generate prev/next navigation
     String prevLink, nextLink;
     if (prevPage) {
-        prevLink = String::format("<a href=\"/docs/{}\"><span class=\"nav-button\">&#9664;&nbsp; {&}</span></a>",
-                                  prevPage->get("path").text(), prevPage->get("title").text());
+        prevLink = String::format(
+            "<a class=\"nav-card nav-prev\" href=\"/docs/{}\"><span class=\"nav-meta\">Previous</span>"
+            "<span class=\"nav-title\">{&}</span></a>",
+            prevPage->get("path").text(), prevPage->get("title").text());
     }
     if (nextPage) {
-        nextLink = String::format("<a href=\"/docs/{}\"><span class=\"nav-button right\">{&}&nbsp; &#9654;</span></a>",
-                                  nextPage->get("path").text(), nextPage->get("title").text());
+        nextLink = String::format(
+            "<a class=\"nav-card nav-next\" href=\"/docs/{}\"><span class=\"nav-meta\">Next</span>"
+            "<span class=\"nav-title\">{&}</span></a>",
+            nextPage->get("path").text(), nextPage->get("title").text());
     }
     String navHtml = String::format("<div class=\"page-nav\">{}{}</div>", prevLink, nextLink);
 
