@@ -19,6 +19,10 @@ TextFormat serverTextFormat = {UTF8, TextFormat::LF, false};
 json::Node contents;
 u32 publishKey = 0; // Prevent browsers from caching old stylesheets
 
+void appendPublishKeyToAsset(String& text, StringView assetPath) {
+    text = text.replace(assetPath, String::format("{}?key={}", assetPath, publishKey));
+}
+
 void printDeclAsApiTitle(Stream& out, const Parser* parser, const Declaration& decl) {
     Array<TokenSpan> spans = parser->syntaxHighlight(decl);
     out.write("<code>");
@@ -385,7 +389,9 @@ void generateWholeSite() {
 
     // Copy front page to content/index.html.
     String frontPage = Filesystem::loadText(joinPath(sourceFolder, "index.html"));
-    frontPage = frontPage.replace("/static/style.css", String::format("/static/style.css?key={}", publishKey));
+    appendPublishKeyToAsset(frontPage, "/static/common.css");
+    appendPublishKeyToAsset(frontPage, "/static/front.css");
+    appendPublishKeyToAsset(frontPage, "/static/common.js");
     Filesystem::saveText(joinPath(outFolder, "content/index.html"), frontPage, serverTextFormat);
 
     // Copy static files to static/.
@@ -404,6 +410,10 @@ void generateWholeSite() {
 
     // Copy docs template to content/.
     String templateText = Filesystem::loadTextAutodetect(joinPath(sourceFolder, "docs-template.html"));
+    appendPublishKeyToAsset(templateText, "/static/common.css");
+    appendPublishKeyToAsset(templateText, "/static/docs.css");
+    appendPublishKeyToAsset(templateText, "/static/common.js");
+    appendPublishKeyToAsset(templateText, "/static/doc-viewer.js");
     Filesystem::saveText(joinPath(outFolder, "content/docs-template.html"), templateText, serverTextFormat);
 
     // Parse contents.json and generate table of contents HTML.
