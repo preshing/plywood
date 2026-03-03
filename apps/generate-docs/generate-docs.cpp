@@ -243,26 +243,26 @@ void parseTable(Stream& out, const Map<StringView, String>& args, ViewStream& in
 
 void parseExample(Stream& out, ViewStream& in) {
     out.format("<div class=\"caption\">Example</div>\n");
-    out.write("<pre>\n");
+    out.write("<pre><code>");
     while (StringView line = readLine(in)) {
         StringView s = line.trim();
         if (s == "{/example}")
             break;
         printXmlEscapedString(out, line);
     }
-    out.write("</pre>\n");
+    out.write("</code></pre>\n");
 }
 
 void parseOutput(Stream& out, ViewStream& in) {
     out.format("<div class=\"caption\">Output</div>\n");
-    out.write("<pre>\n");
+    out.write("<pre><code>");
     while (StringView line = readLine(in)) {
         StringView s = line.trim();
         if (s == "{/output}")
             break;
         printXmlEscapedString(out, line);
     }
-    out.write("</pre>\n");
+    out.write("</code></pre>\n");
 }
 
 void parseMarkdown(Stream& out, ViewStream& in) {

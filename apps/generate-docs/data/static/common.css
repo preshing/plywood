@@ -368,7 +368,7 @@ html {
 .content p {
     margin-bottom: 20px;
 }
-.content code, .content pre {
+.content code {
     font-family: "jetbrains_mono", Courier, monospace, sans-serif;
     font-size: 83%;
 }
@@ -376,6 +376,7 @@ html {
     color: var(--text-code-inline);
 }
 .content pre {
+    font-family: "jetbrains_mono", Courier, monospace, sans-serif;
     padding: 6px 16px;
     margin-bottom: 1.5em;
     color: var(--text-code);
