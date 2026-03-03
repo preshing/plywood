@@ -134,8 +134,25 @@ void parseApiSummary(Stream& out, const Map<StringView, String>& args, ViewStrea
         className = *c;
     }
 
-    out.write("<table class=\"api\">\n");
+    Array<String> lines;
+    u32 numHeadings = 0;
     while (StringView line = readLine(in)) {
+        StringView s = line.trim();
+        if (s == "{/apiSummary}")
+            break;
+        if (s.startsWith("--") && s.substr(2).trim()) {
+            numHeadings++;
+        }
+        lines.append(line);
+    }
+
+    if (numHeadings <= 1) {
+        out.write("<table class=\"api single-group\">\n");
+    } else {
+        out.write("<table class=\"api\">\n");
+    }
+
+    for (const String& line : lines) {
         StringView s = line.trim();
         if (s.startsWith("--")) {
             StringView caption = s.substr(2).trim();
@@ -144,8 +161,6 @@ void parseApiSummary(Stream& out, const Map<StringView, String>& args, ViewStrea
             }
             continue;
         }
-        if (s == "{/apiSummary}")
-            break;
         Owned<Parser> parser = Parser::create();
         Declaration decl = parser->parseDeclaration(s, className);
         printDeclAsHtml(out, parser, decl);

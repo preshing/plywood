@@ -148,6 +148,7 @@ html {
     --border-popup: #cccccc;
     --border-content: #aaaaaa;
     --border-doc-meta: #d4d4d4;
+    --border-table: #e8e8e8;
     --shadow-opacity: 0.05;
     --shadow-popup-opacity: 0.05;
     
@@ -190,6 +191,7 @@ html {
     --border-popup: #404040;
     --border-content: #404040;
     --border-doc-meta: #404040;
+    --border-table: #333333;
     --shadow-opacity: 0.1;
     --shadow-popup-opacity: 0.5;
     
@@ -413,7 +415,7 @@ html {
 ------------------------------------------------*/
 
 .content table.api {
-    border: 1px solid var(--border-secondary);
+    border: 2px solid var(--border-table);
     border-collapse: separate;    
     -webkit-border-radius: 10px;
     -moz-border-radius: 10px;
@@ -433,13 +435,38 @@ html {
     padding-right: 16px;
 }
 .content table.api tr:not(:first-child) td.heading {
-    border-top: 1px solid var(--border-secondary);
+    border-top: 2px solid var(--border-table);
+}
+.content table.api tr.heading + tr.entry td {
+    padding-top: 6px;
+}
+.content table.api tr.heading + tr td.template {
+    padding-top: 6px;
+}
+/* Single-category API tables get extra top breathing room without affecting multi-category tables. */
+.content table.api.single-group tr.heading + tr.entry td {
+    padding-top: 14px;
+}
+.content table.api.single-group tr.heading + tr td.template {
+    padding-top: 14px;
+}
+.content table.api.single-group tr.entry:first-child td {
+    padding-top: 14px;
+}
+.content table.api.single-group tr:first-child td.template {
+    padding-top: 14px;
+}
+.content table.api tr.entry:has(+ tr td.heading) td {
+    padding-bottom: 14px;
 }
 .content table.api tr.entry:first-child td {
     padding-top: 6px;
 }
+.content table.api tr:first-child td.template {
+    padding-top: 6px;
+}
 .content table.api tr.entry:last-child td {
-    padding-bottom: 6px;
+    padding-bottom: 14px;
 }
 .content table.api td.template {
     padding: 0px 16px;
@@ -478,7 +505,7 @@ html {
     color: var(--text-secondary);
 }
 .content table.grid td {
-    border: 1px solid var(--border-secondary);
+    border: 2px solid var(--border-table);
     padding: 0px 8px;
 }
 
