@@ -376,7 +376,7 @@
     position: relative;
     border: 1px solid var(--border-secondary);
     border-radius: 10px;
-    background: var(--bg-page);
+    background: transparent;
     color: var(--text-secondary);
     padding: 10px 13px 11px;
     text-decoration: none;
