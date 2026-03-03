@@ -47,22 +47,29 @@
 
 .mobile-banner-actions {
     display: none;
-    align-items: center;
     height: 40px;
-    gap: 3px;
-    padding-top: 4px;
+    padding-top: 0px;
     vertical-align: top;
 }
 
+.mobile-banner-actions > * {
+    float: left;
+    margin-left: 3px;
+    margin-top: 4px;
+}
+
+.mobile-banner-actions > :first-child {
+    margin-left: 0;
+}
+
 .banner-github {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
+    display: block;
     width: 32px;
     height: 32px;
     border-radius: 6px;
     color: var(--text-banner);
     transition: background-color 0.2s ease;
+    position: relative;
 }
 
 .banner-github:hover {
@@ -70,9 +77,47 @@
 }
 
 .banner-github svg {
+    position: absolute;
+    left: 5px;
+    top: 5px;
     width: 22px;
     height: 22px;
     fill: currentColor;
+}
+
+.mobile-banner-actions .theme-toggle {
+    display: block;
+}
+
+.mobile-banner-actions .theme-toggle::before {
+    display: block;
+    margin: 5px;
+}
+
+.mobile-banner-actions #hamburger {
+    display: block;
+    width: 32px;
+    height: 32px;
+    margin-left: 3px;
+    margin-right: 8px;
+    margin-top: 4px;
+    left: 0px;
+    top: 0px;
+    position: relative;
+    background-image: none;
+    background-size: 0px 0px;
+}
+
+.mobile-banner-actions #hamburger::before {
+    content: '';
+    position: absolute;
+    left: 6px;
+    top: 8px;
+    width: 20px;
+    height: 3px;
+    border-radius: 2px;
+    background: var(--text-banner);
+    box-shadow: 0px 7px 0px var(--text-banner), 0px 14px 0px var(--text-banner);
 }
 
 #nav-links {
@@ -149,9 +194,9 @@
 /* Desktop-only docs sidebar header */
 .docs-sidebar-header {
     display: none;
-    align-items: center;
-    gap: 8px;
-    padding: 6px 8px;
+    position: relative;
+    width: 288px;
+    height: 44px;
     margin: 12px 10px 8px;
     border-radius: 10px;
     background: var(--bg-banner);
@@ -159,38 +204,49 @@
 }
 
 .docs-sidebar-home {
-    display: flex;
-    align-items: center;
-    gap: 8px;
+    display: block;
+    width: 100%;
+    height: 100%;
 }
 
 .docs-sidebar-home .logo {
+    position: absolute;
+    left: 8px;
+    top: 6px;
 }
 
 .docs-sidebar-home-label {
     font-family: "robotobold", "Helvetica Neue", Arial, sans-serif;
     font-size: 22px;
-    position: relative;
-    top: 1px;
+    position: absolute;
+    left: 60px;
+    top: 11px;
     color: var(--text-banner);
 }
 
 .docs-sidebar-actions {
-    display: inline-flex;
-    align-items: center;
-    margin-left: auto;
-    gap: 3px;
+    float: right;
+    margin-top: 6px;
+    margin-right: 8px;
+}
+
+.docs-sidebar-actions > * {
+    float: left;
+    margin-left: 3px;
+}
+
+.docs-sidebar-actions > :first-child {
+    margin-left: 0;
 }
 
 .docs-sidebar-github {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
+    display: block;
     width: 32px;
     height: 32px;
     border-radius: 6px;
     color: var(--text-banner);
     transition: background-color 0.2s ease;
+    position: relative;
 }
 
 .docs-sidebar-github:hover {
@@ -198,9 +254,16 @@
 }
 
 .docs-sidebar-github svg {
+    position: absolute;
+    left: 5px;
+    top: 5px;
     width: 22px;
     height: 22px;
     fill: currentColor;
+}
+
+.docs-sidebar-actions .theme-toggle {
+    display: block;
 }
 
 .docs-sidebar-actions .theme-toggle:hover {
@@ -208,6 +271,8 @@
 }
 
 .docs-sidebar-actions .theme-toggle::before {
+    display: block;
+    margin: 5px;
     background-color: var(--text-banner);
 }
 
@@ -226,13 +291,13 @@
         width: 308px;
     }
     .docs-sidebar-header {
-        display: flex;
+        display: block;
     }
     .content-parent {
         margin-left: 330px;
-        margin-top: 15px;
-        margin-bottom: 15px;
-        margin-right: 8px;
+        margin-top: 12px;
+        margin-bottom: 12px;
+        margin-right: 12px;
         padding: 15px 30px;
         border: 1px solid var(--border-content);
         box-shadow: 3px 2px 2px rgba(0, 0, 0, var(--shadow-opacity));
@@ -276,7 +341,7 @@
         display: none;
     }
     .mobile-banner-actions {
-        display: inline-flex;
+        display: inline-block;
     }
     #hamburger {
         display: inline-block;

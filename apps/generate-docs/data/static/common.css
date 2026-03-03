@@ -129,6 +129,7 @@ html {
     --text-banner: #ffffff;
     --text-primary: #181818;
     --text-secondary: #404040;
+    --text-toc-heading: #1e3a5f;
     --text-wip: #d73030;
     --text-muted: #909090;
     --text-code: #7d7d7d;
@@ -166,6 +167,7 @@ html {
     
     --text-primary: #e4e4e4;
     --text-secondary: #b0b0b0;
+    --text-toc-heading: #c1deff;
     --text-wip: #ff7777;
     --text-muted: #808080;
     --text-code: #a8a8a8;
@@ -520,6 +522,14 @@ html {
 .directory .toc-header {
     margin-left: 5px;
     color: var(--text-muted);
+}
+
+.directory .toc-heading {
+    margin: 16px 0px 8px 22px;
+    font-family: "robotobold", "Helvetica Neue", Arial, sans-serif;
+    font-size: 16px;
+    letter-spacing: 0.04em;
+    color: var(--text-toc-heading);
 }
 
 .scroller {

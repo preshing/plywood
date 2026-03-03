@@ -34,8 +34,8 @@
                 </svg>
               </a>
               <button class="theme-toggle" aria-label="Toggle dark mode" title="Toggle dark/light mode"></button>
+              <span id="hamburger" class="button"></span>
             </span>
-            <span id="hamburger" class="button"></span>
         </span>
     </div>
   </div>
@@ -44,11 +44,6 @@
     <div class="scroller">
       <div class="inner">
         <div class="docs-sidebar-header">
-          <a class="docs-sidebar-home" href="/">
-            <img class="logo" src="/static/plywood-house-small.png"
-                 srcset="/static/plywood-house-small.png 1x, /static/plywood-house-small@2x.png 2x" alt="Plywood logo">
-            <span class="docs-sidebar-home-label">Plywood</span>
-          </a>
           <span class="docs-sidebar-actions">
             <a class="docs-sidebar-github" href="https://github.com/preshing/plywood" target="_blank"
                title="View on GitHub" aria-label="View on GitHub">
@@ -58,7 +53,13 @@
             </a>
             <button class="theme-toggle" aria-label="Toggle dark mode" title="Toggle dark/light mode"></button>
           </span>
+          <a class="docs-sidebar-home" href="/">
+            <img class="logo" src="/static/plywood-house-small.png"
+                 srcset="/static/plywood-house-small.png 1x, /static/plywood-house-small@2x.png 2x" alt="Plywood logo">
+            <span class="docs-sidebar-home-label">Plywood</span>
+          </a>
         </div>
+        <div class="toc-heading">DOCUMENTATION</div>
         <ul>
 {%toc%}
         </ul>
