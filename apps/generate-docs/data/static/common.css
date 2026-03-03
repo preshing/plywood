@@ -544,7 +544,6 @@ html {
     content: var(--caret-icon);
     position: absolute;
     left: -16px;
-    top: 0.3em;
     transform-origin: 55% 50%;
     transition: transform 0.1s linear;
 }
