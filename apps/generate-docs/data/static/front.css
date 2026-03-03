@@ -168,7 +168,7 @@
         display: none;
         color: var(--text-secondary);
         position: fixed;
-        width: 290px;
+        width: 310px;
         right: 0px;
         top: 76px;
         bottom: 25px;
@@ -178,8 +178,9 @@
         font-size: 85%;
         transform-origin: top right;
         font-family: "source_sans_3", "Helvetica Neue", Arial, sans-serif;
-        background: var(--bg-sidebar);
-        border: 1px solid var(--border-sidebar);
+        background: var(--bg-popup);
+        border: 1px solid var(--border-popup);
+        box-shadow: -3px 3px 6px rgba(0, 0, 0, var(--shadow-popup-opacity));
     }
     .directory.expanded {
         display: block;
@@ -193,4 +194,3 @@
         animation-timing-function: linear;
     }
 }
-

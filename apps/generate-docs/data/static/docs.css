@@ -318,13 +318,15 @@
         display: none;
     }
     .directory {
+        width: 350px;
         right: 0px;
         top: 35px;
         bottom: 25px;
         max-height: 600px;
         z-index: 3;
-        background: var(--bg-sidebar);
-        border: 1px solid var(--border-sidebar);
+        background: var(--bg-popup);
+        border: 1px solid var(--border-popup);
+        box-shadow: -3px 3px 6px rgba(0, 0, 0, var(--shadow-popup-opacity));
     }
     .directory.expanded {
         display: block;

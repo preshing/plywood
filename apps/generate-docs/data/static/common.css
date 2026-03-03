@@ -120,6 +120,7 @@ html {
     --bg-page: #ffffff;
     --bg-banner: #5d8cac;
     --bg-sidebar: #e0e0e0;
+    --bg-popup: #f8f8f8;
     --bg-sidebar-hover: #c8d1d7;
     --bg-sidebar-selected: #eeeeee;
     --bg-code-block: #f4f4f4;
@@ -144,8 +145,10 @@ html {
     --border-primary: #181818;
     --border-secondary: #d4d4d4;
     --border-sidebar: #999999;
+    --border-popup: #cccccc;
     --border-content: #aaaaaa;
     --shadow-opacity: 0.05;
+    --shadow-popup-opacity: 0.05;
     
     --scrollbar-thumb: #80868b42;
     --caret-icon: url(data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAiIGhlaWdodD0iMTAiIHZlcnNpb249IjEuMSIgdmlld0JveD0iMCAwIDEyIDEyIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPgogPHBhdGggZD0ibTYgMSA1IDUtNSA1IiBmaWxsPSJub25lIiBzdHJva2U9IiNhYWFhYWEiIHN0cm9rZS13aWR0aD0iMS44Ii8+Cjwvc3ZnPgo=);
@@ -159,6 +162,7 @@ html {
     --bg-page: #1a1a1a;
     --bg-banner: #2a4a67;
     --bg-sidebar: #282828;
+    --bg-popup: #181818;
     --bg-sidebar-hover: #2b3945;
     --bg-sidebar-selected: #263339;
     --bg-code-block: #0f0f0f;
@@ -182,8 +186,10 @@ html {
     --border-primary: #707070;
     --border-secondary: #404040;
     --border-sidebar: #707070;
+    --border-popup: #404040;
     --border-content: #404040;
     --shadow-opacity: 0.1;
+    --shadow-popup-opacity: 0.5;
     
     --scrollbar-thumb: #60606080;
     --caret-icon: url(data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAiIGhlaWdodD0iMTAiIHZlcnNpb249IjEuMSIgdmlld0JveD0iMCAwIDEyIDEyIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPgogPHBhdGggZD0ibTYgMSA1IDUtNSA1IiBmaWxsPSJub25lIiBzdHJva2U9IiM3MDcwNzAiIHN0cm9rZS13aWR0aD0iMS44Ii8+Cjwvc3ZnPgo=);
