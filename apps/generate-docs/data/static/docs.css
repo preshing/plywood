@@ -451,15 +451,3 @@
     content: "\203A";
     right: 12px;
 }
-
-@media only screen and (max-width: 560px) {
-    .page-nav {
-        flex-direction: column;
-    }
-    .page-nav .nav-card {
-        flex-basis: auto;
-    }
-    .page-nav .nav-next {
-        margin-left: 0;
-    }
-}
