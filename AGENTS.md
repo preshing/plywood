@@ -76,7 +76,7 @@ Feel free to improve any existing code that you end up touching!)
 
 ## Overview of `ply-base.h`
 
-The `src/ply-base.h' defines the complete public API of the Plywood base library in a single ~4500-line C++ header file.
+The `src/ply-base.h' defines the public API of the Plywood base library in a single ~4500-line C++ header file.
 All C++ code in the Plywood project should use this API while avoiding the Standard C/C++ Library API.
 If you feel that a function or feature is missing from this base library, and there's a strong argument for adding it, please bring it to the user's attention as part of your response.
 

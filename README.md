@@ -1,4 +1,4 @@
-# The Plywood C++ Base Library
+# The Plywood C++ Runtime Library
 
 Plywood is a low-level C++ library for building cross-platform native software. It provides a simple, portable C++ interface over OS features and commonly-used data structures & algorithms. Its compact size and lack of dependencies make it easy to integrate and fast to compile.
 
