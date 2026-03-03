@@ -284,8 +284,9 @@ void parseMarkdown(Stream& out, ViewStream& in) {
                 }
                 parseOutput(out, in);
             } else if (cmd == "title") {
-                out.format("<h1><span class=\"right\"><div class=\"include\"><code>&lt;{&}&gt;</code></div><div "
-                           "class=\"namespace\"><code>namespace {&}</code></div></span>{&}</h1>\n",
+                out.format("<h1><span class=\"right\"><span class=\"meta-label\">Header file:</span><span "
+                           "class=\"meta-value\">&lt;{&}&gt;</span><span class=\"meta-label\">Namespace:</span><span "
+                           "class=\"meta-value\">{&}</span></span>{&}</h1>\n",
                            *args.find("include"), *args.find("namespace"), *args.find("text"));
             } else {
                 PLY_ASSERT(0); // Unrecognized section type

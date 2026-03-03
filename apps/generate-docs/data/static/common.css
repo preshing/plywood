@@ -121,6 +121,7 @@ html {
     --bg-banner: #5d8cac;
     --bg-sidebar: #e0e0e0;
     --bg-popup: #f8f8f8;
+    --bg-doc-meta: #fafafa;
     --bg-sidebar-hover: #c8d1d7;
     --bg-sidebar-selected: #eeeeee;
     --bg-code-block: #f4f4f4;
@@ -133,6 +134,7 @@ html {
     --text-toc-heading: #1e3a5f;
     --text-wip: #d73030;
     --text-muted: #909090;
+    --text-doc-meta-value: #545454;
     --text-code: #7d7d7d;
     --text-code-inline: #909090;
 
@@ -147,6 +149,7 @@ html {
     --border-sidebar: #999999;
     --border-popup: #cccccc;
     --border-content: #aaaaaa;
+    --border-doc-meta: #d4d4d4;
     --shadow-opacity: 0.05;
     --shadow-popup-opacity: 0.05;
     
@@ -163,6 +166,7 @@ html {
     --bg-banner: #2a4a67;
     --bg-sidebar: #282828;
     --bg-popup: #181818;
+    --bg-doc-meta: #202020;
     --bg-sidebar-hover: #2b3945;
     --bg-sidebar-selected: #263339;
     --bg-code-block: #0f0f0f;
@@ -174,6 +178,7 @@ html {
     --text-toc-heading: #c1deff;
     --text-wip: #ff7777;
     --text-muted: #808080;
+    --text-doc-meta-value: #b2b2b2;
     --text-code: #a8a8a8;
     --text-code-inline: #a0a0a0;
     
@@ -188,6 +193,7 @@ html {
     --border-sidebar: #707070;
     --border-popup: #404040;
     --border-content: #404040;
+    --border-doc-meta: #404040;
     --shadow-opacity: 0.1;
     --shadow-popup-opacity: 0.5;
     
@@ -300,22 +306,42 @@ html {
     font-family: "robotobold", "Helvetica Neue", Arial, sans-serif;
     font-size: 42px;
     margin-bottom: 20px;
-    overflow: hidden;
+    overflow: visible;
 }
 .content h1 .right {
     float: right;
     position: relative;
-    top: 0.22em;
-    text-align: right;
-    margin: 0 0 6px 20px;
+    top: 0;
+    text-align: left;
+    margin: 8px 0 8px 24px;
+    padding: 8px 12px 8px;
+    background: var(--bg-doc-meta);
+    border: 1px solid var(--border-doc-meta);
 }
-.content h1 .right .include {
-    font-size: 30px;
-    margin-bottom: 3px;
+.content h1 .right .meta-label {
+    display: block;
+    font-family: "source_sans_3", "Helvetica Neue", Arial, sans-serif;
+    font-size: 14px;
+    line-height: 1.2;
 }
-.content h1 .right .namespace {
+.content h1 .right .meta-value {
+    display: block;
+    font-family: "jetbrains_mono", Courier, monospace, sans-serif;
+    font-size: 17px;
+    line-height: 1.2;
+    margin-bottom: 5px;
+}
+.content h1 .right .meta-value:last-child {
+    margin-bottom: 0;
+}
+.content h1 .right .meta-label:nth-child(3) {
+    margin-top: 3px;
+}
+.content h1 .right .meta-label {
     color: var(--text-muted);
-    font-size: 18px;
+}
+.content h1 .right .meta-value {
+    color: var(--text-doc-meta-value);
 }
 .content h2 {
     font-family: "robotobold", "Helvetica Neue", Arial, sans-serif;
