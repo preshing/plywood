@@ -385,6 +385,8 @@ html {
     background-color: var(--bg-code-block);
     overflow-x: auto;
     scrollbar-color: var(--scrollbar-thumb) transparent;
+    font-size: 95%;
+    line-height: 1.1;
 }
 .content pre::-webkit-scrollbar-thumb {
     background: var(--scrollbar-thumb);
@@ -428,7 +430,7 @@ html {
     margin: 32px auto 36px auto;
     color: var(--text-muted);
     max-width: 90%;
-    line-height: 1.42;
+    line-height: 1.2;
 }
 .content table.api td.prefix {
     text-align: right;
@@ -491,7 +493,7 @@ html {
 .content dl.api_defs dt {
     margin-bottom: 14px;
     margin-top: 24px;
-    line-height: 1.42;
+    line-height: 1.2;
 }
 .content dl.api_defs dd {
     margin-left: 32px;
@@ -584,7 +586,6 @@ html {
     margin: 16px 0px 8px 22px;
     font-family: "robotobold", "Helvetica Neue", Arial, sans-serif;
     font-size: 16px;
-    letter-spacing: 0.04em;
     color: var(--text-toc-heading);
 }
 
