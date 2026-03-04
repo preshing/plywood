@@ -19,42 +19,29 @@ template <typename T> const T* as() const
 template <typename T, typename... Args> T& switchTo(Args&&... args)
 {/apiSummary}
 
-{apiDescriptions class=Variant}
-template <typename T> Variant(T&& value)
---
-Constructs a variant containing the given value. `T` must be one of the variant's allowed types.
+{context class=Variant}
 
->>
-template <typename T> Variant& operator=(T&& value)
---
-Assigns a new value to the variant. The previous value is destroyed first.
+`template <typename T> Variant(T&& value)`
+> Constructs a variant containing the given value. `T` must be one of the variant's allowed types.
 
->>
-u32 getSubtypeIndex() const
---
-Returns the zero-based index of the currently held type within the variant's type list.
+`template <typename T> Variant& operator=(T&& value)`
+> Assigns a new value to the variant. The previous value is destroyed first.
 
->>
-bool isEmpty() const
---
-Returns `true` if the variant holds no value.
+`u32 getSubtypeIndex() const`
+> Returns the zero-based index of the currently held type within the variant's type list.
 
->>
-template <typename T> bool is() const
---
-Returns `true` if the variant currently holds a value of type `T`.
+`bool isEmpty() const`
+> Returns `true` if the variant holds no value.
 
->>
-template <typename T> T* as()
-template <typename T> const T* as() const
---
-Returns a pointer to the contained value if it's of type `T`, or `nullptr` otherwise.
+`template <typename T> bool is() const`
+> Returns `true` if the variant currently holds a value of type `T`.
 
->>
-template <typename T, typename... Args> T& switchTo(Args&&... args)
---
-Destroys the current value (if any), constructs a new value of type `T` using the provided arguments, and returns a reference to it.
-{/apiDescriptions}
+`template <typename T> T* as()`
+`template <typename T> const T* as() const`
+> Returns a pointer to the contained value if it's of type `T`, or `nullptr` otherwise.
+
+`template <typename T, typename... Args> T& switchTo(Args&&... args)`
+> Destroys the current value (if any), constructs a new value of type `T` using the provided arguments, and returns a reference to it.
 
 {example}
 Variant<int, String, float> value;

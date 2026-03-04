@@ -16,28 +16,19 @@ Pipe* getStdOutPipe()
 Pipe* getStdErrPipe()
 {/apiSummary}
 
-{apiDescriptions}
-Stream getStdIn(ConsoleMode mode = TEXT)
---
-Returns a stream for reading from standard input. Pass `BINARY` for binary mode.
+`Stream getStdIn(ConsoleMode mode = TEXT)`
+> Returns a stream for reading from standard input. Pass `BINARY` for binary mode.
 
->>
-Stream getStdOut(ConsoleMode mode = TEXT)
---
-Returns a stream for writing to standard output. Pass `BINARY` for binary mode.
+`Stream getStdOut(ConsoleMode mode = TEXT)`
+> Returns a stream for writing to standard output. Pass `BINARY` for binary mode.
 
->>
-Stream getStdErr(ConsoleMode mode = TEXT)
---
-Returns a stream for writing to standard error.
+`Stream getStdErr(ConsoleMode mode = TEXT)`
+> Returns a stream for writing to standard error.
 
->>
-Pipe* getStdInPipe()
-Pipe* getStdOutPipe()
-Pipe* getStdErrPipe()
---
-Returns the raw pipe objects for standard I/O. These are singletons and should not be freed.
-{/apiDescriptions}
+`Pipe* getStdInPipe()`
+`Pipe* getStdOutPipe()`
+`Pipe* getStdErrPipe()`
+> Returns the raw pipe objects for standard I/O. These are singletons and should not be freed.
 
 ## `Stream`
 
@@ -70,121 +61,76 @@ u64 getSeekPos()
 void seekTo(u64 seekPos)
 {/apiSummary}
 
-{apiDescriptions class=Stream}
-Stream()
---
-Constructs an empty stream that is not connected to any pipe.
+{context class=Stream}
 
->>
-Stream(Pipe* pipe, bool isPipeOwner)
---
-Constructs a stream from a pipe. If `isPipeOwner` is true, the stream will destroy the pipe when closed.
+`Stream()`
+> Constructs an empty stream that is not connected to any pipe.
 
->>
-Stream(Stream&& other)
---
-Move constructor.
+`Stream(Pipe* pipe, bool isPipeOwner)`
+> Constructs a stream from a pipe. If `isPipeOwner` is true, the stream will destroy the pipe when closed.
 
->>
-Stream& operator=(Stream&& other)
---
-Move assignment.
+`Stream(Stream&& other)`
+> Move constructor.
 
->>
-bool isOpen()
---
-Returns `true` if the stream is connected to a valid pipe.
+`Stream& operator=(Stream&& other)`
+> Move assignment.
 
->>
-explicit operator bool()
---
-Same as `isOpen()`.
+`bool isOpen()`
+> Returns `true` if the stream is connected to a valid pipe.
 
->>
-void close()
---
-Flushes and closes the stream. If the stream owns the pipe, the pipe is destroyed.
+`explicit operator bool()`
+> Same as `isOpen()`.
 
->>
-bool makeReadable(u32 minBytes = 1)
---
-Ensures at least `minBytes` are available in the read buffer. Returns `false` if end-of-file is reached.
+`void close()`
+> Flushes and closes the stream. If the stream owns the pipe, the pipe is destroyed.
 
->>
-bool makeWritable(u32 minBytes = 1)
---
-Ensures at least `minBytes` of space are available in the write buffer.
+`bool makeReadable(u32 minBytes = 1)`
+> Ensures at least `minBytes` are available in the read buffer. Returns `false` if end-of-file is reached.
 
->>
-bool hasRemainingBytes() bool
---
-Returns `true` if there are any bytes remaining in the read buffer.
+`bool makeWritable(u32 minBytes = 1)`
+> Ensures at least `minBytes` of space are available in the write buffer.
 
->>
-u32 numRemainingBytes() const
---
-Returns the number of bytes currently available in the read buffer.
+`bool hasRemainingBytes() bool`
+> Returns `true` if there are any bytes remaining in the read buffer.
 
->>
-StringView viewRemainingBytes() const
---
-Returns a view of the bytes currently in the read buffer.
+`u32 numRemainingBytes() const`
+> Returns the number of bytes currently available in the read buffer.
 
->>
-MutStringView viewRemainingBytesMut()
---
-Returns a mutable view of the read buffer.
+`StringView viewRemainingBytes() const`
+> Returns a view of the bytes currently in the read buffer.
 
->>
-void flush(bool toDevice = false)
---
-Writes any buffered data to the underlying pipe. If `toDevice` is true, also flushes the pipe to the physical device.
+`MutStringView viewRemainingBytesMut()`
+> Returns a mutable view of the read buffer.
 
->>
-char peekByte()
---
-Returns the next byte in the input stream, or `0` if at end-of-file.
+`void flush(bool toDevice = false)`
+> Writes any buffered data to the underlying pipe. If `toDevice` is true, also flushes the pipe to the physical device.
 
->>
-char readByte()
---
-Reads and returns a single byte.
+`char peekByte()`
+> Returns the next byte in the input stream, or `0` if at end-of-file.
 
->>
-u32 read(MutStringView dst)
---
-Reads up to `dst.numBytes` bytes into `dst`. Returns the number of bytes actually read.
+`char readByte()`
+> Reads and returns a single byte.
 
->>
-u32 skip(u32 numBytes)
---
-Skips up to `numBytes` in the input. Returns the number of bytes actually skipped.
+`u32 read(MutStringView dst)`
+> Reads up to `dst.numBytes` bytes into `dst`. Returns the number of bytes actually read.
 
->>
-bool write(char c)
---
-Writes a single byte.
+`u32 skip(u32 numBytes)`
+> Skips up to `numBytes` in the input. Returns the number of bytes actually skipped.
 
->>
-u32 write(StringView bytes)
---
-Writes the given bytes to the stream. Returns the number of bytes written.
+`bool write(char c)`
+> Writes a single byte.
 
->>
-void format(StringView fmt, const Args&... args)
---
-Writes formatted text using `{}` placeholders.
+`u32 write(StringView bytes)`
+> Writes the given bytes to the stream. Returns the number of bytes written.
 
->>
-u64 getSeekPos()
---
-Returns the current seek position in the stream.
+`void format(StringView fmt, const Args&... args)`
+> Writes formatted text using `{}` placeholders.
 
->>
-void seekTo(u64 seekPos)
---
-Seeks to the specified position. Only works with seekable pipes.
-{/apiDescriptions}
+`u64 getSeekPos()`
+> Returns the current seek position in the stream.
+
+`void seekTo(u64 seekPos)`
+> Seeks to the specified position. Only works with seekable pipes.
 
 Remember to write `'\n'` for newlines. There's no `endl` like C++ iostreams—use `flush` to force output.
 
@@ -210,38 +156,25 @@ virtual void seekTo(s64 offset)
 u32 getFlags() const
 {/apiSummary}
 
-{apiDescriptions class=Pipe}
-virtual ~Pipe()
---
-Virtual destructor for proper cleanup of derived classes.
+{context class=Pipe}
 
->>
-virtual u32 read(MutStringView buf)
---
-Reads up to `buf.numBytes` bytes into `buf`. Returns the number of bytes actually read. Returns 0 at end-of-file.
+`virtual ~Pipe()`
+> Virtual destructor for proper cleanup of derived classes.
 
->>
-virtual bool write(StringView buf)
---
-Writes the bytes in `buf`. Returns `true` on success.
+`virtual u32 read(MutStringView buf)`
+> Reads up to `buf.numBytes` bytes into `buf`. Returns the number of bytes actually read. Returns 0 at end-of-file.
 
->>
-virtual void flush(bool toDevice = false)
---
-Flushes any buffered writes. If `toDevice` is true, ensures data reaches the physical device.
+`virtual bool write(StringView buf)`
+> Writes the bytes in `buf`. Returns `true` on success.
 
->>
-virtual u64 getFileSize()
---
-Returns the total size of the underlying file, or 0 if not applicable.
+`virtual void flush(bool toDevice = false)`
+> Flushes any buffered writes. If `toDevice` is true, ensures data reaches the physical device.
 
->>
-virtual void seekTo(s64 offset)
---
-Seeks to the specified byte offset. Only supported by seekable pipes.
+`virtual u64 getFileSize()`
+> Returns the total size of the underlying file, or 0 if not applicable.
 
->>
-u32 getFlags() const
---
-Returns the pipe's capability flags (readable, writable, seekable, etc.).
-{/apiDescriptions}
+`virtual void seekTo(s64 offset)`
+> Seeks to the specified byte offset. Only supported by seekable pipes.
+
+`u32 getFlags() const`
+> Returns the pipe's capability flags (readable, writable, seekable, etc.).

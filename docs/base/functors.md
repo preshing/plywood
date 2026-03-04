@@ -12,21 +12,16 @@ explicit operator bool() const
 Return operator()(CallArgs&&... args) const
 {/apiSummary}
 
-{apiDescriptions class=Functor}
-template <typename T> Functor(const T& callable)
---
-Constructs a functor from any callable object. The callable is copied into internal storage.
+{context class=Functor}
 
->>
-explicit operator bool() const
---
-Returns `true` if the functor holds a callable, `false` if empty.
+`template <typename T> Functor(const T& callable)`
+> Constructs a functor from any callable object. The callable is copied into internal storage.
 
->>
-Return operator()(CallArgs&&... args) const
---
-Invokes the wrapped callable with the given arguments and returns its result.
-{/apiDescriptions}
+`explicit operator bool() const`
+> Returns `true` if the functor holds a callable, `false` if empty.
+
+`Return operator()(CallArgs&&... args) const`
+> Invokes the wrapped callable with the given arguments and returns its result.
 
 {example}
 Functor<int(int, int)> add = [](int a, int b) { return a + b; };

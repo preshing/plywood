@@ -17,43 +17,34 @@ s64 convertToUnixTimestamp(const DateTime& dateTime)
 void printDateTime(Stream& out, StringView format, const DateTime& dateTime)
 {/apiSummary}
 
-{apiDescriptions}
-s64 getUnixTimestamp()
---
-Returns the current system time as a Unix timestamp in microseconds.
+`s64 getUnixTimestamp()`
+> Returns the current system time as a Unix timestamp in microseconds.
 
->>
-DateTime convertToDateTime(s64 unixTimestamp)
-DateTime convertToDateTime(s64 unixTimestamp, s16 timeZoneOffsetInMinutes)
---
-Converts a Unix timestamp to a `DateTime` object with the following member variables:
+`DateTime convertToDateTime(s64 unixTimestamp)`
+`DateTime convertToDateTime(s64 unixTimestamp, s16 timeZoneOffsetInMinutes)`
+> Converts a Unix timestamp to a `DateTime` object with the following member variables:
+>
+> {table caption="`DateTime` members"}
+> `s32`|`year`
+> `u8`|`month`|1..12
+> `u8`|`day`|1..31
+> `u8`|`weekday`|Sunday = 0, Saturday = 6
+> `u8`|`hour`|0..23
+> `u8`|`minute`|0..59
+> `u8`|`second`|0..59
+> `s16`|`timeZoneOffsetInMinutes`|eg. EST = -300
+> `u32`|`microsecond`|0..999999
+> {/table}
+>
+> The same Unix timestamp can produce different `DateTime` objects depending on the time zone used during conversion. The time zone of each `DateTime` object is indicated by the `timeZoneOffsetInMinutes` member and expressed relative to [Coordinated Universal Time (UTC)](https://en.wikipedia.org/wiki/CoordinatedUniversalTime). For example, a `timeZoneOffsetInMinutes` of `-300` corresponds to [Eastern Standard Time (EST)](https://en.wikipedia.org/wiki/EasternTimeZone), which is 5 hours behind UTC.
+>
+> The first form of `convertToDateTime` uses the local time zone offset as reported by the underlying operating system. The second form accepts `timeZoneOffsetInMinutes` as an additional argument. If you call the second form, you'll have to determine the time zone offset yourself, since Plywood doesn't provide a way to determine time zone offsets at arbitrary geographic locations.
 
-{table caption="`DateTime` members"}
-`s32`|`year`
-`u8`|`month`|1..12
-`u8`|`day`|1..31
-`u8`|`weekday`|Sunday = 0, Saturday = 6
-`u8`|`hour`|0..23
-`u8`|`minute`|0..59
-`u8`|`second`|0..59
-`s16`|`timeZoneOffsetInMinutes`|eg. EST = -300
-`u32`|`microsecond`|0..999999
-{/table}
+`s64 convertToUnixTimestamp(const DateTime& dateTime)`
+> Converts a `DateTime` object back to a Unix timestamp.
 
-The same Unix timestamp can produce different `DateTime` objects depending on the time zone used during conversion. The time zone of each `DateTime` object is indicated by the `timeZoneOffsetInMinutes` member and expressed relative to [Coordinated Universal Time (UTC)](https://en.wikipedia.org/wiki/CoordinatedUniversalTime). For example, a `timeZoneOffsetInMinutes` of `-300` corresponds to [Eastern Standard Time (EST)](https://en.wikipedia.org/wiki/EasternTimeZone), which is 5 hours behind UTC.
-
-The first form of `convertToDateTime` uses the local time zone offset as reported by the underlying operating system. The second form accepts `timeZoneOffsetInMinutes` as an additional argument. If you call the second form, you'll have to determine the time zone offset yourself, since Plywood doesn't provide a way to determine time zone offsets at arbitrary geographic locations.
-
->>
-s64 convertToUnixTimestamp(const DateTime& dateTime)
---
-Converts a `DateTime` object back to a Unix timestamp.
-
->>
-void printDateTime(Stream& out, StringView format, const DateTime& dateTime)
---
-Prints the contents of a `DateTime` object as human-readable text. Month and weekday names are output in English only. The `format` string accepts the following conversion specifiers:
-{/apiDescriptions}
+`void printDateTime(Stream& out, StringView format, const DateTime& dateTime)`
+> Prints the contents of a `DateTime` object as human-readable text. Month and weekday names are output in English only. The `format` string accepts the following conversion specifiers:
 
 {table caption="Conversion specifiers"}
 `%a`|abbreviated weekday
@@ -99,16 +90,11 @@ u64 getCpuTicks()
 float getCpuTicksPerSecond()
 {/apiSummary}
 
-{apiDescriptions}
-u64 getCpuTicks()
---
-Returns a high-resolution CPU timestamp.
+`u64 getCpuTicks()`
+> Returns a high-resolution CPU timestamp.
 
->>
-float getCpuTicksPerSecond()
---
-Returns the high-resolution timer frequency. To measure a time interval in seconds, subtract two timestamps and divide the result by this value.
-{/apiDescriptions}
+`float getCpuTicksPerSecond()`
+> Returns the high-resolution timer frequency. To measure a time interval in seconds, subtract two timestamps and divide the result by this value.
 
     u64 startTick = getCpuTicks();
     doSomeWork();

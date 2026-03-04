@@ -9,26 +9,17 @@ void sort(AnyArray& arr)
 u32 binarySearch(const AnyArray& arr, const Key& key, FindType findType)
 {/apiSummary}
 
-{apiDescriptions}
-s32 find(const AnyArray& arr, const Key& key)
---
-Performs a linear search from the beginning of the array. Returns the index of the first matching item, or `-1` if not found.
+`s32 find(const AnyArray& arr, const Key& key)`
+> Performs a linear search from the beginning of the array. Returns the index of the first matching item, or `-1` if not found.
 
->>
-s32 reverseFind(const AnyArray& arr, const Key& key)
---
-Performs a linear search from the end of the array. Returns the index of the last matching item, or `-1` if not found.
+`s32 reverseFind(const AnyArray& arr, const Key& key)`
+> Performs a linear search from the end of the array. Returns the index of the last matching item, or `-1` if not found.
 
->>
-void sort(AnyArray& arr)
---
-Sorts the array in ascending order. Items are compared using `operator<`.
+`void sort(AnyArray& arr)`
+> Sorts the array in ascending order. Items are compared using `operator<`.
 
->>
-u32 binarySearch(const AnyArray& arr, const Key& key, FindType findType)
---
-Performs a binary search on a sorted array. Returns the index of a matching item based on the `findType` parameter. The array must already be sorted.
-{/apiDescriptions}
+`u32 binarySearch(const AnyArray& arr, const Key& key, FindType findType)`
+> Performs a binary search on a sorted array. Returns the index of a matching item based on the `findType` parameter. The array must already be sorted.
 
 {table caption="`FindType` values"}
 `FindGreaterThan` | Returns the first item strictly greater than `key`

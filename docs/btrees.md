@@ -61,55 +61,36 @@ The items in a `BTree` are always kept in sorted order.
 
 ### Additional Constructors
 
-{apiDescriptions class=BTree}
-BTree(std::initializer_list<Item> items)
---
-Constructs a B-tree from a braced initializer list.
-{/apiDescriptions}
+{context class=BTree}
+
+`BTree(std::initializer_list<Item> items)`
+> Constructs a B-tree from a braced initializer list.
 
 ### Accessing Items
 
-{apiDescriptions class=BTree}
-bool find(const Key& desiredKey) const
---
-Returns `true` if an item with the given key exists in the tree.
+`bool find(const Key& desiredKey) const`
+> Returns `true` if an item with the given key exists in the tree.
 
->>
-ConstIterator findEarliest(const Key& desiredKey, FindType findType) const
---
-Finds the first item matching the given criteria. Use `FindGreaterThan` or `FindGreaterThanOrEqual` to specify the comparison.
+`ConstIterator findEarliest(const Key& desiredKey, FindType findType) const`
+> Finds the first item matching the given criteria. Use `FindGreaterThan` or `FindGreaterThanOrEqual` to specify the comparison.
 
->>
-ConstIterator begin() const
-ConstIterator end() const
---
-Returns iterators for range-based for loops. Items are yielded in sorted order.
-{/apiDescriptions}
+`ConstIterator begin() const`
+`ConstIterator end() const`
+> Returns iterators for range-based for loops. Items are yielded in sorted order.
 
 ### Modifying the B-Tree
 
-{apiDescriptions class=BTree}
-void clear()
---
-Removes all items from the tree.
+`void clear()`
+> Removes all items from the tree.
 
->>
-void insert(Arg_ itemToInsert)
---
-Inserts an item into the tree. The tree remains sorted after insertion.
+`void insert(Arg_ itemToInsert)`
+> Inserts an item into the tree. The tree remains sorted after insertion.
 
->>
-void insert(Iterator* insertPos, Arg_ itemToInsert)
---
-Inserts an item at a specific position. The caller must ensure the position maintains sorted order.
+`void insert(Iterator* insertPos, Arg_ itemToInsert)`
+> Inserts an item at a specific position. The caller must ensure the position maintains sorted order.
 
->>
-bool erase(const Key& keyToErase)
---
-Removes the item with the given key. Returns `true` if an item was removed.
+`bool erase(const Key& keyToErase)`
+> Removes the item with the given key. Returns `true` if an item was removed.
 
->>
-void erase(Iterator erasePos)
---
-Removes the item at the given iterator position.
-{/apiDescriptions}
+`void erase(Iterator erasePos)`
+> Removes the item at the given iterator position.

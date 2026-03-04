@@ -15,31 +15,22 @@ This class uses the well-known [xoroshiro128**](http://xorshift.di.unimi.it/) al
 
 This class isn't thread-safe. Its member functions must not be called concurrently from separate threads.
 
-{apiDescriptions class=Random}
-Random()
---
-Constructs a pseudorandom number generator seeded from the system clock.
+{context class=Random}
 
->>
-Random(u64 seed)
---
-Constructs a pseudorandom number generator using an explicit seed. The same `seed` always generates the same sequence of pseudorandom numbers.
+`Random()`
+> Constructs a pseudorandom number generator seeded from the system clock.
 
->>
-u32 generateU32()
---
-Returns an unsigned integer uniformly distibuted over the entire range of representable 32-bit values. Use the modulo `%` operator to restrict the value to a smaller range.
+`Random(u64 seed)`
+> Constructs a pseudorandom number generator using an explicit seed. The same `seed` always generates the same sequence of pseudorandom numbers.
 
->>
-u64 generateU64()
---
-Returns an unsigned integer uniformly distibuted over the entire range of representable 64-bit values. Use the modulo `%` operator to restrict the value to a smaller range.
+`u32 generateU32()`
+> Returns an unsigned integer uniformly distibuted over the entire range of representable 32-bit values. Use the modulo `%` operator to restrict the value to a smaller range.
 
->>
-double generateDouble()
---
-Returns a uniformly-distributed floating-point number that is greater than or equal to 0.0 and less than 1.0.
-{/apiDescriptions}
+`u64 generateU64()`
+> Returns an unsigned integer uniformly distibuted over the entire range of representable 64-bit values. Use the modulo `%` operator to restrict the value to a smaller range.
+
+`double generateDouble()`
+> Returns a uniformly-distributed floating-point number that is greater than or equal to 0.0 and less than 1.0.
 
     // Generate some 4-digit random numbers
     Random r;

@@ -7,16 +7,11 @@ TID getCurrentThreadId()
 void sleepMillis(u32 millis)
 {/apiSummary}
 
-{apiDescriptions}
-TID getCurrentThreadId()
---
-Returns the operating system's thread ID for the current thread. See also `getCurrentProcessId`.
+`TID getCurrentThreadId()`
+> Returns the operating system's thread ID for the current thread. See also `getCurrentProcessId`.
 
->>
-void sleepMillis(u32 millis)
---
-Suspends the current thread for the specified number of milliseconds.
-{/apiDescriptions}
+`void sleepMillis(u32 millis)`
+> Suspends the current thread for the specified number of milliseconds.
 
 ## `Thread`
 
@@ -28,21 +23,16 @@ void run<Callable>(Callable& callable)
 void join()
 {/apiSummary}
 
-{apiDescriptions class=Thread}
-bool isValid()
---
-Returns `true` if the thread object represents a running or joinable thread.
+{context class=Thread}
 
->>
-void run<Callable>(Callable& callable)
---
-Starts a new thread that executes the given callable object. The callable can be a lambda, functor, or any object with `operator()`.
+`bool isValid()`
+> Returns `true` if the thread object represents a running or joinable thread.
 
->>
-void join()
---
-Blocks until the thread finishes execution. Must be called before the `Thread` object is destroyed.
-{/apiDescriptions}
+`void run<Callable>(Callable& callable)`
+> Starts a new thread that executes the given callable object. The callable can be a lambda, functor, or any object with `operator()`.
+
+`void join()`
+> Blocks until the thread finishes execution. Must be called before the `Thread` object is destroyed.
 
 ## `Atomic`
 
@@ -71,61 +61,40 @@ T fetchAnd(T operand, MemoryOrder order)
 T fetchOr(T operand, MemoryOrder order)
 {/apiSummary}
 
-{apiDescriptions class=Atomic}
-Atomic(T value = 0)
---
-Constructs an atomic with the given initial value.
+{context class=Atomic}
 
->>
-Atomic(const Atomic<T>& other)
---
-Copy constructor with no memory ordering guarantees.
+`Atomic(T value = 0)`
+> Constructs an atomic with the given initial value.
 
->>
-void operator=(const Atomic<T>& other)
---
-Copy assignment with no memory ordering guarantees. Should only be called when there is no concurrent access to the destination.
+`Atomic(const Atomic<T>& other)`
+> Copy constructor with no memory ordering guarantees.
 
->>
-T load(MemoryOrder order) const
---
-Atomically reads the value with the specified memory order.
+`void operator=(const Atomic<T>& other)`
+> Copy assignment with no memory ordering guarantees. Should only be called when there is no concurrent access to the destination.
 
->>
-void store(T value, MemoryOrder order)
---
-Atomically writes the value with the specified memory order.
+`T load(MemoryOrder order) const`
+> Atomically reads the value with the specified memory order.
 
->>
-T compareExchange(T expected, T desired, MemoryOrder order)
---
-If the current value equals `expected`, replaces it with `desired`. Returns the previous value.
+`void store(T value, MemoryOrder order)`
+> Atomically writes the value with the specified memory order.
 
->>
-T exchange(T desired, MemoryOrder order)
---
-Atomically replaces the value and returns the previous value.
+`T compareExchange(T expected, T desired, MemoryOrder order)`
+> If the current value equals `expected`, replaces it with `desired`. Returns the previous value.
 
->>
-T fetchAdd(T operand, MemoryOrder order)
---
-Atomically adds `operand` to the value and returns the previous value.
+`T exchange(T desired, MemoryOrder order)`
+> Atomically replaces the value and returns the previous value.
 
->>
-T fetchSub(T operand, MemoryOrder order)
---
-Atomically subtracts `operand` from the value and returns the previous value.
+`T fetchAdd(T operand, MemoryOrder order)`
+> Atomically adds `operand` to the value and returns the previous value.
 
->>
-T fetchAnd(T operand, MemoryOrder order)
---
-Atomically performs bitwise AND with `operand` and returns the previous value.
+`T fetchSub(T operand, MemoryOrder order)`
+> Atomically subtracts `operand` from the value and returns the previous value.
 
->>
-T fetchOr(T operand, MemoryOrder order)
---
-Atomically performs bitwise OR with `operand` and returns the previous value.
-{/apiDescriptions}
+`T fetchAnd(T operand, MemoryOrder order)`
+> Atomically performs bitwise AND with `operand` and returns the previous value.
+
+`T fetchOr(T operand, MemoryOrder order)`
+> Atomically performs bitwise OR with `operand` and returns the previous value.
 
 ## `ThreadLocal`
 
@@ -139,31 +108,22 @@ void store(T value)
 Scope setInScope(T value)
 {/apiSummary}
 
-{apiDescriptions class=ThreadLocal}
-ThreadLocal()
---
-Constructs a thread-local variable. Each thread's value is initially zero/null.
+{context class=ThreadLocal}
 
->>
-ThreadLocal(const ThreadLocal&) = delete;
---
-Thread-local variables cannot be copied.
+`ThreadLocal()`
+> Constructs a thread-local variable. Each thread's value is initially zero/null.
 
->>
-U load() const
---
-Returns the current thread's value.
+`ThreadLocal(const ThreadLocal&) = delete;`
+> Thread-local variables cannot be copied.
 
->>
-void store(T value)
---
-Sets the current thread's value.
+`U load() const`
+> Returns the current thread's value.
 
->>
-Scope setInScope(T value)
---
-Sets the value for the duration of a scope. The previous value is restored when the scope ends.
-{/apiDescriptions}
+`void store(T value)`
+> Sets the current thread's value.
+
+`Scope setInScope(T value)`
+> Sets the value for the duration of a scope. The previous value is restored when the scope ends.
 
 ## `Mutex`
 
@@ -175,21 +135,16 @@ bool tryLock()
 void unlock()
 {/apiSummary}
 
-{apiDescriptions class=Mutex}
-void lock()
---
-Acquires the mutex, blocking if another thread holds it.
+{context class=Mutex}
 
->>
-bool tryLock()
---
-Attempts to acquire the mutex without blocking. Returns `true` if successful.
+`void lock()`
+> Acquires the mutex, blocking if another thread holds it.
 
->>
-void unlock()
---
-Releases the mutex.
-{/apiDescriptions}
+`bool tryLock()`
+> Attempts to acquire the mutex without blocking. Returns `true` if successful.
+
+`void unlock()`
+> Releases the mutex.
 
 `LockGuard<MutexType>` is a RAII wrapper that locks a mutex in its constructor and unlocks it in its destructor:
 
@@ -207,21 +162,16 @@ void timedWait(LockGuard<Mutex>& lockGuard, u32 waitMillis)
 void wakeAll()
 {/apiSummary}
 
-{apiDescriptions class=ConditionVariable}
-void wait(LockGuard<Mutex>& lockGuard)
---
-Atomically releases the mutex and waits for a signal. Re-acquires the mutex before returning.
+{context class=ConditionVariable}
 
->>
-void timedWait(LockGuard<Mutex>& lockGuard, u32 waitMillis)
---
-Like `wait`, but returns after `waitMillis` milliseconds even if not signaled.
+`void wait(LockGuard<Mutex>& lockGuard)`
+> Atomically releases the mutex and waits for a signal. Re-acquires the mutex before returning.
 
->>
-void wakeAll()
---
-Wakes all threads waiting on this condition variable.
-{/apiDescriptions}
+`void timedWait(LockGuard<Mutex>& lockGuard, u32 waitMillis)`
+> Like `wait`, but returns after `waitMillis` milliseconds even if not signaled.
+
+`void wakeAll()`
+> Wakes all threads waiting on this condition variable.
 
 ## `ReadWriteLock`
 
@@ -234,26 +184,19 @@ void lockShared()
 void unlockShared()
 {/apiSummary}
 
-{apiDescriptions class=ReadWriteLock}
-void lockExclusive()
---
-Acquires exclusive (write) access. Blocks until all readers and writers have released the lock.
+{context class=ReadWriteLock}
 
->>
-void unlockExclusive()
---
-Releases exclusive access.
+`void lockExclusive()`
+> Acquires exclusive (write) access. Blocks until all readers and writers have released the lock.
 
->>
-void lockShared()
---
-Acquires shared (read) access. Multiple threads can hold shared access simultaneously.
+`void unlockExclusive()`
+> Releases exclusive access.
 
->>
-void unlockShared()
---
-Releases shared access.
-{/apiDescriptions}
+`void lockShared()`
+> Acquires shared (read) access. Multiple threads can hold shared access simultaneously.
+
+`void unlockShared()`
+> Releases shared access.
 
 ## `Semaphore`
 
@@ -264,13 +207,10 @@ void wait()
 void signal(u32 count = 1)
 {/apiSummary}
 
-{apiDescriptions class=Semaphore}
-void wait()
---
-Blocks until the count is positive, then decrements it.
+{context class=Semaphore}
 
->>
-void signal(u32 count = 1)
---
-Increments the count by `count`, potentially waking waiting threads.
-{/apiDescriptions}
+`void wait()`
+> Blocks until the count is positive, then decrements it.
+
+`void signal(u32 count = 1)`
+> Increments the count by `count`, potentially waking waiting threads.

@@ -20,49 +20,32 @@ double readDoubleFromText(Stream& in, u32 radix = 10)
 String readQuotedString(Stream& in, u32 flags = 0, Functor<void(QS_Error_Code)> errorCallback = {})
 {/apiSummary}
 
-{apiDescriptions}
-String readLine(Stream& in)
-StringView readLine(ViewStream& viewIn)
---
-Reads characters until a newline or end-of-file. The newline character is consumed but not included in the result.
+`String readLine(Stream& in)`
+`StringView readLine(ViewStream& viewIn)`
+> Reads characters until a newline or end-of-file. The newline character is consumed but not included in the result.
 
->>
-String readWhitespace(Stream& in)
-StringView readWhitespace(ViewStream& in)
---
-Reads and returns a sequence of whitespace characters.
+`String readWhitespace(Stream& in)`
+`StringView readWhitespace(ViewStream& in)`
+> Reads and returns a sequence of whitespace characters.
 
->>
-void skipWhitespace(Stream& in)
---
-Consumes whitespace characters without returning them.
+`void skipWhitespace(Stream& in)`
+> Consumes whitespace characters without returning them.
 
->>
-String readIdentifier(Stream& in, u32 flags = 0)
-StringView readIdentifier(ViewStream& viewIn, u32 flags = 0)
---
-Reads a C-style identifier (letters, digits, underscores, starting with a non-digit).
+`String readIdentifier(Stream& in, u32 flags = 0)`
+`StringView readIdentifier(ViewStream& viewIn, u32 flags = 0)`
+> Reads a C-style identifier (letters, digits, underscores, starting with a non-digit).
 
->>
-u64 readU64FromText(Stream& in, u32 radix = 10)
---
-Parses an unsigned integer from the stream. The `radix` parameter specifies the number base (e.g., 10 for decimal, 16 for hexadecimal).
+`u64 readU64FromText(Stream& in, u32 radix = 10)`
+> Parses an unsigned integer from the stream. The `radix` parameter specifies the number base (e.g., 10 for decimal, 16 for hexadecimal).
 
->>
-s64 readS64FromText(Stream& in, u32 radix = 10)
---
-Parses a signed integer from the stream. Handles optional leading `-` sign.
+`s64 readS64FromText(Stream& in, u32 radix = 10)`
+> Parses a signed integer from the stream. Handles optional leading `-` sign.
 
->>
-double readDoubleFromText(Stream& in, u32 radix = 10)
---
-Parses a floating-point number from the stream.
+`double readDoubleFromText(Stream& in, u32 radix = 10)`
+> Parses a floating-point number from the stream.
 
->>
-String readQuotedString(Stream& in, u32 flags = 0, Functor<void(QS_Error_Code)> errorCallback = {})
---
-Reads a quoted string, handling escape sequences. The opening quote must already be consumed. Calls `errorCallback` if parsing fails.
-{/apiDescriptions}
+`String readQuotedString(Stream& in, u32 flags = 0, Functor<void(QS_Error_Code)> errorCallback = {})`
+> Reads a quoted string, handling escape sequences. The opening quote must already be consumed. Calls `errorCallback` if parsing fails.
 
 ## Writing Text
 
@@ -78,25 +61,18 @@ void printEscapedString(Stream& out, StringView str)
 void printXmlEscapedString(Stream& out, StringView str)
 {/apiSummary}
 
-{apiDescriptions}
-void printNumber(Stream& out, u64 value, u32 radix = 10, bool capitalize = false)
-void printNumber(Stream& out, s64 value, u32 radix = 10, bool capitalize = false)
-void printNumber(Stream& out, u32 value, u32 radix = 10, bool capitalize = false)
-void printNumber(Stream& out, s32 value, u32 radix = 10, bool capitalize = false) 
-void printNumber(Stream& out, double value, u32 radix = 10, bool capitalize = false)
---
-Writes a number to the stream. Use `radix` to specify the base (e.g., 16 for hexadecimal). Set `capitalize` to true for uppercase hex digits.
+`void printNumber(Stream& out, u64 value, u32 radix = 10, bool capitalize = false)`
+`void printNumber(Stream& out, s64 value, u32 radix = 10, bool capitalize = false)`
+`void printNumber(Stream& out, u32 value, u32 radix = 10, bool capitalize = false)`
+`void printNumber(Stream& out, s32 value, u32 radix = 10, bool capitalize = false)`
+`void printNumber(Stream& out, double value, u32 radix = 10, bool capitalize = false)`
+> Writes a number to the stream. Use `radix` to specify the base (e.g., 16 for hexadecimal). Set `capitalize` to true for uppercase hex digits.
 
->>
-void printEscapedString(Stream& out, StringView str)
---
-Writes a string with C-style escape sequences for special characters (e.g., `\n`, `\t`, `\\`).
+`void printEscapedString(Stream& out, StringView str)`
+> Writes a string with C-style escape sequences for special characters (e.g., `\n`, `\t`, `\\`).
 
->>
-void printXmlEscapedString(Stream& out, StringView str)
---
-Writes a string with XML entity escaping (e.g., `&lt;`, `&gt;`, `&amp;`).
-{/apiDescriptions}
+`void printXmlEscapedString(Stream& out, StringView str)`
+> Writes a string with XML entity escaping (e.g., `&lt;`, `&gt;`, `&amp;`).
 
 ## Converting Unicode
 
@@ -109,26 +85,17 @@ bool encodeUnicode(Stream& out, UnicodeType unicodeType, u32 codepoint, Extended
 DecodeResult decodeUnicode(Stream& in, UnicodeType unicodeType, ExtendedTextParams* extParams = nullptr)
 {/apiSummary}
 
-{apiDescriptions}
-u32 encodeUnicode(FixedArray<char, 4>& buf, UnicodeType unicodeType, u32 codepoint, ExtendedTextParams* extParams)
---
-Encodes a Unicode codepoint into the specified encoding. Returns the number of bytes written to `buf`.
+`u32 encodeUnicode(FixedArray<char, 4>& buf, UnicodeType unicodeType, u32 codepoint, ExtendedTextParams* extParams)`
+> Encodes a Unicode codepoint into the specified encoding. Returns the number of bytes written to `buf`.
 
->>
-DecodeResult decodeUnicode(StringView str, UnicodeType unicodeType, ExtendedTextParams* extParams = nullptr)
---
-Decodes a Unicode codepoint from the beginning of `str`. Returns the codepoint and number of bytes consumed.
+`DecodeResult decodeUnicode(StringView str, UnicodeType unicodeType, ExtendedTextParams* extParams = nullptr)`
+> Decodes a Unicode codepoint from the beginning of `str`. Returns the codepoint and number of bytes consumed.
 
->>
-bool encodeUnicode(Stream& out, UnicodeType unicodeType, u32 codepoint, ExtendedTextParams* extParams = nullptr)
---
-Encodes a Unicode codepoint and writes it to the stream.
+`bool encodeUnicode(Stream& out, UnicodeType unicodeType, u32 codepoint, ExtendedTextParams* extParams = nullptr)`
+> Encodes a Unicode codepoint and writes it to the stream.
 
->>
-DecodeResult decodeUnicode(Stream& in, UnicodeType unicodeType, ExtendedTextParams* extParams = nullptr)
---
-Decodes a Unicode codepoint from the stream.
-{/apiDescriptions}
+`DecodeResult decodeUnicode(Stream& in, UnicodeType unicodeType, ExtendedTextParams* extParams = nullptr)`
+> Decodes a Unicode codepoint from the stream.
 
 ## Convenience Functions
 
@@ -140,18 +107,11 @@ bool isAsciiLetter(char c)
 bool isDecimalDigit(char c)
 {/apiSummary}
 
-{apiDescriptions}
-bool isWhitespace(char c)
---
-Returns `true` if `c` is a whitespace character (space, tab, newline, etc.).
+`bool isWhitespace(char c)`
+> Returns `true` if `c` is a whitespace character (space, tab, newline, etc.).
 
->>
-bool isAsciiLetter(char c)
---
-Returns `true` if `c` is an ASCII letter (a-z or A-Z).
+`bool isAsciiLetter(char c)`
+> Returns `true` if `c` is an ASCII letter (a-z or A-Z).
 
->>
-bool isDecimalDigit(char c)
---
-Returns `true` if `c` is a decimal digit (0-9).
-{/apiDescriptions}
+`bool isDecimalDigit(char c)`
+> Returns `true` if `c` is a decimal digit (0-9).

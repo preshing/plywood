@@ -19,10 +19,12 @@ TextFormat serverTextFormat = {UTF8, TextFormat::LF, false};
 json::Node contents;
 u32 publishKey = 0; // Prevent browsers from caching old stylesheets
 
+// Appends the current publish key query parameter to an asset path in HTML text.
 void appendPublishKeyToAsset(String& text, StringView assetPath) {
     text = text.replace(assetPath, String::format("{}?key={}", assetPath, publishKey));
 }
 
+// Renders a declaration as a single highlighted code fragment for API description titles.
 void printDeclAsApiTitle(Stream& out, const Parser* parser, const Declaration& decl) {
     Array<TokenSpan> spans = parser->syntaxHighlight(decl);
     out.write("<code>");
@@ -56,6 +58,7 @@ void printDeclAsApiTitle(Stream& out, const Parser* parser, const Declaration& d
     out.write("</code>");
 }
 
+// Renders a declaration as a highlighted two-column API summary table row.
 void printDeclAsHtml(Stream& out, const Parser* parser, const Declaration& decl) {
     Array<TokenSpan> spans = parser->syntaxHighlight(decl);
     StringView mainRowHeader = "<tr class=\"entry\"><td class=\"prefix\"><code>";
@@ -121,6 +124,7 @@ void printDeclAsHtml(Stream& out, const Parser* parser, const Declaration& decl)
     out.write("</code></td></tr>\n");
 }
 
+// Parses an {apiSummary} section and emits the corresponding HTML table.
 void parseApiSummary(Stream& out, const Map<StringView, String>& args, ViewStream& in) {
     // Write optional caption.
     if (const String* caption = args.find("caption")) {
@@ -168,63 +172,7 @@ void parseApiSummary(Stream& out, const Map<StringView, String>& args, ViewStrea
     out.write("</table>\n");
 }
 
-void parseApiDescriptions(Stream& out, const Map<StringView, String>& args, ViewStream& in) {
-    // Get class name.
-    StringView className;
-    if (const String* c = args.find("class")) {
-        className = *c;
-    }
-
-    markdown::HTML_Options options;
-    Owned<markdown::Parser> md = markdown::createParser();
-    out.write("<dl class=\"api_defs\"><dt>");
-    bool inTitle = true;
-    bool firstDecl = true;
-    while (StringView line = readLine(in)) {
-        if (line.trim() == "{/apiDescriptions}")
-            break;
-        if (inTitle) {
-            if (line.trim().isEmpty())
-                continue;
-            if (line.startsWith("--")) {
-                out.write("</dt>\n<dd>");
-                inTitle = false;
-            } else {
-                Owned<Parser> parser = Parser::create();
-                Declaration decl = parser->parseDeclaration(line.trim(), className);
-                if (!firstDecl) {
-                    out.write("<br>\n");
-                }
-                printDeclAsApiTitle(out, parser, decl);
-                firstDecl = false;
-            }
-        } else {
-            if (line.startsWith(">>")) {
-                // Flush current markdown block.
-                if (Owned<markdown::Block> node = flush(md)) {
-                    convertToHtml(&out, node, options);
-                }
-                out.write("</dd>\n<dt>");
-                inTitle = true;
-                firstDecl = true;
-            } else {
-                if (Owned<markdown::Block> node = parseLine(md, line)) {
-                    convertToHtml(&out, node, options);
-                }
-            }
-        }
-    }
-    if (inTitle) {
-        out.write("</dt></dl>\n");
-    } else {
-        // Flush current markdown block.
-        if (Owned<markdown::Block> node = flush(md)) {
-            convertToHtml(&out, node, options);
-        }
-        out.write("</dd></dl>\n");
-    }
-}
-
+// Parses a {table} section and emits a simple two-dimensional HTML table.
 void parseTable(Stream& out, const Map<StringView, String>& args, ViewStream& in) {
     out.write("<table class=\"grid\">\n");
     while (StringView line = readLine(in)) {
@@ -241,6 +189,7 @@ void parseTable(Stream& out, const Map<StringView, String>& args, ViewStream& in
     out.write("</table>\n");
 }
 
+// Parses an {example} section and emits it as a captioned code block.
 void parseExample(Stream& out, ViewStream& in) {
     out.format("<div class=\"caption\">Example</div>\n");
     out.write("<pre><code>");
@@ -253,6 +202,7 @@ void parseExample(Stream& out, ViewStream& in) {
     out.write("</code></pre>\n");
 }
 
+// Parses an {output} section and emits it as a captioned code block.
 void parseOutput(Stream& out, ViewStream& in) {
     out.format("<div class=\"caption\">Output</div>\n");
     out.write("<pre><code>");
@@ -265,17 +215,147 @@ void parseOutput(Stream& out, ViewStream& in) {
     out.write("</code></pre>\n");
 }
 
-void parseMarkdown(Stream& out, ViewStream& in) {
+// Returns true when a paragraph is made of code spans separated only by soft breaks.
+bool parseApiDeclarationParagraph(const markdown::Block* block, Array<String>* declarations = nullptr) {
+    auto* para = block->var.as<markdown::Block::Paragraph>();
+    if (!para) {
+        return false;
+    }
+
+    if (declarations) {
+        declarations->clear();
+    }
+
+    bool expectDeclaration = true;
+    for (const markdown::Span* span : para->spans) {
+        if (auto* code = span->var.as<markdown::Span::Code>()) {
+            if (!expectDeclaration) {
+                return false;
+            }
+            if (declarations) {
+                declarations->append(code->text);
+            }
+            expectDeclaration = false;
+        } else if (span->var.is<markdown::Span::SoftBreak>()) {
+            if (expectDeclaration) {
+                return false;
+            }
+            expectDeclaration = true;
+        } else {
+            return false;
+        }
+    }
+
+    return !expectDeclaration;
+}
+
+// Parses and renders one or more declaration strings as an API definition title.
+void printApiDeclarationsAsTitle(Stream& out, StringView className, const Array<String>& declarations) {
+    bool firstDecl = true;
+    for (const String& declText : declarations) {
+        Owned<Parser> parser = Parser::create();
+        Declaration decl = parser->parseDeclaration(declText, className);
+        if (!firstDecl) {
+            out.write("<br>\n");
+        }
+        printDeclAsApiTitle(out, parser, decl);
+        firstDecl = false;
+    }
+}
+
+// Buffers parsed markdown blocks and emits special API description structures when detected.
+class MarkdownBlockProcessor {
+public:
+    // Creates a block processor that writes converted output to the supplied stream.
+    MarkdownBlockProcessor(Stream& out) : out{out} {
+    }
+
+    // Sets the class context used when parsing declaration-only markdown entries.
+    void setApiClassContext(StringView className) {
+        this->apiClassContext = className;
+    }
+
+    // Parses one markdown line and appends any completed block to the pending queue.
+    void parseMarkdownLine(StringView line) {
+        if (Owned<markdown::Block> node = markdown::parseLine(this->parser, line)) {
+            this->pendingBlocks.append(std::move(node));
+        }
+    }
+
+    // Flushes the markdown parser and emits all pending blocks in one pass.
+    void flushToOutput() {
+        if (Owned<markdown::Block> node = markdown::flush(this->parser)) {
+            this->pendingBlocks.append(std::move(node));
+        }
+        this->emitPendingBlocks();
+    }
+
+private:
+    Stream& out;
     markdown::HTML_Options options;
     Owned<markdown::Parser> parser = markdown::createParser();
+    Array<Owned<markdown::Block>> pendingBlocks;
+    String apiClassContext;
+
+    // Emits a contiguous run of declaration-paragraph + blockquote pairs as api_defs HTML.
+    u32 emitApiDescriptionRun(u32 startIndex) {
+        Array<String> declarations;
+        u32 index = startIndex;
+        bool firstPair = true;
+
+        this->out.write("<dl class=\"api_defs\"><dt>");
+        while (index + 1 < this->pendingBlocks.numItems()) {
+            if (!parseApiDeclarationParagraph(this->pendingBlocks[index], &declarations)) {
+                break;
+            }
+            if (!this->pendingBlocks[index + 1]->var.is<markdown::Block::BlockQuote>()) {
+                break;
+            }
+
+            if (!firstPair) {
+                this->out.write("</dd>\n<dt>");
+            }
+            printApiDeclarationsAsTitle(this->out, this->apiClassContext, declarations);
+
+            auto* bq = this->pendingBlocks[index + 1]->var.as<markdown::Block::BlockQuote>();
+            PLY_ASSERT(bq);
+            this->out.write("</dt>\n<dd>");
+            for (const markdown::Block* child : bq->childBlocks) {
+                convertToHtml(&this->out, child, this->options);
+            }
+            firstPair = false;
+            index += 2;
+        }
+        this->out.write("</dd></dl>\n");
+        return index;
+    }
+
+    // Emits all pending blocks, converting matching paragraph+blockquote runs to api_defs HTML.
+    void emitPendingBlocks() {
+        u32 index = 0;
+        while (index < this->pendingBlocks.numItems()) {
+            if ((index + 1 < this->pendingBlocks.numItems()) &&
+                parseApiDeclarationParagraph(this->pendingBlocks[index]) &&
+                this->pendingBlocks[index + 1]->var.is<markdown::Block::BlockQuote>()) {
+                index = this->emitApiDescriptionRun(index);
+            } else {
+                convertToHtml(&this->out, this->pendingBlocks[index], this->options);
+                index++;
+            }
+        }
+        this->pendingBlocks.clear();
+    }
+};
+
+// Parses an entire documentation markdown file with custom section directives.
+void parseMarkdown(Stream& out, ViewStream& in) {
+    MarkdownBlockProcessor blockProcessor{out};
     while (StringView line = readLine(in)) {
         ViewStream lineIn{line};
         StringView cmd;
         if (lineIn.match("'{%i", &cmd)) {
-            // Flush current markdown block.
-            if (Owned<markdown::Block> node = flush(parser)) {
-                convertToHtml(&out, node, options);
-            }
+            // Flush current markdown blocks.
+            blockProcessor.flushToOutput();
 
             // Parse section arguments.
             Map<StringView, String> args;
@@ -291,16 +371,17 @@ void parseMarkdown(Stream& out, ViewStream& in) {
             // Handle section type.
             if (cmd == "apiSummary") {
                 parseApiSummary(out, args, in);
-            } else if (cmd == "apiDescriptions") {
-                parseApiDescriptions(out, args, in);
+            } else if (cmd == "context") {
+                if (const String* c = args.find("class")) {
+                    blockProcessor.setApiClassContext(*c);
+                } else {
+                    blockProcessor.setApiClassContext({});
+                }
             } else if (cmd == "table") {
                 parseTable(out, args, in);
             } else if (cmd == "example") {
                 parseExample(out, in);
             } else if (cmd == "output") {
-                if (Owned<markdown::Block> node = flush(parser)) {
-                    convertToHtml(&out, node, options);
-                }
                 parseOutput(out, in);
             } else if (cmd == "title") {
                 out.format("<h1><span class=\"right\"><span class=\"meta-label\">Header file:</span><span "
@@ -311,16 +392,13 @@ void parseMarkdown(Stream& out, ViewStream& in) {
                 PLY_ASSERT(0); // Unrecognized section type
             }
         } else {
-            if (Owned<markdown::Block> node = parseLine(parser, line)) {
-                convertToHtml(&out, node, options);
-            }
+            blockProcessor.parseMarkdownLine(line);
         }
     }
-    if (Owned<markdown::Block> node = flush(parser)) {
-        convertToHtml(&out, node, options);
-    }
+    blockProcessor.flushToOutput();
 }
 
+// Flattens nested contents.json page entries into a linear traversal order.
 void flattenPages(Array<const json::Node*>& pages, const json::Node& items) {
     for (const json::Node& item : items.arrayView()) {
         pages.append(&item);
@@ -330,6 +408,7 @@ void flattenPages(Array<const json::Node*>& pages, const json::Node& items) {
     }
 }
 
+// Renders nested table-of-contents entries as HTML list markup.
 void generateTableOfContentsHtml(Stream& out, const json::Node& items) {
     for (const json::Node& item : items.arrayView()) {
         const json::Node& children = item.get("children");
@@ -352,6 +431,7 @@ void generateTableOfContentsHtml(Stream& out, const json::Node& items) {
     }
 }
 
+// Converts one contents.json entry into the generated documentation page HTML.
 void convertPage(const json::Node& item, const json::Node* prevPage, const json::Node* nextPage) {
     String relName = item.get("path").text();
     String markdownPath = joinPath(docsFolder, relName);
@@ -391,11 +471,13 @@ void convertPage(const json::Node& item, const json::Node* prevPage, const json:
     Filesystem::saveText(ajaxPath, ajaxContent, serverTextFormat);
 }
 
+// Loads and parses a JSON file from disk.
 json::Node parseJson(StringView path) {
     String src = Filesystem::loadTextAutodetect(path);
     return json::Parser{}.parse(path, src).root;
 }
 
+// Regenerates the complete documentation site into docs/build.
 void generateWholeSite() {
     publishKey = Random{}.generateU32(); // Prevent browsers from caching old stylesheets
 
@@ -448,6 +530,7 @@ void generateWholeSite() {
     }
 }
 
+// Entry point that runs a full generation pass and optional filesystem watch loop.
 int main(int argc, const char* argv[]) {
 #if defined(PLY_WINDOWS)
     SetConsoleOutputCP(CP_UTF8);

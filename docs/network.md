@@ -18,41 +18,28 @@ String toString() const
 static IPAddress fromString()
 {/apiSummary}
 
-{apiDescriptions class=IPAddress}
-u32 netOrdered[4]
---
-The raw address bytes in network byte order. For IPv4, only `netOrdered[0]` is used.
+{context class=IPAddress}
 
->>
-IPVersion version() const
---
-Returns `IPVersion::V4` or `IPVersion::V6`.
+`u32 netOrdered[4]`
+> The raw address bytes in network byte order. For IPv4, only `netOrdered[0]` is used.
 
->>
-bool isNull() const
---
-Returns `true` if this is a null/uninitialized address.
+`IPVersion version() const`
+> Returns `IPVersion::V4` or `IPVersion::V6`.
 
->>
-static constexpr IPAddress localHost(IPVersion ipVersion)
---
-Returns the localhost address (127.0.0.1 for IPv4, ::1 for IPv6).
+`bool isNull() const`
+> Returns `true` if this is a null/uninitialized address.
 
->>
-static constexpr IPAddress from_ipv4(u32 netOrdered)
---
-Creates an IPv4 address from a 32-bit value in network byte order.
+`static constexpr IPAddress localHost(IPVersion ipVersion)`
+> Returns the localhost address (127.0.0.1 for IPv4, ::1 for IPv6).
 
->>
-String toString() const
---
-Returns a human-readable string representation of the address.
+`static constexpr IPAddress from_ipv4(u32 netOrdered)`
+> Creates an IPv4 address from a 32-bit value in network byte order.
 
->>
-static IPAddress fromString()
---
-Parses an IP address from a string.
-{/apiDescriptions}
+`String toString() const`
+> Returns a human-readable string representation of the address.
+
+`static IPAddress fromString()`
+> Parses an IP address from a string.
 
 ## `Network`
 
@@ -67,36 +54,25 @@ static IPAddress resolveHostName(StringView hostName, IPVersion ipVersion)
 static IPResult lastResult()
 {/apiSummary}
 
-{apiDescriptions class=Network}
-static void initialize(IPVersion ipVersion)
---
-Initializes the networking subsystem. Must be called before any other networking functions. Specify `IPVersion::V4` or `IPVersion::V6`.
+{context class=Network}
 
->>
-static void shutdown()
---
-Shuts down the networking subsystem and releases resources.
+`static void initialize(IPVersion ipVersion)`
+> Initializes the networking subsystem. Must be called before any other networking functions. Specify `IPVersion::V4` or `IPVersion::V6`.
 
->>
-static TCPListener bindTcp(u16 port)
---
-Creates a TCP listener bound to the specified port. The listener can accept incoming connections.
+`static void shutdown()`
+> Shuts down the networking subsystem and releases resources.
 
->>
-static Owned<TCPConnection> connectTcp(const IPAddress& address, u16 port)
---
-Establishes a TCP connection to the specified address and port. Returns null on failure.
+`static TCPListener bindTcp(u16 port)`
+> Creates a TCP listener bound to the specified port. The listener can accept incoming connections.
 
->>
-static IPAddress resolveHostName(StringView hostName, IPVersion ipVersion)
---
-Resolves a hostname (e.g., "example.com") to an IP address using DNS.
+`static Owned<TCPConnection> connectTcp(const IPAddress& address, u16 port)`
+> Establishes a TCP connection to the specified address and port. Returns null on failure.
 
->>
-static IPResult lastResult()
---
-Returns the result code from the most recent network operation.
-{/apiDescriptions}
+`static IPAddress resolveHostName(StringView hostName, IPVersion ipVersion)`
+> Resolves a hostname (e.g., "example.com") to an IP address using DNS.
+
+`static IPResult lastResult()`
+> Returns the result code from the most recent network operation.
 
 ## `TCPConnection`
 
@@ -115,43 +91,30 @@ Stream createInStream()
 Stream createOutStream()
 {/apiSummary}
 
-{apiDescriptions class=TCPConnection}
-PipeWinsock inPipe
-PipeWinsock outPipe
---
-The underlying pipe objects for reading and writing. Typically, use `createInStream()` and `createOutStream()` instead.
+{context class=TCPConnection}
 
->>
-TCPConnection()
-~TCPConnection()
---
-Constructor and destructor. Connections are typically created via `Network::connectTcp()` or `TCPListener::accept()`.
+`PipeWinsock inPipe`
+`PipeWinsock outPipe`
+> The underlying pipe objects for reading and writing. Typically, use `createInStream()` and `createOutStream()` instead.
 
->>
-const IPAddress& remoteAddress() const
---
-Returns the IP address of the remote host.
+`TCPConnection()`
+`~TCPConnection()`
+> Constructor and destructor. Connections are typically created via `Network::connectTcp()` or `TCPListener::accept()`.
 
->>
-u16 remotePort() const
---
-Returns the port number of the remote host.
+`const IPAddress& remoteAddress() const`
+> Returns the IP address of the remote host.
 
->>
-SOCKET getHandle() const
---
-Returns the underlying socket handle. Use with care.
+`u16 remotePort() const`
+> Returns the port number of the remote host.
 
->>
-Stream createInStream()
---
-Creates a buffered stream for reading data from the connection.
+`SOCKET getHandle() const`
+> Returns the underlying socket handle. Use with care.
 
->>
-Stream createOutStream()
---
-Creates a buffered stream for writing data to the connection.
-{/apiDescriptions}
+`Stream createInStream()`
+> Creates a buffered stream for reading data from the connection.
+
+`Stream createOutStream()`
+> Creates a buffered stream for writing data to the connection.
 
 ## `TCPListener`
 
@@ -168,41 +131,28 @@ void close()
 Owned<TCPConnection> accept()
 {/apiSummary}
 
-{apiDescriptions class=TCPListener}
-TCPListener(SOCKET listenSocket = INVALID_SOCKET)
---
-Constructs a listener from a socket handle. Typically created via `Network::bindTcp()`.
+{context class=TCPListener}
 
->>
-TCPListener(TCPListener&& other)
---
-Move constructor.
+`TCPListener(SOCKET listenSocket = INVALID_SOCKET)`
+> Constructs a listener from a socket handle. Typically created via `Network::bindTcp()`.
 
->>
-TCPListener& operator=(TCPListener&& other)
---
-Move assignment.
+`TCPListener(TCPListener&& other)`
+> Move constructor.
 
->>
-bool isValid()
---
-Returns `true` if the listener is bound to a valid socket.
+`TCPListener& operator=(TCPListener&& other)`
+> Move assignment.
 
->>
-void endComm()
---
-Signals that no more connections will be accepted. Causes any blocking `accept()` call to return.
+`bool isValid()`
+> Returns `true` if the listener is bound to a valid socket.
 
->>
-void close()
---
-Closes the listener socket.
+`void endComm()`
+> Signals that no more connections will be accepted. Causes any blocking `accept()` call to return.
 
->>
-Owned<TCPConnection> accept()
---
-Blocks until a client connects, then returns the new connection. Returns null if the listener was closed.
-{/apiDescriptions}
+`void close()`
+> Closes the listener socket.
+
+`Owned<TCPConnection> accept()`
+> Blocks until a client connects, then returns the new connection. Returns null if the listener was closed.
 
 {example}
 // Simple echo server

@@ -107,59 +107,42 @@ The items in a `Set` are maintained in insertion order unless `eraseQuick` is ca
 
 ### Additional Constructors
 
-{apiDescriptions class=Set}
-Set(std::initializer_list<Item> items)
---
-Constructs a set from a braced initializer list. The items are inserted in the order they appear in the list.
-{/apiDescriptions}
+{context class=Set}
+
+`Set(std::initializer_list<Item> items)`
+> Constructs a set from a braced initializer list. The items are inserted in the order they appear in the list.
 
 ### Accessing Items
 
-{apiDescriptions class=Set}
-const Item* find(const Key& key) const
---
-Looks for an item in the collection that matches the given key. Returns a pointer to the item if found, or `nullptr` if not found.
+`const Item* find(const Key& key) const`
+> Looks for an item in the collection that matches the given key. Returns a pointer to the item if found, or `nullptr` if not found.
+>
+> The returned pointer is temporary. Any subsequent change to the `Set` can invalidate this pointer, so don't store it beyond the next call to `find` or `erase`, even if those calls involve different keys.
 
-The returned pointer is temporary. Any subsequent change to the `Set` can invalidate this pointer, so don't store it beyond the next call to `find` or `erase`, even if those calls involve different keys.
-
->>
-ArrayView<Item> items()
-ArrayView<const Item> items() const
---
-Returns a view of all items in the set. The items are in insertion order unless `eraseQuick` was called.
-{/apiDescriptions}
+`ArrayView<Item> items()`
+`ArrayView<const Item> items() const`
+> Returns a view of all items in the set. The items are in insertion order unless `eraseQuick` was called.
 
 ### Modifying Set Contents
 
-{apiDescriptions class=Set}
-void clear()
---
-Calls the destructor of all existing items and resets to an empty set.
+`void clear()`
+> Calls the destructor of all existing items and resets to an empty set.
 
->>
-InsertResult insert(const Key& key)
---
-Inserts a new item in the set using the given key if it doesn't already exist. The `Item` type must be constructible from `Key`. Returns an `InsertResult` with the following members:
+`InsertResult insert(const Key& key)`
+> Inserts a new item in the set using the given key if it doesn't already exist. The `Item` type must be constructible from `Key`. Returns an `InsertResult` with the following members:
+>
+> [TBD]
+>
+> This function is actually a function template that uses SFINAE to delete itself if the `Key` type is not constructible from the `Item` type. In particular, this means you can't call this function on a `Set<Owned<T>>`; you can only call `insertItem` on such sets.
 
-[TBD]
+`InsertResult insertItem(Item&& item)`
+> Inserts a fully constructed item into the set using move semantics. Any existing item with the same key is replaced.
 
-This function is actually a function template that uses SFINAE to delete itself if the `Key` type is not constructible from the `Item` type. In particular, this means you can't call this function on a `Set<Owned<T>>`; you can only call `insertItem` on such sets.
+`bool erase(const Key& key)`
+> Removes the item with the given key. The remaining items are kept in insertion order. If an existing item was found in the set, its destructor is called and `true` is returned. Otherwise, returns `false`. This function is slower than `eraseQuick`.
 
->>
-InsertResult insertItem(Item&& item)
---
-Inserts a fully constructed item into the set using move semantics. Any existing item with the same key is replaced.
-
->>
-bool erase(const Key& key)
---
-Removes the item with the given key. The remaining items are kept in insertion order. If an existing item was found in the set, its destructor is called and `true` is returned. Otherwise, returns `false`. This function is slower than `eraseQuick`.
-
->>
-bool eraseQuick(const Key& key)
---
-Removes the item with the given key without keeping the remaining items in insertion order. If an existing item was found in the set, its destructor is called and `true` is returned. Otherwise, returns `false`.
-{/apiDescriptions}
+`bool eraseQuick(const Key& key)`
+> Removes the item with the given key without keeping the remaining items in insertion order. If an existing item was found in the set, its destructor is called and `true` is returned. Otherwise, returns `false`.
 
 ## `Map`
 
@@ -211,47 +194,32 @@ The items in a `Map` are kept in insertion order unless `eraseQuick` is called.
 
 ### Additional Constructors
 
-{apiDescriptions class=Map}
-Map(std::initializer_list<Item> items)
---
-Constructs a map from a braced initializer list. The key-value pairs are inserted in the order they appear in the list.
-{/apiDescriptions}
+{context class=Map}
+
+`Map(std::initializer_list<Item> items)`
+> Constructs a map from a braced initializer list. The key-value pairs are inserted in the order they appear in the list.
 
 ### Accessing Items
 
-{apiDescriptions class=Map}
-const Value* find(const KeyView& key) const
---
-Looks up a value by key. Returns a pointer to the value if found, or `nullptr` if not present.
+`const Value* find(const KeyView& key) const`
+> Looks up a value by key. Returns a pointer to the value if found, or `nullptr` if not present.
 
->>
-ArrayView<Item> items()
-ArrayView<const Item> items() const
---
-Returns a view of all key-value pairs in the map. The pairs are in insertion order unless `eraseQuick` was called.
-{/apiDescriptions}
+`ArrayView<Item> items()`
+`ArrayView<const Item> items() const`
+> Returns a view of all key-value pairs in the map. The pairs are in insertion order unless `eraseQuick` was called.
 
 ### Modifying Map Contents
 
-{apiDescriptions class=Map}
-void clear()
---
-Calls the destructor of all existing items and resets to an empty map.
+`void clear()`
+> Calls the destructor of all existing items and resets to an empty map.
 
->>
-InsertResult insert(const KeyView& key)
---
-Inserts a new key-value pair with the given key if it doesn't already exist. The value is default-constructed. Returns an `InsertResult` with the following members:
+`InsertResult insert(const KeyView& key)`
+> Inserts a new key-value pair with the given key if it doesn't already exist. The value is default-constructed. Returns an `InsertResult` with the following members:
+>
+> [TBD]
 
-[TBD]
+`bool erase(const KeyView& key)`
+> Removes the key-value pair with the given key. The remaining pairs are kept in insertion order. If an existing pair was found in the map, its destructor is called and `true` is returned. Otherwise, returns `false`. This function is slower than `eraseQuick`.
 
->>
-bool erase(const KeyView& key)
---
-Removes the key-value pair with the given key. The remaining pairs are kept in insertion order. If an existing pair was found in the map, its destructor is called and `true` is returned. Otherwise, returns `false`. This function is slower than `eraseQuick`.
-
->>
-bool eraseQuick(const KeyView& key)
---
-Removes the key-value pair with the given key without keeping the remaining pairs in insertion order. If an existing pair was found in the map, its destructor is called and `true` is returned. Otherwise, returns `false`.
-{/apiDescriptions}
+`bool eraseQuick(const KeyView& key)`
+> Removes the key-value pair with the given key without keeping the remaining pairs in insertion order. If an existing pair was found in the map, its destructor is called and `true` is returned. Otherwise, returns `false`.

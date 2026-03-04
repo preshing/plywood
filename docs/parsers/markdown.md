@@ -23,51 +23,34 @@ String convertToHtml(StringView src)
 
 ### Creation and Destruction
 
-{apiDescriptions}
-Owned<Parser> createParser()
---
-Creates and returns a new Markdown parser. The parser maintains state across multiple calls to `parseLine()`.
+`Owned<Parser> createParser()`
+> Creates and returns a new Markdown parser. The parser maintains state across multiple calls to `parseLine()`.
 
->>
-void destroy(Parser* parser)
---
-Destroys a parser and frees its resources. This is typically handled automatically when using `Owned<Parser>`.
-{/apiDescriptions}
+`void destroy(Parser* parser)`
+> Destroys a parser and frees its resources. This is typically handled automatically when using `Owned<Parser>`.
 
 ### Parsing
 
-{apiDescriptions}
-Owned<Element> parseLine(Parser* parser, StringView line)
---
-Parses a single line of Markdown input. Returns an `Element` representing a completed top-level block (such as a paragraph or list) if one has ended, or `nullptr` if the current block is still being built.
+`Owned<Element> parseLine(Parser* parser, StringView line)`
+> Parses a single line of Markdown input. Returns an `Element` representing a completed top-level block (such as a paragraph or list) if one has ended, or `nullptr` if the current block is still being built.
 
->>
-Owned<Element> flush(Parser* parser)
---
-Terminates the current top-level block and returns it. Call this after all input lines have been processed to retrieve any remaining content.
+`Owned<Element> flush(Parser* parser)`
+> Terminates the current top-level block and returns it. Call this after all input lines have been processed to retrieve any remaining content.
 
->>
-Array<Owned<Element>> parseWholeDocument(StringView markdown)
---
-Parses an entire Markdown document and returns all top-level elements. This is a convenience function equivalent to calling `parseLine()` for each line followed by `flush()`.
-{/apiDescriptions}
+`Array<Owned<Element>> parseWholeDocument(StringView markdown)`
+> Parses an entire Markdown document and returns all top-level elements. This is a convenience function equivalent to calling `parseLine()` for each line followed by `flush()`.
 
 ### Converting to HTML
 
-{apiDescriptions}
-void convertToHtml(Stream* outs, const Element* element, const HTML_Options& options)
---
-Converts an `Element` and all its children to HTML, writing the output to the provided stream. The `HTML_Options` struct controls conversion behavior:
+`void convertToHtml(Stream* outs, const Element* element, const HTML_Options& options)`
+> Converts an `Element` and all its children to HTML, writing the output to the provided stream. The `HTML_Options` struct controls conversion behavior:
+>
+> {table caption="`HTML_Options` members"}
+> `bool`|`childAnchors`|If true, generates anchor elements for headings
+> {/table}
 
-{table caption="`HTML_Options` members"}
-`bool`|`childAnchors`|If true, generates anchor elements for headings
-{/table}
-
->>
-String convertToHtml(StringView src)
---
-Convenience function that parses an entire Markdown document and converts it directly to HTML. This is equivalent to parsing all lines, collecting the elements, and converting each to HTML.
-{/apiDescriptions}
+`String convertToHtml(StringView src)`
+> Convenience function that parses an entire Markdown document and converts it directly to HTML. This is equivalent to parsing all lines, collecting the elements, and converting each to HTML.
 
 ### Parser State
 
@@ -119,71 +102,46 @@ Element::Emphasis
 Element::Strong
 {/apiSummary}
 
-{apiDescriptions class=Element}
-Element::None
---
-Default element type, typically used for the root of the document.
+{context class=Element}
 
->>
-Element::List
---
-An ordered or unordered list. Contains `ListItem` children. Use `listStartNumber` to determine if the list is ordered (>= 0) or unordered (-1). The `listPunc` member indicates the list marker character (e.g., `-`, `*`, or `.`).
+`Element::None`
+> Default element type, typically used for the root of the document.
 
->>
-Element::ListItem
---
-An individual item within a list. The `indentOrLevel` member indicates the indentation level.
+`Element::List`
+> An ordered or unordered list. Contains `ListItem` children. Use `listStartNumber` to determine if the list is ordered (>= 0) or unordered (-1). The `listPunc` member indicates the list marker character (e.g., `-`, `*`, or `.`).
 
->>
-Element::BlockQuote
---
-A block quote. Contains other block-level elements as children.
+`Element::ListItem`
+> An individual item within a list. The `indentOrLevel` member indicates the indentation level.
 
->>
-Element::Heading
---
-A heading (H1-H6). The `indentOrLevel` member indicates the heading level (1-6). The `id` member can be used to set an HTML id attribute. Text content is stored in `rawLines`.
+`Element::BlockQuote`
+> A block quote. Contains other block-level elements as children.
 
->>
-Element::Paragraph
---
-A paragraph of text. Text content is stored in `rawLines`.
+`Element::Heading`
+> A heading (H1-H6). The `indentOrLevel` member indicates the heading level (1-6). The `id` member can be used to set an HTML id attribute. Text content is stored in `rawLines`.
 
->>
-Element::CodeBlock
---
-A fenced or indented code block. The raw code is stored in `rawLines`.
+`Element::Paragraph`
+> A paragraph of text. Text content is stored in `rawLines`.
 
->>
-Element::Text
---
-Plain text content within an inline context. The text is stored in the `text` member.
+`Element::CodeBlock`
+> A fenced or indented code block. The raw code is stored in `rawLines`.
 
->>
-Element::Link
---
-A hyperlink. The link destination URL is stored in the `text` member. Child elements contain the link text.
+`Element::Text`
+> Plain text content within an inline context. The text is stored in the `text` member.
 
->>
-Element::CodeSpan
---
-Inline code (backtick-delimited). The code content is stored in the `text` member.
+`Element::Link`
+> A hyperlink. The link destination URL is stored in the `text` member. Child elements contain the link text.
 
->>
-Element::SoftBreak
---
-A soft line break within a paragraph.
+`Element::CodeSpan`
+> Inline code (backtick-delimited). The code content is stored in the `text` member.
 
->>
-Element::Emphasis
---
-Emphasized text (typically rendered as italic). Child elements contain the emphasized content.
+`Element::SoftBreak`
+> A soft line break within a paragraph.
 
->>
-Element::Strong
---
-Strongly emphasized text (typically rendered as bold). Child elements contain the content.
-{/apiDescriptions}
+`Element::Emphasis`
+> Emphasized text (typically rendered as italic). Child elements contain the emphasized content.
+
+`Element::Strong`
+> Strongly emphasized text (typically rendered as bold). Child elements contain the content.
 
 ### `Element` Member Functions
 
@@ -195,28 +153,17 @@ bool isOrderedList() const
 void addChildren(ArrayView<Owned<Element>> newChildren)
 {/apiSummary}
 
-{apiDescriptions class=Element}
-bool isContainerBlock() const
---
-Returns `true` if the element is a container block (`None`, `List`, `ListItem`, or `BlockQuote`) that can have child blocks.
+`bool isContainerBlock() const`
+> Returns `true` if the element is a container block (`None`, `List`, `ListItem`, or `BlockQuote`) that can have child blocks.
 
->>
-bool isLeafBlock() const
---
-Returns `true` if the element is a leaf block (`Heading`, `Paragraph`, or `CodeBlock`) that contains text but not child blocks.
+`bool isLeafBlock() const`
+> Returns `true` if the element is a leaf block (`Heading`, `Paragraph`, or `CodeBlock`) that contains text but not child blocks.
 
->>
-bool isInlineElement() const
---
-Returns `true` if the element is an inline element (`Text`, `Link`, `CodeSpan`, `SoftBreak`, `Emphasis`, or `Strong`).
+`bool isInlineElement() const`
+> Returns `true` if the element is an inline element (`Text`, `Link`, `CodeSpan`, `SoftBreak`, `Emphasis`, or `Strong`).
 
->>
-bool isOrderedList() const
---
-Returns `true` if the element is an ordered list (type is `List` and `listStartNumber` >= 0).
+`bool isOrderedList() const`
+> Returns `true` if the element is an ordered list (type is `List` and `listStartNumber` >= 0).
 
->>
-void addChildren(ArrayView<Owned<Element>> newChildren)
---
-Adds child elements to this element and sets their parent pointers.
-{/apiDescriptions}
+`void addChildren(ArrayView<Owned<Element>> newChildren)`
+> Adds child elements to this element and sets their parent pointers.
