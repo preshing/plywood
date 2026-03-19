@@ -3285,7 +3285,9 @@ public:
     Owned(Owned<Derived>&& other) : ptr{other.release()} {
     }
     ~Owned() {
-        destroy(this->ptr);
+        if (this->ptr) {
+            destroy(this->ptr);
+        }
     }
     static Owned adopt(Item* ptr) {
         Owned result;
@@ -3294,20 +3296,26 @@ public:
     }
     Owned& operator=(Owned&& other) {
         PLY_ASSERT(!this->ptr || this->ptr != other.ptr);
-        destroy(this->ptr);
+        if (this->ptr) {
+            destroy(this->ptr);
+        }
         this->ptr = other.release();
         return *this;
     }
     template <typename Derived, typename std::enable_if_t<std::is_base_of<Item, Derived>::value, int> = 0>
     Owned& operator=(Owned<Derived>&& other) {
         PLY_ASSERT(!this->ptr || this->ptr != other.ptr);
-        destroy(this->ptr);
+        if (this->ptr) {
+            destroy(this->ptr);
+        }
         this->ptr = other.release();
         return *this;
     }
     Owned& operator=(Item* ptr) {
         PLY_ASSERT(!this->ptr || this->ptr != ptr);
-        destroy(this->ptr);
+        if (this->ptr) {
+            destroy(this->ptr);
+        }
         this->ptr = ptr;
         return *this;
     }
@@ -3326,7 +3334,9 @@ public:
         return ptr;
     }
     void clear() {
-        destroy(this->ptr);
+        if (this->ptr) {
+            destroy(this->ptr);
+        }
         this->ptr = nullptr;
     }
     auto getLookupKey() const {
