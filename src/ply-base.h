@@ -692,6 +692,106 @@ enum MemoryOrder { Relaxed, Acquire, Release, AcqRel };
 //----------------------------------------------------
 // MSVC implementation.
 template <typename T>
+class Atomic<T, 1> {
+protected:
+    T value = 0;
+
+public:
+    Atomic(T value = 0) : value{value} {
+    }
+    Atomic(const Atomic<T, 1>& other) : value{other.load(Relaxed)} {
+    }
+    // Hide operator=
+    Atomic& operator=(T) = delete;
+    // The copy assignment operator should only be called when there is no concurrent access to *this.
+    Atomic& operator=(const Atomic& other) {
+        this->value = other.load(Relaxed);
+        return *this;
+    }
+    T load(MemoryOrder order) const {
+        T result = *(volatile T*) &this->value;
+        if (order != Relaxed) {
+            _ReadWriteBarrier();
+        }
+        return result;
+    }
+    void store(T value, MemoryOrder order) {
+        if (order != Relaxed) {
+            _ReadWriteBarrier();
+        }
+        *(volatile T*) &this->value = value;
+    }
+    T compareExchange(T expected, T desired, MemoryOrder) {
+        return (T) _InterlockedCompareExchange8((volatile char*) &this->value, (char) desired, (char) expected);
+    }
+    T exchange(T desired, MemoryOrder) {
+        return (T) _InterlockedExchange8((volatile char*) &this->value, (char) desired);
+    }
+    T fetchAdd(T operand, MemoryOrder) {
+        return (T) _InterlockedExchangeAdd8((volatile char*) &this->value, (char) operand);
+    }
+    T fetchSub(T operand, MemoryOrder) {
+        return (T) _InterlockedExchangeAdd8((volatile char*) &this->value, -(char) operand);
+    }
+    T fetchAnd(T operand, MemoryOrder) {
+        return (T) _InterlockedAnd8((volatile char*) &this->value, (char) operand);
+    }
+    T fetchOr(T operand, MemoryOrder) {
+        return (T) _InterlockedOr8((volatile char*) &this->value, (char) operand);
+    }
+};
+
+template <typename T>
+class Atomic<T, 2> {
+protected:
+    T value = 0;
+
+public:
+    Atomic(T value = 0) : value{value} {
+    }
+    Atomic(const Atomic<T, 2>& other) : value{other.load(Relaxed)} {
+    }
+    // Hide operator=
+    Atomic& operator=(T) = delete;
+    // The copy assignment operator should only be called when there is no concurrent access to *this.
+    Atomic& operator=(const Atomic& other) {
+        this->value = other.load(Relaxed);
+        return *this;
+    }
+    T load(MemoryOrder order) const {
+        T result = *(volatile T*) &this->value;
+        if (order != Relaxed) {
+            _ReadWriteBarrier();
+        }
+        return result;
+    }
+    void store(T value, MemoryOrder order) {
+        if (order != Relaxed) {
+            _ReadWriteBarrier();
+        }
+        *(volatile T*) &this->value = value;
+    }
+    T compareExchange(T expected, T desired, MemoryOrder) {
+        return (T) _InterlockedCompareExchange16((volatile short*) &this->value, (short) desired, (short) expected);
+    }
+    T exchange(T desired, MemoryOrder) {
+        return (T) _InterlockedExchange16((volatile short*) &this->value, (short) desired);
+    }
+    T fetchAdd(T operand, MemoryOrder) {
+        return (T) _InterlockedExchangeAdd16((volatile short*) &this->value, (short) operand);
+    }
+    T fetchSub(T operand, MemoryOrder) {
+        return (T) _InterlockedExchangeAdd16((volatile short*) &this->value, -(short) operand);
+    }
+    T fetchAnd(T operand, MemoryOrder) {
+        return (T) _InterlockedAnd16((volatile short*) &this->value, (short) operand);
+    }
+    T fetchOr(T operand, MemoryOrder) {
+        return (T) _InterlockedOr16((volatile short*) &this->value, (short) operand);
+    }
+};
+
+template <typename T>
 class Atomic<T, 4> {
 protected:
     T value = 0;
@@ -824,6 +924,96 @@ constexpr int toGccOrder(MemoryOrder order) {
             return __ATOMIC_ACQ_REL;
     }
 }
+
+template <typename T>
+class Atomic<T, 1> {
+protected:
+    T value = 0;
+
+public:
+    Atomic(T value = 0) : value{value} {
+    }
+    Atomic(const Atomic<T, 1>& other) : value{other.load(Relaxed)} {
+    }
+    // Hide operator=
+    Atomic& operator=(T) = delete;
+    // The copy assignment operator should only be called when there is no concurrent access to *this.
+    Atomic& operator=(const Atomic& other) {
+        this->value = other.load(Relaxed);
+        return *this;
+    }
+    T load(MemoryOrder order) const {
+        return __atomic_load_n(&this->value, toGccOrder(order));
+    }
+    void store(T value, MemoryOrder order) {
+        __atomic_store_n(&this->value, value, toGccOrder(order));
+    }
+    T compareExchange(T expected, T desired, MemoryOrder order) {
+        MemoryOrder failOrder = (order == AcqRel) ? Acquire : ((order == Release) ? Relaxed : order);
+        __atomic_compare_exchange_n(&this->value, &expected, desired, false, toGccOrder(order), toGccOrder(failOrder));
+        return expected;
+    }
+    T exchange(T desired, MemoryOrder order) {
+        return __atomic_exchange_n(&this->value, desired, toGccOrder(order));
+    }
+    T fetchAdd(T operand, MemoryOrder order) {
+        return __atomic_fetch_add(&this->value, operand, toGccOrder(order));
+    }
+    T fetchSub(T operand, MemoryOrder order) {
+        return __atomic_fetch_sub(&this->value, operand, toGccOrder(order));
+    }
+    T fetchAnd(T operand, MemoryOrder order) {
+        return __atomic_fetch_and(&this->value, operand, toGccOrder(order));
+    }
+    T fetchOr(T operand, MemoryOrder order) {
+        return __atomic_fetch_or(&this->value, operand, toGccOrder(order));
+    }
+};
+
+template <typename T>
+class Atomic<T, 2> {
+protected:
+    T value = 0;
+
+public:
+    Atomic(T value = 0) : value{value} {
+    }
+    Atomic(const Atomic<T, 2>& other) : value{other.load(Relaxed)} {
+    }
+    // Hide operator=
+    Atomic& operator=(T) = delete;
+    // The copy assignment operator should only be called when there is no concurrent access to *this.
+    Atomic& operator=(const Atomic& other) {
+        this->value = other.load(Relaxed);
+        return *this;
+    }
+    T load(MemoryOrder order) const {
+        return __atomic_load_n(&this->value, toGccOrder(order));
+    }
+    void store(T value, MemoryOrder order) {
+        __atomic_store_n(&this->value, value, toGccOrder(order));
+    }
+    T compareExchange(T expected, T desired, MemoryOrder order) {
+        MemoryOrder failOrder = (order == AcqRel) ? Acquire : ((order == Release) ? Relaxed : order);
+        __atomic_compare_exchange_n(&this->value, &expected, desired, false, toGccOrder(order), toGccOrder(failOrder));
+        return expected;
+    }
+    T exchange(T desired, MemoryOrder order) {
+        return __atomic_exchange_n(&this->value, desired, toGccOrder(order));
+    }
+    T fetchAdd(T operand, MemoryOrder order) {
+        return __atomic_fetch_add(&this->value, operand, toGccOrder(order));
+    }
+    T fetchSub(T operand, MemoryOrder order) {
+        return __atomic_fetch_sub(&this->value, operand, toGccOrder(order));
+    }
+    T fetchAnd(T operand, MemoryOrder order) {
+        return __atomic_fetch_and(&this->value, operand, toGccOrder(order));
+    }
+    T fetchOr(T operand, MemoryOrder order) {
+        return __atomic_fetch_or(&this->value, operand, toGccOrder(order));
+    }
+};
 
 template <typename T>
 class Atomic<T, 4> {

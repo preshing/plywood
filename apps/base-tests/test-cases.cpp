@@ -99,6 +99,112 @@ TEST_CASE("Thread join") {
     check(value == 42);
 }
 
+TEST_CASE("Atomic 8-bit operations") {
+    Atomic<u8> value = 7;
+    check(value.load(Relaxed) == 7);
+
+    value.store(9, Release);
+    check(value.load(Acquire) == 9);
+
+    check(value.compareExchange(9, 12, AcqRel) == 9);
+    check(value.load(Relaxed) == 12);
+    check(value.compareExchange(9, 1, AcqRel) == 12);
+    check(value.load(Relaxed) == 12);
+
+    check(value.exchange(3, AcqRel) == 12);
+    check(value.load(Relaxed) == 3);
+
+    check(value.fetchAdd(4, AcqRel) == 3);
+    check(value.load(Relaxed) == 7);
+    check(value.fetchSub(2, AcqRel) == 7);
+    check(value.load(Relaxed) == 5);
+
+    check(value.fetchAnd(6, AcqRel) == 5);
+    check(value.load(Relaxed) == 4);
+    check(value.fetchOr(3, AcqRel) == 4);
+    check(value.load(Relaxed) == 7);
+}
+
+TEST_CASE("Atomic 16-bit operations") {
+    Atomic<u16> value = 0x1200;
+    check(value.load(Relaxed) == 0x1200);
+
+    value.store(0x1234, Release);
+    check(value.load(Acquire) == 0x1234);
+
+    check(value.compareExchange(0x1234, 0x4321, AcqRel) == 0x1234);
+    check(value.load(Relaxed) == 0x4321);
+    check(value.compareExchange(0x1234, 0xFFFF, AcqRel) == 0x4321);
+    check(value.load(Relaxed) == 0x4321);
+
+    check(value.exchange(0x0102, AcqRel) == 0x4321);
+    check(value.load(Relaxed) == 0x0102);
+
+    check(value.fetchAdd(0x0010, AcqRel) == 0x0102);
+    check(value.load(Relaxed) == 0x0112);
+    check(value.fetchSub(0x0003, AcqRel) == 0x0112);
+    check(value.load(Relaxed) == 0x010F);
+
+    check(value.fetchAnd(0x00FF, AcqRel) == 0x010F);
+    check(value.load(Relaxed) == 0x000F);
+    check(value.fetchOr(0x0F00, AcqRel) == 0x000F);
+    check(value.load(Relaxed) == 0x0F0F);
+}
+
+TEST_CASE("Atomic 32-bit operations") {
+    Atomic<u32> value = 0x12000000;
+    check(value.load(Relaxed) == 0x12000000);
+
+    value.store(0x12345678, Release);
+    check(value.load(Acquire) == 0x12345678);
+
+    check(value.compareExchange(0x12345678, 0x87654321, AcqRel) == 0x12345678);
+    check(value.load(Relaxed) == 0x87654321);
+    check(value.compareExchange(0x12345678, 0xFFFFFFFF, AcqRel) == 0x87654321);
+    check(value.load(Relaxed) == 0x87654321);
+
+    check(value.exchange(0x01020304, AcqRel) == 0x87654321);
+    check(value.load(Relaxed) == 0x01020304);
+
+    check(value.fetchAdd(0x00010010, AcqRel) == 0x01020304);
+    check(value.load(Relaxed) == 0x01030314);
+    check(value.fetchSub(0x00000024, AcqRel) == 0x01030314);
+    check(value.load(Relaxed) == 0x010302F0);
+
+    check(value.fetchAnd(0x00FF00FF, AcqRel) == 0x010302F0);
+    check(value.load(Relaxed) == 0x000300F0);
+    check(value.fetchOr(0x0F00000F, AcqRel) == 0x000300F0);
+    check(value.load(Relaxed) == 0x0F0300FF);
+}
+
+TEST_CASE("Atomic 64-bit operations") {
+    Atomic<u64> value = u64(0x1200000000000000ull);
+    check(value.load(Relaxed) == u64(0x1200000000000000ull));
+
+    value.store(u64(0x123456789ABCDEF0ull), Release);
+    check(value.load(Acquire) == u64(0x123456789ABCDEF0ull));
+
+    check(value.compareExchange(u64(0x123456789ABCDEF0ull), u64(0x0FEDCBA987654321ull), AcqRel) ==
+          u64(0x123456789ABCDEF0ull));
+    check(value.load(Relaxed) == u64(0x0FEDCBA987654321ull));
+    check(value.compareExchange(u64(0x123456789ABCDEF0ull), u64(0xFFFFFFFFFFFFFFFFull), AcqRel) ==
+          u64(0x0FEDCBA987654321ull));
+    check(value.load(Relaxed) == u64(0x0FEDCBA987654321ull));
+
+    check(value.exchange(u64(0x0102030405060708ull), AcqRel) == u64(0x0FEDCBA987654321ull));
+    check(value.load(Relaxed) == u64(0x0102030405060708ull));
+
+    check(value.fetchAdd(u64(0x0001001000010010ull), AcqRel) == u64(0x0102030405060708ull));
+    check(value.load(Relaxed) == u64(0x0103031405070718ull));
+    check(value.fetchSub(u64(0x0000000000000028ull), AcqRel) == u64(0x0103031405070718ull));
+    check(value.load(Relaxed) == u64(0x01030314050706F0ull));
+
+    check(value.fetchAnd(u64(0x00FF00FF00FF00FFull), AcqRel) == u64(0x01030314050706F0ull));
+    check(value.load(Relaxed) == u64(0x00030014000700F0ull));
+    check(value.fetchOr(u64(0x0F0000000000000Full), AcqRel) == u64(0x00030014000700F0ull));
+    check(value.load(Relaxed) == u64(0x0F030014000700FFull));
+}
+
 //  ▄▄  ▄▄
 //  ██  ██  ▄▄▄▄   ▄▄▄▄  ▄▄▄▄▄
 //  ██▀▀██ ██▄▄██  ▄▄▄██ ██  ██
