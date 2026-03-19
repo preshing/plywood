@@ -3405,6 +3405,8 @@ public:
         return *this;
     }
     Reference& operator=(Reference&& ref) {
+        if (this == &ref)
+            return *this;
         if (this->ptr) {
             this->ptr->decRefCount();
         }
