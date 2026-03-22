@@ -60,6 +60,7 @@ struct Block {
 
     Variant<List, ListItem, BlockQuote, Heading, Paragraph, IndentedCodeBlock, FencedCodeBlock, ThematicBreak> var;
     Block* parent = nullptr;
+    void* userData = nullptr;
 
     // Convenience functions:
     Inner* asInner() {
