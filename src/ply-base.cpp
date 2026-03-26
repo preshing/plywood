@@ -4519,7 +4519,7 @@ String getCurrentExecutablePath() {
         WString wstr = WString::allocate(numUnits);
         DWORD rc = GetModuleFileNameW(NULL, (LPWSTR) wstr.units, numUnits);
         if (rc < numUnits) {
-            WStringView wsubstr = {wstr, rc};
+            WStringView wsubstr = {wstr.units, rc};
             if (wsubstr.numUnits >= 4 && wsubstr.rawBytes().left(8) == StringView{(const char*) L"\\\\?\\", 8}) {
                 // Drop leading "\\\\?\\":
                 wsubstr.units += 4;
