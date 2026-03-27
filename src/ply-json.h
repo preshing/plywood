@@ -287,8 +287,12 @@ public:
 //   ██▀▀██  ██     ██  ▀█▄▄ ▀█▄▄▄
 //
 
-void write(Stream& out, const Node& node);
-String toString(const Node& node);
+struct WriteOptions {
+    bool includeWhitespace = true;
+};
+
+void write(Stream& out, const Node& node, const WriteOptions& options = {});
+String toString(const Node& node, const WriteOptions& options = {});
 
 } // namespace json
 } // namespace ply

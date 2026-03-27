@@ -526,14 +526,17 @@ Parser::Result Parser::parse(StringView path, StringView srcView) {
 
 struct WriteContext {
     Stream& out;
+    WriteOptions options;
     u32 indentLevel = 0;
 
-    WriteContext(Stream& out) : out{out} {
+    WriteContext(Stream& out, const WriteOptions& options) : out{out}, options{options} {
     }
 
     void indent() {
-        for (u32 i = 0; i < this->indentLevel; i++) {
-            this->out.write("  ");
+        if (this->options.includeWhitespace) {
+            for (u32 i = 0; i < this->indentLevel; i++) {
+                this->out.write("  ");
+            }
         }
     }
 
@@ -544,24 +547,35 @@ struct WriteContext {
         }
 
         if (const Node::Object* obj = node.var.as<Node::Object>()) {
-            this->out.write("{\n");
+            this->out.write('{');
+            if (this->options.includeWhitespace) {
+                this->out.write('\n');
+            }
             this->indentLevel++;
             ArrayView<const Map<String, Node>::Item> items = obj->items.items();
             for (u32 itemIndex = 0; itemIndex < items.numItems(); itemIndex++) {
                 const auto& objItem = items[itemIndex];
                 indent();
-                this->out.format("\"{}\": ", escape(objItem.key));
+                this->out.format("\"{}\":", escape(objItem.key));
+                if (this->options.includeWhitespace) {
+                    this->out.write(' ');
+                }
                 write(objItem.value);
                 if (itemIndex < items.numItems() - 1) {
                     this->out.write(',');
                 }
-                this->out.write('\n');
+                if (this->options.includeWhitespace) {
+                    this->out.write('\n');
+                }
             }
             this->indentLevel--;
             indent();
             this->out.write('}');
         } else if (const Node::Array* arr = node.var.as<Node::Array>()) {
-            this->out.write("[\n");
+            this->out.write('[');
+            if (this->options.includeWhitespace) {
+                this->out.write('\n');
+            }
             this->indentLevel++;
             for (u32 i = 0; i < arr->items.numItems(); i++) {
                 indent();
@@ -569,7 +583,9 @@ struct WriteContext {
                 if (i < arr->items.numItems() - 1) {
                     this->out.write(',');
                 }
-                this->out.write('\n');
+                if (this->options.includeWhitespace) {
+                    this->out.write('\n');
+                }
             }
             this->indentLevel--;
             indent();
@@ -584,14 +600,14 @@ struct WriteContext {
     }
 };
 
-void write(Stream& out, const Node& node) {
-    WriteContext ctx{out};
+void write(Stream& out, const Node& node, const WriteOptions& options) {
+    WriteContext ctx{out, options};
     ctx.write(node);
 }
 
-String toString(const Node& node) {
+String toString(const Node& node, const WriteOptions& options) {
     MemStream out;
-    write(out, node);
+    write(out, node, options);
     return out.moveToString();
 }
 
