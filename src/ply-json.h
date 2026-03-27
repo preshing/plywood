@@ -22,6 +22,9 @@ struct Node {
     struct Bool {
         bool value = false;
     };
+    struct Number {
+        double value = 0;
+    };
     struct Text {
         String text;
     };
@@ -33,11 +36,13 @@ struct Node {
     };
 
     u32 fileOfs = 0;
-    Variant<Bool, Text, Array, Object> var;
+    Variant<Bool, Number, Text, Array, Object> var;
 
     Node() {
     }
     Node(const Bool& b, u32 fileOfs = 0) : fileOfs{fileOfs}, var{b} {
+    }
+    Node(const Number& n, u32 fileOfs = 0) : fileOfs{fileOfs}, var{n} {
     }
     Node(Text&& text, u32 fileOfs = 0) : fileOfs{fileOfs}, var{Text{std::move(text)}} {
     }
@@ -69,6 +74,24 @@ struct Node {
 
     void setBool(bool value) {
         this->var = Bool{value};
+    }
+
+    //-----------------------------------------------------------
+    // Number
+    //-----------------------------------------------------------
+
+    bool isNumber() const {
+        return this->var.is<Number>();
+    }
+
+    double getNumber() const {
+        if (const Number* n = this->var.as<Number>())
+            return n->value;
+        return 0;
+    }
+
+    void setNumber(double value) {
+        this->var = Number{value};
     }
 
     //-----------------------------------------------------------

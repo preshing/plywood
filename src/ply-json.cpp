@@ -58,6 +58,13 @@ bool isAlnumUnit(u32 c) {
            (c >= '0' && c <= '9') || (c >= 128);
 }
 
+// Returns true only when the entire literal parses as a number.
+bool tryParseNumber(StringView text, double* value) {
+    ViewStream in{text};
+    *value = readDoubleFromText(in);
+    return !in.inputError && (in.curByte == in.endByte);
+}
+
 void Parser::dumpError(const ParseError& error, Stream& out) const {
     TokenLocation errorLoc = this->tokenLocMap.getLocationFromOffset(error.fileOfs);
     out.format("({}, {}): error: {}\n", errorLoc.lineNumber, errorLoc.columnNumber, error.message);
@@ -247,6 +254,44 @@ Parser::Token Parser::readQuotedString() {
 
 Parser::Token Parser::readLiteral() {
     PLY_ASSERT(isAlnumUnit(this->nextUnit));
+
+    if (this->nextUnit == '-' || (this->nextUnit >= '0' && this->nextUnit <= '9')) {
+        Token token = {Token::Text, this->readOfs, {}};
+        u32 startOfs = this->readOfs;
+
+        if (this->nextUnit == '-') {
+            this->advanceChar();
+        }
+
+        if (this->nextUnit == '0') {
+            this->advanceChar();
+        } else {
+            while (this->nextUnit >= '0' && this->nextUnit <= '9') {
+                this->advanceChar();
+            }
+        }
+
+        if (this->nextUnit == '.') {
+            this->advanceChar();
+            while (this->nextUnit >= '0' && this->nextUnit <= '9') {
+                this->advanceChar();
+            }
+        }
+
+        if ((this->nextUnit | 0x20) == 'e') {
+            this->advanceChar();
+            if (this->nextUnit == '+' || this->nextUnit == '-') {
+                this->advanceChar();
+            }
+            while (this->nextUnit >= '0' && this->nextUnit <= '9') {
+                this->advanceChar();
+            }
+        }
+
+        token.text = StringView{(char*) this->srcView.bytes() + startOfs, this->readOfs - startOfs};
+        return token;
+    }
+
     Token token = {Token::Text, this->readOfs, {}};
     u32 startOfs = this->readOfs;
 
@@ -357,6 +402,8 @@ String Parser::toString(const Node& node) {
         return "object";
     } else if (node.var.is<Node::Array>()) {
         return "array";
+    } else if (const Node::Number* n = node.var.as<Node::Number>()) {
+        return String::format("number {}", n->value);
     } else if (const Node::Text* txt = node.var.as<Node::Text>()) {
         return String::format("text \"{}\"", escape(txt->text));
     } else if (const Node::Bool* b = node.var.as<Node::Bool>()) {
@@ -483,6 +530,10 @@ Node Parser::readExpression(Token&& firstToken, const Token* afterToken) {
             if (firstToken.text == "false") {
                 return Node{Node::Bool{false}, firstToken.fileOfs};
             }
+            double value = 0;
+            if (tryParseNumber(firstToken.text, &value)) {
+                return Node{Node::Number{value}, firstToken.fileOfs};
+            }
             return Node{Node::Text{std::move(firstToken.text)}, firstToken.fileOfs};
         }
 
@@ -590,6 +641,8 @@ struct WriteContext {
             this->indentLevel--;
             indent();
             this->out.write(']');
+        } else if (const Node::Number* n = node.var.as<Node::Number>()) {
+            printNumber(this->out, n->value);
         } else if (const Node::Bool* b = node.var.as<Node::Bool>()) {
             this->out.write(b->value ? "true" : "false");
         } else if (const Node::Text* txt = node.var.as<Node::Text>()) {
