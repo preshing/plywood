@@ -558,15 +558,17 @@ Parser::Result Parser::parse(StringView path, StringView srcView) {
     Token rootToken = this->readToken();
     Node root = this->readExpression(std::move(rootToken));
     if (!root.isValid())
-        return {};
+        return {{}, std::move(this->tokenLocMap), this->readOfs};
 
-    Token nextToken = this->readToken();
-    if (nextToken.type != Token::EndOfFile) {
-        this->error(nextToken.fileOfs, String::format("Unexpected {} after {}", toString(nextToken), toString(root)));
-        return {};
+    if (this->greedy) {
+        Token nextToken = this->readToken();
+        if (nextToken.type != Token::EndOfFile) {
+            this->error(nextToken.fileOfs, String::format("Unexpected {} after {}", toString(nextToken), toString(root)));
+            return {{}, std::move(this->tokenLocMap), this->readOfs};
+        }
     }
 
-    return {std::move(root), std::move(this->tokenLocMap)};
+    return {std::move(root), std::move(this->tokenLocMap), this->readOfs};
 }
 
 //  ▄▄    ▄▄        ▄▄  ▄▄

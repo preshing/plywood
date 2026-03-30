@@ -240,6 +240,7 @@ private:
     Functor<void(const ParseError& err)> errorCallback;
     TokenLocationMap tokenLocMap;
     bool anyError_ = false;
+    bool greedy = true;
     StringView srcView;
     u32 readOfs = 0;
     s32 nextUnit = 0;
@@ -287,6 +288,9 @@ public:
     void setTabSize(int tabSize) {
         this->tabSize = tabSize;
     }
+    void setGreedy(bool greedy) {
+        this->greedy = greedy;
+    }
     void setErrorCallback(Functor<void(const ParseError& err)>&& cb) {
         this->errorCallback = std::move(cb);
     }
@@ -297,6 +301,7 @@ public:
     struct Result {
         Node root;
         TokenLocationMap tokenLocMap;
+        u32 numBytes = 0;
     };
 
     void dumpError(const ParseError& error, Stream& out) const;
