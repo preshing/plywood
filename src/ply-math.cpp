@@ -488,7 +488,7 @@ Mat4x4 Mat4x4::fromQuaternion(const Quaternion& q, const Float3& pos) {
             {pos, 1}};
 }
 
-Mat4x4 Mat4x4::perspectiveProjection(const Rect& frustum, float zNear, float zFar, ClipNearType clipNear) {
+Mat4x4 Mat4x4::perspectiveProjection(const Rect& frustum, float zNear, float zFar, DeviceCoordType devCoordType) {
     PLY_ASSERT(zNear > 0 && zFar > 0);
     Mat4x4 result{0, 0, 0, 0};
     float ooXdenom = 1.f / frustum.width();
@@ -501,26 +501,31 @@ Mat4x4 Mat4x4::perspectiveProjection(const Rect& frustum, float zNear, float zFa
     result.col[2].z = (zNear + zFar) * ooZdenom;
     result.col[2].w = -1.f;
     result.col[3].z = (2 * zNear * zFar) * ooZdenom;
-    if (clipNear == CLIP_NEAR_TO_0) {
+    if (devCoordType == DeviceCoordType::Metal) {
         result.col[2].z = 0.5f * result.col[2].z - 0.5f;
         result.col[3].z *= 0.5f;
     }
     return result;
 }
 
-Mat4x4 Mat4x4::orthographicProjection(const Rect& rect, float zNear, float zFar, ClipNearType clipNear) {
+Mat4x4 Mat4x4::orthographicProjection(const Rect& rect, YCoordType yCoordType, float zNear, float zFar, DeviceCoordType devCoordType) {
     Mat4x4 result{0, 0, 0, 0};
     float tow = 2 / rect.width();
     float toh = 2 / rect.height();
     float ooZrange = 1 / (zNear - zFar);
     result.col[0].x = tow;
     result.col[3].x = -rect.mid().x * tow;
-    result.col[1].y = toh;
-    result.col[3].y = -rect.mid().y * toh;
+    if (yCoordType == YCoordType::Up) {
+        result.col[1].y = toh;
+        result.col[3].y = -rect.mid().y * toh;
+    } else {
+        result.col[1].y = -toh;
+        result.col[3].y = rect.mid().y * toh;
+    }
     result.col[2].z = 2 * ooZrange;
     result.col[3].z = (zNear + zFar) * ooZrange;
     result.col[3].w = 1.f;
-    if (clipNear == CLIP_NEAR_TO_0) {
+    if (devCoordType == DeviceCoordType::Metal) {
         result.col[2].z *= 0.5f;
         result.col[3].z = 0.5f * result.col[3].z + 0.5f;
     }

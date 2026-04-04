@@ -1550,9 +1550,14 @@ Mat3x4 operator*(const Mat3x4& a, const Mat3x4& b);
 //  ██   ██ ▀█▄▄██  ▀█▄▄     ██  ▄█▀▀█▄     ██
 //
 
-enum ClipNearType {
-    CLIP_NEAR_TO_0,
-    CLIP_NEAR_TO_NEG_1,
+enum class DeviceCoordType {
+    OpenGL,
+    Metal,
+};
+
+enum class YCoordType {
+    Up,
+    Down,
 };
 
 struct Mat4x4 {
@@ -1574,17 +1579,19 @@ struct Mat4x4 {
     static Mat4x4 fromQuatPos(const QuatPos& qp);
 
     // Returns a perspective projection matrix that maps the given view frustum to normalized device coordinate (NDC)
-    // space. The `frustum` rectangle sits on the z = -1 plane and is viewed from the origin. NDC space extends from -1
-    // to +1 along both x and y axes. `zNear` and `zFar` must be positive values. If `clipNear` is `CLIP_NEAR_TO_0`,
-    // the projection matrix maps the z = `-zNear` plane to z = 0 (suitable for Metal); otherwise it maps to z = -1
-    // (suitable for OpenGL). The z = `-zFar` plane is mapped to z = +1.
-    static Mat4x4 perspectiveProjection(const Rect& frustum, float zNear, float zFar, ClipNearType clipNear);
+    // space. The camera is positioned at the origin and looks in the -z direction, with +x facing right and +y facing
+    // up. The `frustum` rectangle sits on the z = -1 plane. `zNear` and `zFar` must be positive values. NDC space
+    // extends from -1 to +1 along both x and y axes. If `devCoordType` is `DeviceCoordType::Metal`, the near plane maps
+    // to z = 0 in NDC space; otherwise it maps to z = -1. The far plane maps to z = +1.
+    static Mat4x4 perspectiveProjection(const Rect& frustum, float zNear, float zFar, DeviceCoordType devCoordType);
 
     // Returns an orthographic projection matrix that maps the given view frustum to normalized device coordinate (NDC)
-    // space. The `frustum` rectangle sits on the z = -1 plane. NDC space extends from -1 to +1 along both x and y axes.
-    // If `clipNear` is `CLIP_NEAR_TO_0`, the projection matrix maps the z = `-zNear` plane to z = 0 (suitable for
-    // Metal); otherwise it maps to z = -1 (suitable for OpenGL). The z = `-zFar` plane is mapped to z = +1.
-    static Mat4x4 orthographicProjection(const Rect& rect, float zNear, float zFar, ClipNearType clipNear);
+    // space. The camera is positioned at the origin and looks in the -z direction, with +x facing right. If
+    // `yCoordType` is `YCoordType::Up`, +y faces up, otherwise down. NDC space extends from -1 to +1 along both x and y
+    // axes. If `devCoordType` is `DeviceCoordType::Metal`, the near plane maps to z = 0 in NDC space; otherwise it maps
+    // to z = -1. The far plane maps to z = +1.
+    static Mat4x4 orthographicProjection(const Rect& rect, YCoordType yCoordType, float zNear, float zFar,
+                                         DeviceCoordType devCoordType);
 
     Float4& operator[](u32 i) {
         PLY_ASSERT(i < 4);
