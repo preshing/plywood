@@ -686,8 +686,8 @@ private:
         }
         // Sets the full boundary tag for this chunk.
         void setSizeAndFlags(uptr size, bool inUse, bool prevInUse, bool directMapped = false) {
-            this->head = size | (inUse ? InUseBit : 0) | (prevInUse ? PrevInUseBit : 0) |
-                         (directMapped ? DirectMappedBit : 0);
+            this->head =
+                size | (inUse ? InUseBit : 0) | (prevInUse ? PrevInUseBit : 0) | (directMapped ? DirectMappedBit : 0);
         }
     };
 
@@ -894,8 +894,8 @@ private:
         }
         Chunk* node = root;
         for (;;) {
-            bool goLeft = (chunk->getSize() < node->getSize()) ||
-                          ((chunk->getSize() == node->getSize()) && (chunk < node));
+            bool goLeft =
+                (chunk->getSize() < node->getSize()) || ((chunk->getSize() == node->getSize()) && (chunk < node));
             Chunk*& child = goLeft ? node->treeLeft : node->treeRight;
             if (!child) {
                 child = chunk;
@@ -991,8 +991,8 @@ private:
                     node = node->treeRight;
                 }
             }
-            if (candidate && (candidate->getSize() < bestSize ||
-                              (candidate->getSize() == bestSize && candidate < best))) {
+            if (candidate &&
+                (candidate->getSize() < bestSize || (candidate->getSize() == bestSize && candidate < best))) {
                 best = candidate;
                 bestSize = candidate->getSize();
                 if (bestSize == chunkSize) {
@@ -2197,7 +2197,7 @@ static bool matchPatternSegment(MatchState& state, MatchMode mode) {
                 }
             } else if (spec == 'q') { // Quoted string
                 if (mode == MatchMode::Matching) {
-                    String val = readQuotedString(*state.str, QS_ESCAPE_WITH_BACKSLASH);
+                    String val = readQuotedString(*state.str, QuotedStringType::C, true);
                     if (!state.str->inputError) {
                         elementMatched = true;
                         outputVariablesToCommit.append([arg, val = std::move(val)]() {
@@ -3386,8 +3386,189 @@ static bool readHexEscape(Stream& in, u32 numDigits, u32& value) {
     return true;
 }
 
-String readQuotedString(Stream& in, u32 flags, Functor<void(QS_Error_Code)> errorCallback) {
-    auto handleError = [&](QS_Error_Code errorCode) {
+// Describes the quoting and escape rules for a specific string-literal language.
+struct QuotedStringProfile {
+    bool allowSingleQuote = false;
+    bool allowTripleQuote = false;
+    bool allowLineContinuation = false;
+    bool allowSlashEscape = false;
+    bool allowQuestionMarkEscape = false;
+    bool allowBellEscape = false;
+    bool allowVerticalTabEscape = false;
+    bool allowNullEscape = false;
+    bool allowOctalEscape = false;
+    bool allowHexEscape = false;
+    bool variableLengthHexEscape = false;
+    bool allowUEscape = false;
+    bool allowBraceUEscape = false;
+    bool allowBigUEscape = false;
+    bool combineUtf16Surrogates = false;
+};
+
+// Returns the parsing profile for a quoted-string language preset.
+static QuotedStringProfile getQuotedStringProfile(QuotedStringType type) {
+    QuotedStringProfile profile;
+    switch (type) {
+        case QuotedStringType::C: {
+            profile.allowLineContinuation = true;
+            profile.allowQuestionMarkEscape = true;
+            profile.allowBellEscape = true;
+            profile.allowVerticalTabEscape = true;
+            profile.allowNullEscape = true;
+            profile.allowOctalEscape = true;
+            profile.allowHexEscape = true;
+            profile.variableLengthHexEscape = true;
+            profile.allowUEscape = true;
+            profile.allowBigUEscape = true;
+            break;
+        }
+
+        case QuotedStringType::JavaScript: {
+            profile.allowSingleQuote = true;
+            profile.allowLineContinuation = true;
+            profile.allowSlashEscape = true;
+            profile.allowVerticalTabEscape = true;
+            profile.allowNullEscape = true;
+            profile.allowHexEscape = true;
+            profile.allowUEscape = true;
+            profile.allowBraceUEscape = true;
+            profile.combineUtf16Surrogates = true;
+            break;
+        }
+
+        case QuotedStringType::JSON: {
+            profile.allowSlashEscape = true;
+            profile.allowUEscape = true;
+            profile.combineUtf16Surrogates = true;
+            break;
+        }
+
+        case QuotedStringType::Python: {
+            profile.allowSingleQuote = true;
+            profile.allowTripleQuote = true;
+            profile.allowLineContinuation = true;
+            profile.allowBellEscape = true;
+            profile.allowVerticalTabEscape = true;
+            profile.allowNullEscape = true;
+            profile.allowOctalEscape = true;
+            profile.allowHexEscape = true;
+            profile.allowUEscape = true;
+            profile.allowBigUEscape = true;
+            break;
+        }
+
+        default: {
+            PLY_ASSERT(0);
+            break;
+        }
+    }
+    return profile;
+}
+
+// Reads one or more hexadecimal digits and returns false if none were consumed.
+// Note: This is very similar to readU64FromText. Revisit later.
+static bool readVariableHexEscape(Stream& in, u32& value) {
+    value = 0;
+    u32 numDigits = 0;
+    while (in.makeReadable()) {
+        u8 digit = digitFromChar(*in.curByte);
+        if (digit >= 16)
+            break;
+        value = (value << 4) | digit;
+        in.curByte++;
+        numDigits++;
+    }
+    return numDigits > 0;
+}
+
+// Reads a JavaScript-style braced Unicode escape such as `\u{1f600}`.
+static bool readBraceUnicodeEscape(Stream& in, u32& codepoint) {
+    codepoint = 0;
+    if (!in.makeReadable() || (*in.curByte != '{'))
+        return false;
+    in.curByte++;
+    u32 numDigits = 0;
+    while (in.makeReadable()) {
+        u8 digit = digitFromChar(*in.curByte);
+        if (digit < 16) {
+            if (numDigits == 6)
+                return false;
+            codepoint = (codepoint << 4) | digit;
+            in.curByte++;
+            numDigits++;
+            continue;
+        }
+        if (*in.curByte == '}') {
+            in.curByte++;
+            return numDigits > 0;
+        }
+        return false;
+    }
+    return false;
+}
+
+// Decodes a simple one-character escape if the current profile supports it.
+static bool decodeSimpleEscape(const QuotedStringProfile& profile, u8 code, char& result) {
+    switch (code) {
+        case '\\':
+        case '"':
+        case '\'':
+            result = (char) code;
+            return true;
+        case '/':
+            if (profile.allowSlashEscape) {
+                result = '/';
+                return true;
+            }
+            return false;
+        case '?':
+            if (profile.allowQuestionMarkEscape) {
+                result = '?';
+                return true;
+            }
+            return false;
+        case 'a':
+            if (profile.allowBellEscape) {
+                result = '\a';
+                return true;
+            }
+            return false;
+        case 'b':
+            result = '\b';
+            return true;
+        case 'f':
+            result = '\f';
+            return true;
+        case 'n':
+            result = '\n';
+            return true;
+        case 'r':
+            result = '\r';
+            return true;
+        case 't':
+            result = '\t';
+            return true;
+        case 'v':
+            if (profile.allowVerticalTabEscape) {
+                result = '\v';
+                return true;
+            }
+            return false;
+        case '0':
+            if (profile.allowNullEscape) {
+                result = '\0';
+                return true;
+            }
+            return false;
+        default:
+            return false;
+    }
+}
+
+String readQuotedString(Stream& in, QuotedStringType type, bool strict,
+                        Functor<void(QuotedStringError)> errorCallback) {
+    QuotedStringProfile profile = getQuotedStringProfile(type);
+    auto handleError = [&](QuotedStringError errorCode) {
         in.inputError = true;
         if (errorCallback) {
             errorCallback(errorCode);
@@ -3396,12 +3577,12 @@ String readQuotedString(Stream& in, u32 flags, Functor<void(QS_Error_Code)> erro
 
     // Get opening quote
     if (!in.makeReadable()) {
-        handleError(QS_UNEXPECTED_END_OF_FILE);
+        handleError(QuotedStringError::UnexpectedEndOfFile);
         return {};
     }
     u8 quoteType = *in.curByte;
-    if (!(quoteType == '"' || ((flags & QS_ALLOW_SINGLE_QUOTE) && quoteType == '\''))) {
-        handleError(QS_NO_OPENING_QUOTE);
+    if (!(quoteType == '"' || (profile.allowSingleQuote && quoteType == '\''))) {
+        handleError(QuotedStringError::NoOpeningQuote);
         return {};
     }
     in.curByte++;
@@ -3409,7 +3590,7 @@ String readQuotedString(Stream& in, u32 flags, Functor<void(QS_Error_Code)> erro
     // Parse rest of quoted string
     MemStream out;
     bool multiline = false;
-    if ((flags & QS_ALLOW_MULTILINE_WITH_TRIPLE) && in.makeReadable(2) && (in.curByte[0] == quoteType) &&
+    if (profile.allowTripleQuote && in.makeReadable(2) && (in.curByte[0] == quoteType) &&
         (in.curByte[1] == quoteType)) {
         multiline = true;
         in.curByte += 2;
@@ -3417,12 +3598,13 @@ String readQuotedString(Stream& in, u32 flags, Functor<void(QS_Error_Code)> erro
 
     for (;;) {
         if (!in.makeReadable()) {
-            handleError(QS_UNEXPECTED_END_OF_FILE);
+            handleError(QuotedStringError::UnexpectedEndOfFile);
             break; // end of string
         }
 
         u8 nextByte = *in.curByte;
         if (nextByte == quoteType) {
+            // A matching quote either ends the string or becomes literal content inside a triple-quoted string.
             if (multiline) {
                 if (in.makeReadable(3) && (in.curByte[1] == quoteType) && (in.curByte[2] == quoteType)) {
                     in.curByte += 3;
@@ -3432,145 +3614,203 @@ String readQuotedString(Stream& in, u32 flags, Functor<void(QS_Error_Code)> erro
                 in.curByte++;
             } else {
                 in.curByte++;
-                if ((flags & QS_COLLAPSE_DOUBLES) && in.makeReadable() && (*in.curByte == quoteType)) {
-                    out.write(quoteType);
-                    in.curByte++;
-                } else {
-                    break; // end of string
-                }
+                break; // end of string
             }
         } else {
             switch (nextByte) {
                 case '\r':
                 case '\n': {
+                    // Newlines are only accepted verbatim when parsing a multiline string.
                     if (multiline) {
                         if (nextByte == '\n') {
                             out.write(nextByte);
                         }
                         in.curByte++;
                     } else {
-                        handleError(QS_UNEXPECTED_END_OF_LINE);
+                        handleError(QuotedStringError::UnexpectedEndOfLine);
                         goto endOfString;
                     }
                     break;
                 }
 
                 case '\\': {
-                    if (!(flags & QS_ESCAPE_WITH_BACKSLASH)) {
-                        out.write(nextByte);
-                        in.curByte++;
-                        break;
-                    }
-
                     // Escape sequence
+                    const char* escapeStart = in.curByte;
                     in.curByte++;
                     if (!in.makeReadable()) {
-                        handleError(QS_UNEXPECTED_END_OF_FILE);
+                        handleError(QuotedStringError::UnexpectedEndOfFile);
                         goto endOfString;
                     }
                     u8 code = *in.curByte;
-                    switch (code) {
-                        case '\r':
-                        case '\n': {
-                            handleError(QS_UNEXPECTED_END_OF_LINE);
-                            goto endOfString;
-                        }
-
-                        case '\\':
-                        case '\'':
-                        case '"': {
-                            out.write(code);
-                            break;
-                        }
-
-                        case 'r': {
-                            out.write('\r');
-                            break;
-                        }
-
-                        case 'n': {
-                            out.write('\n');
-                            break;
-                        }
-
-                        case 't': {
-                            out.write('\t');
-                            break;
-                        }
-
-                        case 'x': {
-                            if (!(flags & QS_ALLOW_HEX_ESCAPE)) {
-                                handleError(QS_BAD_ESCAPE_SEQUENCE);
-                                break;
+                    if (code == '\r' || code == '\n') {
+                        // Treat backslash-newline as a line continuation when the language profile permits it.
+                        if (profile.allowLineContinuation) {
+                            if (code == '\r') {
+                                in.curByte++;
+                                if (in.makeReadable() && (*in.curByte == '\n'))
+                                    in.curByte++;
+                            } else {
+                                in.curByte++;
                             }
+                            break;
+                        }
+                        handleError(QuotedStringError::UnexpectedEndOfLine);
+                        goto endOfString;
+                    }
 
-                            in.curByte++;
+                    char decoded = 0;
+                    if (decodeSimpleEscape(profile, code, decoded)) {
+                        // Handle the common one-character escapes, with `\0` optionally extending into octal.
+                        if ((code == '0') && profile.allowOctalEscape) {
                             u32 codepoint = 0;
-                            if (!readHexEscape(in, 2, codepoint) || !encodeUnicode(out, UTF8, codepoint)) {
-                                handleError(QS_BAD_ESCAPE_SEQUENCE);
+                            u32 numDigits = 0;
+                            while (in.makeReadable() && numDigits < 3) {
+                                u8 digit = *in.curByte - '0';
+                                if (digit >= 8)
+                                    break;
+                                codepoint = (codepoint << 3) | digit;
+                                in.curByte++;
+                                numDigits++;
+                            }
+                            out.write((char) codepoint);
+                        } else {
+                            out.write(decoded);
+                            in.curByte++;
+                        }
+                        break;
+                    }
+
+                    if (profile.allowOctalEscape && (code >= '0') && (code <= '7')) {
+                        // Parse a standalone octal escape when the profile allows it.
+                        u32 codepoint = 0;
+                        u32 numDigits = 0;
+                        while (in.makeReadable() && numDigits < 3) {
+                            u8 digit = *in.curByte - '0';
+                            if (digit >= 8)
+                                break;
+                            codepoint = (codepoint << 3) | digit;
+                            in.curByte++;
+                            numDigits++;
+                        }
+                        out.write((char) codepoint);
+                        break;
+                    }
+
+                    if (code == 'x') {
+                        // Parse a byte-oriented hexadecimal escape, preserving the original bytes if recovery is allowed.
+                        in.curByte++;
+                        u32 codepoint = 0;
+                        bool ok = false;
+                        if (profile.allowHexEscape) {
+                            ok = profile.variableLengthHexEscape ? readVariableHexEscape(in, codepoint)
+                                                                 : readHexEscape(in, 2, codepoint);
+                        } else if (!strict) {
+                            ok = profile.variableLengthHexEscape ? readVariableHexEscape(in, codepoint)
+                                                                 : readHexEscape(in, 2, codepoint);
+                        }
+                        if (!ok || !encodeUnicode(out, UTF8, codepoint)) {
+                            if (strict) {
+                                handleError(QuotedStringError::BadEscapeSequence);
                                 goto endOfString;
                             }
+                            out.write(StringView{escapeStart, in.curByte});
+                        } else {
                             continue;
                         }
+                        break;
+                    }
 
-                        case 'u': {
-                            if (!(flags & QS_ALLOW_U_ESCAPE)) {
-                                handleError(QS_BAD_ESCAPE_SEQUENCE);
-                                break;
+                    if (code == 'u') {
+                        // Parse a Unicode escape, optionally combining UTF-16 surrogate pairs for formats that use them.
+                        in.curByte++;
+                        u32 codepoint = 0;
+                        bool ok = profile.allowUEscape;
+                        bool usedBraceEscape = false;
+                        if (ok && profile.allowBraceUEscape && in.makeReadable() && (*in.curByte == '{')) {
+                            usedBraceEscape = true;
+                            ok = readBraceUnicodeEscape(in, codepoint);
+                        } else if (ok) {
+                            ok = readHexEscape(in, 4, codepoint);
+                        } else if (!strict) {
+                            if (in.makeReadable() && (*in.curByte == '{')) {
+                                usedBraceEscape = true;
+                                ok = readBraceUnicodeEscape(in, codepoint);
+                            } else {
+                                ok = readHexEscape(in, 4, codepoint);
                             }
-
-                            in.curByte++;
-                            u32 codepoint = 0;
-                            if (!readHexEscape(in, 4, codepoint)) {
-                                handleError(QS_BAD_ESCAPE_SEQUENCE);
-                                goto endOfString;
-                            }
-
-                            if (flags & QS_COMBINE_UTF16_SURROGATES) {
-                                if (codepoint >= 0xd800 && codepoint < 0xdc00) {
-                                    if (!in.makeReadable(6) || (in.curByte[0] != '\\') || (in.curByte[1] != 'u')) {
-                                        handleError(QS_BAD_ESCAPE_SEQUENCE);
-                                        goto endOfString;
-                                    }
+                        }
+                        if (ok && profile.combineUtf16Surrogates) {
+                            if (codepoint >= 0xd800 && codepoint < 0xdc00) {
+                                u32 highSurrogate = codepoint;
+                                if (!usedBraceEscape && in.makeReadable(6) && (in.curByte[0] == '\\') &&
+                                    (in.curByte[1] == 'u')) {
                                     in.curByte += 2;
                                     u32 lowSurrogate = 0;
                                     if (!readHexEscape(in, 4, lowSurrogate) || (lowSurrogate < 0xdc00) ||
                                         (lowSurrogate >= 0xe000)) {
-                                        handleError(QS_BAD_ESCAPE_SEQUENCE);
-                                        goto endOfString;
+                                        ok = false;
+                                    } else {
+                                        codepoint =
+                                            0x10000 + (((highSurrogate - 0xd800) << 10) | (lowSurrogate - 0xdc00));
                                     }
-                                    codepoint = 0x10000 +
-                                                (((codepoint - 0xd800) << 10) | (lowSurrogate - 0xdc00));
-                                } else if (codepoint >= 0xdc00 && codepoint < 0xe000) {
-                                    handleError(QS_BAD_ESCAPE_SEQUENCE);
-                                    goto endOfString;
+                                } else {
+                                    ok = false;
                                 }
+                            } else if (codepoint >= 0xdc00 && codepoint < 0xe000) {
+                                ok = false;
                             }
-
-                            if (!encodeUnicode(out, UTF8, codepoint)) {
-                                handleError(QS_BAD_ESCAPE_SEQUENCE);
-                                goto endOfString;
-                            }
-                            continue;
                         }
 
-                        case 'U': {
-                            if (!(flags & QS_ALLOW_BIG_U_ESCAPE)) {
-                                handleError(QS_BAD_ESCAPE_SEQUENCE);
-                                break;
-                            }
-
-                            in.curByte++;
-                            u32 codepoint = 0;
-                            if (!readHexEscape(in, 8, codepoint) || !encodeUnicode(out, UTF8, codepoint)) {
-                                handleError(QS_BAD_ESCAPE_SEQUENCE);
-                                goto endOfString;
-                            }
-                            continue;
+                        if (ok && !encodeUnicode(out, UTF8, codepoint)) {
+                            ok = false;
                         }
 
+                        if (!ok) {
+                            if (strict) {
+                                handleError(QuotedStringError::BadEscapeSequence);
+                                goto endOfString;
+                            }
+                            out.write(StringView{escapeStart, in.curByte});
+                        } else {
+                            continue;
+                        }
+                        break;
+                    }
+
+                    if (code == 'U') {
+                        // Parse an eight-digit Unicode escape used by languages such as C and Python.
+                        in.curByte++;
+                        u32 codepoint = 0;
+                        bool ok = (profile.allowBigUEscape || !strict) && readHexEscape(in, 8, codepoint) &&
+                                  encodeUnicode(out, UTF8, codepoint);
+                        if (!ok) {
+                            if (strict) {
+                                handleError(QuotedStringError::BadEscapeSequence);
+                                goto endOfString;
+                            }
+                            out.write(StringView{escapeStart, in.curByte});
+                        } else {
+                            continue;
+                        }
+                        break;
+                    }
+
+                    if (!strict) {
+                        // In permissive mode, keep the escaped byte verbatim when no recognized escape matched.
+                        out.write((char) code);
+                        in.curByte++;
+                        break;
+                    }
+
+                    // In strict mode, any remaining escape form is invalid.
+                    switch (code) {
+                        case '\r':
+                        case '\n': {
+                            handleError(QuotedStringError::UnexpectedEndOfLine);
+                            goto endOfString;
+                        }
                         default: {
-                            handleError(QS_BAD_ESCAPE_SEQUENCE);
+                            handleError(QuotedStringError::BadEscapeSequence);
                             break;
                         }
                     }
@@ -3579,6 +3819,7 @@ String readQuotedString(Stream& in, u32 flags, Functor<void(QS_Error_Code)> erro
                 }
 
                 default: {
+                    // Ordinary bytes are copied through unchanged.
                     out.write(nextByte);
                     in.curByte++;
                     break;

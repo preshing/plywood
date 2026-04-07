@@ -4183,23 +4183,21 @@ Stream getStdErr(ConsoleMode mode = TEXT);
 //  ██  ██ ▀█▄▄▄  ▀█▄▄██ ▀█▄▄██ ██ ██  ██ ▀█▄▄██       ██   ▀█▄▄▄  ▄█▀▀█▄  ▀█▄▄
 //                                         ▄▄▄█▀
 
-static constexpr u32 QS_ALLOW_SINGLE_QUOTE = 0x1;
-static constexpr u32 QS_ESCAPE_WITH_BACKSLASH = 0x2;
-static constexpr u32 QS_COLLAPSE_DOUBLES = 0x4;
-static constexpr u32 QS_ALLOW_MULTILINE_WITH_TRIPLE = 0x8;
-static constexpr u32 QS_ALLOW_HEX_ESCAPE = 0x10;
-static constexpr u32 QS_ALLOW_U_ESCAPE = 0x20;
-static constexpr u32 QS_ALLOW_BIG_U_ESCAPE = 0x40;
-static constexpr u32 QS_COMBINE_UTF16_SURROGATES = 0x80;
-
 static constexpr u32 ID_WITH_DOLLAR_SIGN = 0x1;
 static constexpr u32 ID_WITH_DASH = 0x2;
 
-enum QS_Error_Code {
-    QS_NO_OPENING_QUOTE,
-    QS_UNEXPECTED_END_OF_LINE,
-    QS_UNEXPECTED_END_OF_FILE,
-    QS_BAD_ESCAPE_SEQUENCE,
+enum class QuotedStringType {
+    C,
+    JavaScript,
+    JSON,
+    Python,
+};
+
+enum class QuotedStringError {
+    NoOpeningQuote,
+    UnexpectedEndOfLine,
+    UnexpectedEndOfFile,
+    BadEscapeSequence,
 };
 
 String readLine(Stream& in);
@@ -4212,7 +4210,8 @@ StringView readIdentifier(ViewStream& viewIn, u32 flags = 0);
 u64 readU64FromText(Stream& in, u32 radix = 10);
 s64 readS64FromText(Stream& in, u32 radix = 10);
 double readDoubleFromText(Stream& in, u32 radix = 10);
-String readQuotedString(Stream& in, u32 flags = 0, Functor<void(QS_Error_Code)> errorCallback = {});
+String readQuotedString(Stream& in, QuotedStringType type = QuotedStringType::C,
+                        bool strict = true, Functor<void(QuotedStringError)> errorCallback = {});
 
 using MatchArg = Variant<String*, StringView*, u32*, s32*, u64*, s64*, double*, float*, bool*>;
 bool matchWithArgs(ViewStream& in, StringView pattern, ArrayView<const MatchArg> matchArgs);

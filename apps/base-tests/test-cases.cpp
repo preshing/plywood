@@ -580,31 +580,89 @@ TEST_CASE("String match quoted string escapes") {
     check(value == "hello \"world\"");
 }
 
-TEST_CASE("readQuotedString hex and unicode escapes") {
-    u32 flags = QS_ESCAPE_WITH_BACKSLASH | QS_ALLOW_HEX_ESCAPE | QS_ALLOW_U_ESCAPE | QS_ALLOW_BIG_U_ESCAPE;
+TEST_CASE("readQuotedString C strict hex and unicode escapes") {
     ViewStream in{"\"A\\x42\\u03c0\\U0001f600\""};
-    String value = readQuotedString(in, flags);
+    String value = readQuotedString(in, QuotedStringType::C, true);
     check(!in.inputError);
     check(in.curByte == in.endByte);
-    check(value == u8"ABπ😀");
+    check(value == "AB\xcf\x80\xf0\x9f\x98\x80");
 }
 
-TEST_CASE("readQuotedString surrogate pairs") {
-    u32 flags = QS_ESCAPE_WITH_BACKSLASH | QS_ALLOW_U_ESCAPE | QS_COMBINE_UTF16_SURROGATES;
+TEST_CASE("readQuotedString JavaScript strict unicode escapes") {
+    ViewStream in{"\"A\\x42\\u03c0\\u{1f600}\""};
+    String value = readQuotedString(in, QuotedStringType::JavaScript, true);
+    check(!in.inputError);
+    check(in.curByte == in.endByte);
+    check(value == "AB\xcf\x80\xf0\x9f\x98\x80");
+}
+
+TEST_CASE("readQuotedString JSON strict surrogate pairs") {
     ViewStream in{"\"\\uD83D\\uDE00\""};
-    String value = readQuotedString(in, flags);
+    String value = readQuotedString(in, QuotedStringType::JSON, true);
     check(!in.inputError);
     check(in.curByte == in.endByte);
-    check(value == u8"😀");
+    check(value == "\xf0\x9f\x98\x80");
 }
 
-TEST_CASE("readQuotedString triple quoted multiline") {
-    u32 flags = QS_ALLOW_SINGLE_QUOTE | QS_ESCAPE_WITH_BACKSLASH | QS_ALLOW_MULTILINE_WITH_TRIPLE;
+TEST_CASE("readQuotedString Python strict triple quoted multiline") {
     ViewStream in{"'''hello\n\"there\"'''"};
-    String value = readQuotedString(in, flags);
+    String value = readQuotedString(in, QuotedStringType::Python, true);
     check(!in.inputError);
     check(in.curByte == in.endByte);
     check(value == "hello\n\"there\"");
+}
+
+TEST_CASE("readQuotedString JSON strict rejects x escape") {
+    ViewStream in{"\"\\x41\""};
+    String value = readQuotedString(in, QuotedStringType::JSON, true);
+    PLY_UNUSED(value);
+    check(in.inputError);
+}
+
+TEST_CASE("readQuotedString JavaScript strict rejects big U escape") {
+    ViewStream in{"\"\\U0001F600\""};
+    String value = readQuotedString(in, QuotedStringType::JavaScript, true);
+    PLY_UNUSED(value);
+    check(in.inputError);
+}
+
+TEST_CASE("readQuotedString JSON strict rejects lone low surrogate") {
+    ViewStream in{"\"\\uDE00\""};
+    String value = readQuotedString(in, QuotedStringType::JSON, true);
+    PLY_UNUSED(value);
+    check(in.inputError);
+}
+
+TEST_CASE("readQuotedString JSON permissive keeps invalid single-character escapes") {
+    ViewStream in{"\"\\#\""};
+    String value = readQuotedString(in, QuotedStringType::JSON, false);
+    check(!in.inputError);
+    check(in.curByte == in.endByte);
+    check(value == "#");
+}
+
+TEST_CASE("readQuotedString JSON permissive preserves malformed unicode escape text") {
+    ViewStream in{"\"\\u12Z4\""};
+    String value = readQuotedString(in, QuotedStringType::JSON, false);
+    check(!in.inputError);
+    check(in.curByte == in.endByte);
+    check(value == "\\u12Z4");
+}
+
+TEST_CASE("readQuotedString C permissive preserves malformed big U escape text") {
+    ViewStream in{"\"\\U0000G600\""};
+    String value = readQuotedString(in, QuotedStringType::C, false);
+    check(!in.inputError);
+    check(in.curByte == in.endByte);
+    check(value == "\\U0000G600");
+}
+
+TEST_CASE("readQuotedString JSON permissive preserves malformed surrogate text") {
+    ViewStream in{"\"\\uD83Dx\""};
+    String value = readQuotedString(in, QuotedStringType::JSON, false);
+    check(!in.inputError);
+    check(in.curByte == in.endByte);
+    check(value == "\\uD83Dx");
 }
 
 TEST_CASE("String match whitespace") {

@@ -213,22 +213,20 @@ Parser::Token Parser::readToken(bool tokenizeNewLine) {
             case '\'': {
                 Token token = {Token::Text, this->readOfs, {}};
                 ViewStream in{this->srcView.substr(this->readOfs)};
-                token.text = readQuotedString(
-                    in, QS_ALLOW_SINGLE_QUOTE | QS_ESCAPE_WITH_BACKSLASH | QS_ALLOW_MULTILINE_WITH_TRIPLE |
-                            QS_ALLOW_HEX_ESCAPE | QS_ALLOW_U_ESCAPE | QS_COMBINE_UTF16_SURROGATES,
-                    [this, &in](QS_Error_Code errorCode) {
+                token.text = readQuotedString(in, QuotedStringType::JSON, true,
+                    [this, &in](QuotedStringError errorCode) {
                         u32 fileOfs = numericCast<u32>(in.curByte - this->srcView.bytes());
                         switch (errorCode) {
-                            case QS_UNEXPECTED_END_OF_LINE:
+                            case QuotedStringError::UnexpectedEndOfLine:
                                 this->error(fileOfs, "Unexpected end of line in string literal");
                                 break;
-                            case QS_UNEXPECTED_END_OF_FILE:
+                            case QuotedStringError::UnexpectedEndOfFile:
                                 this->error(fileOfs, "Unexpected end of file in string literal");
                                 break;
-                            case QS_BAD_ESCAPE_SEQUENCE:
+                            case QuotedStringError::BadEscapeSequence:
                                 this->error(fileOfs, "Bad escape sequence in string literal");
                                 break;
-                            case QS_NO_OPENING_QUOTE:
+                            case QuotedStringError::NoOpeningQuote:
                                 this->error(fileOfs, "Expected opening quote in string literal");
                                 break;
                         }

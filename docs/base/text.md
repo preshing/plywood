@@ -17,7 +17,8 @@ StringView readIdentifier(ViewStream& viewIn, u32 flags = 0)
 u64 readU64FromText(Stream& in, u32 radix = 10)
 s64 readS64FromText(Stream& in, u32 radix = 10)
 double readDoubleFromText(Stream& in, u32 radix = 10)
-String readQuotedString(Stream& in, u32 flags = 0, Functor<void(QS_Error_Code)> errorCallback = {})
+String readQuotedString(Stream& in, QuotedStringType type = QuotedStringType::C, bool strict = true,
+                        Functor<void(QuotedStringError)> errorCallback = {})
 {/apiSummary}
 
 `String readLine(Stream& in)`
@@ -44,8 +45,8 @@ String readQuotedString(Stream& in, u32 flags = 0, Functor<void(QS_Error_Code)> 
 `double readDoubleFromText(Stream& in, u32 radix = 10)`
 > Parses a floating-point number from the stream.
 
-`String readQuotedString(Stream& in, u32 flags = 0, Functor<void(QS_Error_Code)> errorCallback = {})`
-> Reads a quoted string, handling escape sequences. The opening quote must already be consumed. Calls `errorCallback` if parsing fails.
+`String readQuotedString(Stream& in, QuotedStringType type = QuotedStringType::C, bool strict = true, Functor<void(QuotedStringError)> errorCallback = {})`
+> Reads a quoted string starting at its opening quote. The `type` parameter selects the string-literal grammar (`C`, `JavaScript`, `JSON` or `Python`). In strict mode, malformed escape sequences are rejected. In permissive mode, malformed escapes are recovered in a way that tries to preserve the original text. Calls `errorCallback` if parsing fails.
 
 ## Writing Text
 
