@@ -2197,7 +2197,7 @@ static bool matchPatternSegment(MatchState& state, MatchMode mode) {
                 }
             } else if (spec == 'q') { // Quoted string
                 if (mode == MatchMode::Matching) {
-                    String val = readQuotedString(*state.str);
+                    String val = readQuotedString(*state.str, QS_ESCAPE_WITH_BACKSLASH);
                     if (!state.str->inputError) {
                         elementMatched = true;
                         outputVariablesToCommit.append([arg, val = std::move(val)]() {
@@ -3371,6 +3371,21 @@ double readDoubleFromText(Stream& in, u32 radix) {
     return negate ? -value : value;
 }
 
+// Reads a fixed-width hexadecimal escape and returns the decoded value.
+static bool readHexEscape(Stream& in, u32 numDigits, u32& value) {
+    value = 0;
+    for (u32 i = 0; i < numDigits; i++) {
+        if (!in.makeReadable())
+            return false;
+        u8 digit = digitFromChar(*in.curByte);
+        if (digit >= 16)
+            return false;
+        value = (value << 4) | digit;
+        in.curByte++;
+    }
+    return true;
+}
+
 String readQuotedString(Stream& in, u32 flags, Functor<void(QS_Error_Code)> errorCallback) {
     auto handleError = [&](QS_Error_Code errorCode) {
         in.inputError = true;
@@ -3393,8 +3408,13 @@ String readQuotedString(Stream& in, u32 flags, Functor<void(QS_Error_Code)> erro
 
     // Parse rest of quoted string
     MemStream out;
-    u32 quoteRun = 1;
     bool multiline = false;
+    if ((flags & QS_ALLOW_MULTILINE_WITH_TRIPLE) && in.makeReadable(2) && (in.curByte[0] == quoteType) &&
+        (in.curByte[1] == quoteType)) {
+        multiline = true;
+        in.curByte += 2;
+    }
+
     for (;;) {
         if (!in.makeReadable()) {
             handleError(QS_UNEXPECTED_END_OF_FILE);
@@ -3403,37 +3423,23 @@ String readQuotedString(Stream& in, u32 flags, Functor<void(QS_Error_Code)> erro
 
         u8 nextByte = *in.curByte;
         if (nextByte == quoteType) {
-            in.curByte++;
-            if (quoteRun == 0) {
-                if (multiline) {
-                    quoteRun++;
+            if (multiline) {
+                if (in.makeReadable(3) && (in.curByte[1] == quoteType) && (in.curByte[2] == quoteType)) {
+                    in.curByte += 3;
+                    break; // end of string
+                }
+                out.write(quoteType);
+                in.curByte++;
+            } else {
+                in.curByte++;
+                if ((flags & QS_COLLAPSE_DOUBLES) && in.makeReadable() && (*in.curByte == quoteType)) {
+                    out.write(quoteType);
+                    in.curByte++;
                 } else {
                     break; // end of string
                 }
-            } else {
-                quoteRun++;
-                if (quoteRun == 3) {
-                    if (multiline) {
-                        break; // end of string
-                    } else {
-                        multiline = true;
-                        quoteRun = 0;
-                    }
-                }
             }
         } else {
-            // FIXME: Check fmt::AllowMultilineWithTriple (and other flags)
-            if (quoteRun > 0) {
-                if (multiline) {
-                    for (u32 i = 0; i < quoteRun; i++) {
-                        out.write(quoteType);
-                    }
-                } else if (quoteRun == 2) {
-                    break; // empty string
-                }
-                quoteRun = 0;
-            }
-
             switch (nextByte) {
                 case '\r':
                 case '\n': {
@@ -3450,6 +3456,12 @@ String readQuotedString(Stream& in, u32 flags, Functor<void(QS_Error_Code)> erro
                 }
 
                 case '\\': {
+                    if (!(flags & QS_ESCAPE_WITH_BACKSLASH)) {
+                        out.write(nextByte);
+                        in.curByte++;
+                        break;
+                    }
+
                     // Escape sequence
                     in.curByte++;
                     if (!in.makeReadable()) {
@@ -3486,8 +3498,76 @@ String readQuotedString(Stream& in, u32 flags, Functor<void(QS_Error_Code)> erro
                             break;
                         }
 
-                            // FIXME: Implement escape hex codes
-                            // case 'x':
+                        case 'x': {
+                            if (!(flags & QS_ALLOW_HEX_ESCAPE)) {
+                                handleError(QS_BAD_ESCAPE_SEQUENCE);
+                                break;
+                            }
+
+                            in.curByte++;
+                            u32 codepoint = 0;
+                            if (!readHexEscape(in, 2, codepoint) || !encodeUnicode(out, UTF8, codepoint)) {
+                                handleError(QS_BAD_ESCAPE_SEQUENCE);
+                                goto endOfString;
+                            }
+                            continue;
+                        }
+
+                        case 'u': {
+                            if (!(flags & QS_ALLOW_U_ESCAPE)) {
+                                handleError(QS_BAD_ESCAPE_SEQUENCE);
+                                break;
+                            }
+
+                            in.curByte++;
+                            u32 codepoint = 0;
+                            if (!readHexEscape(in, 4, codepoint)) {
+                                handleError(QS_BAD_ESCAPE_SEQUENCE);
+                                goto endOfString;
+                            }
+
+                            if (flags & QS_COMBINE_UTF16_SURROGATES) {
+                                if (codepoint >= 0xd800 && codepoint < 0xdc00) {
+                                    if (!in.makeReadable(6) || (in.curByte[0] != '\\') || (in.curByte[1] != 'u')) {
+                                        handleError(QS_BAD_ESCAPE_SEQUENCE);
+                                        goto endOfString;
+                                    }
+                                    in.curByte += 2;
+                                    u32 lowSurrogate = 0;
+                                    if (!readHexEscape(in, 4, lowSurrogate) || (lowSurrogate < 0xdc00) ||
+                                        (lowSurrogate >= 0xe000)) {
+                                        handleError(QS_BAD_ESCAPE_SEQUENCE);
+                                        goto endOfString;
+                                    }
+                                    codepoint = 0x10000 +
+                                                (((codepoint - 0xd800) << 10) | (lowSurrogate - 0xdc00));
+                                } else if (codepoint >= 0xdc00 && codepoint < 0xe000) {
+                                    handleError(QS_BAD_ESCAPE_SEQUENCE);
+                                    goto endOfString;
+                                }
+                            }
+
+                            if (!encodeUnicode(out, UTF8, codepoint)) {
+                                handleError(QS_BAD_ESCAPE_SEQUENCE);
+                                goto endOfString;
+                            }
+                            continue;
+                        }
+
+                        case 'U': {
+                            if (!(flags & QS_ALLOW_BIG_U_ESCAPE)) {
+                                handleError(QS_BAD_ESCAPE_SEQUENCE);
+                                break;
+                            }
+
+                            in.curByte++;
+                            u32 codepoint = 0;
+                            if (!readHexEscape(in, 8, codepoint) || !encodeUnicode(out, UTF8, codepoint)) {
+                                handleError(QS_BAD_ESCAPE_SEQUENCE);
+                                goto endOfString;
+                            }
+                            continue;
+                        }
 
                         default: {
                             handleError(QS_BAD_ESCAPE_SEQUENCE);

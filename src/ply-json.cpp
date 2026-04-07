@@ -116,142 +116,6 @@ Parser::Token Parser::readPlainToken(Token::Type type) {
     return result;
 }
 
-bool Parser::readEscapedHex(Stream& out, u32 escapeFileOfs) {
-    PLY_ASSERT(0); // FIXME
-    return false;
-}
-
-Parser::Token Parser::readQuotedString() {
-    PLY_ASSERT(this->nextUnit == '"' || this->nextUnit == '\'');
-    Token token = {Token::Text, this->readOfs, {}};
-    MemStream out;
-    s32 endByte = this->nextUnit;
-    u32 quoteRun = 1;
-    bool multiline = false;
-    this->advanceChar();
-
-    for (;;) {
-        if (this->nextUnit == endByte) {
-            this->advanceChar();
-            if (quoteRun == 0) {
-                if (multiline) {
-                    quoteRun++;
-                } else {
-                    break; // end of string
-                }
-            } else {
-                quoteRun++;
-                if (quoteRun == 3) {
-                    if (multiline) {
-                        break; // end of string
-                    } else {
-                        multiline = true;
-                        quoteRun = 0;
-                    }
-                }
-            }
-        } else {
-            if (quoteRun > 0) {
-                if (multiline) {
-                    for (u32 i = 0; i < quoteRun; i++) {
-                        out.write((char) endByte);
-                    }
-                } else if (quoteRun == 2) {
-                    break; // empty string
-                }
-                quoteRun = 0;
-            }
-
-            switch (this->nextUnit) {
-                case -1: {
-                    error(this->readOfs, "Unexpected end of file in string literal");
-                    return {};
-                }
-
-                case '\r':
-                case '\n': {
-                    if (multiline) {
-                        if (this->nextUnit == '\n') {
-                            out.write((char) this->nextUnit);
-                        }
-                        this->advanceChar();
-                    } else {
-                        this->error(this->readOfs, "Unexpected end of line in string literal");
-                        return {};
-                    }
-                    break;
-                }
-
-                case '\\': {
-                    // Escape sequence
-                    u32 escapeFileOfs = this->readOfs;
-                    this->advanceChar();
-                    s32 code = this->nextUnit;
-                    this->advanceChar();
-                    switch (code) {
-                        case -1: {
-                            this->error(this->readOfs, "Unexpected end of file in string literal");
-                            return {};
-                        }
-
-                        case '\r':
-                        case '\n': {
-                            this->error(this->readOfs, "Unexpected end of line in string literal");
-                            return {};
-                        }
-
-                        case '\\':
-                        case '\'':
-                        case '"': {
-                            out.write((char) code);
-                            break;
-                        }
-
-                        case 'r': {
-                            out.write((char) '\r');
-                            break;
-                        }
-
-                        case 'n': {
-                            out.write((char) '\n');
-                            break;
-                        }
-
-                        case 't': {
-                            out.write((char) '\t');
-                            break;
-                        }
-
-                        case 'x': {
-                            if (!readEscapedHex(out, escapeFileOfs))
-                                return {}; // FIXME: Would be better to continue reading
-                                           // the rest of the string
-                            break;
-                        }
-
-                        default: {
-                            this->error(escapeFileOfs,
-                                        String::format("Unrecognized escape sequence \"\\{}\"", (char) code));
-                            return {}; // FIXME: Would be better to continue reading the
-                                       // rest of the string
-                        }
-                    }
-                    break;
-                }
-
-                default: {
-                    out.write((char) this->nextUnit);
-                    this->advanceChar();
-                    break;
-                }
-            }
-        }
-    }
-
-    token.text = out.moveToString();
-    return token;
-}
-
 Parser::Token Parser::readLiteral() {
     PLY_ASSERT(isAlnumUnit(this->nextUnit));
 
@@ -346,8 +210,35 @@ Parser::Token Parser::readToken(bool tokenizeNewLine) {
                 return this->readPlainToken(Token::Semicolon);
 
             case '"':
-            case '\'':
-                return this->readQuotedString();
+            case '\'': {
+                Token token = {Token::Text, this->readOfs, {}};
+                ViewStream in{this->srcView.substr(this->readOfs)};
+                token.text = readQuotedString(
+                    in, QS_ALLOW_SINGLE_QUOTE | QS_ESCAPE_WITH_BACKSLASH | QS_ALLOW_MULTILINE_WITH_TRIPLE |
+                            QS_ALLOW_HEX_ESCAPE | QS_ALLOW_U_ESCAPE | QS_COMBINE_UTF16_SURROGATES,
+                    [this, &in](QS_Error_Code errorCode) {
+                        u32 fileOfs = numericCast<u32>(in.curByte - this->srcView.bytes());
+                        switch (errorCode) {
+                            case QS_UNEXPECTED_END_OF_LINE:
+                                this->error(fileOfs, "Unexpected end of line in string literal");
+                                break;
+                            case QS_UNEXPECTED_END_OF_FILE:
+                                this->error(fileOfs, "Unexpected end of file in string literal");
+                                break;
+                            case QS_BAD_ESCAPE_SEQUENCE:
+                                this->error(fileOfs, "Bad escape sequence in string literal");
+                                break;
+                            case QS_NO_OPENING_QUOTE:
+                                this->error(fileOfs, "Expected opening quote in string literal");
+                                break;
+                        }
+                    });
+                this->readOfs = numericCast<u32>(in.curByte - this->srcView.bytes());
+                this->nextUnit = (this->readOfs < this->srcView.numBytes()) ? this->srcView[this->readOfs] : -1;
+                if (in.inputError)
+                    return {};
+                return token;
+            }
 
             default:
                 if (isAlnumUnit(this->nextUnit))

@@ -573,6 +573,40 @@ TEST_CASE("String match quoted string") {
     check(value == "hello world");
 }
 
+TEST_CASE("String match quoted string escapes") {
+    StringView str = "name=\"hello \\\"world\\\"\"";
+    String value;
+    check(str.match("name=%q", &value));
+    check(value == "hello \"world\"");
+}
+
+TEST_CASE("readQuotedString hex and unicode escapes") {
+    u32 flags = QS_ESCAPE_WITH_BACKSLASH | QS_ALLOW_HEX_ESCAPE | QS_ALLOW_U_ESCAPE | QS_ALLOW_BIG_U_ESCAPE;
+    ViewStream in{"\"A\\x42\\u03c0\\U0001f600\""};
+    String value = readQuotedString(in, flags);
+    check(!in.inputError);
+    check(in.curByte == in.endByte);
+    check(value == u8"ABπ😀");
+}
+
+TEST_CASE("readQuotedString surrogate pairs") {
+    u32 flags = QS_ESCAPE_WITH_BACKSLASH | QS_ALLOW_U_ESCAPE | QS_COMBINE_UTF16_SURROGATES;
+    ViewStream in{"\"\\uD83D\\uDE00\""};
+    String value = readQuotedString(in, flags);
+    check(!in.inputError);
+    check(in.curByte == in.endByte);
+    check(value == u8"😀");
+}
+
+TEST_CASE("readQuotedString triple quoted multiline") {
+    u32 flags = QS_ALLOW_SINGLE_QUOTE | QS_ESCAPE_WITH_BACKSLASH | QS_ALLOW_MULTILINE_WITH_TRIPLE;
+    ViewStream in{"'''hello\n\"there\"'''"};
+    String value = readQuotedString(in, flags);
+    check(!in.inputError);
+    check(in.curByte == in.endByte);
+    check(value == "hello\n\"there\"");
+}
+
 TEST_CASE("String match whitespace") {
     StringView str = "hello   world";
     check(str.match("hello *world"));

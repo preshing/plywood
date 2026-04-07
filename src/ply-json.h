@@ -274,8 +274,6 @@ private:
     void error(u32 fileOfs, String&& message);
     void advanceChar();
     Token readPlainToken(Token::Type type);
-    bool readEscapedHex(Stream& out, u32 escapeFileOfs);
-    Token readQuotedString();
     Token readLiteral();
     Token readToken(bool tokenizeNewLine = false);
     static String toString(const Token& token);

@@ -4187,6 +4187,10 @@ static constexpr u32 QS_ALLOW_SINGLE_QUOTE = 0x1;
 static constexpr u32 QS_ESCAPE_WITH_BACKSLASH = 0x2;
 static constexpr u32 QS_COLLAPSE_DOUBLES = 0x4;
 static constexpr u32 QS_ALLOW_MULTILINE_WITH_TRIPLE = 0x8;
+static constexpr u32 QS_ALLOW_HEX_ESCAPE = 0x10;
+static constexpr u32 QS_ALLOW_U_ESCAPE = 0x20;
+static constexpr u32 QS_ALLOW_BIG_U_ESCAPE = 0x40;
+static constexpr u32 QS_COMBINE_UTF16_SURROGATES = 0x80;
 
 static constexpr u32 ID_WITH_DOLLAR_SIGN = 0x1;
 static constexpr u32 ID_WITH_DASH = 0x2;
