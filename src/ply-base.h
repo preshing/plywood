@@ -629,7 +629,15 @@ public:
     bool isValid() const {
         return this->handle != INVALID_HANDLE_VALUE;
     }
+    // Starts a new thread that executes the specified callable.
     void run(Functor<void()>&& entry);
+    // Releases this thread object's handle without waiting for the thread to finish.
+    void detach() {
+        PLY_ASSERT(this->handle != INVALID_HANDLE_VALUE);
+        CloseHandle(this->handle);
+        this->handle = INVALID_HANDLE_VALUE;
+    }
+    // Waits for the thread to finish execution.
     void join() {
         PLY_ASSERT(this->handle != INVALID_HANDLE_VALUE);
         WaitForSingleObject(this->handle, INFINITE);
@@ -655,13 +663,21 @@ public:
     }
     ~Thread() {
         if (this->attached) {
-            pthread_detach(this->handle);
+            this->detach();
         }
     }
     bool isValid() {
         return this->attached;
     }
+    // Starts a new thread that executes the specified callable.
     void run(Functor<void()>&& entry);
+    // Detaches the thread so it can continue running after this object is destroyed.
+    void detach() {
+        PLY_ASSERT(this->attached);
+        pthread_detach(this->handle);
+        this->attached = false;
+    }
+    // Waits for the thread to finish execution.
     void join() {
         PLY_ASSERT(this->attached);
         void* retVal = nullptr;

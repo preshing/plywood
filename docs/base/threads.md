@@ -20,6 +20,7 @@ A `Thread` represents a separate thread of execution.
 {apiSummary class=Thread}
 bool isValid()
 void run<Callable>(Callable& callable)
+void detach()
 void join()
 {/apiSummary}
 
@@ -31,8 +32,13 @@ void join()
 `void run<Callable>(Callable& callable)`
 > Starts a new thread that executes the given callable object. The callable can be a lambda, functor, or any object with `operator()`.
 
+`void detach()`
+> Releases the `Thread` object's ownership of the running thread without waiting for it to finish. After this call, `isValid()` returns `false` and the thread continues running independently.
+
 `void join()`
-> Blocks until the thread finishes execution. Must be called before the `Thread` object is destroyed.
+> Blocks until the thread finishes execution, then releases the thread handle. After this call, `isValid()` returns `false`.
+
+Destroying a valid `Thread` object implicitly detaches it if you have not already called `join()` or `detach()`.
 
 ## `Atomic`
 
