@@ -3268,6 +3268,11 @@ public:
 //  ▀█▄▄█▀  ██▀▀██  ██  ██ ▀█▄▄▄  ▀█▄▄██
 //
 
+// ply::destroy() calls the object's destroy() member function, if any.
+// Otherwise, it calls Heap::destroy().
+// Null pointers are silently ignored in both cases.
+// Also, if you overload destroy(Item*) in the same namespace as Item,
+// Owned<> will call your overloaded destroy() function using ADL.
 PLY_CHECK_WELL_FORMED(hasDestroyMember, declval<T>().destroy())
 
 template <typename Item, PLY_ENABLE_IF(hasDestroyMember<Item>)>
@@ -3283,48 +3288,89 @@ void destroy(Item* obj) {
     }
 }
 
+// ply::duplicate() calls the object's duplicate() member function, if any.
+// Otherwise, it allocates a new object on the heap and calls the copy contructor.
+// If a nulltr is passed in, nullptr is returned.
+// Also, if you overload duplicate(Item*) in the same namespace as Item,
+// Owned<> will call your overloaded duplicate() function using ADL.
+PLY_CHECK_WELL_FORMED(hasDuplicateMember, declval<T>().duplicate())
+
+template <typename Item, PLY_ENABLE_IF(hasDuplicateMember<Item>)>
+Item* duplicate(Item* obj) {
+    if (obj)
+        return obj->duplicate();
+    else
+        return nullptr;
+}
+template <typename Item, PLY_ENABLE_IF(!hasDuplicateMember<Item>)>
+Item* duplicate(Item* obj) {
+    if (obj)
+        return Heap::create<Item>(*obj);
+    else
+        return nullptr;
+}
+
 template <typename Item>
 class Owned {
 private:
     template <typename>
     friend class Owned;
-    Item* ptr;
+    Item* ptr = nullptr;
 
 public:
-    Owned() : ptr{nullptr} {
-    }
+    Owned() = default;
     Owned(Item* ptr) : ptr{ptr} { // FIXME: Replace with Owned<Item>::adopt()
     }
+    Owned(const Owned& other) : ptr{duplicate(other.ptr)} {
+    }
     Owned(Owned&& other) : ptr{other.release()} {
+    }
+    template <typename Derived, typename std::enable_if_t<std::is_base_of<Item, Derived>::value, int> = 0>
+    Owned(const Owned<Derived>& other) : ptr{duplicate(other.ptr)} {
     }
     template <typename Derived, typename std::enable_if_t<std::is_base_of<Item, Derived>::value, int> = 0>
     Owned(Owned<Derived>&& other) : ptr{other.release()} {
     }
     ~Owned() {
-        if (this->ptr) {
-            destroy(this->ptr);
-        }
+        destroy(this->ptr);
     }
     static Owned adopt(Item* ptr) {
         Owned result;
         result.ptr = ptr;
         return result;
     }
+    Owned& operator=(const Owned& other) {
+        PLY_ASSERT(!this->ptr || this->ptr != other.ptr);
+        Item* prev = this->ptr;
+        this->ptr = duplicate(other.ptr);
+        // destroy() is called last in case it indirectly results in this Owned<> instance being destructed.
+        destroy(prev);
+        return *this;
+    }
     Owned& operator=(Owned&& other) {
         PLY_ASSERT(!this->ptr || this->ptr != other.ptr);
-        if (this->ptr) {
-            destroy(this->ptr);
-        }
+        Item* prev = this->ptr;
         this->ptr = other.release();
+        // destroy() is called last in case it indirectly results in this Owned<> instance being destructed.
+        destroy(prev);
+        return *this;
+    }
+    template <typename Derived, typename std::enable_if_t<std::is_base_of<Item, Derived>::value, int> = 0>
+    Owned& operator=(const Owned<Derived>& other) {
+        PLY_ASSERT(!this->ptr || this->ptr != other.ptr);
+        Item* prev = this->ptr;
+        this->ptr = duplicate(other.ptr);
+        // destroy() is called last in case it indirectly results in this Owned<> instance being destructed.
+        destroy(prev);
         return *this;
     }
     template <typename Derived, typename std::enable_if_t<std::is_base_of<Item, Derived>::value, int> = 0>
     Owned& operator=(Owned<Derived>&& other) {
         PLY_ASSERT(!this->ptr || this->ptr != other.ptr);
-        if (this->ptr) {
-            destroy(this->ptr);
-        }
+        Item* prev = this->ptr;
         this->ptr = other.release();
+        // destroy() is called last in case it indirectly results in this Owned<> instance being destructed.
+        destroy(prev);
         return *this;
     }
     Owned& operator=(Item* ptr) {
@@ -3350,10 +3396,10 @@ public:
         return ptr;
     }
     void clear() {
-        if (this->ptr) {
-            destroy(this->ptr);
-        }
+        Item* prev = this->ptr;
         this->ptr = nullptr;
+        // destroy() is called last in case it indirectly results in this Owned<> instance being destructed.
+        destroy(prev);
     }
     auto getLookupKey() const {
         return getAnyLookupKey(*this->ptr);
@@ -3439,10 +3485,13 @@ public:
         return ptr;
     };
     void clear() {
-        if (this->ptr) {
-            this->ptr->decRefCount();
-        }
+        Item* prev = this->ptr;
         this->ptr = nullptr;
+        if (prev) {
+            // decRefCount() should be called last in case destructing the referenced object
+            // results in destructing the Reference itself.
+            prev->decRefCount();
+        }
     }
 };
 
