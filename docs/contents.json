@@ -17,7 +17,7 @@
         {"title": "Hash Maps", "path": "base/hash-maps"},
         {"title": "Object Ownership", "path": "base/ownership"},
         {"title": "Functors", "path": "base/functors"},
-        {"title": "Variant Types", "path": "base/variants"},
+        {"title": "Variants", "path": "base/variants"},
         {"title": "Generic Algorithms", "path": "base/algorithms"},
         {"title": "Input and Output", "path": "base/input-output"},
         {"title": "Manipulating Text", "path": "base/text"},

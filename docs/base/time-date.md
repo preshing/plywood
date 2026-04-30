@@ -71,7 +71,7 @@ void printDateTime(Stream& out, StringView format, const DateTime& dateTime)
     s64 sysTime = getUnixTimestamp();
     DateTime dateTime = convertToDateTime(sysTime);
     Stream out = getStdOut();
-    printDateTime(out, "[%Y:%m:%d %H:%M:%S.%L]\n", dateTime);
+    printDateTime(out, "[%Y-%m-%d %H:%M:%S.%L]\n", dateTime);
     out.format("The date is {}.\n", String::fromDateTime("%A, %B %e, %Y", dateTime));
     out.format("The time is {}.\n", String::fromDateTime("%l:%M %p (UTC%Z)", dateTime));
 
