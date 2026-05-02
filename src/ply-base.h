@@ -2700,7 +2700,11 @@ public:
     // Reserve space for a given number of items. The number is rounded up to the nearest power of 2.
     void reserve(u32 numItems) {
         if (numItems > this->allocated) {
-            this->allocated = roundUpToNearestPowerOf2(numItems); // FIXME: Generalize to other resize strategies?
+            if (this->allocated == 0) {
+                this->allocated = numItems;
+            } else {
+                this->allocated = roundUpToNearestPowerOf2(numItems); // FIXME: Generalize to other resize strategies?
+            }
             this->items_ = (Item*) Heap::realloc(this->items_, uptr(this->allocated) * sizeof(Item));
         }
     }
