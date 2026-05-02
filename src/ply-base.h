@@ -1959,6 +1959,9 @@ public:
     operator StringView() const {
         return {this->bytes_, this->numBytes_};
     }
+    operator MutStringView() const {
+        return {this->bytes_, this->numBytes_};
+    }
 
     //----------------------------------------------------
     // Accessing string bytes
