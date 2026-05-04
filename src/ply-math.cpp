@@ -497,7 +497,7 @@ Mat4x4 Mat4x4::perspectiveProjection(const Rect& frustum, float zNear, float zFa
     result.col[0].x = 2.f * ooXdenom;
     result.col[2].x = (frustum.mins.x + frustum.maxs.x) * ooXdenom;
     result.col[1].y = 2.f * ooYdenom;
-    result.col[2].y = (frustum.mins.y + frustum.maxs.y) * ooXdenom;
+    result.col[2].y = (frustum.mins.y + frustum.maxs.y) * ooYdenom;
     result.col[2].z = (zNear + zFar) * ooZdenom;
     result.col[2].w = -1.f;
     result.col[3].z = (2 * zNear * zFar) * ooZdenom;
