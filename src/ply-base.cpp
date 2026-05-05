@@ -4908,6 +4908,13 @@ bool isAbsolutePath(PathFormat fmt, StringView path) {
         return (path.numBytes() >= 1) && isSepByte(fmt, path[0]);
     }
 }
+
+String makeAbsolutePath(PathFormat fmt, StringView path) {
+    if (isAbsolutePath(fmt, path))
+        return path;
+    return joinPath(fmt, Filesystem::getWorkingDirectory(), path);
+}
+
 SplitPath splitPath(PathFormat fmt, StringView path) {
     s32 lastSepIndex = path.reverseFind([&](char c) { return isSepByte(fmt, c); });
     if (lastSepIndex >= 0) {
