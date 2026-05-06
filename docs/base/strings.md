@@ -174,6 +174,7 @@ The `String` class owns a block of memory allocated from the [Plywood heap](/doc
 String(StringView other)
 String(const char* s)
 operator StringView() const
+MutStringView mutStringView() const
 -- Modifying String Contents
 void clear()
 String& operator+=(StringView other)
@@ -197,6 +198,9 @@ static String fromDateTime(const DateTime& dateTime);
 
 `operator StringView() const`
 > Implicitly converts the string to a `StringView`. This allows `String` objects to be passed directly to functions that expect `StringView` parameters.
+
+`MutStringView mutStringView() const`
+> Returns a `MutStringView` that refers to the string's internal memory block.
 
 ### Modifying String Contents
 
