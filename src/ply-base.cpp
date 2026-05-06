@@ -3122,6 +3122,9 @@ StringView readLine(ViewStream& viewIn) {
         if (c == '\n')
             break;
     }
+    if (startByte == viewIn.curByte) {
+        viewIn.atEof = true;
+    }
     return {startByte, viewIn.curByte};
 }
 
@@ -3148,6 +3151,9 @@ StringView readWhitespace(ViewStream& viewIn) {
         if (!isWhitespace(c))
             break;
         viewIn.curByte++;
+    }
+    if (startByte == viewIn.curByte) {
+        viewIn.atEof = true;
     }
     return {startByte, viewIn.curByte};
 }
@@ -3215,6 +3221,9 @@ StringView readIdentifier(ViewStream& viewIn, u32 flags) {
         };
     }
 done:
+    if (startByte == viewIn.curByte) {
+        viewIn.atEof = true;
+    }
     return {startByte, viewIn.curByte};
 }
 
