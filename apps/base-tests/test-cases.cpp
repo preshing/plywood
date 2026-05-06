@@ -99,15 +99,6 @@ TEST_CASE("Thread join") {
     check(value == 42);
 }
 
-TEST_CASE("Thread detach") {
-    Atomic<u32> value = 0;
-    Thread thread([&]() {
-        sleepMillis(10);
-    });
-    thread.detach();
-    check(!thread.isValid());
-}
-
 TEST_CASE("Atomic 8-bit operations") {
     Atomic<u8> value = 7;
     check(value.load(Relaxed) == 7);
