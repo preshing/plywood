@@ -4634,6 +4634,9 @@ struct SplitExtension {
 constexpr char getPathSeparator(PathFormat fmt) {
     return (fmt == PathFormat::WindowsPath) ? '\\' : '/';
 }
+constexpr bool isPathSeparator(PathFormat fmt, char c) {
+    return (c == '/') || ((fmt == PathFormat::WindowsPath) && (c == '\\'));
+}
 StringView getDriveLetter(PathFormat fmt, StringView path);
 bool isAbsolutePath(PathFormat fmt, StringView path);
 inline bool isRelativePath(PathFormat fmt, StringView path) {
@@ -4654,6 +4657,9 @@ String joinPath(PathFormat fmt, StringViews&&... pathComponentArgs) {
 // Native path manipulation functions:
 constexpr char getPathSeparator() {
     return getPathSeparator(Filesystem::pathFormat());
+}
+constexpr bool isPathSeparator(char c) {
+    return isPathSeparator(Filesystem::pathFormat(), c);
 }
 inline StringView getDriveLetter(StringView path) {
     return getDriveLetter(Filesystem::pathFormat(), path);

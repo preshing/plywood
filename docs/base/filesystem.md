@@ -145,6 +145,9 @@ String joinPath(StringViews&&... pathComponentArgs)
 `char getPathSeparator()`
 > Returns the native path separator character: `'/'` on POSIX, `'\\'` on Windows.
 
+`bool isPathSeparator(char c)`
+> Returns `true` if `c` is '/'. Also matches '\\' on Windows.
+
 `StringView getDriveLetter(StringView path)`
 > Returns the drive letter prefix (e.g., `"C:"`) from a Windows path, or an empty view on POSIX.
 
