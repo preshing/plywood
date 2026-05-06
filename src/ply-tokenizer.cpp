@@ -288,7 +288,7 @@ bool readDelimiterAndRawStringLiteral(Tokenizer& tkr, ViewStream& in) {
         if (c == '(')
             break;
         // FIXME: Recognize more whitespace characters
-        if (isWhitespace(c) || c == ')' || c == '\\') {
+        if (isWhite(c) || c == ')' || c == '\\') {
             // Invalid character in delimiter
             error(tkr, in.curByte, "invalid character in raw string delimiter");
             return false;

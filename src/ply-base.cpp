@@ -2215,7 +2215,7 @@ static bool matchPatternSegment(MatchState& state, MatchMode mode) {
         } else if (patternElement == ' ') {
             // It's a space character. Try to match whitespace.
             if (mode == MatchMode::Matching) {
-                if (state.str->makeReadable() && isWhitespace(*state.str->curByte)) {
+                if (state.str->makeReadable() && isWhite(*state.str->curByte)) {
                     elementMatched = true;
                     state.str->curByte++;
                 }
@@ -3134,7 +3134,7 @@ String readWhitespace(Stream& in) {
         u32 numBytesRemaining = min(in.numRemainingBytes(), mem.numRemainingBytes());
         for (u32 i = 0; i < numBytesRemaining; i++) {
             char c = *in.curByte;
-            if (!isWhitespace(c))
+            if (!isWhite(c))
                 goto done;
             in.curByte++;
             *mem.curByte++ = c;
@@ -3148,7 +3148,7 @@ StringView readWhitespace(ViewStream& viewIn) {
     char* startByte = viewIn.curByte;
     while (viewIn.curByte < viewIn.endByte) {
         char c = *viewIn.curByte;
-        if (!isWhitespace(c))
+        if (!isWhite(c))
             break;
         viewIn.curByte++;
     }
@@ -3163,7 +3163,7 @@ void skipWhitespace(Stream& in) {
         u32 numBytesRemaining = in.numRemainingBytes();
         for (u32 i = 0; i < numBytesRemaining; i++) {
             char c = *in.curByte;
-            if (!isWhitespace(c))
+            if (!isWhite(c))
                 return;
             in.curByte++;
         }

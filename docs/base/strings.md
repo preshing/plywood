@@ -48,9 +48,9 @@ StringView substr(u32 start, u32 numBytes) const
 StringView left(u32 numBytes) const
 StringView shortenedBy(u32 numBytes) const
 StringView right(u32 numBytes) const
-StringView trim(bool (*matchFunc)(char) = isWhitespace, bool left = true, bool right = true) const
-StringView trimLeft(bool (*matchFunc)(char) = isWhitespace) const
-StringView trimRight(bool (*matchFunc)(char) = isWhitespace) const
+StringView trim(bool (*matchFunc)(char) = isWhite, bool left = true, bool right = true) const
+StringView trimLeft(bool (*matchFunc)(char) = isWhite) const
+StringView trimRight(bool (*matchFunc)(char) = isWhite) const
 -- Creating New Strings
 String upper() const
 String lower() const
@@ -132,13 +132,13 @@ template <typename... Args> bool match(StringView pattern, const Args&&... args)
 `StringView right(u32 numBytes) const`
 > Returns a view of the last `numBytes` bytes of the string.
 
-`StringView trim(bool (*matchFunc)(char) = isWhitespace, bool left = true, bool right = true) const`
+`StringView trim(bool (*matchFunc)(char) = isWhite, bool left = true, bool right = true) const`
 > Returns a view with matching characters removed from both ends. By default, trims whitespace characters.
 
-`StringView trimLeft(bool (*matchFunc)(char) = isWhitespace) const`
+`StringView trimLeft(bool (*matchFunc)(char) = isWhite) const`
 > Returns a view with matching characters removed from the beginning. By default, trims whitespace.
 
-`StringView trimRight(bool (*matchFunc)(char) = isWhitespace) const`
+`StringView trimRight(bool (*matchFunc)(char) = isWhite) const`
 > Returns a view with matching characters removed from the end. By default, trims whitespace.
 
 ### Creating New Strings

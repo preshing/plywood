@@ -1702,13 +1702,13 @@ class ArrayView;
 template <typename>
 class Array;
 
-inline bool isWhitespace(char c) {
-    return (c == ' ') || (c == '\t') || (c == '\r') || (c == '\n');
+inline bool isWhite(char c) {
+    return (c == ' ') || (c == '\t') || (c == '\n') || (c == '\r') || (c == '\f') || (c == '\v');
 }
-inline bool isAsciiLetter(char c) {
+inline bool isAlpha(char c) {
     return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z');
 }
-inline bool isDecimalDigit(char c) {
+inline bool isDigit(char c) {
     return (c >= '0' && c <= '9');
 }
 
@@ -1826,11 +1826,11 @@ public:
         numBytes = min(numBytes, this->numBytes_);
         return {this->bytes_ + this->numBytes_ - numBytes, numBytes};
     }
-    StringView trim(bool (*matchFunc)(char) = isWhitespace, bool left = true, bool right = true) const;
-    StringView trimLeft(bool (*matchFunc)(char) = isWhitespace) const {
+    StringView trim(bool (*matchFunc)(char) = isWhite, bool left = true, bool right = true) const;
+    StringView trimLeft(bool (*matchFunc)(char) = isWhite) const {
         return this->trim(matchFunc, true, false);
     }
-    StringView trimRight(bool (*matchFunc)(char) = isWhitespace) const {
+    StringView trimRight(bool (*matchFunc)(char) = isWhite) const {
         return this->trim(matchFunc, false, true);
     }
 
@@ -2058,13 +2058,13 @@ public:
         PLY_ASSERT(numBytes <= this->numBytes_);
         return {this->bytes_ + this->numBytes_ - numBytes, numBytes};
     }
-    StringView trim(bool (*matchFunc)(char) = isWhitespace, bool left = true, bool right = true) const {
+    StringView trim(bool (*matchFunc)(char) = isWhite, bool left = true, bool right = true) const {
         return ((StringView) * this).trim(matchFunc, left, right);
     }
-    StringView trimLeft(bool (*matchFunc)(char) = isWhitespace) const {
+    StringView trimLeft(bool (*matchFunc)(char) = isWhite) const {
         return ((StringView) * this).trim(matchFunc, true, false);
     }
-    StringView trimRight(bool (*matchFunc)(char) = isWhitespace) const {
+    StringView trimRight(bool (*matchFunc)(char) = isWhite) const {
         return ((StringView) * this).trim(matchFunc, false, true);
     }
 

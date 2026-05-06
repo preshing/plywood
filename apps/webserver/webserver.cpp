@@ -269,7 +269,7 @@ void handleHttpRequest(TCPConnection* tcpConn, const RequestHandler& reqHandler)
         String line = readLine(in);
         if (line.trim().isEmpty())
             break; // Blank line
-        if (isWhitespace(line[0]))
+        if (isWhite(line[0]))
             continue; // FIXME: Support unfolding https://tools.ietf.org/html/rfc822#section-3.1
         s32 colonPos = line.find(':');
         if (colonPos < 0) {

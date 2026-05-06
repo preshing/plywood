@@ -753,8 +753,8 @@ struct Delimiter {
     Delimiter(Owned<Span>&& s) : type{InlineElem}, span{std::move(s)} {
     }
     static Delimiter makeRun(Type type, StringView rawLine, u32 start, u32 numBytes) {
-        bool precededByWhite = (start == 0) || isWhitespace(rawLine[start - 1]);
-        bool followedByWhite = (start + numBytes >= rawLine.numBytes()) || isWhitespace(rawLine[start + numBytes]);
+        bool precededByWhite = (start == 0) || isWhite(rawLine[start - 1]);
+        bool followedByWhite = (start + numBytes >= rawLine.numBytes()) || isWhite(rawLine[start + numBytes]);
         bool precededByPunc = (start > 0) && isAscPunc(rawLine[start - 1]);
         bool followedByPunc = (start + numBytes < rawLine.numBytes()) && isAscPunc(rawLine[start + numBytes]);
 
@@ -781,7 +781,7 @@ LinkDestination parseLinkDestination(StringView rawText, u32* pos) {
     u32 i = *pos;
 
     // Skip initial whitespace
-    while (i < rawText.numBytes() && isWhitespace(rawText[i])) {
+    while (i < rawText.numBytes() && isWhite(rawText[i])) {
         i++;
     }
     if (i >= rawText.numBytes())
@@ -826,7 +826,7 @@ LinkDestination parseLinkDestination(StringView rawText, u32* pos) {
         return {false, String{}};
 
     // Skip trailing whitespace
-    while (i < rawText.numBytes() && isWhitespace(rawText[i])) {
+    while (i < rawText.numBytes() && isWhite(rawText[i])) {
         i++;
     }
     if (i >= rawText.numBytes() || rawText[i] != ')')

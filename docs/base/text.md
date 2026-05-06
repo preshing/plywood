@@ -103,16 +103,16 @@ DecodeResult decodeUnicode(Stream& in, UnicodeType unicodeType, ExtendedTextPara
 Character classification functions for common character types.
 
 {apiSummary}
-bool isWhitespace(char c)
-bool isAsciiLetter(char c)
-bool isDecimalDigit(char c)
+bool isWhite(char c)
+bool isAlpha(char c)
+bool isDigit(char c)
 {/apiSummary}
 
-`bool isWhitespace(char c)`
+`bool isWhite(char c)`
 > Returns `true` if `c` is a whitespace character (space, tab, newline, etc.).
 
-`bool isAsciiLetter(char c)`
+`bool isAlpha(char c)`
 > Returns `true` if `c` is an ASCII letter (a-z or A-Z).
 
-`bool isDecimalDigit(char c)`
+`bool isDigit(char c)`
 > Returns `true` if `c` is a decimal digit (0-9).
