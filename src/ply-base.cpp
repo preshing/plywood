@@ -5166,6 +5166,251 @@ String makeRelativePath(PathFormat fmt, StringView ancestor, StringView descenda
     return out.moveToString();
 }
 
+//-------------------------------------------------------------
+// Filename globbing
+//-------------------------------------------------------------
+
+// Returns true if a POSIX bracket character class contains the byte.
+static bool globAsciiClassMatches(StringView name, char c) {
+    u8 uc = (u8) c;
+    if (name == "alnum")
+        return isAlpha(c) || isDigit(c);
+    if (name == "alpha")
+        return isAlpha(c);
+    if (name == "blank")
+        return c == ' ' || c == '\t';
+    if (name == "cntrl")
+        return uc < 0x20 || uc == 0x7f;
+    if (name == "digit")
+        return isDigit(c);
+    if (name == "graph")
+        return uc >= 0x21 && uc <= 0x7e;
+    if (name == "lower")
+        return (c >= 'a') && (c <= 'z');
+    if (name == "print")
+        return uc >= 0x20 && uc <= 0x7e;
+    if (name == "punct")
+        return (uc >= 0x21 && uc <= 0x7e) && !isAlpha(c) && !isDigit(c);
+    if (name == "space")
+        return isWhite(c);
+    if (name == "upper")
+        return (c >= 'A') && (c <= 'Z');
+    if (name == "xdigit")
+        return isDigit(c) || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f');
+    return false;
+}
+
+// Returns true if there are an odd number of backslashes before pos.
+bool isEscaped(StringView str, u32 pos) {
+    u32 backslashCount = 0;
+    while ((pos > 0) && (str[pos - 1] == '\\')) {
+        backslashCount++;
+        pos--;
+    }
+    return (backslashCount % 2) == 1;
+}
+
+// Returns true if the string is matched by a glob pattern.
+// The pattern must not contain any unescaped path separators.
+// Pattern components:
+// * : match zero or more arbitrary UTF-8 encoded characters
+// ? : match a single UTF-8 encoded character
+// [a-z] : match a character range
+// [[:digit:]] : match a character class
+bool matchGlobPattern(StringView str, StringView pattern) {
+    // Advance by one UTF-8 encoded character.
+    auto nextUTF8Char = [](StringView str, u32 pos) -> u32 {
+        return pos + decodeUnicode(str.substr(pos), UTF8).numBytes;
+    };
+
+    // Scan both strings from the beginning of the current string views.
+    u32 si = 0;
+    u32 pi = 0;
+    while (pi < pattern.numBytes()) {
+        // A star matches zero or more characters, so try the rest of the pattern at each position.
+        if (pattern[pi] == '*') {
+            while ((pi < pattern.numBytes()) && (pattern[pi] == '*'))
+                pi++;
+            if (pi == pattern.numBytes())
+                return true;
+            for (; si < str.numBytes(); si = nextUTF8Char(str, si)) {
+                if (matchGlobPattern(str.substr(si), pattern.substr(pi)))
+                    return true;
+            }
+            return matchGlobPattern(str.substr(si), pattern.substr(pi));
+        }
+
+        // If the pattern still has non-star content, the string must have a character to match.
+        if (si == str.numBytes())
+            return false;
+
+        // A question mark consumes exactly one UTF-8 encoded character.
+        if (pattern[pi] == '?') {
+            si = nextUTF8Char(str, si);
+            pi++;
+            continue;
+        }
+
+        // A backslash escapes the next pattern byte.
+        if ((pattern[pi] == '\\') && (pi + 1 < pattern.numBytes())) {
+            pi++;
+        } else if (pattern[pi] == '[') {
+            // Parse a bracket expression and test it against the current string byte.
+            u32 i = pi + 1;
+            bool inverted = (i < pattern.numBytes()) && (pattern[i] == '!');
+            bool matched = false;
+            i += inverted;
+            while ((i < pattern.numBytes()) && (pattern[i] != ']')) {
+                // Check for POSIX-style ASCII character classes such as [[:digit:]].
+                if ((i + 3 < pattern.numBytes()) && (pattern[i] == '[') && (pattern[i + 1] == ':')) {
+                    u32 end = i + 2;
+                    while ((end + 1 < pattern.numBytes()) && !((pattern[end] == ':') && (pattern[end + 1] == ']')))
+                        end++;
+                    if (end + 1 < pattern.numBytes()) {
+                        matched |= globAsciiClassMatches(pattern.substr(i + 2, end - i - 2), str[si]);
+                        i = end + 2;
+                        continue;
+                    }
+                }
+
+                // Check for a range subexpression.
+                if ((i + 2 < pattern.numBytes()) && (pattern[i + 1] == '-') && (pattern[i + 2] != ']')) {
+                    // Match a byte range within the bracket expression.
+                    matched |= str[si] >= pattern[i] && str[si] <= pattern[i + 2];
+                    i += 3;
+                } else {
+                    // Match a literal byte within the bracket expression.
+                    matched |= str[si] == pattern[i];
+                    i++;
+                }
+            }
+
+            // If the bracket expression matched, consume the string character and the expression.
+            if ((i < pattern.numBytes()) && (matched == !inverted)) {
+                si = nextUTF8Char(str, si);
+                pi = i + 1;
+                continue;
+            }
+
+            // A closed bracket expression that didn't match makes the whole pattern fail.
+            if (i < pattern.numBytes())
+                return false;
+        }
+
+        // Match a literal byte after escape and bracket handling have had their chance.
+        if (str[si++] != pattern[pi++])
+            return false;
+    }
+
+    // The pattern matched only if it consumed the entire string.
+    return si == str.numBytes();
+}
+
+// Returns true if the path components match the gitignore pattern components.
+struct GitIgnorePatternMatcher {
+    Array<StringView> pathComps;
+    Array<StringView> patternComps;
+    bool dirOnly = false;
+    bool isDir = false;
+};
+
+static bool matchGitIgnorePatternComps(GitIgnorePatternMatcher& matcher, u32 pathIndex, u32 patternIndex) {
+    // Check if every pattern component already matched.
+    if (patternIndex == matcher.patternComps.numItems()) {
+        // Yes. Non-directory-only patterns can match files or directories.
+        if (!matcher.dirOnly)
+            return true;
+
+        // If the original path is a directory, the directory-only pattern matched it directly.
+        if (matcher.isDir)
+            return true;
+
+        // Otherwise, the match is only directory-like if there are unmatched path components.
+        bool matchHasRemainingPathComps = pathIndex < matcher.pathComps.numItems();
+        return matchHasRemainingPathComps;
+    }
+
+    // A double-star component can match zero or more path components.
+    if (matcher.patternComps[patternIndex] == "**") {
+        // A trailing double-star matches the rest of the path.
+        if (patternIndex + 1 == matcher.patternComps.numItems())
+            return matcher.isDir || (pathIndex < matcher.pathComps.numItems());
+
+        // Try matching the rest of the pattern at each possible remaining path position.
+        for (u32 i = pathIndex; i <= matcher.pathComps.numItems(); i++) {
+            if (matchGitIgnorePatternComps(matcher, i, patternIndex + 1))
+                return true;
+        }
+
+        // No expansion of the double-star allowed the remaining pattern to match.
+        return false;
+    }
+
+    // Ordinary components must match the current path component before advancing both.
+    return (pathIndex < matcher.pathComps.numItems()) &&
+        matchGlobPattern(matcher.pathComps[pathIndex], matcher.patternComps[patternIndex]) &&
+        matchGitIgnorePatternComps(matcher, pathIndex + 1, patternIndex + 1);
+}
+
+// pattern must use forward slashes, even on Windows.
+// relativePath uses the native path format.
+bool matchGitIgnorePattern(StringView relativePath, bool isDir, StringView pattern) {
+    GitIgnorePatternMatcher matcher;
+    matcher.isDir = isDir;
+
+    // Split the relative path into components.
+    matcher.pathComps = splitPathFull(relativePath);
+
+    // Check if the pattern ends with unescaped '/'.
+    if (pattern.endsWith("/") && !isEscaped(pattern, pattern.numBytes() - 1)) {
+        // It ends with '/'. Trim the '/' and note that the pattern should only match directories.
+        matcher.dirOnly = true;
+        pattern = pattern.shortenedBy(1);
+    }
+
+    // Split the pattern into components.
+    bool anySlash = false;
+    u32 startPos = 0;
+    for (u32 i = 0; i < pattern.numBytes(); i++) {
+        if ((pattern[i] == '/') && !isEscaped(pattern, i)) {
+            // It's an unescaped '/'.
+            anySlash = true;
+            if (i > startPos) {
+                matcher.patternComps.append(pattern.substr(startPos, i - startPos));
+            }
+            // Skip multiple slashes.
+            do {
+                i++;
+            } while ((i + 1 < pattern.numBytes()) && (pattern[i + 1] == '/'));
+            startPos = i;
+        }
+    }
+    // Add the final component.
+    if (pattern.numBytes() > startPos) {
+        matcher.patternComps.append(pattern.substr(startPos));
+    }
+
+    // An empty pattern can't match anything.
+    if (matcher.patternComps.isEmpty())
+        return false;
+
+    // Patterns containing slashes are matched against the entire relative path.
+    if (anySlash)
+        return matchGitIgnorePatternComps(matcher, 0, 0);
+
+    // Patterns without slashes can match any path component.
+    for (u32 i = 0; i < matcher.pathComps.numItems(); i++) {
+        bool nameMatches = matchGlobPattern(matcher.pathComps[i], matcher.patternComps[0]);
+        bool matchedCompIsDir = matcher.isDir || (i + 1 < matcher.pathComps.numItems());
+        bool dirOnlyPatternMatches = !matcher.dirOnly || matchedCompIsDir;
+        if (nameMatches && dirOnlyPatternMatches)
+            return true;
+    }
+
+    // No path component matched the pattern.
+    return false;
+}
+
 //  ▄▄▄▄▄ ▄▄ ▄▄▄                               ▄▄
 //  ██    ▄▄  ██   ▄▄▄▄   ▄▄▄▄  ▄▄  ▄▄  ▄▄▄▄  ▄██▄▄  ▄▄▄▄  ▄▄▄▄▄▄▄
 //  ██▀▀  ██  ██  ██▄▄██ ▀█▄▄▄  ██  ██ ▀█▄▄▄   ██   ██▄▄██ ██ ██ ██

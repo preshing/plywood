@@ -1849,6 +1849,82 @@ TEST_CASE("Usage stats with alloc/free") {
     check(VirtualMemory::totalCommittedBytes.load(Relaxed) == initialCommitted);
 }
 
+//  ▄▄▄▄▄          ▄▄   ▄▄
+//  ██  ██  ▄▄▄▄  ▄██▄▄ ██▄▄▄
+//  ██▀▀▀   ▄▄▄██  ██   ██  ██
+//  ██     ▀█▄▄██  ▀█▄▄ ██  ██
+//
+
+#undef TEST_CASE_PREFIX
+#define TEST_CASE_PREFIX Path_
+
+TEST_CASE("matchGlobPattern()") {
+    check(matchGlobPattern("file.cpp", "*.cpp"));
+    check(matchGlobPattern("file1.cpp", "file?.cpp"));
+    check(!matchGlobPattern("file12.cpp", "file?.cpp"));
+    check(matchGlobPattern("ab", "a[b-d]"));
+    check(matchGlobPattern("ad", "a[!b-c]"));
+    check(!matchGlobPattern("ab", "a[!b-c]"));
+    check(matchGlobPattern("a7", "a[[:digit:]]"));
+    check(matchGlobPattern("a[b]", "a\\[b\\]"));
+    check(matchGlobPattern("ab", "a\\b"));
+}
+
+TEST_CASE("matchGitIgnorePattern() with gitignore-style patterns") {
+    // Basename-only patterns match at any depth and ignored directories ignore their descendants.
+    check(matchGitIgnorePattern("foo", false, "foo"));
+    check(matchGitIgnorePattern("a/foo", false, "foo"));
+    check(matchGitIgnorePattern("a/foo/file.txt", false, "foo"));
+    check(matchGitIgnorePattern("a\\foo\\file.txt", false, "foo"));
+    check(!matchGitIgnorePattern("a/foo.txt", false, "foo"));
+
+    // Leading and middle slashes anchor patterns to the supplied path root.
+    check(matchGitIgnorePattern("foo", false, "/foo"));
+    check(!matchGitIgnorePattern("a/foo", false, "/foo"));
+    check(matchGitIgnorePattern("doc/frotz", false, "doc/frotz"));
+    check(matchGitIgnorePattern("doc/frotz/file.txt", false, "doc/frotz"));
+    check(!matchGitIgnorePattern("c/doc/frotz", false, "doc/frotz"));
+
+    // A trailing slash restricts the match to directories, including matched ancestors.
+    check(matchGitIgnorePattern("foo", true, "foo/"));
+    check(!matchGitIgnorePattern("foo", false, "foo/"));
+    check(matchGitIgnorePattern("a/foo/file.txt", false, "foo/"));
+    check(!matchGitIgnorePattern("a/foo.txt", false, "foo/"));
+
+    // Single-component wildcards do not cross path separators.
+    check(matchGitIgnorePattern("logs/file.log", false, "*.log"));
+    check(!matchGitIgnorePattern("logs/file.txt", false, "*.log"));
+    check(matchGitIgnorePattern("Documentation/git.html", false, "Documentation/*.html"));
+    check(matchGitIgnorePattern("Documentation\\git.html", false, "Documentation/*.html"));
+    check(!matchGitIgnorePattern("Documentation/ppc/ppc.html", false, "Documentation/*.html"));
+
+    // Double-star forms match zero or more directories.
+    check(matchGitIgnorePattern("foo", false, "**/foo"));
+    check(matchGitIgnorePattern("a/b/foo", false, "**/foo"));
+    check(matchGitIgnorePattern("a/foo", false, "a/**/foo"));
+    check(matchGitIgnorePattern("a/b/c/foo", false, "a/**/foo"));
+    check(!matchGitIgnorePattern("b/a/foo", false, "a/**/foo"));
+    check(matchGitIgnorePattern("build", true, "build/**"));
+    check(!matchGitIgnorePattern("build", false, "build/**"));
+    check(matchGitIgnorePattern("build/sub/file.txt", false, "build/**"));
+
+    // Bracket expressions and escapes use Git's wildcard syntax.
+    check(matchGitIgnorePattern("ab", false, "a[b]"));
+    check(!matchGitIgnorePattern("a[b]", false, "a[b]"));
+    check(matchGitIgnorePattern("a[b]", false, "a\\[b\\]"));
+    check(matchGitIgnorePattern("ax", false, "a[!b]"));
+    check(!matchGitIgnorePattern("ab", false, "a[!b]"));
+    check(matchGitIgnorePattern("a7", false, "a[[:digit:]]"));
+    check(!matchGitIgnorePattern("aa", false, "a[[:digit:]]"));
+
+    // `#` and `!` are literal.
+    check(matchGitIgnorePattern("#literal", false, "#literal"));
+    check(matchGitIgnorePattern("!literal", false, "!literal"));
+    check(!matchGitIgnorePattern("foo", false, "foo "));
+    check(matchGitIgnorePattern("foo ", false, "foo "));
+    check(matchGitIgnorePattern("foo ", false, "foo\\ "));
+}
+
 //  ▄▄▄▄▄  ▄▄                      ▄▄                        ▄▄    ▄▄         ▄▄         ▄▄
 //  ██  ██ ▄▄ ▄▄▄▄▄   ▄▄▄▄   ▄▄▄▄ ▄██▄▄  ▄▄▄▄  ▄▄▄▄▄  ▄▄  ▄▄ ██ ▄▄ ██  ▄▄▄▄  ▄██▄▄  ▄▄▄▄ ██▄▄▄   ▄▄▄▄  ▄▄▄▄▄
 //  ██  ██ ██ ██  ▀▀ ██▄▄██ ██     ██   ██  ██ ██  ▀▀ ██  ██ ▀█▄██▄█▀  ▄▄▄██  ██   ██    ██  ██ ██▄▄██ ██  ▀▀

@@ -129,6 +129,7 @@ These functions help you parse and construct file paths in a platform-independen
 
 {apiSummary class=Path}
 char getPathSeparator()
+bool isPathSeparator(char c)
 StringView getDriveLetter(StringView path)
 bool isAbsolutePath(StringView path)
 bool isRelativePath(StringView path)
@@ -138,6 +139,8 @@ SplitPath splitPath(StringView path)
 SplitExtension splitFileExtension(StringView path)
 Array<StringView> splitPathFull(StringView path)
 String joinPath(StringViews&&... pathComponentArgs)
+bool matchGlobPattern(StringView str, StringView pattern)
+bool matchGitIgnorePattern(StringView relativePath, bool isDir, StringView pattern)
 {/apiSummary}
 
 {context class=Path}
@@ -175,6 +178,14 @@ String joinPath(StringViews&&... pathComponentArgs)
 `String joinPath(StringViews&&... pathComponentArgs)`
 > Joins path components with the native separator.
 
+`bool matchGlobPattern(StringView str, StringView pattern, GlobOptions options = {})`
+> Returns `true` if `str` is matched by a single-component glob pattern. Recognizes `*`, `?`,
+> bracket expressions such as `[abc]`, ranges such as `[a-z]`, inverted bracket expressions such as `[!abc]`,
+> POSIX character classes such as `[[:digit:]]`, and backslash escapes.
+
+`bool matchGitIgnorePattern(StringView relativePath, bool isDir, StringView pattern)`
+> Returns `true` if `relativePath` is ignored by one `.gitignore`-style pattern.
+
 {example}
 String fullPath = Path::joinPath("home", "user", "documents", "file.txt");
 // On POSIX: "home/user/documents/file.txt"
@@ -182,6 +193,9 @@ String fullPath = Path::joinPath("home", "user", "documents", "file.txt");
 
 auto [dir, file] = Path::splitPath("/home/user/test.cpp");
 // dir is "/home/user", file is "test.cpp"
+
+bool ignored = matchGitIgnorePattern("build/output.o", false, "build/");
+// ignored is true
 {/example}
 
 ## `DirectoryWatcher`

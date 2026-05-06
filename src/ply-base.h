@@ -4650,6 +4650,10 @@ String joinPath(PathFormat fmt, StringViews&&... pathComponentArgs) {
     FixedArray<StringView, sizeof...(StringViews)> components{std::forward<StringViews>(pathComponentArgs)...};
     return joinPathFromArray(fmt, components);
 }
+// Returns true if the string is matched by a single-component glob pattern.
+bool matchGlobPattern(StringView str, StringView pattern);
+// Returns true if the relative path is matched by a single `.gitignore`-style pattern.
+bool matchGitIgnorePattern(StringView relativePath, bool isDir, StringView pattern);
 
 // Native path manipulation functions:
 constexpr char getPathSeparator() {
