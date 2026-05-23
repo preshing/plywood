@@ -5,49 +5,11 @@
       └──┴┴┴┘
 ========================================================*/
 
-#include <ply-network.h>
+#include <ply-webserver.h>
 
 using namespace ply;
 
 String docsFolder = joinPath(PLYWOOD_ROOT_DIR, "docs/build");
-
-//-------------------------------------
-// Public request handling API
-//-------------------------------------
-
-struct Request {
-    IPAddress clientAddr;
-    u16 clientPort = 0;
-    String method;
-    String uri;
-    String httpVersion;
-    Map<String, String> headers;
-};
-
-class Response;
-using RequestHandler = Functor<void(const Request& request, Response& response)>;
-
-class Response {
-private:
-    Stream* out = nullptr;
-    friend void handleHttpRequest(TCPConnection* tcpConn, const RequestHandler& reqHandler);
-
-public:
-    enum Code {
-        OK = 200,
-        PermanentRedirect = 301,
-        TemporaryRedirect = 302,
-        BadRequest = 400,
-        NotFound = 404,
-        InternalError = 500,
-    };
-
-    Map<String, String> headers;
-
-    Stream* begin(Code responseCode);
-};
-
-void sendGenericResponse(Response& response, Response::Code responseCode);
 
 //-------------------------------------
 // servePlywoodDocs
@@ -192,111 +154,6 @@ void serveEchoPage(const Request& request, Response& response) {
     out->write(R"(</body>
 </html>
 )");
-}
-
-//-------------------------------------
-// runHttpServer
-//-------------------------------------
-
-StringView getResponseDescription(Response::Code responseCode) {
-    switch (responseCode) {
-        case Response::OK:
-            return "OK";
-        case Response::PermanentRedirect:
-            return "Moved Permanently";
-        case Response::TemporaryRedirect:
-            return "Found";
-        case Response::BadRequest:
-            return "Bad Request";
-        case Response::NotFound:
-            return "Not Found";
-        case Response::InternalError:
-        default:
-            return "Internal Server Error";
-    }
-}
-
-Stream* Response::begin(Response::Code responseCode) {
-    StringView message = getResponseDescription(responseCode);
-    out->format("HTTP/1.1 {} {}\r\n", responseCode, message);
-    for (const auto& item : headers.items()) {
-        out->format("{}: {}\r\n", item.key, item.value);
-    }
-    out->write("\r\n");
-    return out;
-}
-
-void sendGenericResponse(Response& response, Response::Code responseCode) {
-    *response.headers.insert("Content-type").value = "text/html";
-    Stream* out = response.begin(responseCode);
-    StringView message = getResponseDescription(responseCode);
-    out->format(R"(<html>
-<head><title>{} {}</title></head>
-<body>
-<center><h1>{} {}</h1></center>
-<hr>
-</body>
-</html>
-)",
-                responseCode, message, responseCode, message);
-}
-
-void handleHttpRequest(TCPConnection* tcpConn, const RequestHandler& reqHandler) {
-    Stream in = tcpConn->createInStream();
-    Stream out = tcpConn->createOutStream();
-
-    // Create request and response objects
-    Request request;
-    request.clientAddr = tcpConn->remoteAddress();
-    request.clientPort = tcpConn->remotePort();
-    Response response;
-    response.out = &out;
-
-    // Parse HTTP request line
-    String requestLine = readLine(in);
-    Array<StringView> tokens = requestLine.trimRight().split(" ");
-    if (tokens.numItems() != 3) {
-        // Ill-formed request
-        sendGenericResponse(response, Response::BadRequest);
-        return;
-    }
-    request.method = tokens[0];
-    request.uri = tokens[1];
-    request.httpVersion = tokens[2];
-
-    // Parse HTTP headers
-    for (;;) {
-        String line = readLine(in);
-        if (line.trim().isEmpty())
-            break; // Blank line
-        if (isWhite(line[0]))
-            continue; // FIXME: Support unfolding https://tools.ietf.org/html/rfc822#section-3.1
-        s32 colonPos = line.find(':');
-        if (colonPos < 0) {
-            // Ill-formed request
-            sendGenericResponse(response, Response::BadRequest);
-            return;
-        }
-        *request.headers.insert(line.left(colonPos).trim()).value = line.substr(colonPos + 1).trim();
-    }
-
-    // Invoke request handler
-    reqHandler(request, response);
-}
-
-void runHttpServer(u16 port, const RequestHandler& reqHandler) {
-    TCPListener listener = Network::bindTcp(port);
-    if (!listener.isValid()) {
-        getStdErr().format("Error: Can't bind to port {}\n", port);
-        return;
-    }
-
-    for (;;) {
-        Owned<TCPConnection> tcpConn = listener.accept();
-        if (!tcpConn)
-            break;
-        spawnThread([tcpConn = std::move(tcpConn), &reqHandler] { handleHttpRequest(tcpConn.get(), reqHandler); });
-    }
 }
 
 //-------------------------------------
