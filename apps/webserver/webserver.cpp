@@ -5,7 +5,7 @@
       └──┴┴┴┘
 ========================================================*/
 
-#include <ply-webserver.h>
+#include <ply-http.h>
 
 using namespace ply;
 
@@ -41,17 +41,17 @@ void servePlywoodDocs(const Request& request, Response& response) {
 
             bool isTextFile = false;
             if (localPath.endsWith(".css")) {
-                *response.headers.insert("Content-type").value = "text/css";
+                *response.headers.insert("content-type").value = "text/css";
                 isTextFile = true;
             } else if (localPath.endsWith(".js")) {
-                *response.headers.insert("Content-type").value = "application/javascript";
+                *response.headers.insert("content-type").value = "application/javascript";
                 isTextFile = true;
             } else if (localPath.endsWith(".woff")) {
-                *response.headers.insert("Content-type").value = "font/woff";
+                *response.headers.insert("content-type").value = "font/woff";
             } else if (localPath.endsWith(".woff2")) {
-                *response.headers.insert("Content-type").value = "font/woff2";
+                *response.headers.insert("content-type").value = "font/woff2";
             } else if (localPath.endsWith(".png")) {
-                *response.headers.insert("Content-type").value = "image/png";
+                *response.headers.insert("content-type").value = "image/png";
             } else {
                 PLY_ASSERT(0);
             }
@@ -64,7 +64,7 @@ void servePlywoodDocs(const Request& request, Response& response) {
             return;
         }
         if (parts[0].isEmpty()) {
-            *response.headers.insert("Content-type").value = "text/html";
+            *response.headers.insert("content-type").value = "text/html";
             Stream* out = response.begin(Response::OK);
             String templ = Filesystem::loadText(joinPath(docsFolder, "content/index.html"));
             String toc = Filesystem::loadText(joinPath(docsFolder, "content/toc.html"));
@@ -75,7 +75,7 @@ void servePlywoodDocs(const Request& request, Response& response) {
         if (parts[0] == "docs") {
             if (parts.numItems() == 1) {
                 // FIXME: Include the hostname in the Location URL.
-                *response.headers.insert("Location").value = "/docs/intro";
+                *response.headers.insert("location").value = "/docs/intro";
                 response.begin(Response::PermanentRedirect);
                 return;
             }
@@ -97,7 +97,7 @@ void servePlywoodDocs(const Request& request, Response& response) {
                 return;
             }
 
-            *response.headers.insert("Content-type").value = "text/html";
+            *response.headers.insert("content-type").value = "text/html";
             Stream* out = response.begin(Response::OK);
 
             if (isAjaxRequest) {
@@ -132,7 +132,7 @@ void servePlywoodDocs(const Request& request, Response& response) {
 //-------------------------------------
 
 void serveEchoPage(const Request& request, Response& response) {
-    *response.headers.insert("Content-type").value = "text/html";
+    *response.headers.insert("content-type").value = "text/html";
     Stream* out = response.begin(Response::OK);
     out->write(R"(<html>
 <head><title>Echo</title></head>

@@ -20,6 +20,7 @@ struct Request {
     String uri;
     String httpVersion;
     Map<String, String> headers;
+    String body;
 };
 
 // Forward declaration for friend declaration below
@@ -29,10 +30,6 @@ using RequestHandler = Functor<void(const Request& request, Response& response)>
 
 // HTTP response builder
 class Response {
-private:
-    Stream* out = nullptr;
-    friend void handleHttpRequest(TCPConnection* tcpConn, const RequestHandler& reqHandler);
-
 public:
     enum Code {
         OK = 200,
@@ -43,6 +40,15 @@ public:
         InternalError = 500,
     };
 
+private:
+    MemStream body;
+    Code responseCode = InternalError;
+    bool hasBegun = false;
+    friend void handleHttpRequest(TCPConnection* tcpConn, const RequestHandler& reqHandler);
+
+    void finish(Stream& out, bool keepAlive, bool sendBody);
+
+public:
     Map<String, String> headers;
 
     Stream* begin(Code responseCode);
