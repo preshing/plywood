@@ -1446,7 +1446,7 @@ void convertToHtml(Stream* outs, const Block* block, const HTML_Options& options
     } else if (auto* fenced = block->var.as<Block::FencedCodeBlock>()) {
         outs->write("<pre><code");
         if (fenced->infoString) {
-            outs->format(" class=\"language-{&}\"", fenced->infoString);
+            outs->format(" class=\"language-{:&}\"", fenced->infoString);
         }
         outs->write(">");
         for (const Span* span : fenced->spans) {

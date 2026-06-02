@@ -229,7 +229,27 @@ static String fromDateTime(const DateTime& dateTime);
 `static String format(StringView fmt, const Args&... args)`
 > Creates a formatted string using `{}` placeholders. Arguments are converted to text and substituted in order.
 >
-> [TBD]
+> Braces can be escaped as `{{` and `}}`. A format specifier can be placed after `:` inside the placeholder:
+>
+> ```cpp
+> String::format("{:>8}", "name");     // "    name"
+> String::format("{:_^8}", "name");    // "__name__"
+> String::format("{:+d}", 42);         // "+42"
+> String::format("{:08x}", 255);       // "000000ff"
+> String::format("{:.2f}", 12.345);    // "12.35"
+> String::format("{:.4s}", "abcdef");  // "abcd"
+> String::format("{:&}", "<tag>");      // "&lt;tag&gt;"
+> ```
+>
+> Supported specifiers are a small subset of `std::format` with an additional type `&` for XML-escaped string output:
+>
+> - Width: decimal byte count, for example `{:8}`.
+> - Precision: decimal byte count for strings or decimal places for floating-point values, for example `{:.4s}` or
+>   `{:.2f}`.
+> - Type: `s` for strings, `&` for XML-escaped strings, `b`/`B`, `o`, `d`, `x`/`X` for integers, and `f`/`F`,
+>   `e`/`E` for floating-point values.
+> - Sign: `+`, `-` or space for numeric values.
+> - Fill and align: `<`, `>` or `^`, optionally preceded by a one-byte fill character, for example `{:*>8}`.
 
 `static String fromDateTime(const DateTime& dateTime);`
 > Creates a string representation of a `DateTime` object using a format string. See the [Time and Date](/docs/base/time-and-date) chapter for format specifiers.

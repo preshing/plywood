@@ -194,14 +194,14 @@ void serveEchoPage(const Request& request) {
 )");
 
     // Write client IP.
-    out.format("<p>Connection from: <code>{&}:{}</code></p>", request.clientAddr.toString(), request.clientPort);
+    out.format("<p>Connection from: <code>{:&}:{}</code></p>", request.clientAddr.toString(), request.clientPort);
 
     // Write request header.
     out.write("<p>Request header:</p>\n");
     out.write("<pre>\n");
-    out.format("{&} {&} {&}\n", request.method, request.uri, request.httpVersion);
+    out.format("{:&} {:&} {:&}\n", request.method, request.uri, request.httpVersion);
     for (const auto& item : request.headers.items()) {
-        out.format("{&}: {&}\n", item.key, item.value);
+        out.format("{:&}: {:&}\n", item.key, item.value);
     }
     out.write("</pre>\n");
     out.write(R"(</body>
@@ -344,7 +344,6 @@ void runServer(u16 port, const RequestHandler& reqHandler) {
         // Transfer ownership through the thread callback using a raw pointer.
         TCPConnection* tcpConnPtr = tcpConn.release();
         spawnThread([tcpConnPtr, &reqHandler] {
-            // Rebuild owned connection storage inside the request thread.
             Owned<TCPConnection> tcpConn = Owned<TCPConnection>::adopt(tcpConnPtr);
             handleRequest(tcpConn.get(), reqHandler);
         });

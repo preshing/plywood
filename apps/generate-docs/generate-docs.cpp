@@ -161,7 +161,7 @@ void parseApiSummary(Stream& out, const Map<StringView, String>& args, ViewStrea
         if (s.startsWith("--")) {
             StringView caption = s.substr(2).trim();
             if (caption) {
-                out.format("<tr class=\"heading\"><td colspan=\"2\" class=\"heading\">{&}</td></tr>\n", caption);
+                out.format("<tr class=\"heading\"><td colspan=\"2\" class=\"heading\">{:&}</td></tr>\n", caption);
             }
             continue;
         }
@@ -385,8 +385,8 @@ void parseMarkdown(Stream& out, ViewStream& in) {
                 parseOutput(out, in);
             } else if (cmd == "title") {
                 out.format("<h1><span class=\"right\"><span class=\"meta-label\">Header file:</span><span "
-                           "class=\"meta-value\">&lt;{&}&gt;</span><span class=\"meta-label\">Namespace:</span><span "
-                           "class=\"meta-value\">{&}</span></span>{&}</h1>\n",
+                           "class=\"meta-value\">&lt;{:&}&gt;</span><span class=\"meta-label\">Namespace:</span><span "
+                           "class=\"meta-value\">{:&}</span></span>{:&}</h1>\n",
                            *args.find("include"), *args.find("namespace"), *args.find("text"));
             } else {
                 PLY_ASSERT(0); // Unrecognized section type
@@ -419,9 +419,9 @@ void generateTableOfContentsHtml(Stream& out, const json::Node& items) {
         String headerFile;
         if (item.get("header-file").isValid()) {
             headerFile =
-                String::format(" <span class=\"toc-header\">&lt;{&}&gt;</span>", item.get("header-file").text());
+                String::format(" <span class=\"toc-header\">&lt;{:&}&gt;</span>", item.get("header-file").text());
         }
-        out.format("<a href=\"/docs/{}\"><li class=\"selectable\"><span{}>{&}</span>{}</li></a>",
+        out.format("<a href=\"/docs/{}\"><li class=\"selectable\"><span{}>{:&}</span>{}</li></a>",
                    item.get("path").text(), spanClass, item.get("title").text(), headerFile);
         if (children.isValid()) {
             out.write("<ul class=\"nested active\">");
@@ -453,13 +453,13 @@ void convertPage(const json::Node& item, const json::Node* prevPage, const json:
     if (prevPage) {
         prevLink = String::format(
             "<a class=\"nav-card nav-prev\" href=\"/docs/{}\"><span class=\"nav-meta\">Previous</span>"
-            "<span class=\"nav-title\">{&}</span></a>",
+            "<span class=\"nav-title\">{:&}</span></a>",
             prevPage->get("path").text(), prevPage->get("title").text());
     }
     if (nextPage) {
         nextLink = String::format(
             "<a class=\"nav-card nav-next\" href=\"/docs/{}\"><span class=\"nav-meta\">Next</span>"
-            "<span class=\"nav-title\">{&}</span></a>",
+            "<span class=\"nav-title\">{:&}</span></a>",
             nextPage->get("path").text(), nextPage->get("title").text());
     }
     String navHtml = String::format("<div class=\"page-nav\">{}{}</div>", prevLink, nextLink);

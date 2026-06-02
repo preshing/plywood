@@ -57,6 +57,8 @@ TEST_CASE("isRepresentable") {
     check(isRepresentable<double>(16777216.f));
     check(!isRepresentable<float>(16777217.0));
 }
+#undef TEST_CASE_PREFIX
+#define TEST_CASE_PREFIX String_
 
 //  ▄▄▄▄▄▄ ▄▄                      ▄▄▄        ▄▄▄▄▄          ▄▄
 //    ██   ▄▄ ▄▄▄▄▄▄▄   ▄▄▄▄      ██ ▀▀       ██  ██  ▄▄▄▄  ▄██▄▄  ▄▄▄▄
@@ -786,6 +788,29 @@ TEST_CASE("String match literal characters") {
     StringView str = "abc123xyz";
     check(str.match("abc123xyz"));
     check(!str.match("abc456xyz"));
+}
+
+TEST_CASE("String::format") {
+    // Escaped braces.
+    check(String::format("{} {} {{}}", "hello", 7) == "hello 7 {}");
+
+    // XML escaping.
+    check(String::format("{:&}", "<tag attr=\"x\">") == "&lt;tag attr=&quot;x&quot;&gt;");
+    check(String::format("{:.4&}", "<abcd>") == "&lt;abc");
+
+    // Width, fill and alignment.
+    check(String::format("{:>6}", "abc") == "   abc");
+    check(String::format("{:<6}", 42) == "42    ");
+    check(String::format("{:_^7}", "abc") == "__abc__");
+    check(String::format("{:06}", -42) == "-00042");
+
+    // Sign and integer type specifiers.
+    check(String::format("{:+d} {:+d} {: d}", 42, -42, 42) == "+42 -42  42");
+    check(String::format("{:x} {:X} {:o} {:b}", 255, 255, 255, 5) == "ff FF 377 101");
+
+    // Precision and floating-point type specifiers.
+    check(String::format("{:.4s}", "abcdef") == "abcd");
+    check(String::format("{:.2f} {:.2e}", 12.345, 12.345) == "12.35 1.23e+01");
 }
 
 //   ▄▄▄▄

@@ -4011,34 +4011,229 @@ void printXmlEscapedString(Stream& out, StringView str) {
     }
 }
 
-void printArg(Stream& out, StringView fmtSpec, const FormatArg& arg) {
-    bool xmlEscape = false;
+//--------------------------------------------------------
+// String::format
+//--------------------------------------------------------
+
+struct FormatSpec {
+    char fill = ' ';
+    char align = 0;
+    char sign = '-';
+    u32 width = 0;
+    s32 precision = -1;
+    char type = 0;
+};
+
+FormatSpec parseFormatSpec(StringView fmtSpec) {
+    FormatSpec fs;
     u32 pos = 0;
-    while (pos < fmtSpec.numBytes()) {
-        char c = fmtSpec[pos++];
-        if (c == '&') {
-            PLY_ASSERT(arg.var.is<StringView>()); // Argument must be a StringView.
-            xmlEscape = true;
-        } else {
-            PLY_ASSERT(0); // Invalid format specifier.
+
+    if ((pos < fmtSpec.numBytes()) && (fmtSpec[pos] == ':'))
+        pos++;
+    PLY_ASSERT(pos <= fmtSpec.numBytes()); // Invalid format specifier.
+
+    // Parse fill-and-align. The fill character is a single byte.
+    bool hasFillAndAlign = (pos + 1 < fmtSpec.numBytes()) &&
+                           (fmtSpec[pos + 1] == '<' || fmtSpec[pos + 1] == '>' || fmtSpec[pos + 1] == '^');
+    if (hasFillAndAlign) {
+        fs.fill = fmtSpec[pos++];
+        fs.align = fmtSpec[pos++];
+    } else if ((pos < fmtSpec.numBytes()) && (fmtSpec[pos] == '<' || fmtSpec[pos] == '>' || fmtSpec[pos] == '^')) {
+        fs.align = fmtSpec[pos++];
+    }
+
+    // Parse sign and zero-fill shorthand.
+    if ((pos < fmtSpec.numBytes()) && (fmtSpec[pos] == '+' || fmtSpec[pos] == '-' || fmtSpec[pos] == ' ')) {
+        fs.sign = fmtSpec[pos++];
+    }
+    if ((pos < fmtSpec.numBytes()) && (fmtSpec[pos] == '0')) {
+        fs.fill = '0';
+        if (!fs.align)
+            fs.align = '>';
+        pos++;
+    }
+
+    // Parse width, precision and type.
+    while ((pos < fmtSpec.numBytes()) && isDigit(fmtSpec[pos])) {
+        fs.width = fs.width * 10 + fmtSpec[pos++] - '0';
+    }
+    if ((pos < fmtSpec.numBytes()) && (fmtSpec[pos] == '.')) {
+        fs.precision = 0;
+        pos++;
+        PLY_ASSERT(pos < fmtSpec.numBytes() && isDigit(fmtSpec[pos])); // Missing precision.
+        while ((pos < fmtSpec.numBytes()) && isDigit(fmtSpec[pos])) {
+            fs.precision = fs.precision * 10 + fmtSpec[pos++] - '0';
         }
     }
+    if (pos < fmtSpec.numBytes())
+        fs.type = fmtSpec[pos++];
+    PLY_ASSERT(pos == fmtSpec.numBytes()); // Invalid format specifier.
+    return fs;
+}
+
+void printUnsignedWithPrecision(Stream& out, u64 value, const FormatSpec& fs) {
+    PLY_ASSERT(fs.precision <= 64); // Precision must fit in the temporary digit buffer.
+    char digitBuffer[64];
+    s32 digitIndex = PLY_STATIC_ARRAY_SIZE(digitBuffer);
+    char type = fs.type ? fs.type : 'd';
+    u32 radix = 16;
+    if (type == 'b' || type == 'B')
+        radix = 2;
+    else if (type == 'o')
+        radix = 8;
+    else if (type == 'd')
+        radix = 10;
+    bool capitalize = type == 'B' || type == 'X';
+
+    // Convert digits right-to-left, then add leading zeroes for precision.
+    if (value == 0) {
+        digitBuffer[--digitIndex] = '0';
+    } else {
+        while (value > 0) {
+            u64 quotient = value / radix;
+            u32 digit = u32(value - quotient * radix);
+            digitBuffer[--digitIndex] = toDigit(digit, capitalize);
+            value = quotient;
+        }
+    }
+    while ((s32) PLY_STATIC_ARRAY_SIZE(digitBuffer) - digitIndex < fs.precision) {
+        digitBuffer[--digitIndex] = '0';
+    }
+    out.write(StringView{digitBuffer + digitIndex, (u32) PLY_STATIC_ARRAY_SIZE(digitBuffer) - digitIndex});
+}
+
+FormatSpec makeDecimalPrecisionSpec(u32 precision) {
+    FormatSpec fs;
+    fs.type = 'd';
+    fs.precision = precision;
+    return fs;
+}
+
+void printArg(Stream& out, StringView fmtSpec, const FormatArg& arg) {
+    FormatSpec fs = parseFormatSpec(fmtSpec);
+    MemStream mem;
     if (arg.var.is<StringView>()) {
-        if (xmlEscape) {
-            printXmlEscapedString(out, *arg.var.as<StringView>());
+        PLY_ASSERT(!fs.type || fs.type == 's' || fs.type == '&'); // Invalid format type for string.
+        StringView str = *arg.var.as<StringView>();
+        if (fs.precision >= 0)
+            str = str.left(min(str.numBytes(), (u32) fs.precision));
+        if (fs.type == '&') {
+            printXmlEscapedString(mem, str);
         } else {
-            out.write(*arg.var.as<StringView>());
+            mem.write(str);
         }
     } else if (arg.var.is<bool>()) {
-        out.write(*arg.var.as<bool>() ? "true" : "false");
+        PLY_ASSERT(!fs.type || fs.type == 's'); // Invalid format type for bool.
+        mem.write(*arg.var.as<bool>() ? "true" : "false");
     } else if (arg.var.is<s64>()) {
-        printNumber(out, *arg.var.as<s64>());
+        char type = fs.type ? fs.type : 'd';
+        PLY_ASSERT(type == 'b' || type == 'B' || type == 'o' || type == 'd' || type == 'x' || type == 'X');
+        s64 value = *arg.var.as<s64>();
+        if (value < 0) {
+            mem.write('-');
+            printUnsignedWithPrecision(mem, (u64) -(value + 1) + 1, fs);
+        } else {
+            if (fs.sign != '-')
+                mem.write(fs.sign);
+            printUnsignedWithPrecision(mem, (u64) value, fs);
+        }
     } else if (arg.var.is<u64>()) {
-        printNumber(out, *arg.var.as<u64>());
+        char type = fs.type ? fs.type : 'd';
+        PLY_ASSERT(type == 'b' || type == 'B' || type == 'o' || type == 'd' || type == 'x' || type == 'X');
+        if (fs.sign != '-')
+            mem.write(fs.sign);
+        printUnsignedWithPrecision(mem, *arg.var.as<u64>(), fs);
     } else if (arg.var.is<double>()) {
-        printNumber(out, *arg.var.as<double>());
+        double value = *arg.var.as<double>();
+        if (!fs.type && fs.precision < 0) {
+            if (*(s64*) &value >= 0 && fs.sign != '-')
+                mem.write(fs.sign);
+            printNumber(mem, value);
+        } else {
+            char type = fs.type ? fs.type : 'f';
+            PLY_ASSERT(type == 'f' || type == 'F' || type == 'e' || type == 'E'); // Invalid format type for double.
+            if (*(s64*) &value < 0) {
+                value = -value;
+                mem.write('-');
+            } else if (fs.sign != '-') {
+                mem.write(fs.sign);
+            }
+            if (isnan(value)) {
+                mem.write(type == 'F' || type == 'E' ? "NAN" : "nan");
+            } else if (isinf(value)) {
+                mem.write(type == 'F' || type == 'E' ? "INF" : "inf");
+            } else if (type == 'e' || type == 'E') {
+                u32 precision = fs.precision >= 0 ? fs.precision : 6;
+                PLY_ASSERT(precision <= 18); // Precision must fit in a u64 decimal scale.
+                s32 exponent = 0;
+                if (value != 0) {
+                    exponent = (s32) floor(log10(value));
+                    value /= pow(10.0, exponent);
+                }
+
+                // Round the mantissa and renormalize if it crosses 10.
+                u64 scale = 1;
+                for (u32 i = 0; i < precision; i++)
+                    scale *= 10;
+                u64 mantissa = (u64) (value * (double) scale + 0.5);
+                if (mantissa >= 10 * scale) {
+                    mantissa /= 10;
+                    exponent++;
+                }
+                printUnsignedWithPrecision(mem, mantissa / scale, makeDecimalPrecisionSpec(1));
+                if (precision > 0) {
+                    mem.write('.');
+                    printUnsignedWithPrecision(mem, mantissa % scale, makeDecimalPrecisionSpec(precision));
+                }
+                mem.write(type == 'E' ? 'E' : 'e');
+                mem.write(exponent < 0 ? '-' : '+');
+                printUnsignedWithPrecision(mem, (u64) abs(exponent), makeDecimalPrecisionSpec(2));
+            } else {
+                u32 precision = fs.precision >= 0 ? fs.precision : 6;
+                PLY_ASSERT(precision <= 18); // Precision must fit in a u64 decimal scale.
+                u64 scale = 1;
+                for (u32 i = 0; i < precision; i++)
+                    scale *= 10;
+
+                // Round after scaling and print exactly precision fractional digits.
+                double scaled = value * (double) scale + 0.5;
+                u64 fixedPoint = (u64) scaled;
+                printUnsignedWithPrecision(mem, fixedPoint / scale, makeDecimalPrecisionSpec(1));
+                if (precision > 0) {
+                    mem.write('.');
+                    printUnsignedWithPrecision(mem, fixedPoint % scale, makeDecimalPrecisionSpec(precision));
+                }
+            }
+        }
     } else {
         PLY_ASSERT(0); // Invalid argument type.
+    }
+
+    String str = mem.moveToString();
+    u32 width = max(str.numBytes(), fs.width);
+    u32 padding = width - str.numBytes();
+    char align = fs.align ? fs.align : arg.var.is<StringView>() ? '<' : '>';
+
+    // Add padding around the already-rendered argument.
+    if (align == '<') {
+        out.write(str);
+        for (u32 i = 0; i < padding; i++)
+            out.write(fs.fill);
+    } else if (align == '^') {
+        for (u32 i = 0; i < padding / 2; i++)
+            out.write(fs.fill);
+        out.write(str);
+        for (u32 i = 0; i < padding - padding / 2; i++)
+            out.write(fs.fill);
+    } else if (fs.fill == '0' && str.numBytes() > 0 && (str[0] == '-' || str[0] == '+' || str[0] == ' ')) {
+        out.write(str[0]);
+        for (u32 i = 0; i < padding; i++)
+            out.write(fs.fill);
+        out.write(str.substr(1));
+    } else {
+        for (u32 i = 0; i < padding; i++)
+            out.write(fs.fill);
+        out.write(str);
     }
 }
 
