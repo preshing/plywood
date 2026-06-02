@@ -15,7 +15,7 @@ String docsFolder = joinPath(PLYWOOD_ROOT_DIR, "docs/build");
 // servePlywoodDocs
 //-------------------------------------
 
-void servePlywoodDocs(const HTTPRequest& request) {
+void servePlywoodDocs(const http::Request& request) {
     String urlPath = request.uri;
     s32 queryPos = urlPath.find('?');
     if (queryPos >= 0) {
@@ -35,11 +35,11 @@ void servePlywoodDocs(const HTTPRequest& request) {
         if (parts[0] == "static") {
             String localPath = joinPath(docsFolder, StringView{'/'}.join(parts));
             if (!Filesystem::exists(localPath)) {
-                request.sendGenericResponse(HTTPResponse::NotFound);
+                request.sendGenericResponse(http::Response::NotFound);
                 return;
             }
 
-            HTTPResponse response{HTTPResponse::OK};
+            http::Response response{http::Response::OK};
             bool isTextFile = false;
             if (localPath.endsWith(".css")) {
                 *response.headers.insert("content-type").value = "text/css";
@@ -64,7 +64,7 @@ void servePlywoodDocs(const HTTPRequest& request) {
             return;
         }
         if (parts[0].isEmpty()) {
-            HTTPResponse response{HTTPResponse::OK};
+            http::Response response{http::Response::OK};
             *response.headers.insert("content-type").value = "text/html";
             String templ = Filesystem::loadText(joinPath(docsFolder, "content/index.html"));
             String toc = Filesystem::loadText(joinPath(docsFolder, "content/toc.html"));
@@ -75,7 +75,7 @@ void servePlywoodDocs(const HTTPRequest& request) {
         if (parts[0] == "docs") {
             if (parts.numItems() == 1) {
                 // FIXME: Include the hostname in the Location URL.
-                HTTPResponse response{HTTPResponse::PermanentRedirect};
+                http::Response response{http::Response::PermanentRedirect};
                 *response.headers.insert("location").value = "/docs/intro";
                 request.sendFullResponse(std::move(response));
                 return;
@@ -94,11 +94,11 @@ void servePlywoodDocs(const HTTPRequest& request) {
             }
 
             if (!Filesystem::exists(localPath)) {
-                request.sendGenericResponse(HTTPResponse::NotFound);
+                request.sendGenericResponse(http::Response::NotFound);
                 return;
             }
 
-            HTTPResponse response{HTTPResponse::OK};
+            http::Response response{http::Response::OK};
             *response.headers.insert("content-type").value = "text/html";
 
             if (isAjaxRequest) {
@@ -125,38 +125,7 @@ void servePlywoodDocs(const HTTPRequest& request) {
         }
     }
 
-    request.sendGenericResponse(HTTPResponse::NotFound);
-}
-
-//-------------------------------------
-// serveEchoPage (for testing)
-//-------------------------------------
-
-void serveEchoPage(const HTTPRequest& request) {
-    HTTPResponse response{HTTPResponse::OK};
-    *response.headers.insert("content-type").value = "text/html";
-    MemStream out;
-    out.write(R"(<html>
-<head><title>Echo</title></head>
-<body>
-<center><h1>Echo</h1></center>
-)");
-
-    // Write client IP
-    out.format("<p>Connection from: <code>{&}:{}</code></p>", request.clientAddr.toString(), request.clientPort);
-
-    // Write request header
-    out.write("<p>Request header:</p>\n");
-    out.write("<pre>\n");
-    out.format("{&} {&} {&}\n", request.method, request.uri, request.httpVersion);
-    for (const auto& item : request.headers.items()) {
-        out.format("{&}: {&}\n", item.key, item.value);
-    }
-    out.write("</pre>\n");
-    out.write(R"(</body>
-</html>
-)");
-    request.sendFullResponse(std::move(response), out.moveToString());
+    request.sendGenericResponse(http::Response::NotFound);
 }
 
 //-------------------------------------
@@ -169,8 +138,7 @@ int main(int argc, const char* argv[]) {
 #endif
 
     Network::initialize(IPV4);
-    // runHttpServer(8080, serveEchoPage);
-    runHttpServer(8080, servePlywoodDocs);
+    http::runServer(8080, servePlywoodDocs);
     Network::shutdown();
     return 0;
 }

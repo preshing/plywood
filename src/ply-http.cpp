@@ -8,13 +8,14 @@
 #include "ply-http.h"
 
 namespace ply {
+namespace http {
 
-enum class HTTPResponseType { None, Full, Streaming };
+enum class ResponseType { None, Full, Streaming };
 
-struct HTTPRequestImpl : HTTPRequest {
+struct RequestImpl : Request {
     // Used internally.
     Stream* responseStream = nullptr;
-    mutable HTTPResponseType responseType = HTTPResponseType::None;
+    mutable ResponseType responseType = ResponseType::None;
     mutable bool canReuseConnection = false;
 };
 
@@ -91,26 +92,26 @@ bool readChunkedBody(Stream& in, String* body) {
 }
 
 // Map HTTP status code to standard reason phrase
-StringView getResponseDescription(HTTPResponse::Code responseCode) {
+StringView getResponseDescription(Response::Code responseCode) {
     switch (responseCode) {
-        case HTTPResponse::OK:
+        case Response::OK:
             return "OK";
-        case HTTPResponse::PermanentRedirect:
+        case Response::PermanentRedirect:
             return "Moved Permanently";
-        case HTTPResponse::TemporaryRedirect:
+        case Response::TemporaryRedirect:
             return "Found";
-        case HTTPResponse::BadRequest:
+        case Response::BadRequest:
             return "Bad Request";
-        case HTTPResponse::NotFound:
+        case Response::NotFound:
             return "Not Found";
-        case HTTPResponse::InternalError:
+        case Response::InternalError:
         default:
             return "Internal Server Error";
     }
 }
 
 // Write an HTTP status line and header block
-void writeResponseHeaders(Stream& out, const HTTPResponse& response) {
+void writeResponseHeaders(Stream& out, const Response& response) {
     // Emit the response head before writing any body bytes.
     StringView message = getResponseDescription(response.code);
     out.format("HTTP/1.1 {} {}\r\n", response.code, message);
@@ -122,9 +123,9 @@ void writeResponseHeaders(Stream& out, const HTTPResponse& response) {
 }
 
 // Send a complete HTTP response whose body framing allows connection reuse
-void HTTPRequest::sendFullResponse(HTTPResponse&& response, StringView body) const {
-    const HTTPRequestImpl* req = static_cast<const HTTPRequestImpl*>(this);
-    PLY_ASSERT(req->responseType == HTTPResponseType::None);
+void Request::sendFullResponse(Response&& response, StringView body) const {
+    const RequestImpl* req = static_cast<const RequestImpl*>(this);
+    PLY_ASSERT(req->responseType == ResponseType::None);
 
     // Add content-length. Always set from the body so the peer can delimit the response.
     *response.headers.insert("content-length").value = String::format("{}", body.numBytes());
@@ -139,7 +140,7 @@ void HTTPRequest::sendFullResponse(HTTPResponse&& response, StringView body) con
     }
 
     // Send response.
-    req->responseType = HTTPResponseType::Full;
+    req->responseType = ResponseType::Full;
     writeResponseHeaders(*req->responseStream, response);
     bool sendBody = req->method.lower() != "head";
     if (sendBody) {
@@ -149,15 +150,15 @@ void HTTPRequest::sendFullResponse(HTTPResponse&& response, StringView body) con
 }
 
 // Send headers for a raw streaming response and transfer the output stream to the handler
-Stream HTTPRequest::beginStreamingResponse(HTTPResponse&& response) const {
-    const HTTPRequestImpl* req = static_cast<const HTTPRequestImpl*>(this);
-    PLY_ASSERT(req->responseType == HTTPResponseType::None);
+Stream Request::beginStreamingResponse(Response&& response) const {
+    const RequestImpl* req = static_cast<const RequestImpl*>(this);
+    PLY_ASSERT(req->responseType == ResponseType::None);
 
     // Add headers.
     *response.headers.insert("connection").value = "close";
 
     // Begin response and send back the Stream 
-    req->responseType = HTTPResponseType::Streaming;
+    req->responseType = ResponseType::Streaming;
     req->canReuseConnection = false;
     writeResponseHeaders(*req->responseStream, response);
     req->responseStream->flush(true);
@@ -165,9 +166,9 @@ Stream HTTPRequest::beginStreamingResponse(HTTPResponse&& response) const {
 }
 
 // Write a minimal HTML error page with the given status code
-void HTTPRequest::sendGenericResponse(HTTPResponse::Code responseCode) const {
-    const HTTPRequestImpl* req = static_cast<const HTTPRequestImpl*>(this);
-    HTTPResponse response{responseCode};
+void Request::sendGenericResponse(Response::Code responseCode) const {
+    const RequestImpl* req = static_cast<const RequestImpl*>(this);
+    Response response{responseCode};
     *response.headers.insert("content-type").value = "text/html";
     StringView message = getResponseDescription(responseCode);
     req->sendFullResponse(std::move(response), String::format(R"(<html>
@@ -181,15 +182,43 @@ void HTTPRequest::sendGenericResponse(HTTPResponse::Code responseCode) const {
                                                       responseCode, message, responseCode, message));
 }
 
+// Send an HTML page that echoes request details for testing
+void serveEchoPage(const Request& request) {
+    Response response{Response::OK};
+    *response.headers.insert("content-type").value = "text/html";
+    MemStream out;
+    out.write(R"(<html>
+<head><title>Echo</title></head>
+<body>
+<center><h1>Echo</h1></center>
+)");
+
+    // Write client IP.
+    out.format("<p>Connection from: <code>{&}:{}</code></p>", request.clientAddr.toString(), request.clientPort);
+
+    // Write request header.
+    out.write("<p>Request header:</p>\n");
+    out.write("<pre>\n");
+    out.format("{&} {&} {&}\n", request.method, request.uri, request.httpVersion);
+    for (const auto& item : request.headers.items()) {
+        out.format("{&}: {&}\n", item.key, item.value);
+    }
+    out.write("</pre>\n");
+    out.write(R"(</body>
+</html>
+)");
+    request.sendFullResponse(std::move(response), out.moveToString());
+}
+
 // Parse an HTTP request from a TCP connection and dispatch it to the handler
-void handleHttpRequest(TCPConnection* tcpConn, const HttpRequestHandler& reqHandler) {
+void handleRequest(TCPConnection* tcpConn, const RequestHandler& reqHandler) {
     Stream in = tcpConn->createInStream();
     Stream out = tcpConn->createOutStream();
 
     // Reuse the connection as much as possible.
     for (;;) {
         // Create request object.
-        HTTPRequestImpl request;
+        RequestImpl request;
         request.clientAddr = tcpConn->remoteAddress();
         request.clientPort = tcpConn->remotePort();
         request.responseStream = &out;
@@ -199,13 +228,13 @@ void handleHttpRequest(TCPConnection* tcpConn, const HttpRequestHandler& reqHand
         do {
             requestLine = readLine(in);
             if (requestLine.isEmpty() && in.atEof) {
-                request.sendGenericResponse(HTTPResponse::BadRequest);
+                request.sendGenericResponse(Response::BadRequest);
                 return;
             }
         } while (requestLine.trim().isEmpty());
         Array<StringView> tokens = requestLine.trim().split(" ");
         if (tokens.numItems() != 3) {
-            request.sendGenericResponse(HTTPResponse::BadRequest);
+            request.sendGenericResponse(Response::BadRequest);
             return;
         }
         request.method = tokens[0];
@@ -216,19 +245,19 @@ void handleHttpRequest(TCPConnection* tcpConn, const HttpRequestHandler& reqHand
         for (;;) {
             String line = readLine(in);
             if (line.isEmpty() && in.atEof) {
-                request.sendGenericResponse(HTTPResponse::BadRequest);
+                request.sendGenericResponse(Response::BadRequest);
                 return;
             }
             if (line.trim().isEmpty())
                 break; // Blank line.
             if (isWhite(line[0])) {
                 // FIXME: Support unfolding https://tools.ietf.org/html/rfc822#section-3.1
-                request.sendGenericResponse(HTTPResponse::BadRequest);
+                request.sendGenericResponse(Response::BadRequest);
                 return;
             }
             s32 colonPos = line.find(':');
             if (colonPos < 0) {
-                request.sendGenericResponse(HTTPResponse::BadRequest);
+                request.sendGenericResponse(Response::BadRequest);
                 return;
             }
             *request.headers.insert(line.left(colonPos).trim().lower()).value = line.substr(colonPos + 1).trim();
@@ -254,20 +283,20 @@ void handleHttpRequest(TCPConnection* tcpConn, const HttpRequestHandler& reqHand
         if (transferEncodingPtr && transferEncodingPtr->lower() == "chunked") {
             // Chunked transfer encoding.
             if (!readChunkedBody(in, &request.body)) {
-                request.sendGenericResponse(HTTPResponse::BadRequest);
+                request.sendGenericResponse(Response::BadRequest);
                 return;
             }
         } else if (contentLengthPtr) {
             // Explicit content length.
             u64 contentLength = 0;
             if (!contentLengthPtr->match("%d", &contentLength) || (contentLength > getMaxValue<u32>())) {
-                request.sendGenericResponse(HTTPResponse::BadRequest);
+                request.sendGenericResponse(Response::BadRequest);
                 return;
             }
             if (contentLength > 0) {
                 request.body = String::allocate(numericCast<u32>(contentLength));
                 if (in.read(request.body.mutStringView()) != contentLength) {
-                    request.sendGenericResponse(HTTPResponse::BadRequest);
+                    request.sendGenericResponse(Response::BadRequest);
                     return;
                 }
             }
@@ -289,9 +318,9 @@ void handleHttpRequest(TCPConnection* tcpConn, const HttpRequestHandler& reqHand
 
         // Invoke request handler and require it to send exactly one response.
         reqHandler(request);
-        if (request.responseType == HTTPResponseType::None) {
+        if (request.responseType == ResponseType::None) {
             // No response was sent.
-            request.sendGenericResponse(HTTPResponse::InternalError);
+            request.sendGenericResponse(Response::InternalError);
             return;
         }
         if (!request.canReuseConnection)
@@ -300,7 +329,7 @@ void handleHttpRequest(TCPConnection* tcpConn, const HttpRequestHandler& reqHand
 }
 
 // Accept connections on a port and handle each request in a new thread
-void runHttpServer(u16 port, const HttpRequestHandler& reqHandler) {
+void runServer(u16 port, const RequestHandler& reqHandler) {
     TCPListener listener = Network::bindTcp(port);
     if (!listener.isValid()) {
         getStdErr().format("Error: Can't bind to port {}\n", port);
@@ -317,9 +346,10 @@ void runHttpServer(u16 port, const HttpRequestHandler& reqHandler) {
         spawnThread([tcpConnPtr, &reqHandler] {
             // Rebuild owned connection storage inside the request thread.
             Owned<TCPConnection> tcpConn = Owned<TCPConnection>::adopt(tcpConnPtr);
-            handleHttpRequest(tcpConn.get(), reqHandler);
+            handleRequest(tcpConn.get(), reqHandler);
         });
     }
 }
 
+} // namespace http
 } // namespace ply
