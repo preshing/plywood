@@ -15,7 +15,7 @@ String docsFolder = joinPath(PLYWOOD_ROOT_DIR, "docs/build");
 // servePlywoodDocs
 //-------------------------------------
 
-void servePlywoodDocs(const Request& request, Response& response) {
+void servePlywoodDocs(const HTTPRequest& request) {
     String urlPath = request.uri;
     s32 queryPos = urlPath.find('?');
     if (queryPos >= 0) {
@@ -35,10 +35,11 @@ void servePlywoodDocs(const Request& request, Response& response) {
         if (parts[0] == "static") {
             String localPath = joinPath(docsFolder, StringView{'/'}.join(parts));
             if (!Filesystem::exists(localPath)) {
-                sendGenericResponse(response, Response::NotFound);
+                request.sendGenericResponse(HTTPResponse::NotFound);
                 return;
             }
 
+            HTTPResponse response{HTTPResponse::OK};
             bool isTextFile = false;
             if (localPath.endsWith(".css")) {
                 *response.headers.insert("content-type").value = "text/css";
@@ -55,28 +56,28 @@ void servePlywoodDocs(const Request& request, Response& response) {
             } else {
                 PLY_ASSERT(0);
             }
-            Stream* out = response.begin(Response::OK);
             if (isTextFile) {
-                out->write(Filesystem::loadText(localPath));
+                request.sendFullResponse(std::move(response), Filesystem::loadText(localPath));
             } else {
-                out->write(Filesystem::loadBinary(localPath));
+                request.sendFullResponse(std::move(response), Filesystem::loadBinary(localPath));
             }
             return;
         }
         if (parts[0].isEmpty()) {
+            HTTPResponse response{HTTPResponse::OK};
             *response.headers.insert("content-type").value = "text/html";
-            Stream* out = response.begin(Response::OK);
             String templ = Filesystem::loadText(joinPath(docsFolder, "content/index.html"));
             String toc = Filesystem::loadText(joinPath(docsFolder, "content/toc.html"));
             String fullHtml = templ.replace("{%toc%}", toc);
-            out->write(fullHtml);
+            request.sendFullResponse(std::move(response), fullHtml);
             return;
         }
         if (parts[0] == "docs") {
             if (parts.numItems() == 1) {
                 // FIXME: Include the hostname in the Location URL.
+                HTTPResponse response{HTTPResponse::PermanentRedirect};
                 *response.headers.insert("location").value = "/docs/intro";
-                response.begin(Response::PermanentRedirect);
+                request.sendFullResponse(std::move(response));
                 return;
             }
 
@@ -93,16 +94,16 @@ void servePlywoodDocs(const Request& request, Response& response) {
             }
 
             if (!Filesystem::exists(localPath)) {
-                sendGenericResponse(response, Response::NotFound);
+                request.sendGenericResponse(HTTPResponse::NotFound);
                 return;
             }
 
+            HTTPResponse response{HTTPResponse::OK};
             *response.headers.insert("content-type").value = "text/html";
-            Stream* out = response.begin(Response::OK);
 
             if (isAjaxRequest) {
                 // Serve AJAX content directly
-                out->write(Filesystem::loadText(localPath));
+                request.sendFullResponse(std::move(response), Filesystem::loadText(localPath));
             } else {
                 // Assemble full page from template + TOC + AJAX content
                 String templ = Filesystem::loadText(joinPath(docsFolder, "content/docs-template.html"));
@@ -118,42 +119,44 @@ void servePlywoodDocs(const Request& request, Response& response) {
                 String fullHtml = templ.replace("{%title%}", title);
                 fullHtml = fullHtml.replace("{%toc%}", toc);
                 fullHtml = fullHtml.replace("{%content%}", content);
-                out->write(fullHtml);
+                request.sendFullResponse(std::move(response), fullHtml);
             }
             return;
         }
     }
 
-    sendGenericResponse(response, Response::NotFound);
+    request.sendGenericResponse(HTTPResponse::NotFound);
 }
 
 //-------------------------------------
 // serveEchoPage (for testing)
 //-------------------------------------
 
-void serveEchoPage(const Request& request, Response& response) {
+void serveEchoPage(const HTTPRequest& request) {
+    HTTPResponse response{HTTPResponse::OK};
     *response.headers.insert("content-type").value = "text/html";
-    Stream* out = response.begin(Response::OK);
-    out->write(R"(<html>
+    MemStream out;
+    out.write(R"(<html>
 <head><title>Echo</title></head>
 <body>
 <center><h1>Echo</h1></center>
 )");
 
     // Write client IP
-    out->format("<p>Connection from: <code>{&}:{}</code></p>", request.clientAddr.toString(), request.clientPort);
+    out.format("<p>Connection from: <code>{&}:{}</code></p>", request.clientAddr.toString(), request.clientPort);
 
     // Write request header
-    out->write("<p>Request header:</p>\n");
-    out->write("<pre>\n");
-    out->format("{&} {&} {&}\n", request.method, request.uri, request.httpVersion);
+    out.write("<p>Request header:</p>\n");
+    out.write("<pre>\n");
+    out.format("{&} {&} {&}\n", request.method, request.uri, request.httpVersion);
     for (const auto& item : request.headers.items()) {
-        out->format("{&}: {&}\n", item.key, item.value);
+        out.format("{&}: {&}\n", item.key, item.value);
     }
-    out->write("</pre>\n");
-    out->write(R"(</body>
+    out.write("</pre>\n");
+    out.write(R"(</body>
 </html>
 )");
+    request.sendFullResponse(std::move(response), out.moveToString());
 }
 
 //-------------------------------------
