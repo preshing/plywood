@@ -7,7 +7,7 @@
 
 cmake_minimum_required(VERSION 3.10)
 set(CMAKE_CONFIGURATION_TYPES "Debug;Release;Final" CACHE INTERNAL "Build configs")
-project(webserver)
+project(serve-docs)
 include(../../src/common.cmake)
 
 # plywood
@@ -18,14 +18,14 @@ endif()
 add_library(plywood ${PLYWOOD_SOURCES})
 target_include_directories(plywood PUBLIC "${CMAKE_CURRENT_LIST_DIR}/../../src")
 
-# webserver
-add_source_files(WEBSERVER_SOURCES "${CMAKE_CURRENT_LIST_DIR}" webserver.cpp)
-add_executable(webserver ${WEBSERVER_SOURCES})
-target_link_libraries(webserver PRIVATE plywood)
+# serve-docs
+add_source_files(SERVE_DOCS_SOURCES "${CMAKE_CURRENT_LIST_DIR}" serve-docs.cpp)
+add_executable(serve-docs ${SERVE_DOCS_SOURCES})
+target_link_libraries(serve-docs PRIVATE plywood)
 if(WIN32)
-    target_link_libraries(webserver PRIVATE ws2_32.lib)
+    target_link_libraries(serve-docs PRIVATE ws2_32.lib)
 endif()
 set(PLYWOOD_ROOT_DIR "${CMAKE_CURRENT_LIST_DIR}/../..")
 cmake_path(NORMAL_PATH PLYWOOD_ROOT_DIR)
-target_compile_definitions(webserver PRIVATE
+target_compile_definitions(serve-docs PRIVATE
                            PLYWOOD_ROOT_DIR="${PLYWOOD_ROOT_DIR}")

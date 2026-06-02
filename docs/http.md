@@ -3,7 +3,7 @@
 Plywood includes a small HTTP server helper in `ply-http.h`. It is intended for simple tools, local
 documentation servers and test servers that need a portable HTTP interface without pulling in a larger framework.
 
-The webserver builds on the TCP/IP networking API, so applications must call `Network::initialize()` before starting
+The HTTP server builds on the TCP/IP networking API, so applications must call `Network::initialize()` before starting
 the server and `Network::shutdown()` after it returns.
 
 {example}

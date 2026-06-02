@@ -24,7 +24,7 @@ Additional components for 2D/3D math, networking and text parsing are also inclu
     - `fragmentation-test` - Heap stress test that logs allocator behavior under changing memory pressure
     - `generate-docs` - Converts the documentation to HTML files written to `docs/build/`
     - `markdown-tests` - Test suite for Markdown parser
-    - `webserver` - Runs a webserver to serve the generated documentation on port 8080
+    - `serve-docs` - Runs an HTTP server to serve the generated documentation on port 8080
 - `docs/` - Project documentation in Markdown format
     - `contents.json` - Table of contents
 
