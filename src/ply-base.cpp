@@ -3706,7 +3706,8 @@ String readQuotedString(Stream& in, QuotedStringType type, bool strict,
                     }
 
                     if (code == 'x') {
-                        // Parse a byte-oriented hexadecimal escape, preserving the original bytes if recovery is allowed.
+                        // Parse a byte-oriented hexadecimal escape, preserving the original bytes if recovery is
+                        // allowed.
                         in.curByte++;
                         u32 codepoint = 0;
                         bool ok = false;
@@ -3730,7 +3731,8 @@ String readQuotedString(Stream& in, QuotedStringType type, bool strict,
                     }
 
                     if (code == 'u') {
-                        // Parse a Unicode escape, optionally combining UTF-16 surrogate pairs for formats that use them.
+                        // Parse a Unicode escape, optionally combining UTF-16 surrogate pairs for formats that use
+                        // them.
                         in.curByte++;
                         u32 codepoint = 0;
                         bool ok = profile.allowUEscape;
@@ -3853,88 +3855,143 @@ inline char toDigit(u32 d, bool capitalize = false) {
     return (d <= 35) ? digitTable[d] : '?';
 }
 
-void printNumber(Stream& outs, u64 value, u32 radix, bool capitalize) {
-    PLY_ASSERT(radix >= 2);
+void printNumber(Stream& out, u64 value, const NumberFormat& format) {
+    PLY_ASSERT(format.radix >= 2);
+    PLY_ASSERT(format.zeroPad <= 64); // Zero padding must fit in the temporary digit buffer.
+    if (format.signMode == NumberFormat::ShowPlus) {
+        out.write('+');
+    } else if (format.signMode == NumberFormat::LeaveSpaceForSign) {
+        out.write(' ');
+    }
     char digitBuffer[64];
     s32 digitIndex = PLY_STATIC_ARRAY_SIZE(digitBuffer);
 
+    // Convert digits right-to-left.
     if (value == 0) {
         digitBuffer[--digitIndex] = '0';
     } else {
         while (value > 0) {
-            u64 quotient = value / radix;
-            u32 digit = u32(value - quotient * radix);
-            PLY_ASSERT(digitIndex > 0);
-            digitBuffer[--digitIndex] = toDigit(digit, capitalize);
+            u64 quotient = value / format.radix;
+            u32 digit = u32(value - quotient * format.radix);
+            digitBuffer[--digitIndex] = toDigit(digit, format.capitalize);
             value = quotient;
         }
     }
-
-    outs.write(StringView{digitBuffer + digitIndex, (u32) PLY_STATIC_ARRAY_SIZE(digitBuffer) - digitIndex});
+    // Add leading zeros.
+    while ((u32) PLY_STATIC_ARRAY_SIZE(digitBuffer) - digitIndex < format.zeroPad) {
+        digitBuffer[--digitIndex] = '0';
+    }
+    out.write(StringView{digitBuffer + digitIndex, (u32) PLY_STATIC_ARRAY_SIZE(digitBuffer) - digitIndex});
 }
 
-void printNumber(Stream& outs, s64 value, u32 radix, bool capitalize) {
-    if (value >= 0) {
-        printNumber(outs, (u64) value, radix, capitalize);
+void printNumber(Stream& out, s64 value, const NumberFormat& format) {
+    if (value < 0) {
+        out.write('-');
+        NumberFormat format2 = format;
+        format2.signMode = NumberFormat::ShowMinusOnly;
+        printNumber(out, (u64) - (value + 1) + 1, format2);
     } else {
-        outs.write('-');
-        printNumber(outs, (u64) -value, radix, capitalize);
+        printNumber(out, (u64) value, format);
     }
 }
 
-void printNumber(Stream& outs, double value, u32 radix, bool capitalize) {
-    PLY_ASSERT(radix >= 2);
+void printNumber(Stream& out, u32 value, const NumberFormat& format) {
+    return printNumber(out, (u64) value, format);
+}
 
-#if PLY_COMPILER_GCC
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wstrict-aliasing"
-#endif
-    if (*(s64*) &value < 0) {
-#if PLY_COMPILER_GCC
-#pragma GCC diagnostic pop
-#endif
+void printNumber(Stream& out, s32 value, const NumberFormat& format) {
+    return printNumber(out, (s64) value, format);
+}
+
+static NumberFormat makeNumberFormat(u32 targetNumDigits, u32 radix = 10, bool capitalize = false) {
+    NumberFormat format;
+    format.radix = radix;
+    format.capitalize = capitalize;
+    format.zeroPad = targetNumDigits;
+    return format;
+}
+
+void printNumber(Stream& outs, double value, const NumberFormat& format) {
+    PLY_ASSERT(format.radix >= 2);
+    PLY_ASSERT(format.fractionalPrecision <= 18); // Precision must fit in a u64 scale.
+
+    // Print the sign and work with the absolute value.
+    u64 bits;
+    memcpy(&bits, &value, sizeof(bits));
+    bool isNegative = ((bits >> 63) != 0);
+    if (isNegative) {
         value = -value;
         outs.write('-');
+    } else if (format.signMode == NumberFormat::ShowPlus) {
+        outs.write('+');
+    } else if (format.signMode == NumberFormat::LeaveSpaceForSign) {
+        outs.write(' ');
     }
+
+    // Handle nan and inf.
     if (isnan(value)) {
-        outs.write("nan");
+        outs.write(format.capitalize ? "NAN" : "nan");
+        return;
     } else if (isinf(value)) {
-        outs.write("inf");
-    } else {
-        u32 radix3 = radix * radix * radix;
-        u32 radix6 = radix3 * radix3;
-        if (value == 0.0 || (value * radix3 > radix && value < radix6)) {
-            u64 fixedPoint = u64(value * radix3);
-            printNumber(outs, fixedPoint / radix3, radix, capitalize);
-            outs.write('.');
-            u64 fractionalPart = fixedPoint % radix3;
-            {
-                // Print zeroed
-                char digitBuffer[3];
-                for (s32 i = 2; i >= 0; i--) {
-                    u64 quotient = fractionalPart / radix;
-                    u32 digit = u32(fractionalPart - quotient * radix);
-                    digitBuffer[i] = toDigit(digit, capitalize);
-                    fractionalPart = quotient;
-                }
-                outs.write(StringView{digitBuffer, PLY_STATIC_ARRAY_SIZE(digitBuffer)});
-            }
+        outs.write(format.capitalize ? "INF" : "inf");
+        return;
+    }
+
+    // Autoselect scientific or regular notation.
+    NumberFormat::FloatMode floatMode = format.floatMode;
+    if (floatMode == NumberFormat::Auto) {
+        double minRegular = 0.5 / pow((double) format.radix, format.fractionalPrecision);
+        if ((value > 1e10) || (value > 0.0 && value < minRegular)) {
+            floatMode = NumberFormat::Scientific;
         } else {
-            // Scientific notation
-            double logBase = log(value) / log(radix);
-            double exponent = floor(logBase);
-            double m = value / pow(radix, exponent); // mantissa (initially)
-            s32 digit = clamp((s32) floor(m), 1, (s32) radix - 1);
-            outs.write(toDigit(digit, capitalize));
-            outs.write('.');
-            for (u32 i = 0; i < 3; i++) {
-                m = (m - digit) * radix;
-                digit = clamp((s32) floor(m), 0, (s32) radix - 1);
-                outs.write(toDigit(digit, capitalize));
-            }
-            outs.write('e');
-            printNumber(outs, (s64) exponent, radix, capitalize);
+            floatMode = NumberFormat::Regular;
         }
+    }
+
+    // Print value using regular or scientific notation.
+    if (floatMode == NumberFormat::Regular) {
+        u64 scale = 1;
+        for (u32 i = 0; i < format.fractionalPrecision; i++) {
+            PLY_ASSERT(scale <= getMaxValue<u64>() / format.radix);
+            scale *= format.radix;
+        }
+
+        // Round after scaling and print exactly fractionalPrecision fractional digits.
+        u64 fixedPoint = (u64) (value * (double) scale + 0.5);
+        printNumber(outs, fixedPoint / scale, makeNumberFormat(1, format.radix, format.capitalize));
+        if (format.fractionalPrecision > 0) {
+            outs.write('.');
+            printNumber(outs, fixedPoint % scale,
+                        makeNumberFormat(format.fractionalPrecision, format.radix, format.capitalize));
+        }
+    } else if (floatMode == NumberFormat::Scientific) {
+        u64 scale = 1;
+        for (u32 i = 0; i < format.fractionalPrecision; i++) {
+            PLY_ASSERT(scale <= getMaxValue<u64>() / format.radix);
+            scale *= format.radix;
+        }
+
+        // Round the mantissa and renormalize if it crosses the radix.
+        s32 exponent = 0;
+        if (value != 0) {
+            exponent = (s32) floor(log(value) / log(format.radix));
+            value /= pow((double) format.radix, exponent);
+        }
+        u64 mantissa = (u64) (value * (double) scale + 0.5);
+        PLY_ASSERT(scale <= getMaxValue<u64>() / format.radix);
+        if (mantissa / format.radix >= scale) {
+            mantissa /= format.radix;
+            exponent++;
+        }
+        printNumber(outs, mantissa / scale, makeNumberFormat(1, format.radix, format.capitalize));
+        if (format.fractionalPrecision > 0) {
+            outs.write('.');
+            printNumber(outs, mantissa % scale,
+                        makeNumberFormat(format.fractionalPrecision, format.radix, format.capitalize));
+        }
+        outs.write(format.capitalize ? 'E' : 'e');
+        outs.write(exponent < 0 ? '-' : '+');
+        printNumber(outs, (u64) abs(exponent), makeNumberFormat(2));
     }
 }
 
@@ -3970,8 +4027,7 @@ void printEscapedString(Stream& out, StringView str) {
                     // the source string:
                     out.write(StringView{start, vin.curByte});
                 } else {
-                    static const char* digits = "0123456789abcdef";
-                    out.format("\\{}{}", digits[(decoded.point >> 4) & 0xf], digits[decoded.point & 0xf]);
+                    out.format("\\{}{}", toDigit((decoded.point >> 4) & 0xf), toDigit(decoded.point & 0xf));
                 }
                 break;
             }
@@ -4071,42 +4127,22 @@ FormatSpec parseFormatSpec(StringView fmtSpec) {
     return fs;
 }
 
-void printUnsignedWithPrecision(Stream& out, u64 value, const FormatSpec& fs) {
-    PLY_ASSERT(fs.precision <= 64); // Precision must fit in the temporary digit buffer.
-    char digitBuffer[64];
-    s32 digitIndex = PLY_STATIC_ARRAY_SIZE(digitBuffer);
+// Converts a parsed FormatSpec into a NumberFormat.
+NumberFormat makeNumberFormat(const FormatSpec& fs) {
+    NumberFormat format;
     char type = fs.type ? fs.type : 'd';
-    u32 radix = 16;
-    if (type == 'b' || type == 'B')
-        radix = 2;
-    else if (type == 'o')
-        radix = 8;
-    else if (type == 'd')
-        radix = 10;
-    bool capitalize = type == 'B' || type == 'X';
-
-    // Convert digits right-to-left, then add leading zeroes for precision.
-    if (value == 0) {
-        digitBuffer[--digitIndex] = '0';
+    if (type == 'b' || type == 'B') {
+        format.radix = 2;
+    } else if (type == 'o') {
+        format.radix = 8;
+    } else if (type == 'd') {
+        format.radix = 10;
     } else {
-        while (value > 0) {
-            u64 quotient = value / radix;
-            u32 digit = u32(value - quotient * radix);
-            digitBuffer[--digitIndex] = toDigit(digit, capitalize);
-            value = quotient;
-        }
+        format.radix = 16;
     }
-    while ((s32) PLY_STATIC_ARRAY_SIZE(digitBuffer) - digitIndex < fs.precision) {
-        digitBuffer[--digitIndex] = '0';
-    }
-    out.write(StringView{digitBuffer + digitIndex, (u32) PLY_STATIC_ARRAY_SIZE(digitBuffer) - digitIndex});
-}
-
-FormatSpec makeDecimalPrecisionSpec(u32 precision) {
-    FormatSpec fs;
-    fs.type = 'd';
-    fs.precision = precision;
-    return fs;
+    format.capitalize = (type >= 'A' && type <= 'Z');
+    format.zeroPad = fs.precision >= 0 ? fs.precision : 0;
+    return format;
 }
 
 void printArg(Stream& out, StringView fmtSpec, const FormatArg& arg) {
@@ -4128,83 +4164,37 @@ void printArg(Stream& out, StringView fmtSpec, const FormatArg& arg) {
     } else if (arg.var.is<s64>()) {
         char type = fs.type ? fs.type : 'd';
         PLY_ASSERT(type == 'b' || type == 'B' || type == 'o' || type == 'd' || type == 'x' || type == 'X');
+        NumberFormat format = makeNumberFormat(fs);
         s64 value = *arg.var.as<s64>();
         if (value < 0) {
             mem.write('-');
-            printUnsignedWithPrecision(mem, (u64) -(value + 1) + 1, fs);
+            printNumber(mem, (u64) - (value + 1) + 1, format);
         } else {
             if (fs.sign != '-')
                 mem.write(fs.sign);
-            printUnsignedWithPrecision(mem, (u64) value, fs);
+            printNumber(mem, (u64) value, format);
         }
     } else if (arg.var.is<u64>()) {
         char type = fs.type ? fs.type : 'd';
         PLY_ASSERT(type == 'b' || type == 'B' || type == 'o' || type == 'd' || type == 'x' || type == 'X');
         if (fs.sign != '-')
             mem.write(fs.sign);
-        printUnsignedWithPrecision(mem, *arg.var.as<u64>(), fs);
+        printNumber(mem, *arg.var.as<u64>(), makeNumberFormat(fs));
     } else if (arg.var.is<double>()) {
-        double value = *arg.var.as<double>();
-        if (!fs.type && fs.precision < 0) {
-            if (*(s64*) &value >= 0 && fs.sign != '-')
-                mem.write(fs.sign);
-            printNumber(mem, value);
-        } else {
-            char type = fs.type ? fs.type : 'f';
-            PLY_ASSERT(type == 'f' || type == 'F' || type == 'e' || type == 'E'); // Invalid format type for double.
-            if (*(s64*) &value < 0) {
-                value = -value;
-                mem.write('-');
-            } else if (fs.sign != '-') {
-                mem.write(fs.sign);
-            }
-            if (isnan(value)) {
-                mem.write(type == 'F' || type == 'E' ? "NAN" : "nan");
-            } else if (isinf(value)) {
-                mem.write(type == 'F' || type == 'E' ? "INF" : "inf");
-            } else if (type == 'e' || type == 'E') {
-                u32 precision = fs.precision >= 0 ? fs.precision : 6;
-                PLY_ASSERT(precision <= 18); // Precision must fit in a u64 decimal scale.
-                s32 exponent = 0;
-                if (value != 0) {
-                    exponent = (s32) floor(log10(value));
-                    value /= pow(10.0, exponent);
-                }
-
-                // Round the mantissa and renormalize if it crosses 10.
-                u64 scale = 1;
-                for (u32 i = 0; i < precision; i++)
-                    scale *= 10;
-                u64 mantissa = (u64) (value * (double) scale + 0.5);
-                if (mantissa >= 10 * scale) {
-                    mantissa /= 10;
-                    exponent++;
-                }
-                printUnsignedWithPrecision(mem, mantissa / scale, makeDecimalPrecisionSpec(1));
-                if (precision > 0) {
-                    mem.write('.');
-                    printUnsignedWithPrecision(mem, mantissa % scale, makeDecimalPrecisionSpec(precision));
-                }
-                mem.write(type == 'E' ? 'E' : 'e');
-                mem.write(exponent < 0 ? '-' : '+');
-                printUnsignedWithPrecision(mem, (u64) abs(exponent), makeDecimalPrecisionSpec(2));
-            } else {
-                u32 precision = fs.precision >= 0 ? fs.precision : 6;
-                PLY_ASSERT(precision <= 18); // Precision must fit in a u64 decimal scale.
-                u64 scale = 1;
-                for (u32 i = 0; i < precision; i++)
-                    scale *= 10;
-
-                // Round after scaling and print exactly precision fractional digits.
-                double scaled = value * (double) scale + 0.5;
-                u64 fixedPoint = (u64) scaled;
-                printUnsignedWithPrecision(mem, fixedPoint / scale, makeDecimalPrecisionSpec(1));
-                if (precision > 0) {
-                    mem.write('.');
-                    printUnsignedWithPrecision(mem, fixedPoint % scale, makeDecimalPrecisionSpec(precision));
-                }
-            }
+        char type = fs.type ? fs.type : (fs.precision >= 0 ? 'f' : 0);
+        PLY_ASSERT(!type || type == 'f' || type == 'F' || type == 'e' ||
+                   type == 'E'); // Invalid format type for double.
+        NumberFormat format;
+        if (fs.sign == '+')
+            format.signMode = NumberFormat::ShowPlus;
+        else if (fs.sign == ' ')
+            format.signMode = NumberFormat::LeaveSpaceForSign;
+        format.capitalize = type == 'F' || type == 'E';
+        if (type) {
+            format.floatMode = (type == 'e' || type == 'E') ? NumberFormat::Scientific : NumberFormat::Regular;
+            format.fractionalPrecision = fs.precision >= 0 ? fs.precision : 6;
         }
+        printNumber(mem, *arg.var.as<double>(), format);
     } else {
         PLY_ASSERT(0); // Invalid argument type.
     }
@@ -5543,8 +5533,8 @@ static bool matchGitIgnorePatternComps(GitIgnorePatternMatcher& matcher, u32 pat
 
     // Ordinary components must match the current path component before advancing both.
     return (pathIndex < matcher.pathComps.numItems()) &&
-        matchGlobPattern(matcher.pathComps[pathIndex], matcher.patternComps[patternIndex]) &&
-        matchGitIgnorePatternComps(matcher, pathIndex + 1, patternIndex + 1);
+           matchGlobPattern(matcher.pathComps[pathIndex], matcher.patternComps[patternIndex]) &&
+           matchGitIgnorePatternComps(matcher, pathIndex + 1, patternIndex + 1);
 }
 
 // pattern must use forward slashes, even on Windows.

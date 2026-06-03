@@ -811,6 +811,52 @@ TEST_CASE("String::format") {
     // Precision and floating-point type specifiers.
     check(String::format("{:.4s}", "abcdef") == "abcd");
     check(String::format("{:.2f} {:.2e}", 12.345, 12.345) == "12.35 1.23e+01");
+    check(String::format("{:+.1F} {: .0E}", 12.34, 12.34) == "+12.3  1E+01");
+}
+
+TEST_CASE("printNumber") {
+    {
+        MemStream mem;
+
+        // Signed integers can be printed directly through the public overload.
+        printNumber(mem, -1);
+        mem.write(' ');
+        printNumber(mem, (s64) 1, [] {
+            NumberFormat format;
+            format.signMode = NumberFormat::ShowPlus;
+            return format;
+        }());
+        mem.write(' ');
+        printNumber(mem, (s64) -1, [] {
+            NumberFormat format;
+            format.signMode = NumberFormat::ShowPlus;
+            return format;
+        }());
+        mem.write(' ');
+        printNumber(mem, (u64) 1, [] {
+            NumberFormat format;
+            format.signMode = NumberFormat::ShowPlus;
+            return format;
+        }());
+        mem.write(' ');
+        printNumber(mem, (u64) 1, [] {
+            NumberFormat format;
+            format.signMode = NumberFormat::LeaveSpaceForSign;
+            return format;
+        }());
+        check(mem.moveToString() == "-1 +1 -1 +1  1");
+    }
+    {
+        MemStream mem;
+
+        // Auto float mode switches to scientific notation before fixed output would round to zero.
+        printNumber(mem, 0.0004);
+        mem.write(' ');
+        printNumber(mem, 0.0005);
+        mem.write(' ');
+        printNumber(mem, 1e20);
+        check(mem.moveToString() == "4.000e-04 0.001 1.000e+20");
+    }
 }
 
 //   ▄▄▄▄

@@ -50,24 +50,48 @@ String readQuotedString(Stream& in, QuotedStringType type = QuotedStringType::C,
 
 ## Writing Text
 
-While `Stream::format` handles most formatting needs, these functions provide finer control over number formatting and string escaping.
+Most of these functions are used internally by `String::format`, but you can call them directly as well.
 
 {apiSummary}
-void printNumber(Stream& out, u64 value, u32 radix = 10, bool capitalize = false)
-void printNumber(Stream& out, s64 value, u32 radix = 10, bool capitalize = false)
-void printNumber(Stream& out, u32 value, u32 radix = 10, bool capitalize = false)
-void printNumber(Stream& out, s32 value, u32 radix = 10, bool capitalize = false) 
-void printNumber(Stream& out, double value, u32 radix = 10, bool capitalize = false)
+struct NumberFormat
+void printNumber(Stream& out, s32 value, const NumberFormat& format = {})
+void printNumber(Stream& out, u32 value, const NumberFormat& format = {})
+void printNumber(Stream& out, s64 value, const NumberFormat& format = {})
+void printNumber(Stream& out, u64 value, const NumberFormat& format = {})
+void printNumber(Stream& out, double value, const NumberFormat& format = {})
 void printEscapedString(Stream& out, StringView str)
 void printXmlEscapedString(Stream& out, StringView str)
 {/apiSummary}
 
-`void printNumber(Stream& out, u64 value, u32 radix = 10, bool capitalize = false)`
-`void printNumber(Stream& out, s64 value, u32 radix = 10, bool capitalize = false)`
-`void printNumber(Stream& out, u32 value, u32 radix = 10, bool capitalize = false)`
-`void printNumber(Stream& out, s32 value, u32 radix = 10, bool capitalize = false)`
-`void printNumber(Stream& out, double value, u32 radix = 10, bool capitalize = false)`
-> Writes a number to the stream. Use `radix` to specify the base (e.g., 16 for hexadecimal). Set `capitalize` to true for uppercase hex digits.
+`void printNumber(Stream& out, s32 value, const NumberFormat& format = {})`
+`void printNumber(Stream& out, u32 value, const NumberFormat& format = {})`
+`void printNumber(Stream& out, s64 value, const NumberFormat& format = {})`
+`void printNumber(Stream& out, u64 value, const NumberFormat& format = {})`
+`void printNumber(Stream& out, double value, const NumberFormat& format = {})`
+> Writes a number to the given stream. `NumberFormat` is defined as follows:
+> ```
+> struct NumberFormat {
+>     enum FloatMode {
+>         Regular,
+>         Scientific,
+>         Auto,
+>     };
+>     enum SignMode {
+>         ShowMinusOnly,
+>         ShowPlus,
+>         LeaveSpaceForSign,
+>     };
+> 
+>     u32 radix = 10;
+>     bool capitalize = false;
+>     // If the number uses fewer than zeroPad digits, it will be padded with leading zeros:
+>     u32 zeroPad = 0;
+>     SignMode signMode = ShowMinusOnly;
+>     // These members are only used when printing floating-point values:
+>     FloatMode floatMode = Auto;
+>     u32 fractionalPrecision = 3;
+> };
+> ```
 
 `void printEscapedString(Stream& out, StringView str)`
 > Writes a string with C-style escape sequences for special characters (e.g., `\n`, `\t`, `\\`).

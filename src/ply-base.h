@@ -4312,15 +4312,33 @@ bool ViewStream::match(StringView pattern, Args*... args) {
 //   ██▀▀██  ██     ██  ▀█▄▄ ██ ██  ██ ▀█▄▄██       ██   ▀█▄▄▄  ▄█▀▀█▄  ▀█▄▄
 //                                      ▄▄▄█▀
 
-void printNumber(Stream& out, u64 value, u32 radix = 10, bool capitalize = false);
-void printNumber(Stream& out, s64 value, u32 radix = 10, bool capitalize = false);
-inline void printNumber(Stream& out, u32 value, u32 radix = 10, bool capitalize = false) {
-    return printNumber(out, (u64) value, radix, capitalize);
-}
-inline void printNumber(Stream& out, s32 value, u32 radix = 10, bool capitalize = false) {
-    return printNumber(out, (s64) value, radix, capitalize);
-}
-void printNumber(Stream& out, double value, u32 radix = 10, bool capitalize = false);
+struct NumberFormat {
+    enum FloatMode {
+        Regular,
+        Scientific,
+        Auto,
+    };
+    enum SignMode {
+        ShowMinusOnly,
+        ShowPlus,
+        LeaveSpaceForSign,
+    };
+
+    u32 radix = 10;
+    bool capitalize = false;
+    // If the number uses fewer than zeroPad digits, it will be padded with leading zeros:
+    u32 zeroPad = 0;
+    SignMode signMode = ShowMinusOnly;
+    // These members are only used when printing floating-point values:
+    FloatMode floatMode = Auto;
+    u32 fractionalPrecision = 3;
+};
+
+void printNumber(Stream& out, s32 value, const NumberFormat& format = {});
+void printNumber(Stream& out, u32 value, const NumberFormat& format = {});
+void printNumber(Stream& out, s64 value, const NumberFormat& format = {});
+void printNumber(Stream& out, u64 value, const NumberFormat& format = {});
+void printNumber(Stream& outs, double value, const NumberFormat& format = {});
 void printEscapedString(Stream& out, StringView str);
 void printXmlEscapedString(Stream& out, StringView str);
 
