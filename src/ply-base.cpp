@@ -34,7 +34,7 @@
 #endif
 #endif
 
-#if !PLY_USE_NEW_ALLOCATOR
+#if PLY_USE_DLMALLOC
 extern "C" {
 void* dlmalloc(ply::uptr);
 void* dlrealloc(void*, ply::uptr);
@@ -588,7 +588,7 @@ void Heap::setOutOfMemoryHandler(Functor<void()> handler) {
     outOfMemoryHandler = std::move(handler);
 }
 
-#if PLY_USE_NEW_ALLOCATOR
+#if !PLY_USE_DLMALLOC
 
 // Implements the bespoke heap allocator used by ply::Heap.
 class HeapImpl {
@@ -1791,7 +1791,7 @@ void Heap::validate() {
 #endif
 }
 
-#else
+#else // PLY_USE_DLMALLOC
 
 void* Heap::alloc(uptr numBytes) {
     void* ptr = dlmalloc(numBytes);
@@ -1835,7 +1835,7 @@ void Heap::validate() {
 #endif
 }
 
-#endif
+#endif // PLY_USE_DLMALLOC
 
 #if !defined(PLY_OVERRIDE_NEW)
 #define PLY_OVERRIDE_NEW 1

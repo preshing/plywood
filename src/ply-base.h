@@ -159,10 +159,6 @@
 #define PLY_CALL_MEMBER(obj, pmf) ((obj).*(pmf))
 #define PLY_STATIC_ASSERT(cond) static_assert(cond, #cond)
 
-#if !defined(PLY_USE_NEW_ALLOCATOR)
-#define PLY_USE_NEW_ALLOCATOR 1
-#endif
-
 namespace ply {
 
 //--------------------------------------------

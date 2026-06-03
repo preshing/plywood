@@ -11,7 +11,7 @@ project(serve-docs)
 include(../../src/common.cmake)
 
 # plywood
-add_source_files(PLYWOOD_SOURCES "${CMAKE_CURRENT_LIST_DIR}/../../src" dlmalloc.c ply-base.* ply-network.* ply-http.*)
+add_source_files(PLYWOOD_SOURCES "${CMAKE_CURRENT_LIST_DIR}/../../src" ply-base.* ply-network.* ply-http.*)
 if(WIN32)
     add_source_files(PLYWOOD_SOURCES "${CMAKE_CURRENT_LIST_DIR}/../../src" *.natvis)
 endif()

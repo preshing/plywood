@@ -11,7 +11,7 @@ project(markdown-tests)
 include(../../src/common.cmake)
 
 # plywood
-add_source_files(PLYWOOD_SOURCES "${CMAKE_CURRENT_LIST_DIR}/../../src" dlmalloc.c ply-json.* ply-tokenizer.* ply-markdown.* ply-math.* ply-base.*)
+add_source_files(PLYWOOD_SOURCES "${CMAKE_CURRENT_LIST_DIR}/../../src" ply-json.* ply-tokenizer.* ply-markdown.* ply-math.* ply-base.*)
 if(WIN32)
     add_source_files(PLYWOOD_SOURCES "${CMAKE_CURRENT_LIST_DIR}/../../src" *.natvis)
 endif()
