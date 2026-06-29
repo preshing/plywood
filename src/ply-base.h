@@ -3335,7 +3335,9 @@ public:
     Owned(Owned<Derived>&& other) : ptr{other.release()} {
     }
     ~Owned() {
-        destroy(this->ptr);
+        if (this->ptr) {
+            destroy(this->ptr);
+        }
     }
     static Owned adopt(Item* ptr) {
         Owned result;
@@ -3346,16 +3348,18 @@ public:
         PLY_ASSERT(!this->ptr || this->ptr != other.ptr);
         Item* prev = this->ptr;
         this->ptr = duplicate(other.ptr);
-        // destroy() is called last in case it indirectly results in this Owned<> instance being destructed.
-        destroy(prev);
+        if (prev) {
+            destroy(prev);
+        }
         return *this;
     }
     Owned& operator=(Owned&& other) {
         PLY_ASSERT(!this->ptr || this->ptr != other.ptr);
         Item* prev = this->ptr;
         this->ptr = other.release();
-        // destroy() is called last in case it indirectly results in this Owned<> instance being destructed.
-        destroy(prev);
+        if (prev) {
+            destroy(prev);
+        }
         return *this;
     }
     template <typename Derived, typename std::enable_if_t<std::is_base_of<Item, Derived>::value, int> = 0>
@@ -3363,8 +3367,9 @@ public:
         PLY_ASSERT(!this->ptr || this->ptr != other.ptr);
         Item* prev = this->ptr;
         this->ptr = duplicate(other.ptr);
-        // destroy() is called last in case it indirectly results in this Owned<> instance being destructed.
-        destroy(prev);
+        if (prev) {
+            destroy(prev);
+        }
         return *this;
     }
     template <typename Derived, typename std::enable_if_t<std::is_base_of<Item, Derived>::value, int> = 0>
@@ -3372,8 +3377,9 @@ public:
         PLY_ASSERT(!this->ptr || this->ptr != other.ptr);
         Item* prev = this->ptr;
         this->ptr = other.release();
-        // destroy() is called last in case it indirectly results in this Owned<> instance being destructed.
-        destroy(prev);
+        if (prev) {
+            destroy(prev);
+        }
         return *this;
     }
     Owned& operator=(Item* ptr) {
