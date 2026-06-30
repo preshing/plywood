@@ -45,24 +45,21 @@ struct Request {
 
     // Request handlers can call this to send a complete response including provided headers and body.
     // (The underlying TCP connection may be reused for other requests/responses.)
-    void sendFullResponse(Response&& response, StringView body = {}) const;
+    void sendFullResponse(Response&& response, StringView body = {});
     // This will send HTTP headers only. Response::code must be OK.
     // After that, the request handler is expected to write "streaming" data (typically just lines of JSONL
     // over a TCP connection) to the responseStream before returning. The http server will automatically
     // close the connection when the request handler returns.
-    Stream beginStreamingResponse(Response&& response) const;
+    Stream beginStreamingResponse(Response&& response);
     // Send a minimal HTML error page with the given HTTP status code.
-    void sendGenericResponse(Response::Code responseCode) const;
+    void sendGenericResponse(Response::Code responseCode);
 };
 
-// Callback invoked for each parsed HTTP request.
-using RequestHandler = Functor<void(const Request& request)>;
-
 // Bind to a port and run an HTTP server that dispatches to the given handler
-void runServer(u16 port, const RequestHandler& reqHandler);
+void runServer(u16 port, const Functor<void(Request& request)>& reqHandler);
 
 // Built-in request handler that simply echoes the client's address and request headers (for testing).
-void serveEchoPage(const Request& request);
+void serveEchoPage(Request& request);
 
 } // namespace http
 } // namespace ply

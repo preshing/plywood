@@ -15,8 +15,8 @@ enum class ResponseType { None, Full, Streaming };
 struct RequestImpl : Request {
     // Used internally.
     Stream* responseStream = nullptr;
-    mutable ResponseType responseType = ResponseType::None;
-    mutable bool canReuseConnection = false;
+    ResponseType responseType = ResponseType::None;
+    bool canReuseConnection = false;
 };
 
 // Copy an exact number of bytes from one stream to another
@@ -123,8 +123,8 @@ void writeResponseHeaders(Stream& out, const Response& response) {
 }
 
 // Send a complete HTTP response whose body framing allows connection reuse
-void Request::sendFullResponse(Response&& response, StringView body) const {
-    const RequestImpl* req = static_cast<const RequestImpl*>(this);
+void Request::sendFullResponse(Response&& response, StringView body) {
+    RequestImpl* req = static_cast<RequestImpl*>(this);
     PLY_ASSERT(req->responseType == ResponseType::None);
 
     // Add content-length. Always set from the body so the peer can delimit the response.
@@ -150,8 +150,8 @@ void Request::sendFullResponse(Response&& response, StringView body) const {
 }
 
 // Send headers for a raw streaming response and transfer the output stream to the handler
-Stream Request::beginStreamingResponse(Response&& response) const {
-    const RequestImpl* req = static_cast<const RequestImpl*>(this);
+Stream Request::beginStreamingResponse(Response&& response) {
+    RequestImpl* req = static_cast<RequestImpl*>(this);
     PLY_ASSERT(req->responseType == ResponseType::None);
 
     // Add headers.
@@ -166,8 +166,8 @@ Stream Request::beginStreamingResponse(Response&& response) const {
 }
 
 // Write a minimal HTML error page with the given status code
-void Request::sendGenericResponse(Response::Code responseCode) const {
-    const RequestImpl* req = static_cast<const RequestImpl*>(this);
+void Request::sendGenericResponse(Response::Code responseCode) {
+    RequestImpl* req = static_cast<RequestImpl*>(this);
     Response response{responseCode};
     *response.headers.insert("content-type").value = "text/html";
     StringView message = getResponseDescription(responseCode);
@@ -183,7 +183,7 @@ void Request::sendGenericResponse(Response::Code responseCode) const {
 }
 
 // Send an HTML page that echoes request details for testing
-void serveEchoPage(const Request& request) {
+void serveEchoPage(Request& request) {
     Response response{Response::OK};
     *response.headers.insert("content-type").value = "text/html";
     MemStream out;
@@ -211,7 +211,7 @@ void serveEchoPage(const Request& request) {
 }
 
 // Parse an HTTP request from a TCP connection and dispatch it to the handler
-void handleRequest(TCPConnection* tcpConn, const RequestHandler& reqHandler) {
+void handleRequest(TCPConnection* tcpConn, const Functor<void(Request& request)>& reqHandler) {
     Stream in = tcpConn->createInStream();
     Stream out = tcpConn->createOutStream();
 
@@ -329,7 +329,7 @@ void handleRequest(TCPConnection* tcpConn, const RequestHandler& reqHandler) {
 }
 
 // Accept connections on a port and handle each request in a new thread
-void runServer(u16 port, const RequestHandler& reqHandler) {
+void runServer(u16 port, const Functor<void(Request& request)>& reqHandler) {
     TCPListener listener = Network::bindTcp(port);
     if (!listener.isValid()) {
         getStdErr().format("Error: Can't bind to port {}\n", port);

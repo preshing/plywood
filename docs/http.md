@@ -11,7 +11,7 @@ the server and `Network::shutdown()` after it returns.
 
 using namespace ply;
 
-void servePage(const http::Request& request) {
+void servePage(http::Request& request) {
     http::Response response{http::Response::OK};
     *response.headers.insert("content-type").value = "text/plain";
     request.sendFullResponse(std::move(response), String::format("Request URI: {}\n", request.uri));
@@ -37,9 +37,9 @@ String uri
 String httpVersion
 Map<String, String> headers
 String body
-void sendFullResponse(Response&& response, StringView body = {}) const
-Stream beginStreamingResponse(Response&& response) const
-void sendGenericResponse(Response::Code responseCode) const
+void sendFullResponse(Response&& response, StringView body = {})
+Stream beginStreamingResponse(Response&& response)
+void sendGenericResponse(Response::Code responseCode)
 {/apiSummary}
 
 {context class=Request}
@@ -65,14 +65,14 @@ void sendGenericResponse(Response::Code responseCode) const
 `String body`
 > The request body bytes. This string can contain arbitrary binary data; it is not guaranteed to be null-terminated.
 
-`void sendFullResponse(Response&& response, StringView body = {}) const`
+`void sendFullResponse(Response&& response, StringView body = {})`
 > Sends a complete response. The connection can be reused for additional requests when HTTP rules permit it.
 
-`Stream beginStreamingResponse(Response&& response) const`
+`Stream beginStreamingResponse(Response&& response)`
 > Sends response headers and returns the TCP output stream for raw body bytes. Does not use chunked encoding.
 > The connection is closed when the caller destructs the returned stream.
 
-`void sendGenericResponse(Response::Code responseCode) const`
+`void sendGenericResponse(Response::Code responseCode)`
 > Writes a minimal HTML error page for the given status code.
 
 ## `Response`
@@ -103,18 +103,10 @@ is the normal path for reliable connection reuse. If the handler does not insert
 For `HEAD` requests, the handler can pass the body normally. The server still computes `content-length`, but it does
 not write the body bytes to the socket.
 
-## `RequestHandler`
-
-{apiSummary}
-using RequestHandler = Functor<void(const Request& request)>
-{/apiSummary}
-
-`RequestHandler` is the callback type invoked for each parsed HTTP request.
-
 ## `runServer`
 
 {apiSummary}
-void runServer(u16 port, const RequestHandler& reqHandler)
+void runServer(u16 port, const Functor<void(Request& request)>& reqHandler)
 {/apiSummary}
 
 `runServer()` binds a TCP listener to `port`, accepts connections, and starts one thread per accepted TCP
@@ -126,7 +118,7 @@ returns.
 ## `serveEchoPage`
 
 {apiSummary}
-void serveEchoPage(const Request& request)
+void serveEchoPage(Request& request)
 {/apiSummary}
 
 `serveEchoPage()` is a built-in request handler for testing. It writes an HTML page that includes the remote address
