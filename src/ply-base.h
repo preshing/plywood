@@ -3516,6 +3516,9 @@ private:
     Atomic<u32> refCount = 0;
 
 public:
+    RefCounted() = default;
+    RefCounted(const RefCounted&) {
+    }
     void incRefCount() {
         u32 oldCount = this->refCount.fetchAdd(1, AcqRel);
         PLY_ASSERT(oldCount < 5000);
@@ -3530,6 +3533,9 @@ public:
     }
     s32 getRefCount() const {
         return this->refCount.load(Acquire);
+    }
+    void onRefCountZero() {
+        destroy(static_cast<Subclass*>(this));
     }
 };
 
