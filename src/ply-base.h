@@ -3664,6 +3664,20 @@ template <typename... Rest>
 constexpr uptr maxSize(uptr val1, uptr val2, Rest... rest) {
     return maxSize((val1 > val2) ? val1 : val2, rest...);
 }
+template <typename First>
+void defaultConstruct(u32 index, char* storage) {
+    PLY_ASSERT(index == 1);
+    PLY_UNUSED(index);
+    new (storage) First;
+}
+template <typename First, typename Second, typename... Rest>
+void defaultConstruct(u32 index, char* storage) {
+    if (index == 1) {
+        new(storage) First;
+    } else {
+        defaultConstruct<Second, Rest...>(index - 1, storage);
+    }
+}
 
 template <typename... Subtypes>
 struct Variant {
@@ -3808,6 +3822,14 @@ public:
         this->subtype = indexOf<T>;
         new (this->storage) T{std::forward<Args>(args)...};
         return *reinterpret_cast<T*>(this->storage);
+    }
+    void setSubtypeIndex(u32 index) {
+        this->destructHelper<1, Subtypes...>();
+        PLY_ASSERT(index <= sizeof...(Subtypes));
+        this->subtype = index;
+        if (index > 0) {
+            defaultConstruct<Subtypes...>(index, this->storage);
+        }
     }
 };
 
