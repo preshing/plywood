@@ -1601,8 +1601,10 @@ struct Mat4x4 {
         PLY_ASSERT(i < 4);
         return col[i];
     }
-    Mat4x4 transposed() const;
-    Mat4x4 invertedOrtho() const;
+
+    PLY_NO_DISCARD Mat4x4 transposed() const;
+    PLY_NO_DISCARD Mat4x4 inverted() const;
+    PLY_NO_DISCARD Mat4x4 invertedOrtho() const;
 };
 
 bool operator==(const Mat4x4& a, const Mat4x4& b);

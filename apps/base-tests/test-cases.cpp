@@ -57,6 +57,41 @@ TEST_CASE("isRepresentable") {
     check(isRepresentable<double>(16777216.f));
     check(!isRepresentable<float>(16777217.0));
 }
+
+#undef TEST_CASE_PREFIX
+#define TEST_CASE_PREFIX Math_
+
+static bool isClose(const Mat4x4& a, const Mat4x4& b, float epsilon = 0.0001f) {
+    for (u32 c = 0; c < 4; c++) {
+        for (u32 r = 0; r < 4; r++) {
+            if (abs(a.col[c][r] - b.col[c][r]) > epsilon)
+                return false;
+        }
+    }
+    return true;
+}
+
+TEST_CASE("Mat4x4::inverted affine") {
+    Mat4x4 m = Mat4x4::translate({2, -3, 5}) * Mat4x4::rotate(Float3{1, 2, 3}.normalized(), 0.7f) *
+                Mat4x4::scale({2, -4, 0.5f});
+    Mat4x4 inv = m.inverted();
+
+    check(isClose(inv * m, Mat4x4::identity()));
+    check(isClose(m * inv, Mat4x4::identity()));
+}
+
+TEST_CASE("Mat4x4::inverted projective") {
+    Mat4x4 m = {
+        {2, -1, 0.5f, 0.25f},
+        {1, 3, -2, -0.5f},
+        {0, 4, 1.5f, 0.75f},
+        {-3, 2, 5, 1},
+    };
+    Mat4x4 inv = m.inverted();
+
+    check(isClose(inv * m, Mat4x4::identity()));
+    check(isClose(m * inv, Mat4x4::identity()));
+}
 #undef TEST_CASE_PREFIX
 #define TEST_CASE_PREFIX String_
 

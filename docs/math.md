@@ -1071,6 +1071,7 @@ static Mat4x4 orthographicProjection(const Rect& rect, float zNear, float zFar, 
 Float4& operator[](u32 i)
 const Float4& operator[](u32 i) const
 Mat4x4 transposed() const
+Mat4x4 inverted() const
 Mat4x4 invertedOrtho() const
 {/apiSummary}
 

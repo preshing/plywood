@@ -543,6 +543,54 @@ Mat4x4 Mat4x4::transposed() const {
     };
 }
 
+Mat4x4 Mat4x4::inverted() const {
+    // Transpose the matrix so that it effectively becomes row-major.
+    Mat4x4 left = this->transposed();
+    Mat4x4 right = Mat4x4::identity();
+
+    // Reduce the left side to identity using partial pivoting.
+    for (u32 pivot = 0; pivot < 4; pivot++) {
+        u32 pivotRow = pivot;
+        float pivotAbs = abs(left[pivot][pivot]);
+        for (u32 r = pivot + 1; r < 4; r++) {
+            float candidateAbs = abs(left[r][pivot]);
+            if (candidateAbs > pivotAbs) {
+                pivotRow = r;
+                pivotAbs = candidateAbs;
+            }
+        }
+        PLY_ASSERT(pivotAbs != 0);
+
+        if (pivotRow != pivot) {
+            Float4 temp = left[pivot];
+            left[pivot] = left[pivotRow];
+            left[pivotRow] = temp;
+
+            temp = right[pivot];
+            right[pivot] = right[pivotRow];
+            right[pivotRow] = temp;
+        }
+
+        float pivotValue = left[pivot][pivot];
+        left[pivot] /= pivotValue;
+        right[pivot] /= pivotValue;
+
+        for (u32 r = 0; r < 4; r++) {
+            if (r == pivot)
+                continue;
+
+            float factor = left[r][pivot];
+            if (factor == 0)
+                continue;
+
+            left[r] -= left[pivot] * Float4{factor};
+            right[r] -= right[pivot] * Float4{factor};
+        }
+    }
+
+    return right.transposed();
+}
+
 Mat4x4 Mat4x4::invertedOrtho() const {
     Mat4x4 result = transposed();
     result.col[0].w = 0;
