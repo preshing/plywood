@@ -11,9 +11,8 @@ namespace ply {
 namespace markdown {
 
 //------------------------------------------------------------------
-// Private Parser implementation details not exposed in the public API.
+// Parser implementation details not exposed in the public API.
 //------------------------------------------------------------------
-
 struct Parser {
     // The current stack of nested Markdown blocks based on the content of previous lines.
     // Consists of ListItems and BlockQuotes.
@@ -42,7 +41,6 @@ struct Parser {
 // ColumnTrackingReader keeps track of the column index while reading UTF-8 codepoints from an input string.
 // Used to determine the indentation of markers and text so we know which block each line belongs to.
 //------------------------------------------------------------------
-
 struct ColumnTrackingReader {
     static constexpr u32 TabSize = 4;
 
@@ -94,7 +92,6 @@ struct ColumnTrackingReader {
 // LineParser contains all the internal state that's used while parsing a single line of input, but doesn't need to be
 // persisted in the Parser itself.
 //------------------------------------------------------------------
-
 struct LineParser {
     // Parser
     Parser* parser = nullptr;
@@ -1230,6 +1227,8 @@ String convertToHtml(StringView src) {
 //  ██▄▄█▀ ▀█▄▄▄  ██▄▄█▀ ▀█▄▄██ ▀█▄▄██ ▀█▄▄██ ██ ██  ██ ▀█▄▄██
 //                               ▄▄▄█▀  ▄▄▄█▀            ▄▄▄█▀
 
+#if PLY_WITH_MARKDOWN_DEBUGGING
+
 // Debug printer for a span subtree.
 void dumpSpan(Stream* outs, const Span* span, u32 level) {
     String indent = StringView{"  "} * level;
@@ -1313,6 +1312,8 @@ void dump(Stream* outs, const Block* block, u32 level) {
         }
     }
 }
+
+#endif // PLY_WITH_MARKDOWN_DEBUGGING
 
 //  ▄▄  ▄▄ ▄▄▄▄▄▄ ▄▄   ▄▄ ▄▄
 //  ██  ██   ██   ███▄███ ██

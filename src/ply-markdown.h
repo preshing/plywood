@@ -8,21 +8,63 @@
 #pragma once
 #include "ply-base.h"
 
+#if !defined(PLY_WITH_MARKDOWN_DEBUGGING)
+#define PLY_WITH_MARKDOWN_DEBUGGING 0
+#endif
+
 namespace ply {
 namespace markdown {
 
-//  ▄▄▄▄▄  ▄▄▄               ▄▄                 ▄▄▄         ▄▄▄▄
-//  ██  ██  ██   ▄▄▄▄   ▄▄▄▄ ██  ▄▄  ▄▄▄▄      ██ ▀▀       ██  ▀▀ ▄▄▄▄▄   ▄▄▄▄  ▄▄▄▄▄   ▄▄▄▄
-//  ██▀▀█▄  ██  ██  ██ ██    ██▄█▀  ▀█▄▄▄      ▄█▀█▄▀▀      ▀▀▀█▄ ██  ██  ▄▄▄██ ██  ██ ▀█▄▄▄
-//  ██▄▄█▀ ▄██▄ ▀█▄▄█▀ ▀█▄▄▄ ██ ▀█▄  ▄▄▄█▀     ▀█▄▄▀█▄     ▀█▄▄█▀ ██▄▄█▀ ▀█▄▄██ ██  ██  ▄▄▄█▀
+//  ▄▄▄▄▄  ▄▄▄               ▄▄
+//  ██  ██  ██   ▄▄▄▄   ▄▄▄▄ ██  ▄▄  ▄▄▄▄
+//  ██▀▀█▄  ██  ██  ██ ██    ██▄█▀  ▀█▄▄▄
+//  ██▄▄█▀ ▄██▄ ▀█▄▄█▀ ▀█▄▄▄ ██ ▀█▄  ▄▄▄█▀
 //                                                                ██
 
-struct Span;
+//------------------------------------------------------
+// A Span can be a Link, Italic, Bold, Code, SoftBreak or HardBreak.
+//------------------------------------------------------
+struct Span {
+    // Container spans can contain child spans.
+    struct Container {
+        Array<Owned<Span>> childSpans;
+    };
+    struct Link : Container {
+        String destination;
+    };
+    struct Italic : Container {};
+    struct Bold : Container {};
+
+    // Leaf span types.
+    struct Text {
+        String text;
+    };
+    struct Code {
+        String text;
+    };
+    struct SoftBreak {};
+    struct HardBreak {};
+
+    Variant<Link, Italic, Bold, Text, Code, SoftBreak, HardBreak> var;
+
+    // Convenience functions:
+    Container* asContainer() {
+        if (auto* p = var.as<Link>())
+            return p;
+        if (auto* p = var.as<Italic>())
+            return p;
+        if (auto* p = var.as<Bold>())
+            return p;
+        return nullptr;
+    }
+    const Container* asContainer() const {
+        return const_cast<Span*>(this)->asContainer();
+    }
+};
 
 //------------------------------------------------------
 // A Block can be a List, ListItem, BlockQuote, Heading, Paragraph, CodeBlock or ThematicBreak.
 //------------------------------------------------------
-
 struct Block {
     // Inner block types can have child blocks.
     struct Inner {
@@ -91,48 +133,6 @@ struct Block {
     }
 };
 
-//------------------------------------------------------
-// A Span can be a Link, Italic, Bold, Code, SoftBreak or HardBreak.
-//------------------------------------------------------
-
-struct Span {
-    // Container spans can contain child spans.
-    struct Container {
-        Array<Owned<Span>> childSpans;
-    };
-    struct Link : Container {
-        String destination;
-    };
-    struct Italic : Container {};
-    struct Bold : Container {};
-
-    // Leaf span types.
-    struct Text {
-        String text;
-    };
-    struct Code {
-        String text;
-    };
-    struct SoftBreak {};
-    struct HardBreak {};
-
-    Variant<Link, Italic, Bold, Text, Code, SoftBreak, HardBreak> var;
-
-    // Convenience functions:
-    Container* asContainer() {
-        if (auto* p = var.as<Link>())
-            return p;
-        if (auto* p = var.as<Italic>())
-            return p;
-        if (auto* p = var.as<Bold>())
-            return p;
-        return nullptr;
-    }
-    const Container* asContainer() const {
-        return const_cast<Span*>(this)->asContainer();
-    }
-};
-
 //  ▄▄▄▄▄
 //  ██  ██  ▄▄▄▄  ▄▄▄▄▄   ▄▄▄▄   ▄▄▄▄  ▄▄▄▄▄
 //  ██▀▀▀   ▄▄▄██ ██  ▀▀ ▀█▄▄▄  ██▄▄██ ██  ▀▀
@@ -141,29 +141,26 @@ struct Span {
 
 struct Parser;
 
-// Creation and Destruction
-
+// Creation and destruction
 Owned<Parser> createParser();
 void destroy(Parser* parser);
 
 // Parsing
-
 Owned<Block> parseLine(Parser* parser, StringView line);
 Owned<Block> flush(Parser* parser);
 Array<Owned<Block>> parseWholeDocument(StringView markdown);
 
-// Converting to HTML
-
+// Convert to HTML
 struct HTML_Options {
     bool childAnchors = false;
 };
-
 String convertToHtml(StringView src);
 void convertToHtml(Stream* outs, const Block* block, const HTML_Options& options);
 
 // Debugging
-
+#if PLY_WITH_MARKDOWN_DEBUGGING
 void dump(Stream* outs, const Block* block, u32 level = 0);
+#endif
 
 } // namespace markdown
 } // namespace ply
