@@ -8,14 +8,13 @@
 #include "ply-http.h"
 
 namespace ply {
-namespace http {
 
-enum class ResponseType { None, Full, Streaming };
+enum class HTTPServerResponseType { None, Full, Streaming };
 
-struct RequestImpl : Request {
+struct HTTPServerRequestImpl : HTTPServerRequest {
     // Used internally.
     Stream* responseStream = nullptr;
-    ResponseType responseType = ResponseType::None;
+    HTTPServerResponseType responseType = HTTPServerResponseType::None;
     bool canReuseConnection = false;
 };
 
@@ -92,26 +91,26 @@ bool readChunkedBody(Stream& in, String* body) {
 }
 
 // Map HTTP status code to standard reason phrase
-StringView getResponseDescription(Response::Code responseCode) {
+StringView getResponseDescription(HTTPServerResponse::Code responseCode) {
     switch (responseCode) {
-        case Response::OK:
+        case HTTPServerResponse::OK:
             return "OK";
-        case Response::PermanentRedirect:
+        case HTTPServerResponse::PermanentRedirect:
             return "Moved Permanently";
-        case Response::TemporaryRedirect:
+        case HTTPServerResponse::TemporaryRedirect:
             return "Found";
-        case Response::BadRequest:
+        case HTTPServerResponse::BadRequest:
             return "Bad Request";
-        case Response::NotFound:
+        case HTTPServerResponse::NotFound:
             return "Not Found";
-        case Response::InternalError:
+        case HTTPServerResponse::InternalError:
         default:
             return "Internal Server Error";
     }
 }
 
 // Write an HTTP status line and header block
-void writeResponseHeaders(Stream& out, const Response& response) {
+void writeResponseHeaders(Stream& out, const HTTPServerResponse& response) {
     // Emit the response head before writing any body bytes.
     StringView message = getResponseDescription(response.code);
     out.format("HTTP/1.1 {} {}\r\n", response.code, message);
@@ -123,9 +122,9 @@ void writeResponseHeaders(Stream& out, const Response& response) {
 }
 
 // Send a complete HTTP response whose body framing allows connection reuse
-void Request::sendFullResponse(Response&& response, StringView body) {
-    RequestImpl* req = static_cast<RequestImpl*>(this);
-    PLY_ASSERT(req->responseType == ResponseType::None);
+void HTTPServerRequest::sendFullResponse(HTTPServerResponse&& response, StringView body) {
+    HTTPServerRequestImpl* req = static_cast<HTTPServerRequestImpl*>(this);
+    PLY_ASSERT(req->responseType == HTTPServerResponseType::None);
 
     // Add content-length. Always set from the body so the peer can delimit the response.
     *response.headers.insert("content-length").value = String::format("{}", body.numBytes());
@@ -140,7 +139,7 @@ void Request::sendFullResponse(Response&& response, StringView body) {
     }
 
     // Send response.
-    req->responseType = ResponseType::Full;
+    req->responseType = HTTPServerResponseType::Full;
     writeResponseHeaders(*req->responseStream, response);
     bool sendBody = req->method.lower() != "head";
     if (sendBody) {
@@ -150,15 +149,15 @@ void Request::sendFullResponse(Response&& response, StringView body) {
 }
 
 // Send headers for a raw streaming response and transfer the output stream to the handler
-Stream Request::beginStreamingResponse(Response&& response) {
-    RequestImpl* req = static_cast<RequestImpl*>(this);
-    PLY_ASSERT(req->responseType == ResponseType::None);
+Stream HTTPServerRequest::beginStreamingResponse(HTTPServerResponse&& response) {
+    HTTPServerRequestImpl* req = static_cast<HTTPServerRequestImpl*>(this);
+    PLY_ASSERT(req->responseType == HTTPServerResponseType::None);
 
     // Add headers.
     *response.headers.insert("connection").value = "close";
 
     // Begin response and send back the Stream 
-    req->responseType = ResponseType::Streaming;
+    req->responseType = HTTPServerResponseType::Streaming;
     req->canReuseConnection = false;
     writeResponseHeaders(*req->responseStream, response);
     req->responseStream->flush(true);
@@ -166,9 +165,9 @@ Stream Request::beginStreamingResponse(Response&& response) {
 }
 
 // Write a minimal HTML error page with the given status code
-void Request::sendGenericResponse(Response::Code responseCode) {
-    RequestImpl* req = static_cast<RequestImpl*>(this);
-    Response response{responseCode};
+void HTTPServerRequest::sendGenericResponse(HTTPServerResponse::Code responseCode) {
+    HTTPServerRequestImpl* req = static_cast<HTTPServerRequestImpl*>(this);
+    HTTPServerResponse response{responseCode};
     *response.headers.insert("content-type").value = "text/html";
     StringView message = getResponseDescription(responseCode);
     req->sendFullResponse(std::move(response), String::format(R"(<html>
@@ -183,8 +182,8 @@ void Request::sendGenericResponse(Response::Code responseCode) {
 }
 
 // Send an HTML page that echoes request details for testing
-void serveEchoPage(Request& request) {
-    Response response{Response::OK};
+void serveEchoPage(HTTPServerRequest& request) {
+    HTTPServerResponse response{HTTPServerResponse::OK};
     *response.headers.insert("content-type").value = "text/html";
     MemStream out;
     out.write(R"(<html>
@@ -211,14 +210,14 @@ void serveEchoPage(Request& request) {
 }
 
 // Parse an HTTP request from a TCP connection and dispatch it to the handler
-void handleRequest(TCPConnection* tcpConn, const Functor<void(Request& request)>& reqHandler) {
+void handleRequest(TCPConnection* tcpConn, const Functor<void(HTTPServerRequest& request)>& reqHandler) {
     Stream in = tcpConn->createInStream();
     Stream out = tcpConn->createOutStream();
 
     // Reuse the connection as much as possible.
     for (;;) {
         // Create request object.
-        RequestImpl request;
+        HTTPServerRequestImpl request;
         request.clientAddr = tcpConn->remoteAddress();
         request.clientPort = tcpConn->remotePort();
         request.responseStream = &out;
@@ -228,13 +227,13 @@ void handleRequest(TCPConnection* tcpConn, const Functor<void(Request& request)>
         do {
             requestLine = readLine(in);
             if (requestLine.isEmpty() && in.atEof) {
-                request.sendGenericResponse(Response::BadRequest);
+                request.sendGenericResponse(HTTPServerResponse::BadRequest);
                 return;
             }
         } while (requestLine.trim().isEmpty());
         Array<StringView> tokens = requestLine.trim().split(" ");
         if (tokens.numItems() != 3) {
-            request.sendGenericResponse(Response::BadRequest);
+            request.sendGenericResponse(HTTPServerResponse::BadRequest);
             return;
         }
         request.method = tokens[0];
@@ -245,19 +244,19 @@ void handleRequest(TCPConnection* tcpConn, const Functor<void(Request& request)>
         for (;;) {
             String line = readLine(in);
             if (line.isEmpty() && in.atEof) {
-                request.sendGenericResponse(Response::BadRequest);
+                request.sendGenericResponse(HTTPServerResponse::BadRequest);
                 return;
             }
             if (line.trim().isEmpty())
                 break; // Blank line.
             if (isWhite(line[0])) {
                 // FIXME: Support unfolding https://tools.ietf.org/html/rfc822#section-3.1
-                request.sendGenericResponse(Response::BadRequest);
+                request.sendGenericResponse(HTTPServerResponse::BadRequest);
                 return;
             }
             s32 colonPos = line.find(':');
             if (colonPos < 0) {
-                request.sendGenericResponse(Response::BadRequest);
+                request.sendGenericResponse(HTTPServerResponse::BadRequest);
                 return;
             }
             *request.headers.insert(line.left(colonPos).trim().lower()).value = line.substr(colonPos + 1).trim();
@@ -283,20 +282,20 @@ void handleRequest(TCPConnection* tcpConn, const Functor<void(Request& request)>
         if (transferEncodingPtr && transferEncodingPtr->lower() == "chunked") {
             // Chunked transfer encoding.
             if (!readChunkedBody(in, &request.body)) {
-                request.sendGenericResponse(Response::BadRequest);
+                request.sendGenericResponse(HTTPServerResponse::BadRequest);
                 return;
             }
         } else if (contentLengthPtr) {
             // Explicit content length.
             u64 contentLength = 0;
             if (!contentLengthPtr->match("%d", &contentLength) || (contentLength > getMaxValue<u32>())) {
-                request.sendGenericResponse(Response::BadRequest);
+                request.sendGenericResponse(HTTPServerResponse::BadRequest);
                 return;
             }
             if (contentLength > 0) {
                 request.body = String::allocate(numericCast<u32>(contentLength));
                 if (in.read(request.body.mutStringView()) != contentLength) {
-                    request.sendGenericResponse(Response::BadRequest);
+                    request.sendGenericResponse(HTTPServerResponse::BadRequest);
                     return;
                 }
             }
@@ -318,9 +317,9 @@ void handleRequest(TCPConnection* tcpConn, const Functor<void(Request& request)>
 
         // Invoke request handler and require it to send exactly one response.
         reqHandler(request);
-        if (request.responseType == ResponseType::None) {
+        if (request.responseType == HTTPServerResponseType::None) {
             // No response was sent.
-            request.sendGenericResponse(Response::InternalError);
+            request.sendGenericResponse(HTTPServerResponse::InternalError);
             return;
         }
         if (!request.canReuseConnection)
@@ -329,13 +328,14 @@ void handleRequest(TCPConnection* tcpConn, const Functor<void(Request& request)>
 }
 
 // Accept connections on a port and handle each request in a new thread
-void runServer(u16 port, const Functor<void(Request& request)>& reqHandler) {
+void runHTTPServer(u16 port, const Functor<void(HTTPServerRequest& request)>& reqHandler) {
     TCPListener listener = Network::bindTcp(port);
     if (!listener.isValid()) {
         getStdErr().format("Error: Can't bind to port {}\n", port);
         return;
     }
 
+    // Accepting incoming TCP connections in a loop.
     for (;;) {
         Owned<TCPConnection> tcpConn = listener.accept();
         if (!tcpConn)
@@ -350,5 +350,4 @@ void runServer(u16 port, const Functor<void(Request& request)>& reqHandler) {
     }
 }
 
-} // namespace http
 } // namespace ply

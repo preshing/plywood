@@ -12,10 +12,9 @@ using namespace ply;
 String docsFolder = joinPath(PLYWOOD_ROOT_DIR, "docs/build");
 
 //-------------------------------------
-// servePlywoodDocs
+// servePlywoodDocumentation
 //-------------------------------------
-
-void servePlywoodDocs(const http::Request& request) {
+void servePlywoodDocumentation(const HTTPServerRequest& request) {
     String urlPath = request.uri;
     s32 queryPos = urlPath.find('?');
     if (queryPos >= 0) {
@@ -35,11 +34,11 @@ void servePlywoodDocs(const http::Request& request) {
         if (parts[0] == "static") {
             String localPath = joinPath(docsFolder, StringView{'/'}.join(parts));
             if (!Filesystem::exists(localPath)) {
-                request.sendGenericResponse(http::Response::NotFound);
+                request.sendGenericResponse(HTTPServerResponse::NotFound);
                 return;
             }
 
-            http::Response response{http::Response::OK};
+            HTTPServerResponse response{HTTPServerResponse::OK};
             bool isTextFile = false;
             if (localPath.endsWith(".css")) {
                 *response.headers.insert("content-type").value = "text/css";
@@ -64,7 +63,7 @@ void servePlywoodDocs(const http::Request& request) {
             return;
         }
         if (parts[0].isEmpty()) {
-            http::Response response{http::Response::OK};
+            HTTPServerResponse response{HTTPServerResponse::OK};
             *response.headers.insert("content-type").value = "text/html";
             String templ = Filesystem::loadText(joinPath(docsFolder, "content/index.html"));
             String toc = Filesystem::loadText(joinPath(docsFolder, "content/toc.html"));
@@ -75,7 +74,7 @@ void servePlywoodDocs(const http::Request& request) {
         if (parts[0] == "docs") {
             if (parts.numItems() == 1) {
                 // FIXME: Include the hostname in the Location URL.
-                http::Response response{http::Response::PermanentRedirect};
+                HTTPServerResponse response{HTTPServerResponse::PermanentRedirect};
                 *response.headers.insert("location").value = "/docs/intro";
                 request.sendFullResponse(std::move(response));
                 return;
@@ -94,11 +93,11 @@ void servePlywoodDocs(const http::Request& request) {
             }
 
             if (!Filesystem::exists(localPath)) {
-                request.sendGenericResponse(http::Response::NotFound);
+                request.sendGenericResponse(HTTPServerResponse::NotFound);
                 return;
             }
 
-            http::Response response{http::Response::OK};
+            HTTPServerResponse response{HTTPServerResponse::OK};
             *response.headers.insert("content-type").value = "text/html";
 
             if (isAjaxRequest) {
@@ -125,20 +124,19 @@ void servePlywoodDocs(const http::Request& request) {
         }
     }
 
-    request.sendGenericResponse(http::Response::NotFound);
+    request.sendGenericResponse(HTTPServerResponse::NotFound);
 }
 
 //-------------------------------------
 // main
 //-------------------------------------
-
 int main(int argc, const char* argv[]) {
 #if defined(PLY_WINDOWS)
     SetConsoleOutputCP(CP_UTF8);
 #endif
 
     Network::initialize(IPV4);
-    http::runServer(8080, servePlywoodDocs);
+    runHTTPServer(8080, servePlywoodDocumentation);
     Network::shutdown();
     return 0;
 }
