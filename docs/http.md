@@ -1,10 +1,118 @@
-{title text="HTTP Server" include="ply-http.h" namespace="ply"}
+{title text="HTTP" include="ply-http.h" namespace="ply"}
 
-Plywood includes a small HTTP server helper in `ply-http.h`. It is intended for simple tools, local
-documentation servers and test servers that need a portable HTTP interface without pulling in a larger framework.
+`ply-http.h` provides two independent helpers: an `HTTPClient` for making outgoing HTTP requests, and a small HTTP
+server for simple tools, local documentation servers and test servers that need a portable HTTP interface without
+pulling in a larger framework.
 
-The HTTP server builds on the TCP/IP networking API, so applications must call `Network::initialize()` before starting
-the server and `Network::shutdown()` after it returns.
+The HTTP client builds on libcurl, so libcurl (with OpenSSL) must be available at build time when
+`PLY_WITH_HTTP_CLIENT` is enabled (the default). The HTTP server builds on the TCP/IP networking API, so applications
+must call `Network::initialize()` before starting the server and `Network::shutdown()` after it returns.
+
+## `HTTPClient`
+
+`HTTPClient` is a libcurl wrapper that encapsulates a single HTTP request and can be interrupted from another thread.
+The same `HTTPClient` object can be reused across multiple requests.
+
+Except for `wakeUpHTTPClient`, the `HTTPClient` API is not thread-safe and is intended to be driven from a single
+thread. The typical request lifecycle is:
+
+1. Call `sendHTTPRequest()` to start a request.
+2. Call `waitForHTTPResponse()` repeatedly, processing response data delivered to the callback, until it returns
+   `false`.
+3. The request can be aborted early with `cancelHTTPRequest()`, or interrupted from another thread with
+   `wakeUpHTTPClient()` so that a blocked `waitForHTTPResponse()` returns promptly.
+
+`HTTPClient` is an opaque type; create instances with `createHTTPClient()` and destroy them with `destroy()` (or let
+the returned `Owned<HTTPClient>` go out of scope).
+
+### `HTTPClientArgs`
+
+`HTTPClientArgs` describes a request to send.
+
+{apiSummary class=HTTPClientArgs}
+String url
+Map<String, String> headers
+String body
+bool useBundledCaCert = false
+{/apiSummary}
+
+{context class=HTTPClientArgs}
+
+`String url`
+> The request URL.
+
+`Map<String, String> headers`
+> HTTP headers to send with the request, e.g. `{"Content-Type" => "application/json"}`.
+
+`String body`
+> The request body. Must remain valid for the lifetime of the request because libcurl reads from it directly.
+
+`bool useBundledCaCert = false`
+> When `true`, verify the peer against the `cacert.pem` bundle shipped next to the executable. When `false`, TLS
+> verification is disabled, which is only appropriate for trusted localhost endpoints.
+
+### Client functions
+
+{apiSummary}
+Owned<HTTPClient> createHTTPClient()
+void destroy(HTTPClient* httpClient)
+void sendHTTPRequest(HTTPClient* httpClient, HTTPClientArgs&& args)
+void cancelHTTPRequest(HTTPClient* httpClient)
+bool isHTTPRequestInProgress(const HTTPClient* httpClient)
+bool waitForHTTPResponse(HTTPClient* httpClient, const Functor<void(StringView, bool)>& callback, u32 timeOutMillis = 1000)
+void wakeUpHTTPClient(HTTPClient* httpClient)
+{/apiSummary}
+
+`Owned<HTTPClient> createHTTPClient()`
+> Creates a new `HTTPClient`.
+
+`void destroy(HTTPClient* httpClient)`
+> Destroys an `HTTPClient` created by `createHTTPClient()`. Any in-progress request is cancelled first.
+
+`void sendHTTPRequest(HTTPClient* httpClient, HTTPClientArgs&& args)`
+> Starts a new request. Must not be called while a request is already in progress.
+
+`void cancelHTTPRequest(HTTPClient* httpClient)`
+> Cancels any request in progress. After this returns, `isHTTPRequestInProgress()` returns `false`.
+
+`bool isHTTPRequestInProgress(const HTTPClient* httpClient)`
+> Returns `true` while a request is in progress.
+
+`bool waitForHTTPResponse(HTTPClient* httpClient, const Functor<void(StringView, bool)>& callback, u32 timeOutMillis = 1000)`
+> Drives the request, delivering incoming response data to `callback`. If response data is available, it invokes
+> `callback` and returns immediately. If no data is available, it waits up to `timeOutMillis` (interruptible by
+> `wakeUpHTTPClient()`). Returns `false` once the request completes or is cancelled; `true` if it is still in
+> progress. A no-op when no request is in progress. `callback` is invoked with `(chunk, false)` for each chunk of
+> response data, and one final time with `(errorMessage, true)` if the request fails.
+
+`void wakeUpHTTPClient(HTTPClient* httpClient)`
+> Can be called from any thread. If `waitForHTTPResponse()` is currently blocked in another thread, it returns
+> immediately; otherwise the next `waitForHTTPResponse()` call returns immediately.
+
+{example}
+#include <ply-http.h>
+
+using namespace ply;
+
+void fetchPage() {
+    Owned<HTTPClient> client = createHTTPClient();
+    HTTPClientArgs args;
+    args.url = "https://example.com";
+    sendHTTPRequest(client, std::move(args));
+    Functor<void(StringView, bool)> callback = [](StringView data, bool isEnd) {
+        if (isEnd) {
+            getStdErr().format("Request finished: {}\n", data);
+        } else {
+            getStdOut().write(data);
+        }
+    };
+    while (waitForHTTPResponse(client, callback)) {
+        // Response data is delivered to `callback` inside waitForHTTPResponse().
+    }
+}
+{/example}
+
+## HTTP Server
 
 {example}
 #include <ply-http.h>

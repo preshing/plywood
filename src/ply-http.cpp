@@ -7,7 +7,196 @@
 
 #include "ply-http.h"
 
+#if PLY_WITH_HTTP_CLIENT
+// HTTPClient requires curl.
+#include <curl/curl.h>
+#include <openssl/x509_vfy.h>
+#endif
+
 namespace ply {
+
+#if PLY_WITH_HTTP_CLIENT
+
+//  ▄▄  ▄▄ ▄▄▄▄▄▄ ▄▄▄▄▄▄ ▄▄▄▄▄       ▄▄▄▄  ▄▄▄  ▄▄                ▄▄
+//  ██  ██   ██     ██   ██  ██     ██  ▀▀  ██  ▄▄  ▄▄▄▄  ▄▄▄▄▄  ▄██▄▄
+//  ██▀▀██   ██     ██   ██▀▀▀      ██      ██  ██ ██▄▄██ ██  ██  ██
+//  ██  ██   ██     ██   ██         ▀█▄▄█▀ ▄██▄ ██ ▀█▄▄▄  ██  ██  ▀█▄▄
+//
+
+// HTTPClient uses libcurl's multi interface because it's the only supported way to immediately cancel a
+// partially completed HTTP request.
+struct HTTPClient {
+    CURLM* multiHandle = nullptr;
+    CURL* requestHandle = nullptr;
+    struct curl_slist* requestHeaders = NULL;
+    HTTPClientArgs args;
+    const Functor<void(StringView, bool)>* callback = nullptr;
+    // When true, enables CURLOPT_VERBOSE/CURLOPT_CERTINFO on outgoing requests and dumps
+    // the SSL verification result + certificate chain to stderr after each request completes.
+    bool debug = false;
+
+    HTTPClient() {
+        this->multiHandle = curl_multi_init();
+    }
+    ~HTTPClient() {
+        cancelHTTPRequest(this);
+        curl_multi_cleanup(this->multiHandle);
+    }
+};
+
+Owned<HTTPClient> createHTTPClient() {
+    return Owned<HTTPClient>::adopt(Heap::create<HTTPClient>());
+}
+
+void destroy(HTTPClient* httpClient) {
+    Heap::destroy(httpClient);
+}
+
+static size_t curlWriteCallback(char* ptr, size_t size, size_t nmemb, void* userdata) {
+    auto* httpClient = static_cast<const HTTPClient*>(userdata);
+    StringView data = {ptr, numericCast<u32>(size * nmemb)};
+    (*httpClient->callback)(data, false);
+    return data.numBytes();
+}
+
+// Dumps the SSL verification result and the peer certificate chain for a completed
+// request.
+static void dumpCurlDebugInfo(CURL* requestHandle) {
+    long verifyResult = 0;
+    curl_easy_getinfo(requestHandle, CURLINFO_SSL_VERIFYRESULT, &verifyResult);
+    getStdErr().format("SSL verify result: {} ({})\n", X509_verify_cert_error_string(verifyResult), verifyResult);
+
+    struct curl_certinfo* ci = NULL;
+    if (curl_easy_getinfo(requestHandle, CURLINFO_CERTINFO, &ci) == CURLE_OK && ci) {
+        for (int i = 0; i < ci->num_of_certs; i++) {
+            getStdErr().format("Cert {}:\n", i);
+            struct curl_slist* slist = ci->certinfo[i];
+            for (; slist; slist = slist->next) {
+                getStdErr().format("  {}\n", slist->data);
+            }
+        }
+    }
+}
+
+void sendHTTPRequest(HTTPClient* httpClient, HTTPClientArgs&& args) {
+    PLY_ASSERT(!httpClient->requestHandle);
+    httpClient->args = std::move(args);
+
+    // Create new requestHandle, configure it and add it to the multiHandle.
+    httpClient->requestHandle = curl_easy_init();
+    for (const auto& item : httpClient->args.headers.items()) {
+        String header = String::format("{}: {}", item.key, item.value);
+        httpClient->requestHeaders =
+            curl_slist_append(httpClient->requestHeaders, (header + '\0').bytes());
+    }
+    curl_easy_setopt(httpClient->requestHandle, CURLOPT_URL, (httpClient->args.url + '\0').bytes());
+    curl_easy_setopt(httpClient->requestHandle, CURLOPT_HTTPHEADER, httpClient->requestHeaders);
+    // NOTE: body must remain valid for the lifetime of requestHandle because
+    // CURLOPT_POSTFIELDS points into its internal buffer.
+    curl_easy_setopt(httpClient->requestHandle, CURLOPT_POSTFIELDS, httpClient->args.body.bytes());
+    curl_easy_setopt(httpClient->requestHandle, CURLOPT_POSTFIELDSIZE, (long) httpClient->args.body.numBytes());
+    curl_easy_setopt(httpClient->requestHandle, CURLOPT_TIMEOUT, 60L);
+    curl_easy_setopt(httpClient->requestHandle, CURLOPT_CONNECTTIMEOUT, 15L);
+    // Debug: enable verbose output and capture the peer certificate chain for dumping
+    // after the request completes (see waitForHTTPResponse()).
+    if (httpClient->debug) {
+        curl_easy_setopt(httpClient->requestHandle, CURLOPT_VERBOSE, 1L);
+        curl_easy_setopt(httpClient->requestHandle, CURLOPT_CERTINFO, 1L);
+    }
+    // TLS verification: either verify against the bundled cacert.pem, or disable
+    // verification (localhost only).
+    if (httpClient->args.useBundledCaCert) {
+        String cacertPath = joinPath(getCurrentExecutablePath(), "../cacert.pem");
+        curl_easy_setopt(httpClient->requestHandle, CURLOPT_CAINFO, (cacertPath + '\0').bytes());
+    } else {
+        curl_easy_setopt(httpClient->requestHandle, CURLOPT_SSL_VERIFYPEER, 0L);
+        curl_easy_setopt(httpClient->requestHandle, CURLOPT_SSL_VERIFYHOST, 0L);
+    }
+    curl_easy_setopt(httpClient->requestHandle, CURLOPT_WRITEFUNCTION, curlWriteCallback);
+    curl_easy_setopt(httpClient->requestHandle, CURLOPT_WRITEDATA, httpClient);
+    curl_multi_add_handle(httpClient->multiHandle, httpClient->requestHandle);
+}
+
+void cancelHTTPRequest(HTTPClient* httpClient) {
+    if (httpClient->requestHandle != nullptr) {
+        curl_multi_remove_handle(httpClient->multiHandle, httpClient->requestHandle);
+        curl_easy_cleanup(httpClient->requestHandle);
+        curl_slist_free_all(httpClient->requestHeaders);
+        httpClient->requestHandle = NULL;
+        httpClient->requestHeaders = NULL;
+    }
+}
+
+bool isHTTPRequestInProgress(const HTTPClient* httpClient) {
+    return httpClient->requestHandle != nullptr;
+}
+
+bool waitForHTTPResponse(HTTPClient* httpClient, const Functor<void(StringView, bool)>& callback,
+                       u32 timeOutMillis) {
+    PLY_ASSERT(httpClient->requestHandle);
+    PLY_ASSERT(!httpClient->callback);
+    PLY_SET_IN_SCOPE(httpClient->callback, &callback);
+
+    // Handle incoming response data.
+    int stillRunning = 0;
+    CURLMcode mc = curl_multi_perform(httpClient->multiHandle, &stillRunning);
+    PLY_ASSERT(mc == CURLM_OK);
+
+    // Handle completed requests and HTTP errors by iterating over available libcurl messages.
+    int msgsInQueue = 0;
+    CURLMsg* msg = curl_multi_info_read(httpClient->multiHandle, &msgsInQueue);
+    while (msg) {
+        PLY_ASSERT(msg->easy_handle == httpClient->requestHandle);
+        if (msg->msg == CURLMSG_DONE) {
+            // Request has completed.
+            if (msg->data.result != CURLE_OK) {
+                // Internal libcurl error.
+                callback(String::format("libcurl error: {}", curl_easy_strerror(msg->data.result)), true);
+            } else {
+                long responseCode = 0;
+                curl_easy_getinfo(httpClient->requestHandle, CURLINFO_RESPONSE_CODE, &responseCode);
+                if (responseCode != 200) {
+                    // HTTP error sent from the server.
+                    callback(String::format("Error: HTTP response code {} from server", responseCode), true);
+                }
+            }
+            // Debug: dump the SSL verification result and certificate chain before
+            // the easy handle is destroyed.
+            if (httpClient->debug)
+                dumpCurlDebugInfo(httpClient->requestHandle);
+            // Destroy the request.
+            cancelHTTPRequest(httpClient);
+            return false;
+        } else {
+            // CURLMSG_DONE is currently the only message type defined by curl.
+            PLY_ASSERT(0);
+        }
+        // Iterate to the next available message.
+        msg = curl_multi_info_read(httpClient->multiHandle, &msgsInQueue);
+    }
+
+    // Wait for more response data if needed.
+    if (httpClient->requestHandle && (stillRunning > 0)) {
+        mc = curl_multi_poll(httpClient->multiHandle, NULL, 0, timeOutMillis, NULL);
+        PLY_ASSERT(mc == CURLM_OK);
+    }
+
+    return true;
+}
+
+void wakeUpHTTPClient(HTTPClient* httpClient) {
+    curl_multi_wakeup(httpClient->multiHandle);
+}
+
+#endif // PLY_WITH_HTTP_CLIENT
+
+#if PLY_WITH_HTTP_SERVER
+
+//  ▄▄  ▄▄ ▄▄▄▄▄▄ ▄▄▄▄▄▄ ▄▄▄▄▄       ▄▄▄▄
+//  ██  ██   ██     ██   ██  ██     ██  ▀▀  ▄▄▄▄  ▄▄▄▄▄  ▄▄   ▄▄  ▄▄▄▄  ▄▄▄▄▄
+//  ██▀▀██   ██     ██   ██▀▀▀       ▀▀▀█▄ ██▄▄██ ██  ▀▀ ▀█▄ ▄█▀ ██▄▄██ ██  ▀▀
+//  ██  ██   ██     ██   ██         ▀█▄▄█▀ ▀█▄▄▄  ██       ▀█▀   ▀█▄▄▄  ██
+//
 
 enum class HTTPServerResponseType { None, Full, Streaming };
 
@@ -349,5 +538,7 @@ void runHTTPServer(u16 port, const Functor<void(HTTPServerRequest& request)>& re
         });
     }
 }
+
+#endif // PLY_WITH_HTTP_SERVER
 
 } // namespace ply
