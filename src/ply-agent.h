@@ -1,0 +1,218 @@
+﻿/*========================================================
+       ____
+      ╱   ╱╲    Plywood C++ Base Library
+     ╱___╱╭╮╲   https://plywood.dev/
+      └──┴┴┴┘
+========================================================*/
+
+#pragma once
+#include "ply-reflect.h"
+
+// Configure PLY_AGENT_TRANSCRIPT_ONLY=1 if you just need the Transcript/TranscriptEvent definitions.
+// This disables all code for running a local agent.
+#if !defined(PLY_AGENT_TRANSCRIPT_ONLY)
+#define PLY_AGENT_TRANSCRIPT_ONLY 0
+#endif
+
+namespace ply {
+
+//  ▄▄▄▄▄▄                                          ▄▄         ▄▄
+//    ██   ▄▄▄▄▄   ▄▄▄▄  ▄▄▄▄▄   ▄▄▄▄   ▄▄▄▄ ▄▄▄▄▄  ▄▄ ▄▄▄▄▄  ▄██▄▄
+//    ██   ██  ▀▀  ▄▄▄██ ██  ██ ▀█▄▄▄  ██    ██  ▀▀ ██ ██  ██  ██
+//    ██   ██     ▀█▄▄██ ██  ██  ▄▄▄█▀ ▀█▄▄▄ ██     ██ ██▄▄█▀  ▀█▄▄
+//                                                     ██
+
+struct Transcript : RefCounted<Transcript> {
+    enum class Role {
+        None,
+        User,
+        AgentThinking,
+        Agent,
+        ToolCall, // format is `write{"path":"foo.txt","content":"Hello world!\n"}`
+        Error,
+    };
+
+    struct Message {
+        u64 timeStamp = 0;
+        Role role = Role::None;
+        String text;
+        // These members are only used by ToolCall:
+        String toolResponse;
+        bool toolEnded = false;
+
+        PLY_DECLARE_TYPE_INFO(Transcript::Message)
+    };
+
+    struct Turn {
+        Array<Owned<Message>> messages;
+
+        PLY_DECLARE_TYPE_INFO(Transcript::Turn)
+    };
+
+    // Transcript data members.
+    Reference<Transcript> parent;
+    Array<Turn> turns;
+
+    PLY_DECLARE_TYPE_INFO(Transcript)
+};
+
+//-------------------------------------------
+// TranscriptEvent represents a change to a Transcript.
+// These events are streamed to the client thread via Agent::Impl::pendingEvents.
+//-------------------------------------------
+struct TranscriptEvent {
+    enum Operation {
+        NoOperation,
+        BeginMessage,       // requires role and toolCallID (if ToolCall)
+        AppendText,         // requires text
+        AppendToolResponse, // requires toolCallID and text
+        EndToolResponse,    // requires toolCallID
+        EndTurn,
+    };
+
+    s64 timeStamp = 0;
+    Operation operation = NoOperation;
+    // role is only used by BeginMessage. If ToolCall, toolCallID is also required.
+    Transcript::Role role = Transcript::Role::None;
+    // toolCallID is only used by BeginMessage(ToolCall), AppendToolResponse and EndToolResponse.
+    // The first tool call written to a turn gets toolCallID=1, the next one 2, and so on.
+    u32 toolCallID = 0;
+    // text is only used by AppendText and AppendToolResponse.
+    String text;
+
+    PLY_DECLARE_TYPE_INFO(TranscriptEvent)
+};
+
+// TranscriptUpdater
+struct TranscriptUpdater;
+Owned<TranscriptUpdater> createTranscriptUpdater(Transcript* transcript);
+void destroy(TranscriptUpdater* updater);
+void applyTranscriptEvent(TranscriptUpdater* updater, const TranscriptEvent* event);
+
+#if !PLY_AGENT_TRANSCRIPT_ONLY
+
+//   ▄▄▄▄                        ▄▄
+//  ██  ██  ▄▄▄▄▄  ▄▄▄▄  ▄▄▄▄▄  ▄██▄▄
+//  ██▀▀██ ██  ██ ██▄▄██ ██  ██  ██
+//  ██  ██ ▀█▄▄██ ▀█▄▄▄  ██  ██  ▀█▄▄
+//          ▄▄▄█▀
+
+// Determines the format of messages sent and received in the endpoint's underlying protocol.
+enum class Protocol {
+    Completions,
+    Responses,
+};
+
+// Describes an inference provider to connect to.
+struct EndPoint {
+    String url;
+    Functor<String()> getAPIKey;
+    Protocol protocol = Protocol::Completions;
+    String model;
+};
+
+// Forward declarations.
+struct ToolContext;
+
+// ToolSet defines the agent's available tools and its system message.
+struct ToolSet {
+    struct Parameter {
+        String name;
+        String description;
+        String type;
+        bool required = false;
+    };
+
+    struct Permission {
+        String absPath;
+    };
+
+    struct Handler {
+        String name;
+        String description;
+        Array<Parameter> parameters;
+        Functor<void(ToolContext* toolCtx, Transcript::Message* toolCall, const json::Node& arguments)> handler;
+        Array<Permission> permissions;
+
+        StringView getLookupKey() const {
+            return this->name;
+        }
+    };
+
+    String systemMessage;
+    Set<Owned<Handler>> handlers;
+    String currentDirectory;
+};
+
+// Agent provides the public API for operating LLM agents.
+struct Agent {
+    struct Impl;
+
+    struct Properties {
+        // The leaf transcript node gets copied to impl->internalTranscript in the Agent constructor,
+        // but both nodes share the same parent.
+        Transcript* originalTranscript = nullptr;
+
+        // The caller is responsible for creating separate EndPoint and ToolSet objects and keeping them alive for the
+        // lifetime of the agent.
+        const EndPoint* endPoint;
+        const ToolSet* toolSet;
+        bool enableHttpLog = false;
+    };
+
+    const Properties* props; // points to impl->props internally
+    Reference<Impl> impl;    // internal details
+
+    Agent(Properties&& props);
+    ~Agent();
+
+    // TranscriptEvents are internally timestamped and buffered as they are received from the LLM.
+    // The client thread consumes them by calling pollForEvents, waitForEvents or waitForCompletion.
+    // Only one thread can call pollForEvents, waitForEvents or waitForCompletion at a time.
+
+    // Returns immediately and consumes any available buffered TranscriptEvents.
+    Array<TranscriptEvent> pollForEvents();
+    // Returns as soon as there are any events available, or if the agent stopped working.
+    // If maxTimeInMillis < 0, it waits for unlimited time.
+    Array<TranscriptEvent> waitForEvents(s32 maxTimeInMillis = -1);
+    // Doesn't return until the agent stops working, or until a time limit is reached.
+    // If maxTimeInMillis < 0, it waits for unlimited time.
+    Array<TranscriptEvent> waitForCompletion(s32 maxTimeInMillis = -1);
+
+    // isWorking and cancel are short, thread-safe functions that don't block the calling thread.
+    // Any thread can freely call them at any point during the Agent's lifetime.
+    // When cancel is called:
+    // - Any thread calling waitForEvents or waitForCompletion immediately returns.
+    // - The background threads observe `canceled` and will no longer generate new TranscriptEvents.
+    //   At most, some in-flight tool calls may continue running briefly in the background.
+    // - isWorking will only start returning false after all remaining buffered events are consumed.
+    bool isWorking();
+    void cancel();
+};
+
+// ToolContext is used to implement tool handlers.
+struct ToolContext {
+    Mutex mutex;           // Protects `canceled` and serializes changes to the agent's transcript
+                           // and serializes event buffering across the inference and tool threads.
+    bool canceled = false; // Set by the client thread (via cancel or destruction) to request cancellation.
+    Agent::Impl* agentImpl = nullptr;
+    ArrayView<const ToolSet::Permission> permissions;
+    StringView currentDirectory;
+};
+
+// These functions should be used to initialize the EndPoint and ToolSet before constructing an Agent.
+void setHardcodedEndpoint(EndPoint* endPoint);
+
+// Individual tool registration functions. Each adds a single tool to the ToolSet.
+void addReadTool(ToolSet* toolSet);
+void addWriteTool(ToolSet* toolSet);
+void addListDirTool(ToolSet* toolSet);
+void addFindInFilesTool(ToolSet* toolSet);
+void addEditTool(ToolSet* toolSet);
+
+// Convenience function that registers all of the above tools.
+void addDefaultTools(ToolSet* toolSet);
+
+#endif // !PLY_AGENT_TRANSCRIPT_ONLY
+
+} // namespace ply

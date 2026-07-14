@@ -1,0 +1,1806 @@
+/*========================================================
+       ____
+      ╱   ╱╲    Plywood C++ Base Library
+     ╱___╱╭╮╲   https://plywood.dev/
+      └──┴┴┴┘
+========================================================*/
+
+#include "ply-agent.h"
+#include "ply-http.h"
+#include "ply-json.h"
+
+namespace ply {
+
+//  ▄▄▄▄▄▄                                          ▄▄         ▄▄
+//    ██   ▄▄▄▄▄   ▄▄▄▄  ▄▄▄▄▄   ▄▄▄▄   ▄▄▄▄ ▄▄▄▄▄  ▄▄ ▄▄▄▄▄  ▄██▄▄
+//    ██   ██  ▀▀  ▄▄▄██ ██  ██ ▀█▄▄▄  ██    ██  ▀▀ ██ ██  ██  ██
+//    ██   ██     ▀█▄▄██ ██  ██  ▄▄▄█▀ ▀█▄▄▄ ██     ██ ██▄▄█▀  ▀█▄▄
+//                                                     ██
+
+struct TranscriptUpdater {
+    Transcript* transcript = nullptr;
+};
+
+Owned<TranscriptUpdater> createTranscriptUpdater(Transcript* transcript) {
+    Owned<TranscriptUpdater> updater = Heap::create<TranscriptUpdater>();
+    updater->transcript = transcript;
+    return updater;
+}
+
+void destroy(TranscriptUpdater* updater) {
+    Heap::destroy(updater);
+}
+
+void applyTranscriptEvent(TranscriptUpdater* updater, const TranscriptEvent* event) {
+    Transcript* transcript = updater->transcript;
+    switch (event->operation) {
+        case TranscriptEvent::BeginMessage: {
+            // Ensure there is a turn to append the message to.
+            if (transcript->turns.isEmpty())
+                transcript->turns.append();
+            Transcript::Turn& turn = transcript->turns.back();
+            Owned<Transcript::Message> msg = Heap::create<Transcript::Message>();
+            msg->timeStamp = (u64) getUnixTimestamp();
+            msg->role = event->role;
+            turn.messages.append(std::move(msg));
+            break;
+        }
+        case TranscriptEvent::AppendText: {
+            PLY_ASSERT(!transcript->turns.isEmpty());
+            Transcript::Turn& turn = transcript->turns.back();
+            PLY_ASSERT(!turn.messages.isEmpty());
+            turn.messages.back()->text += event->text;
+            break;
+        }
+        case TranscriptEvent::AppendToolResponse: {
+            PLY_ASSERT(!transcript->turns.isEmpty());
+            Transcript::Turn& turn = transcript->turns.back();
+            // Find the toolCallID-th ToolCall message (1-based) and append response text.
+            u32 id = 0;
+            for (Owned<Transcript::Message>& msg : turn.messages) {
+                if (msg->role == Transcript::Role::ToolCall) {
+                    id++;
+                    if (id == event->toolCallID) {
+                        msg->toolResponse += event->text;
+                        break;
+                    }
+                }
+            }
+            break;
+        }
+        case TranscriptEvent::EndToolResponse: {
+            PLY_ASSERT(!transcript->turns.isEmpty());
+            Transcript::Turn& turn = transcript->turns.back();
+            u32 id = 0;
+            for (Owned<Transcript::Message>& msg : turn.messages) {
+                if (msg->role == Transcript::Role::ToolCall) {
+                    id++;
+                    if (id == event->toolCallID) {
+                        msg->toolEnded = true;
+                        break;
+                    }
+                }
+            }
+            break;
+        }
+        case TranscriptEvent::EndTurn: {
+            // Append a new empty turn for the next round of messages.
+            transcript->turns.append();
+            break;
+        }
+        default:
+            break;
+    }
+}
+
+PLY_STRUCT_BEGIN(Transcript::Message)
+PLY_STRUCT_MEMBER(timeStamp)
+PLY_STRUCT_MEMBER(text)
+PLY_STRUCT_MEMBER(toolResponse)
+PLY_STRUCT_MEMBER(toolEnded)
+PLY_STRUCT_END()
+
+PLY_STRUCT_BEGIN(Transcript::Turn)
+PLY_STRUCT_MEMBER(messages)
+PLY_STRUCT_END()
+
+PLY_STRUCT_BEGIN(Transcript)
+PLY_STRUCT_MEMBER(turns)
+PLY_STRUCT_END()
+
+PLY_STRUCT_BEGIN(TranscriptEvent)
+PLY_STRUCT_MEMBER(timeStamp)
+PLY_STRUCT_MEMBER(toolCallID)
+PLY_STRUCT_MEMBER(text)
+PLY_STRUCT_END()
+
+#if !PLY_AGENT_TRANSCRIPT_ONLY
+
+//   ▄▄▄▄                        ▄▄         ▄▄▄▄                 ▄▄▄
+//  ██  ██  ▄▄▄▄▄  ▄▄▄▄  ▄▄▄▄▄  ▄██▄▄        ██  ▄▄▄▄▄▄▄  ▄▄▄▄▄   ██
+//  ██▀▀██ ██  ██ ██▄▄██ ██  ██  ██   ▀▀ ▀▀  ██  ██ ██ ██ ██  ██  ██
+//  ██  ██ ▀█▄▄██ ▀█▄▄▄  ██  ██  ▀█▄▄ ▄▄ ▄▄ ▄██▄ ██ ██ ██ ██▄▄█▀ ▄██▄
+//          ▄▄▄█▀                                         ██
+
+//--------------------------------------------------------
+// Agent::Impl contains information shared between the main thread and an inference thread.
+// The inference thread receives response data from curl, parses each line of incoming JSONL
+// and generates ResponseEvents.
+//
+// If tools are enabled, an additional background thread is spawned to perform the
+// tool requests. Tool requests are enqueued immediately as soon as they're received.
+//--------------------------------------------------------
+struct Agent::Impl : RefCounted<Agent::Impl> {
+    Thread inferenceThread;
+    Thread toolThread;
+
+    // Properties passed in by the caller when constructing the Agent. The public Agent
+    // exposes a pointer to this object through Agent::props. The referenced EndPoint and
+    // ToolSet objects are owned by the caller and must outlive the Agent.
+    Agent::Properties props;
+
+    // internalTranscript is a copy of props.transcript, but links to the same parent.
+    // Modified internally, but only when toolCtx.mutex is held.
+    Reference<Transcript> internalTranscript;
+    // TranscriptUpdater wraps internalTranscript and is used to apply TranscriptEvents
+    // to it. Used under toolCtx.mutex.
+    Owned<TranscriptUpdater> updater;
+    // Tracks the role of the last message begun in the current turn, so the inference
+    // thread only emits a BeginMessage event when the role changes. Reset to None at
+    // the start of each turn. Protected by toolCtx.mutex.
+    Transcript::Role currentRole = Transcript::Role::None;
+
+    //----------------------------------------------
+    // These members are only used by the inference thread.
+    // It's a convenient place for the HTTPClient response callback to access them.
+    //----------------------------------------------
+    Stream httpLogFile;
+    MemStream lineInProgress;
+    Owned<HTTPClient> httpClient; // Only used by the inference thread.
+    bool anyToolCallsThisTurn = false;
+
+    //----------------------------------------------
+    // These members are shared between all threads.
+    // ToolContext is a logical grouping of the variables used by tool handlers.
+    // It's mainly a way to hide the rest of the agent implementation details from tool handlers.
+    // Internally, ToolContext::mutex is also used to protect access to the other members here.
+    //----------------------------------------------
+    // toolCtx.mutex also protects access to the remaining members below.
+    ToolContext toolCtx;
+    // The inference thread adds tool calls to the end of pendingToolCalls.
+    // The tool thread pops each tool call from the front after it's completed.
+    Array<Transcript::Message*> pendingToolCalls;
+    // Events are buffered here until the client thread consumes them.
+    Array<TranscriptEvent> pendingEvents;
+    // The inference thread only sets inferenceEnded to true when the LLM completes a turn
+    // without issuing any new tool requests.
+    bool inferenceEnded = false;
+    bool toolEnded = false;
+    // Condition variables used to wake each thread after various events.
+    ConditionVariable inferenceCondVar;
+    ConditionVariable toolCondVar;
+    ConditionVariable clientCondVar;
+    ConditionVariable completionCondVar;
+};
+
+// Must be called with toolCtx.mutex held. Timestamps the event, appends it to the
+// pendingEvents buffer and wakes any client thread blocked in waitForEvents. It does
+// NOT wake waitForCompletion, which is only released by when the agent stops.
+static void bufferEvent(Agent::Impl* impl, TranscriptEvent&& event) {
+    event.timeStamp = getUnixTimestamp();
+    impl->pendingEvents.append(std::move(event));
+    impl->clientCondVar.wakeAll();
+}
+
+// Must be called with toolCtx.mutex held. Applies the event to the current transcript
+// section (via applyTranscriptEvent) and then buffers it for delivery to the client
+// thread.
+static void addEvent(Agent::Impl* impl, TranscriptEvent&& event) {
+    applyTranscriptEvent(impl->updater, &event);
+    bufferEvent(impl, std::move(event));
+}
+
+// Emits a BeginMessage event for the given role. If the role is ToolCall, toolCallID
+// identifies the tool call (1-based, sequential within the current turn).
+// Must be called with toolCtx.mutex held.
+static void beginMessage(Agent::Impl* impl, Transcript::Role role, u32 toolCallID = 0) {
+    TranscriptEvent event;
+    event.operation = TranscriptEvent::BeginMessage;
+    event.role = role;
+    event.toolCallID = toolCallID;
+    addEvent(impl, std::move(event));
+}
+
+// Emits an AppendText event that appends to the last message in the current turn.
+// Must be called with toolCtx.mutex held.
+static void appendText(Agent::Impl* impl, String&& text) {
+    TranscriptEvent event;
+    event.operation = TranscriptEvent::AppendText;
+    event.text = std::move(text);
+    addEvent(impl, std::move(event));
+}
+
+// Emits a BeginMessage (if the role changed since the last message begun in this turn)
+// followed by an AppendText. Used by the inference thread to stream reasoning/content.
+// Must be called with toolCtx.mutex held.
+static void emitText(Agent::Impl* impl, Transcript::Role role, StringView text) {
+    if (impl->currentRole != role) {
+        beginMessage(impl, role);
+        impl->currentRole = role;
+    }
+    appendText(impl, String{text});
+}
+
+// Counts the ToolCall-role messages in the current turn, up to and including the one
+// pointed to by toolCall (1-based). Returns 0 if toolCall is not found.
+// Must be called with toolCtx.mutex held.
+static u32 toolCallIDForMessage(Agent::Impl* impl, Transcript::Message* toolCall) {
+    PLY_ASSERT(!impl->internalTranscript->turns.isEmpty());
+    const Transcript::Turn& turn = impl->internalTranscript->turns.back();
+    u32 id = 0;
+    for (const Owned<Transcript::Message>& msg : turn.messages) {
+        if (msg->role == Transcript::Role::ToolCall)
+            id++;
+        if (msg.get() == toolCall)
+            return id;
+    }
+    return 0;
+}
+
+//  ▄▄▄▄▄                                      ▄▄
+//  ██  ██  ▄▄▄▄   ▄▄▄▄▄ ▄▄  ▄▄  ▄▄▄▄   ▄▄▄▄  ▄██▄▄
+//  ██▀▀█▄ ██▄▄██ ██  ██ ██  ██ ██▄▄██ ▀█▄▄▄   ██
+//  ██  ██ ▀█▄▄▄  ▀█▄▄██ ▀█▄▄██ ▀█▄▄▄   ▄▄▄█▀  ▀█▄▄
+//                    ██
+
+// Helper function to create the message body that goes in the POST message associated with an API call.
+// This is basically a serialized JSON object containing certain properties in an expected format.
+
+// Parses a ToolCall message's text property, which encodes the tool name immediately
+// followed by a JSON object of arguments (e.g. read{"path":"sample.txt"}). name is set
+// to the substring before the first '{'. argsOut receives the parsed JSON object.
+// Returns false if no JSON object could be parsed (name still holds the prefix).
+static bool parseToolCallText(StringView text, StringView& name, json::Parser::Result& argsOut) {
+    s32 brace = text.find('{');
+    if (brace < 0) {
+        name = text;
+        return false;
+    }
+    name = text.left(brace);
+    json::Parser parser;
+    parser.setErrorCallback([](const json::ParseError&) {});
+    parser.setGreedy(false);
+    argsOut = parser.parse({}, text.substr(brace));
+    return argsOut.root.isObject();
+}
+
+String makeRequestBody(Agent::Impl* impl) {
+    json::Node root{json::Node::Object{}};
+
+    if (impl->props.endPoint->protocol == Protocol::Completions) {
+        //-------------------------------------------
+        // OpenAI Chat Completions API
+        //-------------------------------------------
+
+        // model
+        root.set("model", json::Node::Text{impl->props.endPoint->model});
+
+        // tool definitions
+        if (impl->props.toolSet->handlers.items()) {
+            json::Node jTools{json::Node::Array{}};
+            for (const Owned<ToolSet::Handler>& tool : impl->props.toolSet->handlers) {
+                json::Node& jTool = jTools.array().append(json::Node::Object{});
+                jTool.set("type", json::Node::Text{"function"});
+                json::Node jFunc{json::Node::Object{}};
+                jFunc.set("name", json::Node::Text{tool->name});
+                jFunc.set("description", json::Node::Text{tool->description});
+
+                // tool parameters
+                json::Node jParams{json::Node::Object{}};
+                jParams.set("type", json::Node::Text{"object"});
+                json::Node jRequired{json::Node::Array{}};
+                json::Node jProps{json::Node::Object{}};
+                for (const ToolSet::Parameter& param : tool->parameters) {
+                    json::Node jParam{json::Node::Object{}};
+                    jParam.set("description", json::Node::Text{param.description});
+                    jParam.set("type", json::Node::Text{param.type});
+                    jProps.set(param.name, std::move(jParam));
+                    if (param.required) {
+                        jRequired.array().append(json::Node::Text{param.name});
+                    }
+                }
+                jParams.set("required", std::move(jRequired));
+                jParams.set("properties", std::move(jProps));
+                jFunc.set("parameters", std::move(jParams));
+                jFunc.set("strict", json::Node::Bool{false});
+                jTool.set("function", std::move(jFunc));
+            }
+            root.set("tools", std::move(jTools));
+        }
+
+        // messages
+        json::Node jMessages{json::Node::Array{}};
+        if (impl->props.toolSet->systemMessage) {
+            json::Node jMsg{json::Node::Object{}};
+            jMsg.set("role", json::Node::Text{"developer"});
+            jMsg.set("content", json::Node::Text{impl->props.toolSet->systemMessage});
+            jMessages.array().append(jMsg);
+        }
+
+        // Flatten chain of parents into an array.
+        Array<const Transcript*> flattened;
+        for (const Transcript* transcript = impl->internalTranscript; transcript; transcript = transcript->parent) {
+            flattened.append(transcript);
+        }
+
+        // Iterate over flattened array from root to leaf.
+        for (s32 i = flattened.numItems() - 1; i >= 0; i--) {
+            for (const Transcript::Turn& turn : flattened[i]->turns) {
+                // Conversational messages and tool requests.
+                const Transcript::Message* prevMsg = nullptr;
+                u32 toolCallID = 0; // 1-based, sequential within this turn
+                for (const Transcript::Message* msg : turn.messages) {
+                    if (msg->role == Transcript::Role::User) {
+                        // User message
+                        json::Node jMsg{json::Node::Object{}};
+                        jMsg.set("role", json::Node::Text{"user"});
+                        json::Node jContent{json::Node::Object{}};
+                        jContent.set("type", json::Node::Text{"text"});
+                        jContent.set("text", json::Node::Text{msg->text});
+                        json::Node jArray{json::Node::Array{}};
+                        jArray.array().append(std::move(jContent));
+                        jMsg.set("content", std::move(jArray));
+                        jMessages.array().append(std::move(jMsg));
+                        // A user message never participates in assistant-side grouping.
+                        prevMsg = nullptr;
+                    } else if (msg->role == Transcript::Role::AgentThinking) {
+                        // Reasoning message
+                        json::Node jMsg{json::Node::Object{}};
+                        jMsg.set("role", json::Node::Text{"assistant"});
+                        jMsg.set("reasoning", json::Node::Text{msg->text});
+                        jMessages.array().append(std::move(jMsg));
+                        prevMsg = msg;
+                    } else if (msg->role == Transcript::Role::Agent) {
+                        // Content message
+                        if (prevMsg && prevMsg->role == Transcript::Role::AgentThinking) {
+                            // Merge with previous reasoning message
+                            jMessages.array().back().set("content", json::Node::Text{msg->text});
+                        } else {
+                            json::Node jMsg{json::Node::Object{}};
+                            jMsg.set("role", json::Node::Text{"assistant"});
+                            jMsg.set("content", json::Node::Text{msg->text});
+                            jMessages.array().append(std::move(jMsg));
+                        }
+                        prevMsg = msg;
+                    } else if (msg->role == Transcript::Role::ToolCall) {
+                        // Tool call. Parse the name and arguments out of the message text.
+                        toolCallID++;
+                        StringView tcName;
+                        json::Parser::Result parsedArgs;
+                        parseToolCallText(msg->text, tcName, parsedArgs);
+
+                        // Ensure we have a "tool_calls" JSON array in which to put the object.
+                        if (!prevMsg) {
+                            json::Node jMsg{json::Node::Object{}};
+                            jMsg.set("role", json::Node::Text{"assistant"});
+                            jMsg.set("tool_calls", json::Node::Array{});
+                            jMessages.array().append(std::move(jMsg));
+                        } else if (prevMsg->role != Transcript::Role::ToolCall) {
+                            jMessages.array().back().set("tool_calls", json::Node::Array{});
+                        }
+                        json::Node& jToolCalls = jMessages.array().back().get("tool_calls");
+                        PLY_ASSERT(jToolCalls.isArray());
+
+                        // Build the tool call JSON object.
+                        json::Node jToolCall{json::Node::Object{}};
+                        jToolCall.set("id", json::Node::Text{String::format("{}", toolCallID)});
+                        jToolCall.set("type", json::Node::Text{"function"});
+                        json::Node jFunction{json::Node::Object{}};
+                        jFunction.set("name", json::Node::Text{tcName});
+
+                        // Stringify the arguments for Ollama Cloud).
+                        json::Node jArgs{json::Node::Object{}};
+                        if (parsedArgs.root.isObject()) {
+                            for (const auto& item : parsedArgs.root.object().items) {
+                                jArgs.set(item.key, json::Node{item.value});
+                            }
+                        }
+                        json::WriteOptions options;
+                        options.includeWhitespace = false;
+                        String stringified = json::toString(jArgs, options);
+                        jFunction.set("arguments", json::Node::Text{stringified});
+
+                        // Add tool call to JSON array.
+                        jToolCall.set("function", std::move(jFunction));
+                        jToolCalls.array().append(std::move(jToolCall));
+                        prevMsg = msg;
+                    }
+                }
+
+                // Tool responses
+                u32 responseToolCallID = 0; // 1-based, sequential within this turn
+                for (const Transcript::Message* msg : turn.messages) {
+                    if (msg->role == Transcript::Role::ToolCall) {
+                        responseToolCallID++;
+                        json::Node jMsg{json::Node::Object{}};
+                        jMsg.set("role", json::Node::Text{"tool"});
+                        jMsg.set("content", json::Node::Text{msg->toolResponse});
+                        jMsg.set("tool_call_id", json::Node::Text{String::format("{}", responseToolCallID)});
+                        jMessages.array().append(std::move(jMsg));
+                    }
+                }
+            }
+        }
+        root.set("messages", std::move(jMessages));
+
+        // stream
+        root.set("stream", json::Node::Bool{true});
+
+        // store
+        root.set("store", json::Node::Bool{false});
+
+        // reasoning_effort
+        root.set("reasoning_effort", json::Node::Text{"medium"});
+
+    } else if (impl->props.endPoint->protocol == Protocol::Responses) {
+#if 0
+        //-------------------------------------------
+        // OpenAI Responses API
+        //-------------------------------------------
+
+        // model
+        root.set("model", json::Node::Text{session->endPoint.model});
+
+        // tool definitions
+        if (session->toolDefs) {
+            json::Node jTools{json::Node::Array{}};
+            for (const ToolDefinition& tool : session->toolDefs) {
+                json::Node& jTool = jTools.array().append(json::Node::Object{});
+                jTool.set("type", json::Node::Text{"function"});
+                jTool.set("name", json::Node::Text{tool.name});
+                jTool.set("description", json::Node::Text{tool.description});
+
+                // tool parameters
+                json::Node jParams{json::Node::Object{}};
+                jParams.set("type", json::Node::Text{"object"});
+                json::Node jRequired{json::Node::Array{}};
+                json::Node jProps{json::Node::Object{}};
+                for (const ToolDefinition::Parameter& param : tool.parameters) {
+                    json::Node jParam{json::Node::Object{}};
+                    jParam.set("description", json::Node::Text{param.description});
+                    jParam.set("type", json::Node::Text{param.type});
+                    jProps.set(param.name, std::move(jParam));
+                    if (param.required) {
+                        jRequired.array().append(json::Node::Text{param.name});
+                    }
+                }
+                jParams.set("required", std::move(jRequired));
+                jParams.set("properties", std::move(jProps));
+                jTool.set("parameters", std::move(jParams));
+                jTool.set("strict", json::Node::Bool{false});
+            }
+            root.set("tools", std::move(jTools));
+        }
+
+        // messages
+        json::Node jInput{json::Node::Array{}};
+        if (session->systemMessage) {
+            json::Node jMsg{json::Node::Object{}};
+            jMsg.set("role", json::Node::Text{"developer"});
+            jMsg.set("content", json::Node::Text{session->systemMessage});
+            jInput.array().append(jMsg);
+        }
+        for (const Message* msg : session->messages) {
+            json::Node jMsg{json::Node::Object{}};
+            if (const Message::User* user = msg->role.as<Message::User>()) {
+                jMsg.set("role", json::Node::Text{"user"});
+                json::Node jContent{json::Node::Object{}};
+                jContent.set("type", json::Node::Text{"input_text"});
+                jContent.set("text", json::Node::Text{user->content});
+                json::Node jArray{json::Node::Array{}};
+                jArray.array().append(std::move(jContent));
+                jMsg.set("content", std::move(jArray));
+            } else if (const Message::Assistant* assistant = msg->role.as<Message::Assistant>()) {
+                jMsg.set("role", json::Node::Text{"assistant"});
+                if (assistant->content) {
+                    json::Node jContent{json::Node::Object{}};
+                    jContent.set("type", json::Node::Text{"output_text"});
+                    jContent.set("text", json::Node::Text{assistant->content});
+                    json::Node jArray{json::Node::Array{}};
+                    jArray.array().append(std::move(jContent));
+                    jMsg.set("content", std::move(jArray));
+                }
+                if (assistant->reasoning) {
+                    jMsg.set("reasoning", json::Node::Text{assistant->reasoning});
+                }
+            } else {
+                PLY_ASSERT(0);
+            }
+            jInput.array().append(std::move(jMsg));
+        }
+        // add tool responses
+        for (const Message* msg : session->messages) {
+            if (auto* toolCall = msg->role.as<Transcript::ToolCall>()) {
+                json::Node jMsg{json::Node::Object{}};
+                jMsg.set("role", json::Node::Text{"tool"});
+                jMsg.set("content", json::Node::Text{toolCall->response});
+                jMsg.set("tool_call_id", json::Node::Text{toolCall->id});
+                jInput.array().append(std::move(jMsg));
+            }
+        }
+        root.set("input", std::move(jInput));
+
+        // stream
+        root.set("stream", json::Node::Bool{true});
+
+        // store
+        root.set("store", json::Node::Bool{false});
+
+        // reasoning
+        {
+            json::Node jReasoning{json::Node::Object{}};
+            jReasoning.set("effort", json::Node::Text{"medium"});
+            jReasoning.set("summary", json::Node::Text{"auto"});
+            root.set("reasoning", std::move(jReasoning));
+        }
+#endif
+
+    } else {
+        // Invalid protocol
+        PLY_ASSERT(0);
+    }
+
+    // Convert to string
+    json::WriteOptions options;
+    options.includeWhitespace = false;
+    return json::toString(root, options);
+}
+
+//  ▄▄▄▄▄
+//  ██  ██  ▄▄▄▄   ▄▄▄▄  ▄▄▄▄▄   ▄▄▄▄  ▄▄▄▄▄   ▄▄▄▄   ▄▄▄▄
+//  ██▀▀█▄ ██▄▄██ ▀█▄▄▄  ██  ██ ██  ██ ██  ██ ▀█▄▄▄  ██▄▄██
+//  ██  ██ ▀█▄▄▄   ▄▄▄█▀ ██▄▄█▀ ▀█▄▄█▀ ██  ██  ▄▄▄█▀ ▀█▄▄▄
+//                       ██
+
+void receiveLine(Agent::Impl* impl, StringView line) {
+    if (impl->props.endPoint->protocol == Protocol::Completions) {
+        //-----------------------------------------------------
+        // Handle Completions API response line
+        //-----------------------------------------------------
+
+        if (line.startsWith("data: ")) {
+            line = line.substr(6);
+        }
+
+        // Parse json message
+        json::Parser parser;
+        parser.setErrorCallback([](const json::ParseError&) {});
+        parser.setGreedy(false);
+        json::Parser::Result result = parser.parse({}, line);
+
+        const json::Node& jChoices = result.root.get("choices");
+        for (const json::Node& jChoice : jChoices.arrayView()) {
+            const json::Node& jDelta = jChoice.get("delta");
+            if (!jDelta.isValid())
+                continue;
+            if (jDelta.get("role").text() != "assistant")
+                continue;
+            const json::Node& jReasoning = jDelta.get("reasoning");
+            if (jReasoning.text()) {
+                LockGuard<Mutex> guard{impl->toolCtx.mutex};
+                if (impl->toolCtx.canceled)
+                    return;
+                emitText(impl, Transcript::Role::AgentThinking, jReasoning.text());
+            }
+            const json::Node& jContent = jDelta.get("content");
+            if (jContent.text()) {
+                LockGuard<Mutex> guard{impl->toolCtx.mutex};
+                if (impl->toolCtx.canceled)
+                    return;
+                emitText(impl, Transcript::Role::Agent, jContent.text());
+            }
+            // "tool_calls":[{"id":"call_ta2rz3e6","index":0,"type":"function",
+            // "function":{"name":"read","arguments":"{\"path\":\"sample.txt\"}"}}]},"finish_reason":null}]}
+            const json::Node& jToolCalls = jDelta.get("tool_calls");
+            for (const json::Node& jCall : jToolCalls.arrayView()) {
+                // Hold the transcript mutex for the whole mutation + event emission
+                // so it serializes with the tool thread's event buffering calls, and so we
+                // don't touch the transcript after the client destroyed the Agent.
+                LockGuard<Mutex> guard{impl->toolCtx.mutex};
+                if (impl->toolCtx.canceled)
+                    return;
+
+                const json::Node& jFunc = jCall.get("function");
+                String tcName = jFunc.get("name").text();
+
+                // Handle arguments.
+                // When using the OpenAI Chat Completions API, it's a JSON string.
+                // When using Ollama's /api/chat endpoint, it's a JSON object.
+                const json::Node& jArgs = jFunc.get("arguments");
+                json::Node jArgsObj{json::Node::Object{}};
+                if (jArgs.isObject()) {
+                    for (const auto& item : jArgs.object().items) {
+                        jArgsObj.set(item.key, json::Node{item.value});
+                    }
+                } else if (jArgs.isText()) {
+                    json::Parser argParser;
+                    argParser.setErrorCallback([](const json::ParseError&) {});
+                    argParser.setGreedy(false);
+                    json::Parser::Result parsedArgs = argParser.parse({}, jArgs.text());
+                    if (parsedArgs.root.isObject()) {
+                        for (const auto& item : parsedArgs.root.object().items) {
+                            jArgsObj.set(item.key, json::Node{item.value});
+                        }
+                    }
+                }
+
+                // Stringify the arguments so the tool call's text encodes
+                // `<name><json-object>` (e.g. read{"path":"sample.txt"}).
+                json::WriteOptions writeOpts;
+                writeOpts.includeWhitespace = false;
+                String stringified = json::toString(jArgsObj, writeOpts);
+
+                // Assign a sequential 1-based toolCallID within the current turn.
+                u32 toolCallID = 0;
+                for (const Owned<Transcript::Message>& msg : impl->internalTranscript->turns.back().messages) {
+                    if (msg->role == Transcript::Role::ToolCall)
+                        toolCallID++;
+                }
+                toolCallID++;
+
+                // Emit BeginMessage + AppendText so the tool call (name + arguments)
+                // is recorded in both the internal transcript and the client's copy.
+                beginMessage(impl, Transcript::Role::ToolCall, toolCallID);
+                appendText(impl, String::format("{}{}", tcName, stringified));
+
+                // Grab a pointer to the newly created tool call message so the tool
+                // thread can mutate its toolResponse/toolEnded directly.
+                Transcript::Message* toolCallMsg = impl->internalTranscript->turns.back().messages.back().get();
+                impl->currentRole = Transcript::Role::ToolCall;
+
+                // Hand this tool call off to the tool thread.
+                impl->anyToolCallsThisTurn = true;
+                impl->pendingToolCalls.append(toolCallMsg);
+                impl->toolCondVar.wakeAll();
+            }
+        }
+
+    } else if (impl->props.endPoint->protocol == Protocol::Responses) {
+        // Responses API
+#if 0
+        if (line.startsWith("event: ")) {
+            impl->eventType = line.substr(7).trim();
+        } else if (line.startsWith("data: ")) {
+            // Parse json message
+            json::Parser parser;
+            parser.setErrorCallback([](const json::ParseError&) {});
+            parser.setGreedy(false);
+            json::Parser::Result result = parser.parse({}, line.substr(6).trim());
+
+            if (result.root.isObject()) {
+                if (impl->eventType == "response.output_item.added") {
+                    // response.output_item.added
+
+                } else if (impl->eventType == "response.content_part.added") {
+                    // response.content_part.added
+
+                } else if (impl->eventType == "response.reasoning_summary_part.added") {
+                    // response.reasoning_summary_part.added
+
+                } else if (impl->eventType == "response.reasoning_summary_text.delta") {
+                    // response.reasoning_summary_text.delta
+
+                } else if (impl->eventType == "response.output_text.delta") {
+                    // response.output_text.delta
+                    const json::Node& delta = result.root.get("delta");
+                    callback(Verb::Speak, delta.text());
+
+                } else if (impl->eventType == "response.completed") {
+                    // response.complete
+                    impl->gotDone = true;
+                }
+            }
+        }
+#endif
+    }
+}
+
+//  ▄▄▄▄          ▄▄▄                                              ▄▄▄▄▄▄ ▄▄                              ▄▄
+//   ██  ▄▄▄▄▄   ██    ▄▄▄▄  ▄▄▄▄▄   ▄▄▄▄  ▄▄▄▄▄   ▄▄▄▄  ▄▄▄▄        ██   ██▄▄▄  ▄▄▄▄▄   ▄▄▄▄   ▄▄▄▄   ▄▄▄██
+//   ██  ██  ██ ▀██▀▀ ██▄▄██ ██  ▀▀ ██▄▄██ ██  ██ ██    ██▄▄██       ██   ██  ██ ██  ▀▀ ██▄▄██  ▄▄▄██ ██  ██
+//  ▄██▄ ██  ██  ██   ▀█▄▄▄  ██     ▀█▄▄▄  ██  ██ ▀█▄▄▄ ▀█▄▄▄        ██   ██  ██ ██     ▀█▄▄▄  ▀█▄▄██ ▀█▄▄██
+//
+
+// Helper function to sanitize a URL for use in a filename
+static String sanitizeUrlForFilename(StringView url) {
+    MemStream result;
+    for (char c : url) {
+        // Only keep alphanumeric characters, dash, underscore, and dot
+        if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_' ||
+            c == '.') {
+            result.write(c);
+        } else if (c == '/') {
+            result.write('-');
+        }
+    }
+    return result.moveToString();
+}
+
+// Delivers an error event via the pendingEvents buffer.
+// Must be called with toolCtx.mutex held. Suppresses the event if the agent was
+// canceled, so bufferEvent is never called once cancellation has been requested.
+void onError(Agent::Impl* impl, StringView message) {
+    if (impl->toolCtx.canceled)
+        return;
+    beginMessage(impl, Transcript::Role::Error);
+    appendText(impl, String{message});
+    impl->currentRole = Transcript::Role::Error;
+}
+
+// Performs an inference request and converts the response data to a queue of ResponseEvents.
+// This is the bulk of the work performed by the inference thread (Agent::Impl::inferenceThread).
+// The calling thread receives response data by periodically calling receiveResponseEvents.
+void performInferenceRequest(Agent::Impl* impl) {
+    impl->anyToolCallsThisTurn = false;
+    // Reset the per-turn role tracking so the first streamed message begins a new
+    // Message block.
+    impl->currentRole = Transcript::Role::None;
+
+    if (impl->props.enableHttpLog) {
+        // Generate filename based on current date/time and URL
+        DateTime dateTime = convertToDateTime(getUnixTimestamp());
+        String timestampStr = String::fromDateTime("%Y-%m-%d_%H-%M-%S", dateTime);
+        String sanitizedUrl = sanitizeUrlForFilename(impl->props.endPoint->url);
+        String logFilename = String::format("llm-log_{}_{}.txt", timestampStr, sanitizedUrl);
+        impl->httpLogFile = Filesystem::openBinaryForWrite(logFilename);
+    }
+    PLY_ON_SCOPE_EXIT({ impl->httpLogFile.close(); });
+
+    // Make request body
+    String body = makeRequestBody(impl);
+
+    // Apply API key. It's sent as an Authorization header alongside Content-Type.
+    Map<String, String> headers;
+    *headers.insert("Content-Type").value = "application/json";
+    {
+        String apiKey = impl->props.endPoint->getAPIKey();
+        PLY_ASSERT(apiKey);
+        if (!apiKey) {
+            LockGuard<Mutex> guard{impl->toolCtx.mutex};
+            OutputDebugStringA("====== ERROR\n");
+            onError(impl, "no api key");
+            return;
+        }
+        *headers.insert("Authorization").value = String::format("Bearer {}", apiKey);
+    }
+
+    // State accumulated across curl callbacks (the callback runs on this same inference thread,
+    // invoked from within waitForHTTPResponse()).
+    struct RequestState {
+        bool gotError = false;
+        String errorMessage;
+    } state;
+
+    // The callback splits the incoming response stream into JSONL lines and dispatches each one
+    // to receiveLine(). It is passed to waitForHTTPResponse() on each call.
+    Functor<void(StringView, bool)> callback = [impl, &state](StringView data, bool isError) {
+        if (isError) {
+            // HTTPClient reports libcurl/HTTP errors by invoking the callback with
+            // isError=true and the error message in `data`.
+            state.gotError = true;
+            state.errorMessage = data;
+            return;
+        }
+
+        OutputDebugStringA("====== CURL DATA\n");
+
+        // Write raw HTTP response to log file
+        if (impl->httpLogFile.isOpen()) {
+            impl->httpLogFile.write(data);
+        }
+
+        // Split incoming data into lines.
+        StringView remaining = data;
+        while (remaining) {
+            s32 newLinePos = remaining.find('\n');
+            if (newLinePos >= 0) {
+                // Reached the end of a line.
+                impl->lineInProgress.write(remaining.left(newLinePos + 1));
+                String completedLine = impl->lineInProgress.moveToString();
+                receiveLine(impl, completedLine);
+                impl->lineInProgress = {};
+                remaining = remaining.substr(newLinePos + 1);
+            } else {
+                // Add incomplete line to lineInProgress.
+                impl->lineInProgress.write(remaining);
+                break;
+            }
+        }
+    };
+
+    // Send the request via HTTPClient (libcurl multi interface).
+    {
+        HTTPClientArgs args;
+        args.url = impl->props.endPoint->url;
+        args.headers = std::move(headers);
+        args.body = std::move(body);
+        args.useBundledCaCert = true; // Verify TLS against the shipped cacert.pem.
+        sendHTTPRequest(impl->httpClient, std::move(args));
+    }
+
+    // Drive the multi handle until the request completes or the client cancels.
+    // waitForHTTPResponse() performs curl_multi_perform/poll and returns false once the
+    // request has finished.
+    OutputDebugStringA("====== START CURL REQ\n");
+    for (;;) {
+        // Check for cancellation between iterations. The client thread signals cancel
+        // by setting `canceled` and calling wakeUpHTTPClient(), which unblocks the
+        // curl_multi_poll inside waitForHTTPResponse() so this loop observes the change promptly.
+        {
+            LockGuard<Mutex> guard{impl->toolCtx.mutex};
+            if (impl->toolCtx.canceled) {
+                cancelHTTPRequest(impl->httpClient);
+                break;
+            }
+        }
+        if (!isHTTPRequestInProgress(impl->httpClient))
+            break;
+        if (!waitForHTTPResponse(impl->httpClient, callback))
+            break;
+    }
+
+    // Report any error that occurred during the request.
+    if (state.gotError) {
+        LockGuard<Mutex> guard{impl->toolCtx.mutex};
+        OutputDebugStringA("====== ERROR\n");
+        onError(impl, state.errorMessage);
+    }
+
+    // Wait for the tool thread to finish all currently-queued tools. Also stop
+    // waiting if the client canceled; the runAgentThread loop will observe
+    // `canceled` afterwards and exit without appending another turn.
+    {
+        OutputDebugStringA("====== WAIT FOR TOOLS\n");
+        LockGuard<Mutex> guard{impl->toolCtx.mutex};
+        while (!impl->pendingToolCalls.isEmpty()) {
+            if (impl->toolCtx.canceled)
+                break;
+            impl->inferenceCondVar.wait(guard);
+        }
+    }
+    OutputDebugStringA("====== END INFERENCE REQUEST\n");
+}
+
+void runAgentThread(Agent::Impl* impl) {
+    // Iterate making inference requests until the main thread requests exit
+    // or there are no more tool responses to send back.
+    for (;;) {
+        // Perform one inference request.
+        performInferenceRequest(impl);
+
+        {
+            // Consume tool response events and check whether the loop should continue running.
+            LockGuard<Mutex> guard{impl->toolCtx.mutex};
+
+            // Has the loop ended? Either there were no tool calls this turn, or the
+            // client destroyed the Agent (setting `canceled`).
+            if (!impl->anyToolCallsThisTurn || impl->toolCtx.canceled)
+                break; // Yes
+
+            // No; append a new turn for the next inference request. Emit an EndTurn
+            // event so the client appends a matching turn to its own copy.
+            TranscriptEvent endTurn;
+            endTurn.operation = TranscriptEvent::EndTurn;
+            addEvent(impl, std::move(endTurn));
+        }
+    }
+
+    // The inference thread is exiting: set `inferenceEnded` (protected by toolCtx.mutex)
+    // and wake the tool thread so it observes it, drains any remaining tool queue, sets
+    // toolEnded and wakes the client condvars (including the completion condvar). We do
+    // NOT signal the client condvars here: inferenceEnded alone does not make the agent
+    // "stopped" (toolEnded is still false), so waking waitForEvents/waitForCompletion now
+    // would only be a spurious wakeup. They are released by the tool thread instead.
+    {
+        LockGuard<Mutex> guard{impl->toolCtx.mutex};
+        impl->inferenceEnded = true;
+        impl->toolCondVar.wakeAll();
+    }
+
+    // The inference thread's Reference<Agent::Impl> (captured by the thread functor)
+    // is released when this function returns and the functor is destroyed.
+    OutputDebugStringA("====== EXIT INFERENCE THREAD\n");
+    impl->decRefCount();
+}
+
+//  ▄▄▄▄▄▄               ▄▄▄      ▄▄▄▄▄▄ ▄▄                              ▄▄
+//    ██    ▄▄▄▄   ▄▄▄▄   ██        ██   ██▄▄▄  ▄▄▄▄▄   ▄▄▄▄   ▄▄▄▄   ▄▄▄██
+//    ██   ██  ██ ██  ██  ██        ██   ██  ██ ██  ▀▀ ██▄▄██  ▄▄▄██ ██  ██
+//    ██   ▀█▄▄█▀ ▀█▄▄█▀ ▄██▄       ██   ██  ██ ██     ▀█▄▄▄  ▀█▄▄██ ▀█▄▄██
+//
+
+void runToolThread(Agent::Impl* impl) {
+    OutputDebugStringA("====== START TOOLS\n");
+    bool popHeadItem = false;
+
+    for (;;) {
+        // Stop if the client destroyed the Agent. `canceled` is protected
+        // by toolCtx.mutex.
+        {
+            LockGuard<Mutex> guard{impl->toolCtx.mutex};
+            if (impl->toolCtx.canceled) {
+                impl->toolEnded = true;
+                // Release any client thread waiting for the agent to stop.
+                impl->clientCondVar.wakeAll();
+                impl->completionCondVar.wakeAll();
+                break;
+            }
+        }
+
+        Transcript::Message* toolCall = nullptr;
+        {
+            // Critical section: fetch the next tool call to run.
+            LockGuard<Mutex> guard{impl->toolCtx.mutex};
+            if (popHeadItem) {
+                // Pop the previously completed tool call from the queue.
+                impl->pendingToolCalls.erase(0);
+                popHeadItem = false;
+            }
+            if (impl->pendingToolCalls.isEmpty()) {
+                if (impl->inferenceEnded) {
+                    // No more work will ever arrive.
+                    impl->toolEnded = true;
+                    // Release any client thread waiting for the agent to stop.
+                    impl->clientCondVar.wakeAll();
+                    impl->completionCondVar.wakeAll();
+                    break;
+                }
+                // No requests available. Notify the inference thread (it may be
+                // waiting for the queue to drain) and wait for work, cancellation,
+                // or for inference to end. After waking we loop back to re-check
+                // `canceled` at the top of the outer loop.
+                impl->inferenceCondVar.wakeAll();
+                impl->toolCondVar.wait(guard);
+                continue;
+            }
+            toolCall = impl->pendingToolCalls[0];
+        }
+
+        // Re-parse the tool call's text property to recover the tool name and its
+        // JSON arguments, then look up the handler by name.
+        StringView tcName;
+        json::Parser::Result parsedArgs;
+        parseToolCallText(toolCall->text, tcName, parsedArgs);
+        const json::Node& arguments = parsedArgs.root;
+
+        // Handle this tool call (no locks held).
+        OutputDebugStringA("====== RUN TOOL\n");
+        // Look up the handler for this tool call by name.
+        const Owned<ToolSet::Handler>* found = impl->props.toolSet->handlers.find(tcName);
+        // FIXME: Improve error handling
+        PLY_ASSERT(found);
+        const ToolSet::Handler* toolDef = found->get();
+        {
+            // Set the permissions for this tool call.
+            PLY_SET_IN_SCOPE(impl->toolCtx.permissions, toolDef->permissions);
+            toolDef->handler(&impl->toolCtx, toolCall, arguments);
+        }
+
+        // Push events to update the client thread's transcript, unless we were canceled.
+        // The internal transcript was already mutated directly by the tool handler
+        // (it set toolResponse/toolEnded on the Message), so these events are buffered
+        // for the client only via bufferEvent.
+        {
+            LockGuard<Mutex> guard{impl->toolCtx.mutex};
+            if (!impl->toolCtx.canceled) {
+                u32 toolCallID = toolCallIDForMessage(impl, toolCall);
+                TranscriptEvent appendResp;
+                appendResp.operation = TranscriptEvent::AppendToolResponse;
+                appendResp.toolCallID = toolCallID;
+                appendResp.text = toolCall->toolResponse;
+                bufferEvent(impl, std::move(appendResp));
+
+                TranscriptEvent endResp;
+                endResp.operation = TranscriptEvent::EndToolResponse;
+                endResp.toolCallID = toolCallID;
+                bufferEvent(impl, std::move(endResp));
+            }
+        }
+
+        popHeadItem = true;
+    }
+
+    OutputDebugStringA("====== EXIT TOOL THREAD\n");
+    impl->decRefCount();
+}
+
+//   ▄▄▄▄                        ▄▄
+//  ██  ██  ▄▄▄▄▄  ▄▄▄▄  ▄▄▄▄▄  ▄██▄▄
+//  ██▀▀██ ██  ██ ██▄▄██ ██  ██  ██
+//  ██  ██ ▀█▄▄██ ▀█▄▄▄  ██  ██  ▀█▄▄
+//          ▄▄▄█▀
+
+Agent::Agent(Properties&& props) {
+    PLY_ASSERT(props.endPoint);
+    PLY_ASSERT(props.toolSet);
+    PLY_ASSERT(props.originalTranscript);
+    PLY_ASSERT(!props.originalTranscript->turns.isEmpty());
+
+    // Initialize new Agent.
+    this->impl = Heap::create<Agent::Impl>();
+    Agent::Impl* impl = this->impl;
+    impl->props = std::move(props);
+    this->props = &impl->props; // Expose the Properties owned by Impl to the public Agent.
+    impl->toolCtx.agentImpl = impl;
+    // The ToolSet is owned by the caller and outlives the Agent.
+    impl->toolCtx.currentDirectory = impl->props.toolSet->currentDirectory;
+    // The HTTPClient lives for the whole conversation and is reused across turns.
+    impl->httpClient = createHTTPClient();
+
+    // Make a copy of the transcript leaf, but link to the same parent.
+    impl->internalTranscript = Heap::create<Transcript>(*props.originalTranscript);
+    // Create the TranscriptUpdater that applies events to the internal transcript.
+    impl->updater = createTranscriptUpdater(impl->internalTranscript);
+
+    // Spawn threads. Each thread captures a raw Agent::Impl* and is responsible for
+    // dropping its own reference once it exits, so Agent::Impl stays alive until both
+    // threads have finished.
+    impl->incRefCount();
+    impl->incRefCount();
+    impl->toolThread.run([impl]() { runToolThread(impl); });
+    impl->inferenceThread.run([impl]() { runAgentThread(impl); });
+}
+
+Agent::~Agent() {
+    // Request cancellation, then return without joining the background threads. They
+    // hold their own references to Agent::Impl, so it stays alive until both exit.
+
+    this->cancel();
+}
+
+bool Agent::isWorking() {
+    Agent::Impl* impl = this->impl;
+    LockGuard<Mutex> guard{impl->toolCtx.mutex};
+    // The agent is still "working" while there are unconsumed buffered events, or
+    // while the background threads are still active and haven't been canceled.
+    if (!impl->pendingEvents.isEmpty())
+        return true;
+    if (impl->toolCtx.canceled)
+        return false;
+    if (impl->inferenceEnded && impl->toolEnded)
+        return false;
+    return true;
+}
+
+void Agent::cancel() {
+    Agent::Impl* impl = this->impl;
+    if (!impl)
+        return;
+    LockGuard<Mutex> guard{impl->toolCtx.mutex};
+    if (!impl->toolCtx.canceled) {
+        impl->toolCtx.canceled = true;
+        // Wake both background threads so they observe `canceled` promptly. The tool
+        // thread may be idle on toolCondVar; the inference thread may be blocked in its
+        // "wait for tools" loop on inferenceCondVar, or blocked inside
+        // curl_multi_poll while driving a request. wakeUp() unblocks the latter so
+        // the inference loop observes `canceled` and tears down the request.
+        impl->toolCondVar.wakeAll();
+        impl->inferenceCondVar.wakeAll();
+        // Release any client thread waiting for the agent to stop.
+        impl->clientCondVar.wakeAll();
+        impl->completionCondVar.wakeAll();
+        wakeUpHTTPClient(impl->httpClient);
+    }
+}
+
+Array<TranscriptEvent> Agent::pollForEvents() {
+    Agent::Impl* impl = this->impl;
+    LockGuard<Mutex> guard{impl->toolCtx.mutex};
+    return std::move(impl->pendingEvents);
+}
+
+Array<TranscriptEvent> Agent::waitForEvents(s32 maxTimeInMillis) {
+    Agent::Impl* impl = this->impl;
+    LockGuard<Mutex> guard{impl->toolCtx.mutex};
+    if (maxTimeInMillis == 0) {
+        // Non-blocking: return whatever is buffered right now without waiting.
+        return std::move(impl->pendingEvents);
+    }
+    u64 startTicks = 0;
+    double ticksPerMs = 0.0;
+    if (maxTimeInMillis > 0) {
+        startTicks = getCpuTicks();
+        ticksPerMs = getCpuTicksPerSecond() / 1000.0;
+    }
+    for (;;) {
+        // Return as soon as there are any events available.
+        if (!impl->pendingEvents.isEmpty())
+            return std::move(impl->pendingEvents);
+        // Return (with an empty array) once the agent has stopped working: no more
+        // events will ever be produced.
+        if (impl->toolCtx.canceled || (impl->inferenceEnded && impl->toolEnded))
+            return std::move(impl->pendingEvents);
+        if (maxTimeInMillis < 0) {
+            impl->clientCondVar.wait(guard);
+        } else {
+            u64 elapsed = (getCpuTicks() - startTicks) / ticksPerMs;
+            if (elapsed >= maxTimeInMillis)
+                return std::move(impl->pendingEvents);
+            impl->clientCondVar.timedWait(guard, numericCast<u32>(maxTimeInMillis - elapsed));
+        }
+    }
+}
+
+Array<TranscriptEvent> Agent::waitForCompletion(s32 maxTimeInMillis) {
+    Agent::Impl* impl = this->impl;
+    LockGuard<Mutex> guard{impl->toolCtx.mutex};
+    if (maxTimeInMillis == 0) {
+        // Non-blocking: return whatever is buffered right now without waiting.
+        return std::move(impl->pendingEvents);
+    }
+    u64 startTicks = 0;
+    double ticksPerMs = 0.0;
+    if (maxTimeInMillis > 0) {
+        startTicks = getCpuTicks();
+        ticksPerMs = getCpuTicksPerSecond() / 1000.0;
+    }
+    for (;;) {
+        // Stop waiting once the agent has stopped working (cancel, or both threads
+        // exited) and drain all remaining buffered events.
+        if (impl->toolCtx.canceled || (impl->inferenceEnded && impl->toolEnded))
+            return std::move(impl->pendingEvents);
+        if (maxTimeInMillis < 0) {
+            impl->completionCondVar.wait(guard);
+        } else {
+            u64 elapsed = (getCpuTicks() - startTicks) / ticksPerMs;
+            if (elapsed >= maxTimeInMillis)
+                return std::move(impl->pendingEvents);
+            impl->completionCondVar.timedWait(guard, numericCast<u32>(maxTimeInMillis - elapsed));
+        }
+    }
+}
+
+//  ▄▄▄▄▄         ▄▄ ▄▄▄   ▄▄        ▄▄            ▄▄▄▄▄▄               ▄▄▄
+//  ██  ██ ▄▄  ▄▄ ▄▄  ██  ▄██▄▄      ▄▄ ▄▄▄▄▄        ██    ▄▄▄▄   ▄▄▄▄   ██   ▄▄▄▄
+//  ██▀▀█▄ ██  ██ ██  ██   ██   ▄▄▄▄ ██ ██  ██       ██   ██  ██ ██  ██  ██  ▀█▄▄▄
+//  ██▄▄█▀ ▀█▄▄██ ██ ▄██▄  ▀█▄▄      ██ ██  ██       ██   ▀█▄▄█▀ ▀█▄▄█▀ ▄██▄  ▄▄▄█▀
+//
+
+struct FilteredPath {
+    bool ok = false;
+    String absPath;
+};
+
+bool dirContainsPath(String dir, String path) {
+    if (dir == path)
+        return true;
+    if (path.startsWith(dir) && path[dir.numBytes()] == getPathSeparator())
+        return true;
+    return false;
+}
+
+FilteredPath filterPath(ToolContext* toolCtx, StringView relPath) {
+    String absPath = joinPath(toolCtx->currentDirectory, relPath);
+    for (const ToolSet::Permission& perm : toolCtx->permissions) {
+        if (dirContainsPath(perm.absPath, absPath))
+            return {true, std::move(absPath)};
+    }
+    return {false, {}};
+}
+
+void setResponseText(ToolContext* toolCtx, Transcript::Message* toolCall, String&& text) {
+    LockGuard<Mutex> guard{toolCtx->mutex};
+    if (!toolCtx->canceled) {
+        toolCall->toolResponse = std::move(text);
+        toolCall->toolEnded = true;
+    }
+}
+
+//--------------------------------------------------
+// read tool
+//--------------------------------------------------
+void readToolHandler(ToolContext* toolCtx, Transcript::Message* toolCall, const json::Node& arguments) {
+    // Validate path argument.
+    const json::Node& pathArg = arguments.get("path");
+    if (!pathArg.isText()) {
+        setResponseText(toolCtx, toolCall, "Error: 'path' argument is required.");
+        return;
+    }
+
+    // Check permissions.
+    StringView path = pathArg.text();
+    FilteredPath fp = filterPath(toolCtx, path);
+    if (!fp.ok) {
+        setResponseText(toolCtx, toolCall, "Error: Permission denied.");
+        return;
+    }
+
+    // Open file.
+    Stream in = Filesystem::openTextForReadAutodetect(fp.absPath);
+    if (Filesystem::lastResult() != FS_OK) {
+        setResponseText(toolCtx, toolCall, String::format("Error: Could not read file '{}'.", path));
+        return;
+    }
+
+    // Set line and size limits.
+    u32 lineOffset = 1;
+    u32 lineLimit = 2000;
+    u32 sizeLimit = 50000;
+    const json::Node& offsetArg = arguments.get("offset");
+    if (offsetArg.isValid()) {
+        lineOffset = (u32) offsetArg.getNumber();
+    }
+    const json::Node& limitArg = arguments.get("limit");
+    if (limitArg.isValid()) {
+        lineLimit = (u32) limitArg.getNumber();
+    }
+
+    // Read desired file range into temporary buffer.
+    MemStream output;
+    u32 lineNum = 0;
+    u32 linesOutput = 0;
+    while (StringView line = readLine(in)) {
+        lineNum++;
+        if (lineNum < lineOffset)
+            continue;
+        output.write(line.left(sizeLimit));
+        linesOutput++;
+        if (linesOutput >= lineLimit)
+            break;
+        if (line.numBytes() >= sizeLimit)
+            break;
+        sizeLimit -= line.numBytes();
+    }
+}
+
+void addReadTool(ToolSet* toolSet) {
+    Owned<ToolSet::Handler> readTool = Heap::create<ToolSet::Handler>();
+    readTool->name = "read";
+    readTool->description =
+        "Read the contents of a file. For text files, output is truncated to 2000 lines or 50KB (whichever is hit "
+        "first). Use offset/limit for large files. When you need the full file, continue with offset until "
+        "complete.";
+    readTool->parameters.append();
+    readTool->parameters.back().name = "path";
+    readTool->parameters.back().description = "Path to the file to read (relative or absolute)";
+    readTool->parameters.back().type = "string";
+    readTool->parameters.back().required = true;
+    readTool->parameters.append();
+    readTool->parameters.back().name = "offset";
+    readTool->parameters.back().description = "Line number to start reading from (1-indexed)";
+    readTool->parameters.back().type = "number";
+    readTool->parameters.append();
+    readTool->parameters.back().name = "limit";
+    readTool->parameters.back().description = "Maximum number of lines to read";
+    readTool->parameters.back().type = "number";
+    readTool->handler = readToolHandler;
+    toolSet->handlers.insertItem(std::move(readTool));
+}
+
+//--------------------------------------------------
+// write tool
+//--------------------------------------------------
+void writeToolHandler(ToolContext* toolCtx, Transcript::Message* toolCall, const json::Node& arguments) {
+    // Validate path argument.
+    const json::Node& pathArg = arguments.get("path");
+    if (!pathArg.isText()) {
+        setResponseText(toolCtx, toolCall, "Error: 'path' argument is required.");
+        return;
+    }
+
+    // Validate content argument.
+    const json::Node& contentArg = arguments.get("content");
+    if (!contentArg.isText()) {
+        setResponseText(toolCtx, toolCall, "Error: 'content' argument is required.");
+        return;
+    }
+
+    // Check permissions.
+    StringView path = pathArg.text();
+    FilteredPath fp = filterPath(toolCtx, path);
+    if (!fp.ok) {
+        setResponseText(toolCtx, toolCall, "Error: Permission denied.");
+        return;
+    }
+
+    // Save file.
+    StringView content = contentArg.text();
+    FSResult fsResult = Filesystem::saveText(fp.absPath, content);
+    if (fsResult == FS_OK) {
+        setResponseText(toolCtx, toolCall,
+                        String::format("Successfully wrote {} bytes to '{}'.", content.numBytes(), path));
+    } else {
+        setResponseText(toolCtx, toolCall, String::format("Error: Could not write to '{}'.", path));
+    }
+}
+
+void addWriteTool(ToolSet* toolSet) {
+    Owned<ToolSet::Handler> writeTool = Heap::create<ToolSet::Handler>();
+    writeTool->name = "write";
+    writeTool->description = "Write content to a file. Creates the file if it doesn't exist, overwrites if it "
+                             "does. Automatically creates parent directories.";
+    writeTool->parameters.append();
+    writeTool->parameters.back().name = "path";
+    writeTool->parameters.back().description = "Path to the file to write (relative or absolute)";
+    writeTool->parameters.back().type = "string";
+    writeTool->parameters.back().required = true;
+    writeTool->parameters.append();
+    writeTool->parameters.back().name = "content";
+    writeTool->parameters.back().description = "Content to write to the file";
+    writeTool->parameters.back().type = "string";
+    writeTool->parameters.back().required = true;
+    writeTool->handler = writeToolHandler;
+    toolSet->handlers.insertItem(std::move(writeTool));
+}
+
+//--------------------------------------------------
+// list_dir tool
+//--------------------------------------------------
+void listDirToolHandler(ToolContext* toolCtx, Transcript::Message* toolCall, const json::Node& arguments) {
+    // Validate path argument.
+    const json::Node& pathArg = arguments.get("path");
+    if (!pathArg.isText()) {
+        setResponseText(toolCtx, toolCall, "Error: 'path' argument is required.");
+        return;
+    }
+
+    // Check permissions.
+    StringView path = pathArg.text();
+    FilteredPath fp = filterPath(toolCtx, path);
+    if (!fp.ok) {
+        setResponseText(toolCtx, toolCall, "Error: Permission denied.");
+        return;
+    }
+
+    // List directory.
+    Array<DirectoryEntry> entries = Filesystem::listDir(fp.absPath);
+    if (Filesystem::lastResult() != FS_OK) {
+        setResponseText(toolCtx, toolCall, String::format("Error: Could not list '{}'.", path));
+        return;
+    }
+
+    // Sort alphabetically.
+    sort(entries, [](const DirectoryEntry& a, const DirectoryEntry& b) {
+        if (a.isDir != b.isDir) {
+            return a.isDir > b.isDir; // directories first
+        }
+        return a.name < b.name;
+    });
+
+    // Write response.
+    MemStream output;
+    for (const DirectoryEntry& entry : entries) {
+        if (entry.isDir) {
+            output.format("{}\n", entry.name);
+        } else {
+            output.format("{} ({} bytes)\n", entry.name, entry.fileSize);
+        }
+    }
+    setResponseText(toolCtx, toolCall, output.moveToString());
+}
+
+void addListDirTool(ToolSet* toolSet) {
+    Owned<ToolSet::Handler> listDirTool = Heap::create<ToolSet::Handler>();
+    listDirTool->name = "list_dir";
+    listDirTool->description = "List the contents of a directory. Shows files with their size in bytes and "
+                               "subdirectories with a trailing '/'.";
+    listDirTool->parameters.append();
+    listDirTool->parameters.back().name = "path";
+    listDirTool->parameters.back().description =
+        "Relative or absolute path to the directory to list, inside one of the allowed directory roots";
+    listDirTool->parameters.back().type = "string";
+    listDirTool->parameters.back().required = true;
+    listDirTool->handler = listDirToolHandler;
+    toolSet->handlers.insertItem(std::move(listDirTool));
+}
+
+//--------------------------------------------------
+// find_in_files tool
+//--------------------------------------------------
+
+// Simple glob matching: supports * wildcard matching any substring
+static bool globMatches(StringView pattern, StringView name) {
+    s32 wildCardPos = pattern.find("*");
+    if (wildCardPos < 0) {
+        // No wildcards. Name must match exactly.
+        return (pattern == name);
+    } else if (wildCardPos > 0) {
+        // There are wildcards, but not at the beginning.
+        // Make sure the prefixes match.
+        if (!name.startsWith(pattern.left(wildCardPos)))
+            return false;
+        name = name.substr(wildCardPos);
+        // Advanced to the part after the wildcard.
+    }
+
+    // We've found the first * in the input pattern and trimmed the prefix from the input name.
+    // Loop over the rest of the pattern.
+    for (;;) {
+        PLY_ASSERT(pattern[wildCardPos] == '*');
+        // Advance to the next non-wildcard character in the input pattern.
+        do {
+            wildCardPos++;
+        } while ((wildCardPos < pattern.numBytes()) && (pattern[wildCardPos] == '*'));
+        // Trim the prefix from the input pattern.
+        pattern = pattern.substr(wildCardPos);
+        // If the pattern is now empty, that means the pattern ended with *,
+        // which means that the rest of the input name always matches.
+        if (pattern.isEmpty())
+            return true;
+
+        // Find next wildcard character.
+        wildCardPos = pattern.find("*");
+        if (wildCardPos < 0) {
+            // No more wildcard characters. Make sure the input name ends with the remainder of the pattern.
+            return name.endsWith(pattern);
+        } else if (wildCardPos > 0) {
+            // Wildcard found. Find the intermediate segment in the input name.
+            s32 index = name.find(pattern.left(wildCardPos));
+            if (index < 0)
+                return false; // Not found
+
+            // Found. Trim the input name to the part after the intermediate segment.
+            name = name.substr(index + wildCardPos);
+        }
+    }
+}
+
+struct GitIgnoreContents {
+    struct Item {
+        bool exclude = true;
+        String pattern;
+    };
+
+    String absRoot;
+    Array<Item> items;
+};
+
+// Loads the .gitignore file for the specified directory.
+// Returns an empty object if no .gitignore file found.
+GitIgnoreContents loadGitIgnoreForDirectory(StringView absDirPath) {
+    PLY_ASSERT(isAbsolutePath(absDirPath));
+
+    String gitIgnorePath = joinPath(absDirPath, ".gitignore");
+    String text = Filesystem::loadTextAutodetect(gitIgnorePath);
+    if (!text)
+        return {};
+
+    // Load file contents
+    GitIgnoreContents contents;
+    contents.absRoot = absDirPath;
+
+    ViewStream stream{StringView{text}};
+    for (;;) {
+        StringView trimmed = readLine(stream).trim();
+        if (stream.atEof)
+            break;
+
+        // If line is empty or a comment, continue.
+        if (trimmed.isEmpty())
+            continue;
+        if (trimmed.startsWith("#"))
+            continue;
+
+        // Add pattern.
+        GitIgnoreContents::Item item;
+        if (trimmed.startsWith("!")) {
+            item.exclude = false;
+            item.pattern = trimmed.substr(1);
+        } else {
+            item.exclude = true;
+            item.pattern = trimmed;
+        }
+        if (item.pattern) {
+            contents.items.append(std::move(item));
+        }
+    }
+
+    return contents;
+}
+
+// Returns an array of .gitignore file contents from all ancestor directories.
+Array<GitIgnoreContents> loadAllAncestorGitIgnoreFiles(StringView absDirPath) {
+    PLY_ASSERT(isAbsolutePath(absDirPath));
+    Array<GitIgnoreContents> result;
+
+    String currentDir = absDirPath;
+    for (;;) {
+        // Walk up to the parent directory.
+        SplitPath sp = splitPath(currentDir);
+        if (sp.directory.isEmpty() || sp.directory == currentDir)
+            break; // Reached the filesystem root.
+        currentDir = sp.directory;
+
+        GitIgnoreContents contents = loadGitIgnoreForDirectory(currentDir);
+        if (contents.items) {
+            result.append(std::move(contents));
+        }
+    }
+
+    return result;
+}
+
+bool isIgnored(const GitIgnoreContents& gitIgnore, StringView absPath, bool isDir) {
+    String relPath = makeRelativePath(gitIgnore.absRoot, absPath);
+    bool ignore = false;
+    for (const GitIgnoreContents::Item& item : gitIgnore.items) {
+        if (matchGitIgnorePattern(relPath, isDir, item.pattern)) {
+            if (item.exclude) {
+                ignore = true;
+            } else {
+                ignore = false;
+            }
+        }
+    }
+    return ignore;
+}
+
+bool isIgnored(ArrayView<const GitIgnoreContents> ignoreLists, StringView absPath, bool isDir) {
+    for (const GitIgnoreContents& gitIgnore : ignoreLists) {
+        if (isIgnored(gitIgnore, absPath, isDir))
+            return true;
+    }
+    return false;
+}
+
+struct FindInFiles {
+    ToolContext* toolCtx = nullptr;
+    Transcript::Message* toolCall = nullptr;
+    Array<GitIgnoreContents> ignoreLists;
+    StringView glob;
+    StringView text;
+    String root;
+};
+
+void findInFiles(FindInFiles& findInfo, StringView absPath, bool isDir) {
+    if (isIgnored(findInfo.ignoreLists, absPath, isDir))
+        return;
+
+    if (isDir) {
+        // Load .gitignore file for this directory.
+        bool pushedGitIgnore = false;
+        GitIgnoreContents contents = loadGitIgnoreForDirectory(absPath);
+        if (!contents.items.isEmpty()) {
+            findInfo.ignoreLists.append(std::move(contents));
+            pushedGitIgnore = true;
+        }
+
+        // Iterate over all directory entries.
+        for (const DirectoryEntry& entry : Filesystem::listDir(absPath)) {
+            findInFiles(findInfo, joinPath(absPath, entry.name), entry.isDir);
+        }
+
+        if (pushedGitIgnore) {
+            findInfo.ignoreLists.pop();
+        }
+    } else {
+        if (!globMatches(findInfo.glob, splitPath(absPath).filename))
+            return;
+
+        // Check file contents.
+        String content = Filesystem::loadTextAutodetect(absPath);
+        ViewStream stream{StringView{content}};
+        u32 lineNum = 0;
+        String relPath = makeRelativePath(findInfo.root, absPath);
+        while (true) {
+            StringView line = readLine(stream);
+            if (line.isEmpty())
+                break;
+            lineNum++;
+            if (line.find(findInfo.text) >= 0) {
+                LockGuard<Mutex> guard{findInfo.toolCtx->mutex};
+                if (!findInfo.toolCtx->canceled) {
+                    findInfo.toolCall->toolResponse +=
+                        String::format("{}({}):{}\n", relPath, lineNum, line.trimRight());
+                }
+            }
+        }
+    }
+}
+
+void findInFilesToolHandler(ToolContext* toolCtx, Transcript::Message* toolCall, const json::Node& arguments) {
+    // Validate arguments.
+    const json::Node& pathArg = arguments.get("path");
+    if (!pathArg.isText()) {
+        setResponseText(toolCtx, toolCall, "Error: 'path' argument is required.");
+        return;
+    }
+    const json::Node& globArg = arguments.get("glob");
+    if (!globArg.isText()) {
+        setResponseText(toolCtx, toolCall, "Error: 'glob' argument is required.");
+        return;
+    }
+    const json::Node& textArg = arguments.get("text");
+    if (!textArg.isText()) {
+        setResponseText(toolCtx, toolCall, "Error: 'text' argument is required.");
+        return;
+    }
+
+    // Check permissions.
+    StringView path = pathArg.text();
+    FilteredPath fp = filterPath(toolCtx, path);
+    if (!fp.ok) {
+        setResponseText(toolCtx, toolCall, "Error: Permission denied.");
+        return;
+    }
+
+    // Check that the search path exists.
+    if (Filesystem::exists(fp.absPath) == ER_NOT_FOUND) {
+        setResponseText(toolCtx, toolCall, String::format("Error: Path '{}' does not exist.", path));
+        return;
+    }
+
+    // Initialize FindInFiles struct.
+    FindInFiles findInfo;
+    findInfo.toolCtx = toolCtx;
+    findInfo.toolCall = toolCall;
+    findInfo.ignoreLists = loadAllAncestorGitIgnoreFiles(fp.absPath);
+    findInfo.glob = globArg.text();
+    findInfo.text = textArg.text();
+    findInfo.root = fp.absPath;
+
+    findInFiles(findInfo, fp.absPath, Filesystem::isDir(fp.absPath));
+    LockGuard<Mutex> guard{findInfo.toolCtx->mutex};
+    if (!findInfo.toolCtx->canceled) {
+        findInfo.toolCall->toolEnded = true;
+    }
+}
+
+void addFindInFilesTool(ToolSet* toolSet) {
+    Owned<ToolSet::Handler> findInFilesTool = Heap::create<ToolSet::Handler>();
+    findInFilesTool->name = "find_in_files";
+    findInFilesTool->description = "Search for text inside files matching a glob pattern in a directory tree. "
+                                   "Returns matching lines in 'path(line):content' format. The glob pattern "
+                                   "supports '*' as a wildcard matching any substring (case sensitive).";
+    findInFilesTool->parameters.append();
+    findInFilesTool->parameters.back().name = "path";
+    findInFilesTool->parameters.back().description =
+        "Starting directory for the search (relative or absolute path inside one of the allowed directory roots)";
+    findInFilesTool->parameters.back().type = "string";
+    findInFilesTool->parameters.back().required = true;
+    findInFilesTool->parameters.append();
+    findInFilesTool->parameters.back().name = "glob";
+    findInFilesTool->parameters.back().description =
+        "Wildcard pattern for filenames. Supports '*' to match any substring (case sensitive)";
+    findInFilesTool->parameters.back().type = "string";
+    findInFilesTool->parameters.back().required = true;
+    findInFilesTool->parameters.append();
+    findInFilesTool->parameters.back().name = "text";
+    findInFilesTool->parameters.back().description = "The exact text to search for inside each file";
+    findInFilesTool->parameters.back().type = "string";
+    findInFilesTool->parameters.back().required = true;
+    findInFilesTool->handler = findInFilesToolHandler;
+    toolSet->handlers.insertItem(std::move(findInFilesTool));
+}
+
+//--------------------------------------------------
+// edit tool
+//--------------------------------------------------
+void editToolHandler(ToolContext* toolCtx, Transcript::Message* toolCall, const json::Node& arguments) {
+    // Validate path argument.
+    const json::Node& pathArg = arguments.get("path");
+    if (!pathArg.isText()) {
+        setResponseText(toolCtx, toolCall, "Error: 'path' argument is required.");
+        return;
+    }
+
+    // Validate edits argument.
+    const json::Node& editsArg = arguments.get("edits");
+    if (!editsArg.isArray()) {
+        setResponseText(toolCtx, toolCall, "Error: 'edits' argument is required and must be an array.");
+        return;
+    }
+
+    // Check permissions.
+    StringView path = pathArg.text();
+    FilteredPath fp = filterPath(toolCtx, path);
+    if (!fp.ok) {
+        setResponseText(toolCtx, toolCall, "Error: Permission denied.");
+        return;
+    }
+
+    // Load file contents.
+    String text = Filesystem::loadTextAutodetect(fp.absPath);
+    if (Filesystem::lastResult() != FS_OK) {
+        setResponseText(toolCtx, toolCall, String::format("Error: Could not read file '{}'.", path));
+        return;
+    }
+
+    // Collect all edit positions against the original text.
+    struct EditPos {
+        s32 start;
+        s32 end;
+        String newText;
+    };
+    Array<EditPos> editPositions;
+
+    for (const json::Node& jEdit : editsArg.arrayView()) {
+        if (!jEdit.isObject()) {
+            setResponseText(toolCtx, toolCall, "Error: Each edit must be an object with 'oldText' and 'newText'.");
+            return;
+        }
+        const json::Node& jOldText = jEdit.get("oldText");
+        const json::Node& jNewText = jEdit.get("newText");
+        if (!jOldText.isText() || !jNewText.isText()) {
+            setResponseText(toolCtx, toolCall, "Error: Each edit must have 'oldText' (string) and 'newText' (string).");
+            return;
+        }
+
+        StringView oldText = jOldText.text();
+        StringView newText = jNewText.text();
+
+        // Find position in original text.
+        s32 pos = text.find(oldText);
+        if (pos < 0) {
+            setResponseText(toolCtx, toolCall, String::format("Error: Could not find '{}' in '{}'.", oldText, path));
+            return;
+        }
+
+        // Check uniqueness.
+        s32 secondPos = text.find(oldText, pos + oldText.numBytes());
+        if (secondPos >= 0) {
+            setResponseText(toolCtx, toolCall,
+                            String::format("Error: '{}' appears multiple times in '{}'. Use a more unique oldText.",
+                                           oldText, path));
+            return;
+        }
+
+        // Check for overlap with already-scheduled edits.
+        for (const EditPos& ep : editPositions) {
+            if (pos < ep.end && pos + (s32) oldText.numBytes() > ep.start) {
+                setResponseText(toolCtx, toolCall,
+                                String::format("Error: Edit for '{}' overlaps with another edit.", oldText));
+                return;
+            }
+        }
+
+        editPositions.append({pos, pos + (s32) oldText.numBytes(), String{newText}});
+    }
+
+    // Sort edits by position descending so replacements don't invalidate earlier positions.
+    sort(editPositions, [](const EditPos& a, const EditPos& b) { return a.start > b.start; });
+
+    // Apply edits.
+    String mutableText = std::move(text);
+    for (const EditPos& ep : editPositions) {
+        mutableText = mutableText.left(ep.start) + ep.newText + mutableText.substr(ep.end);
+    }
+
+    // Save file.
+    FSResult fsResult = Filesystem::saveText(fp.absPath, mutableText);
+    if (fsResult == FS_OK) {
+        setResponseText(
+            toolCtx, toolCall,
+            String::format("Successfully edited '{}' with {} replacement(s).", path, editPositions.numItems()));
+    } else {
+        setResponseText(toolCtx, toolCall, String::format("Error: Could not write to '{}'.", path));
+    }
+}
+
+void addEditTool(ToolSet* toolSet) {
+    Owned<ToolSet::Handler> editTool = Heap::create<ToolSet::Handler>();
+    editTool->name = "edit";
+    editTool->description = "Edit a single file using exact text replacement. Every edits[].oldText must match a "
+                            "unique, non-overlapping region of the original file. If two changes affect the same "
+                            "block or nearby lines, merge them into one edit instead of emitting overlapping "
+                            "edits. Do not include large unchanged regions just to connect distant changes.";
+    editTool->parameters.append();
+    editTool->parameters.back().name = "path";
+    editTool->parameters.back().description = "Path to the file to edit (relative or absolute)";
+    editTool->parameters.back().type = "string";
+    editTool->parameters.back().required = true;
+    editTool->parameters.append();
+    editTool->parameters.back().name = "edits";
+    editTool->parameters.back().description =
+        "One or more targeted replacements. Each edit is matched against the original file, not incrementally. "
+        "Do not include overlapping or nested edits. If two changes touch the same block or nearby lines, merge "
+        "them into one edit instead.";
+    editTool->parameters.back().type = "array";
+    editTool->parameters.back().required = true;
+    editTool->handler = editToolHandler;
+    toolSet->handlers.insertItem(std::move(editTool));
+}
+
+#endif // !PLY_AGENT_TRANSCRIPT_ONLY
+
+} // namespace ply
