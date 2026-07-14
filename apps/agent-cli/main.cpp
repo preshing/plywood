@@ -36,10 +36,19 @@ struct WebTranscript {
     Mutex mutex;
     ConditionVariable changed;
     Array<String> chunks;
+    bool isComplete = false;
 
+    // Publishes another HTML fragment to all connected browsers.
     void append(String&& html) {
         LockGuard<Mutex> lock{this->mutex};
         this->chunks.append(std::move(html));
+        this->changed.wakeAll();
+    }
+
+    // Signals that no more HTML fragments will be published.
+    void complete() {
+        LockGuard<Mutex> lock{this->mutex};
+        this->isComplete = true;
         this->changed.wakeAll();
     }
 };
@@ -93,17 +102,27 @@ new MutationObserver(() => { if (pinned) requestAnimationFrame(() => scrollTo(0,
         return;
     out.flush(true);
 
-    // Replay all existing chunks, then block until more are published. Periodic
-    // comments detect clients that disconnect while no transcript events arrive.
+    // Replay all existing chunks, then block until more are published. Once the
+    // transcript is complete, drain the remaining chunks and close the document.
     u32 nextChunk = 0;
     for (;;) {
         String chunk;
+        bool isComplete = false;
         {
             LockGuard<Mutex> lock{webTranscript.mutex};
-            if (nextChunk >= webTranscript.chunks.numItems())
+            if (nextChunk >= webTranscript.chunks.numItems() && !webTranscript.isComplete)
                 webTranscript.changed.timedWait(lock, 15000);
-            if (nextChunk < webTranscript.chunks.numItems())
+            if (nextChunk < webTranscript.chunks.numItems()) {
                 chunk = webTranscript.chunks[nextChunk++];
+            } else {
+                isComplete = webTranscript.isComplete;
+            }
+        }
+        if (isComplete) {
+            StringView documentEnd = "</main></body></html>\n";
+            out.write(documentEnd);
+            out.flush(true);
+            return;
         }
         StringView bytes = chunk ? StringView{chunk} : StringView{"<!-- keepalive -->\n"};
         if (out.write(bytes) != bytes.numBytes())
@@ -643,6 +662,8 @@ int main(int argc, const char* argv[]) {
     // Close any section that was left open (e.g. the agent's final response) and
     // flush any tool responses that never received an EndTurn.
     printer.finish(getUnixTimestamp());
+    if (options.runWebServer)
+        webTranscript.complete();
 
     // Keep serving HTTP requests after the agent finishes.
     if (webServerThread.isValid()) {
