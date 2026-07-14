@@ -63,8 +63,21 @@ static void serveWebTranscript(HTTPServerRequest& request) {
 <style>
 body { margin: 0; background: #181a1b; color: #e8e6e3; font: 14px/1.5 monospace; }
 #transcript { max-width: 960px; margin: auto; padding: 16px; }
-.section { margin: 0 0 12px; padding: 12px; background: #242729; border-radius: 6px; white-space: pre-wrap; }
-.header { color: #8ab4f8; font-weight: bold; }
+.section { margin: 0 0 12px; padding: 12px 12px 8px; background: #242729; border-radius: 6px; }
+.section-header { margin: -12px -12px 6px; padding: 2px 12px; background: #303438; border-radius: 6px 6px 0 0;
+    font-family: system-ui, sans-serif; }
+.message-content { white-space: pre-wrap; }
+.system > .section-header, .tool-definition > .section-header { background: #555a5e; }
+.user > .section-header { background: #35634a; }
+.thinking > .section-header { background: #477da6; }
+.thinking > .section-header .caption { color: #f0f0f0; }
+.agent > .section-header { background: #244a7c; }
+.error > .section-header { background: #813b3b; }
+.tool-call > .section-header, .tool-response > .section-header { background: #b7bbbe; }
+.tool-call > .section-header .caption, .tool-response > .section-header .caption { color: #202426; }
+.tool-call > .section-header .timestamp, .tool-response > .section-header .timestamp { color: #4d555a; }
+.caption { color: #f0f0f0; font-weight: 600; }
+.timestamp { margin-right: 10px; color: #c0c3c5; font-size: 0.85em; font-weight: normal; }
 .timing { color: #9aa0a6; }
 </style></head><body><main id="transcript">
 <script>
@@ -212,8 +225,10 @@ void TranscriptPrinter::printStartup(StringView userPrompt) {
     }
     if (options.runWebServer) {
         // Stream system prompt to web browser.
-        webTranscript.append(String::format("<div class=\"section system\"><span class=\"header\">{} "
-                                            "[System Prompt]</span>\n{}\n</div>\n",
+        webTranscript.append(String::format("<div class=\"section system\"><div class=\"section-header\">"
+                                            "<span class=\"timestamp\">{}</span>"
+                                            "<span class=\"caption\">System Prompt</span></div>"
+                                            "<div class=\"message-content\">{}\n</div></div>\n",
                                             formatTimeStamp(now), escapeHtml(toolSet.systemMessage)));
     }
 
@@ -231,12 +246,13 @@ void TranscriptPrinter::printStartup(StringView userPrompt) {
             if (options.runWebServer) {
                 // Stream tool definition to web browser.
                 MemStream html;
-                html.format("<div class=\"section tool-definition\"><span class=\"header\">{} "
-                            "[Tool Definition: {}]</span>\n",
+                html.format("<div class=\"section tool-definition\"><div class=\"section-header\">"
+                            "<span class=\"timestamp\">{}</span><span class=\"caption\">"
+                            "Tool Definition: {}</span></div><div class=\"message-content\">",
                             formatTimeStamp(now), escapeHtml(tool->name));
                 for (const ToolSet::Parameter& param : tool->parameters)
                     html.format("`{}`: {}\n", escapeHtml(param.name), escapeHtml(param.description));
-                html.format("{}\n</div>\n", escapeHtml(tool->description));
+                html.format("{}\n</div></div>\n", escapeHtml(tool->description));
                 webTranscript.append(html.moveToString());
             }
         }
@@ -257,8 +273,10 @@ void TranscriptPrinter::printStartup(StringView userPrompt) {
     this->openOutputBytes = userPrompt.numBytes();
     if (options.runWebServer) {
         // Stream user header to web browser.
-        webTranscript.append(String::format("<div class=\"section user\"><span class=\"header\">{} "
-                                            "[User]</span>\n{}\n",
+        webTranscript.append(String::format("<div class=\"section user\"><div class=\"section-header\">"
+                                            "<span class=\"timestamp\">{}</span>"
+                                            "<span class=\"caption\">User</span></div>"
+                                            "<div class=\"message-content\">{}\n",
                                             formatTimeStamp(now), escapeHtml(userPrompt)));
     }
 }
@@ -281,8 +299,10 @@ void TranscriptPrinter::openSection(Transcript::Role role, u32 toolCallID, s64 t
         case Transcript::Role::AgentThinking:
             out.format("{} [Agent Thinking]\n", formatTimeStamp(timeStamp));
             if (options.runWebServer) {
-                webTranscript.append(String::format("<div class=\"section thinking\"><span class=\"header\">{} "
-                                                    "[Agent Thinking]</span>\n",
+                webTranscript.append(String::format("<div class=\"section thinking\"><div class=\"section-header\">"
+                                                    "<span class=\"timestamp\">{}</span>"
+                                                    "<span class=\"caption\">Agent Thinking</span></div>"
+                                                    "<div class=\"message-content\">",
                                                     formatTimeStamp(timeStamp)));
             }
             this->openIsTextMsg = true;
@@ -290,8 +310,10 @@ void TranscriptPrinter::openSection(Transcript::Role role, u32 toolCallID, s64 t
         case Transcript::Role::Agent:
             out.format("{} [Agent]\n", formatTimeStamp(timeStamp));
             if (options.runWebServer) {
-                webTranscript.append(String::format("<div class=\"section agent\"><span class=\"header\">{} "
-                                                    "[Agent]</span>\n",
+                webTranscript.append(String::format("<div class=\"section agent\"><div class=\"section-header\">"
+                                                    "<span class=\"timestamp\">{}</span>"
+                                                    "<span class=\"caption\">Agent</span></div>"
+                                                    "<div class=\"message-content\">",
                                                     formatTimeStamp(timeStamp)));
             }
             this->openIsTextMsg = true;
@@ -299,8 +321,10 @@ void TranscriptPrinter::openSection(Transcript::Role role, u32 toolCallID, s64 t
         case Transcript::Role::Error:
             out.format("{} [Error]\n", formatTimeStamp(timeStamp));
             if (options.runWebServer) {
-                webTranscript.append(String::format("<div class=\"section error\"><span class=\"header\">{} "
-                                                    "[Error]</span>\n",
+                webTranscript.append(String::format("<div class=\"section error\"><div class=\"section-header\">"
+                                                    "<span class=\"timestamp\">{}</span>"
+                                                    "<span class=\"caption\">Error</span></div>"
+                                                    "<div class=\"message-content\">",
                                                     formatTimeStamp(timeStamp)));
             }
             this->openIsTextMsg = true;
@@ -330,7 +354,7 @@ void TranscriptPrinter::closeOpen(s64 endMicros) {
         if (options.runWebServer) {
             // Stream footer to web browser.
             webTranscript.append(String::format("\n<span class=\"timing\">({:.1}s elapsed, {} output, {})"
-                                                "</span>\n</div>\n",
+                                                "</span>\n</div></div>\n",
                                                 elapsedSec, formatSize(this->openOutputBytes), formatRate(rate)));
         }
     } else if (this->openRole == Transcript::Role::ToolCall) {
@@ -338,8 +362,10 @@ void TranscriptPrinter::closeOpen(s64 endMicros) {
         out.format("{}\n", formatToolCall(this->openToolCallText));
         if (options.runWebServer) {
             // Stream tool call to web browser.
-            webTranscript.append(String::format("<div class=\"section tool-call\"><span class=\"header\">{} "
-                                                "[Tool Call #{}]</span>\n{}\n</div>\n",
+            webTranscript.append(String::format("<div class=\"section tool-call\"><div class=\"section-header\">"
+                                                "<span class=\"timestamp\">{}</span>"
+                                                "<span class=\"caption\">Tool Call #{}</span></div>"
+                                                "<div class=\"message-content\">{}\n</div></div>\n",
                                                 formatTimeStamp(this->sectionStartTime), this->openToolCallID,
                                                 escapeHtml(formatToolCall(this->openToolCallText))));
         }
@@ -364,8 +390,10 @@ void TranscriptPrinter::flushToolResponses(s64 timeStamp) {
         out.format("{}\n", Separator);
         if (options.runWebServer) {
             // Stream message header to the browser.
-            webTranscript.append(String::format("<div class=\"section tool-response\"><span class=\"header\">{} "
-                                                "[Tool Response #{}]</span>\n{}\n</div>\n",
+            webTranscript.append(String::format("<div class=\"section tool-response\"><div class=\"section-header\">"
+                                                "<span class=\"timestamp\">{}</span>"
+                                                "<span class=\"caption\">Tool Response #{}</span></div>"
+                                                "<div class=\"message-content\">{}\n</div></div>\n",
                                                 formatTimeStamp(timeStamp), id, escapeHtml(*text)));
         }
     }
