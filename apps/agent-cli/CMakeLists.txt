@@ -16,7 +16,9 @@ get_filename_component(PLYWOOD_ROOT ../.. REALPATH)
 include("${PLYWOOD_ROOT}/src/common.cmake")
 
 # plywood
-add_source_files(PLYWOOD_SOURCES "${PLYWOOD_ROOT}/src" ply-base.* ply-tokenizer.* ply-json.* ply-markdown.* ply-network.* ply-http.* ply-reflect.* ply-agent.*)
+add_source_files(PLYWOOD_SOURCES "${PLYWOOD_ROOT}/src"
+                 ply-base.* ply-tokenizer.* ply-json.* ply-markdown.* ply-network.* ply-http.* ply-reflect.*
+                 ply-agent.*)
 if(WIN32)
     add_source_files(PLYWOOD_SOURCES "${PLYWOOD_ROOT}/src" *.natvis)
 endif()

@@ -29,6 +29,77 @@ ToolSet toolSet;
 Reference<Transcript> transcript;
 
 //---------------------------------------------------
+// WebTranscript stores the HTML representation as an append-only stream. Each
+// browser replays the stream from the beginning, then waits for new chunks.
+//---------------------------------------------------
+struct WebTranscript {
+    Mutex mutex;
+    ConditionVariable changed;
+    Array<String> chunks;
+
+    void append(String&& html) {
+        LockGuard<Mutex> lock{this->mutex};
+        this->chunks.append(std::move(html));
+        this->changed.wakeAll();
+    }
+};
+
+WebTranscript webTranscript;
+
+// Converts transcript text to HTML-safe text while preserving whitespace.
+static String escapeHtml(StringView text) {
+    MemStream out;
+    printXmlEscapedString(out, text);
+    return out.moveToString();
+}
+
+// Streams the transcript accumulated so far, followed by new transcript chunks.
+static void serveWebTranscript(HTTPServerRequest& request) {
+    HTTPServerResponse response{HTTPServerResponse::OK};
+    *response.headers.insert("content-type").value = "text/html; charset=utf-8";
+    Stream out = request.beginStreamingResponse(std::move(response));
+    StringView documentStart = R"(<!doctype html>
+<html><head><meta charset="utf-8"><title>Agent Transcript</title>
+<style>
+body { margin: 0; background: #181a1b; color: #e8e6e3; font: 14px/1.5 monospace; }
+#transcript { max-width: 960px; margin: auto; padding: 16px; }
+.section { margin: 0 0 12px; padding: 12px; background: #242729; border-radius: 6px; white-space: pre-wrap; }
+.header { color: #8ab4f8; font-weight: bold; }
+.timing { color: #9aa0a6; }
+</style></head><body><main id="transcript">
+<script>
+const transcript = document.getElementById('transcript');
+let pinned = true;
+function atBottom() { return innerHeight + scrollY >= document.documentElement.scrollHeight - 24; }
+addEventListener('scroll', () => pinned = atBottom(), {passive: true});
+new MutationObserver(() => { if (pinned) requestAnimationFrame(() => scrollTo(0, document.body.scrollHeight)); })
+    .observe(transcript, {childList: true, subtree: true, characterData: true});
+</script>
+)";
+    if (out.write(documentStart) != documentStart.numBytes())
+        return;
+    out.flush(true);
+
+    // Replay all existing chunks, then block until more are published. Periodic
+    // comments detect clients that disconnect while no transcript events arrive.
+    u32 nextChunk = 0;
+    for (;;) {
+        String chunk;
+        {
+            LockGuard<Mutex> lock{webTranscript.mutex};
+            if (nextChunk >= webTranscript.chunks.numItems())
+                webTranscript.changed.timedWait(lock, 15000);
+            if (nextChunk < webTranscript.chunks.numItems())
+                chunk = webTranscript.chunks[nextChunk++];
+        }
+        StringView bytes = chunk ? StringView{chunk} : StringView{"<!-- keepalive -->\n"};
+        if (out.write(bytes) != bytes.numBytes())
+            return;
+        out.flush(true);
+    }
+}
+
+//---------------------------------------------------
 // Helpers for formatting the transcript output.
 //---------------------------------------------------
 static const StringView Separator = "-------------------------------";
@@ -113,6 +184,7 @@ struct TranscriptPrinter {
     s64 sectionStartTime = 0;
     uptr openOutputBytes = 0;
     bool openLastWasNewline = true; // ensures the timing line starts on its own line
+    u32 openToolCallID = 0;
     String openToolCallText; // accumulated raw text for a ToolCall section
 
     // Buffered tool responses, keyed by toolCallID, awaiting flush at EndTurn.
@@ -131,29 +203,49 @@ struct TranscriptPrinter {
 void TranscriptPrinter::printStartup(StringView userPrompt) {
     s64 now = getUnixTimestamp();
 
-    // System prompt block.
     {
+        // Write system prompt to stdout.
         Stream out = getStdOut();
         out.format("{} [System Prompt]\n", formatTimeStamp(now));
         out.format("{}\n", toolSet.systemMessage);
         out.format("{}\n", Separator);
+    }
+    if (options.runWebServer) {
+        // Stream system prompt to web browser.
+        webTranscript.append(String::format("<div class=\"section system\"><span class=\"header\">{} "
+                                            "[System Prompt]</span>\n{}\n</div>\n",
+                                            formatTimeStamp(now), escapeHtml(toolSet.systemMessage)));
     }
 
     // Tool definition blocks.
     {
         Stream out = getStdOut();
         for (const Owned<ToolSet::Handler>& tool : toolSet.handlers) {
+            // Write tool definition to stdout.
             out.format("{} [Tool Definition: {}]\n", formatTimeStamp(now), tool->name);
             for (const ToolSet::Parameter& param : tool->parameters)
                 out.format("`{}`: {}\n", param.name, param.description);
             out.format("{}\n", tool->description);
             out.format("{}\n", Separator);
+
+            if (options.runWebServer) {
+                // Stream tool definition to web browser.
+                MemStream html;
+                html.format("<div class=\"section tool-definition\"><span class=\"header\">{} "
+                            "[Tool Definition: {}]</span>\n",
+                            formatTimeStamp(now), escapeHtml(tool->name));
+                for (const ToolSet::Parameter& param : tool->parameters)
+                    html.format("`{}`: {}\n", escapeHtml(param.name), escapeHtml(param.description));
+                html.format("{}\n</div>\n", escapeHtml(tool->description));
+                webTranscript.append(html.moveToString());
+            }
         }
     }
 
     // User block. Its header and content are emitted now, but it is left open so
     // that its elapsed time reflects the wait for the agent's first response.
     {
+        // Write user header to stdout.
         Stream out = getStdOut();
         out.format("{} [User]\n", formatTimeStamp(now));
         out.format("{}\n", userPrompt);
@@ -163,6 +255,12 @@ void TranscriptPrinter::printStartup(StringView userPrompt) {
     this->openRole = Transcript::Role::User;
     this->sectionStartTime = now;
     this->openOutputBytes = userPrompt.numBytes();
+    if (options.runWebServer) {
+        // Stream user header to web browser.
+        webTranscript.append(String::format("<div class=\"section user\"><span class=\"header\">{} "
+                                            "[User]</span>\n{}\n",
+                                            formatTimeStamp(now), escapeHtml(userPrompt)));
+    }
 }
 
 void TranscriptPrinter::openSection(Transcript::Role role, u32 toolCallID, s64 timeStamp) {
@@ -175,20 +273,36 @@ void TranscriptPrinter::openSection(Transcript::Role role, u32 toolCallID, s64 t
     this->sectionStartTime = timeStamp;
     this->openOutputBytes = 0;
     this->openLastWasNewline = true;
+    this->openToolCallID = toolCallID;
     this->openToolCallText = {};
 
     Stream out = getStdOut();
     switch (role) {
         case Transcript::Role::AgentThinking:
             out.format("{} [Agent Thinking]\n", formatTimeStamp(timeStamp));
+            if (options.runWebServer) {
+                webTranscript.append(String::format("<div class=\"section thinking\"><span class=\"header\">{} "
+                                                    "[Agent Thinking]</span>\n",
+                                                    formatTimeStamp(timeStamp)));
+            }
             this->openIsTextMsg = true;
             break;
         case Transcript::Role::Agent:
             out.format("{} [Agent]\n", formatTimeStamp(timeStamp));
+            if (options.runWebServer) {
+                webTranscript.append(String::format("<div class=\"section agent\"><span class=\"header\">{} "
+                                                    "[Agent]</span>\n",
+                                                    formatTimeStamp(timeStamp)));
+            }
             this->openIsTextMsg = true;
             break;
         case Transcript::Role::Error:
             out.format("{} [Error]\n", formatTimeStamp(timeStamp));
+            if (options.runWebServer) {
+                webTranscript.append(String::format("<div class=\"section error\"><span class=\"header\">{} "
+                                                    "[Error]</span>\n",
+                                                    formatTimeStamp(timeStamp)));
+            }
             this->openIsTextMsg = true;
             break;
         case Transcript::Role::ToolCall:
@@ -210,10 +324,25 @@ void TranscriptPrinter::closeOpen(s64 endMicros) {
         double rate = (elapsedSec > 1e-9) ? double(this->openOutputBytes) / elapsedSec : 0;
         if (!this->openLastWasNewline)
             out.format("\n");
+        // Write message footer to stdout.
         out.format("({:.1}s elapsed, {} output, {})\n", elapsedSec, formatSize(this->openOutputBytes),
                    formatRate(rate));
+        if (options.runWebServer) {
+            // Stream footer to web browser.
+            webTranscript.append(String::format("\n<span class=\"timing\">({:.1}s elapsed, {} output, {})"
+                                                "</span>\n</div>\n",
+                                                elapsedSec, formatSize(this->openOutputBytes), formatRate(rate)));
+        }
     } else if (this->openRole == Transcript::Role::ToolCall) {
+        // Flush tool call to stdout.
         out.format("{}\n", formatToolCall(this->openToolCallText));
+        if (options.runWebServer) {
+            // Stream tool call to web browser.
+            webTranscript.append(String::format("<div class=\"section tool-call\"><span class=\"header\">{} "
+                                                "[Tool Call #{}]</span>\n{}\n</div>\n",
+                                                formatTimeStamp(this->sectionStartTime), this->openToolCallID,
+                                                escapeHtml(formatToolCall(this->openToolCallText))));
+        }
     }
     out.format("{}\n", Separator);
     this->hasOpen = false;
@@ -229,9 +358,16 @@ void TranscriptPrinter::flushToolResponses(s64 timeStamp) {
         String* text = this->pendingResponses.find(id);
         if (!text)
             continue;
+        // Write tool response to stdout.
         out.format("{} [Tool Response #{}]\n", formatTimeStamp(timeStamp), id);
         out.format("{}\n", *text);
         out.format("{}\n", Separator);
+        if (options.runWebServer) {
+            // Stream message header to the browser.
+            webTranscript.append(String::format("<div class=\"section tool-response\"><span class=\"header\">{} "
+                                                "[Tool Response #{}]</span>\n{}\n</div>\n",
+                                                formatTimeStamp(timeStamp), id, escapeHtml(*text)));
+        }
     }
     this->pendingResponses.clear();
     this->responseOrder.clear();
@@ -250,6 +386,10 @@ void TranscriptPrinter::handleEvent(const TranscriptEvent& event) {
                     this->openOutputBytes += event.text.numBytes();
                     if (event.text)
                         this->openLastWasNewline = event.text.endsWith('\n');
+                    if (options.runWebServer) {
+                        // Also stream to the browser.
+                        webTranscript.append(escapeHtml(event.text));
+                    }
                 } else if (this->openRole == Transcript::Role::ToolCall) {
                     // Accumulate the tool call's raw text; it is formatted on close.
                     this->openToolCallText += event.text;
@@ -413,7 +553,7 @@ int main(int argc, const char* argv[]) {
     CommandLineParser parser({
         {"-s", PLY_LOOKUP_MEMBER(CommandLineOptions, settingsPath), "Directory containing agent.json"},
         {"-h", PLY_LOOKUP_MEMBER(CommandLineOptions, enableHttpLog), "Enable HTTP logging"},
-        {"-w", PLY_LOOKUP_MEMBER(CommandLineOptions, runWebServer), "Run echo webserver on port 8081"},
+        {"-w", PLY_LOOKUP_MEMBER(CommandLineOptions, runWebServer), "Serve transcript on port 8081"},
     });
     if (!parser.apply(argc, argv, &options))
         return 1; // parsing error
@@ -433,7 +573,7 @@ int main(int argc, const char* argv[]) {
     if (options.runWebServer) {
         Network::initialize(IPV4);
         webServerThread.run([] {
-            runHTTPServer(8081, serveEchoPage);
+            runHTTPServer(8081, serveWebTranscript);
         });
     }
 
