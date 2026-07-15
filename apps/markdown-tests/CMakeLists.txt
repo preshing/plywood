@@ -10,15 +10,10 @@ set(CMAKE_CONFIGURATION_TYPES "Debug;Release;Final" CACHE INTERNAL "Build config
 project(markdown-tests)
 include(../../src/common.cmake)
 
-# plywood
-add_source_files(PLYWOOD_SOURCES "${CMAKE_CURRENT_LIST_DIR}/../../src" ply-json.* ply-tokenizer.* ply-markdown.* ply-math.* ply-base.*)
-if(WIN32)
-    add_source_files(PLYWOOD_SOURCES "${CMAKE_CURRENT_LIST_DIR}/../../src" *.natvis)
-endif()
-add_library(plywood ${PLYWOOD_SOURCES})
-target_include_directories(plywood PUBLIC "${CMAKE_CURRENT_LIST_DIR}/../../src")
+# Add plywood
+add_plywood(ply-json.* ply-tokenizer.* ply-markdown.* ply-math.* ply-base.*)
 
-# markdown-tests
+# Add markdown-tests
 add_source_files(MARKDOWN_TEST_SOURCES "${CMAKE_CURRENT_LIST_DIR}" markdown-tests.cpp)
 add_executable(markdown-tests ${MARKDOWN_TEST_SOURCES})
 target_link_libraries(markdown-tests PRIVATE plywood)

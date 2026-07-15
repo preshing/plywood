@@ -10,13 +10,8 @@ set(CMAKE_CONFIGURATION_TYPES "Debug;Release;Final" CACHE INTERNAL "Build config
 project(generate-docs)
 include(../../src/common.cmake)
 
-# plywood
-add_source_files(PLYWOOD_SOURCES "${CMAKE_CURRENT_LIST_DIR}/../../src" ply-markdown.* ply-tokenizer.* ply-cpp.* ply-json.* ply-math.* ply-base.*)
-if(WIN32)
-    add_source_files(PLYWOOD_SOURCES "${CMAKE_CURRENT_LIST_DIR}/../../src" *.natvis)
-endif()
-add_library(plywood ${PLYWOOD_SOURCES})
-target_include_directories(plywood PUBLIC "${CMAKE_CURRENT_LIST_DIR}/../../src")
+# Add plywood
+add_plywood(ply-markdown.* ply-tokenizer.* ply-cpp.* ply-json.* ply-math.* ply-base.*)
 if(WIN32)
     target_compile_definitions(plywood PUBLIC PLY_WITH_DIRECTORY_WATCHER=1)
 elseif(APPLE)
@@ -24,7 +19,7 @@ elseif(APPLE)
     target_link_libraries(plywood PUBLIC "-framework CoreServices")
 endif()
 
-# generate-docs
+# Add generate-docs
 add_source_files(GENERATE_DOCS_SOURCES "${CMAKE_CURRENT_LIST_DIR}" generate-docs.cpp)
 add_executable(generate-docs ${GENERATE_DOCS_SOURCES})
 target_link_libraries(generate-docs PRIVATE plywood)

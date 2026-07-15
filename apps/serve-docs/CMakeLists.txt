@@ -10,15 +10,10 @@ set(CMAKE_CONFIGURATION_TYPES "Debug;Release;Final" CACHE INTERNAL "Build config
 project(serve-docs)
 include(../../src/common.cmake)
 
-# plywood
-add_source_files(PLYWOOD_SOURCES "${CMAKE_CURRENT_LIST_DIR}/../../src" ply-base.* ply-network.* ply-http.*)
-if(WIN32)
-    add_source_files(PLYWOOD_SOURCES "${CMAKE_CURRENT_LIST_DIR}/../../src" *.natvis)
-endif()
-add_library(plywood ${PLYWOOD_SOURCES})
-target_include_directories(plywood PUBLIC "${CMAKE_CURRENT_LIST_DIR}/../../src")
+# Add plywood
+add_plywood(ply-base.* ply-network.* ply-http.*)
 
-# serve-docs
+# Add serve-docs
 add_source_files(SERVE_DOCS_SOURCES "${CMAKE_CURRENT_LIST_DIR}" serve-docs.cpp)
 add_executable(serve-docs ${SERVE_DOCS_SOURCES})
 target_link_libraries(serve-docs PRIVATE plywood)

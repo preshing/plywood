@@ -6,6 +6,7 @@
 #=========================================================
 
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
+get_filename_component(PLYWOOD_ROOT ../.. REALPATH)
 
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Debug CACHE STRING "" FORCE)
@@ -94,6 +95,18 @@ function(add_source_files var_name root_path)
         endforeach()
     endforeach()
     set(${var_name} "${${var_name}}" PARENT_SCOPE)
+endfunction()
+
+#--------------------------------------
+# plywood target
+#--------------------------------------
+function(add_plywood)
+    add_source_files(PLYWOOD_SOURCES "${PLYWOOD_ROOT}/src" ${ARGN})
+    if(WIN32)
+        add_source_files(PLYWOOD_SOURCES "${PLYWOOD_ROOT}/src" *.natvis)
+    endif()
+    add_library(plywood ${PLYWOOD_SOURCES})
+    target_include_directories(plywood PUBLIC "${PLYWOOD_ROOT}/src")
 endfunction()
 
 #--------------------------------------
