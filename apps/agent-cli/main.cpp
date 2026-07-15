@@ -72,13 +72,13 @@ static void serveWebTranscript(HTTPServerRequest& request) {
 <style>
 body { margin: 0; background: #181a1b; color: #e8e6e3; font: 14px/1.5 monospace; }
 #transcript { max-width: 960px; margin: auto; padding: 16px; }
-.section { margin: 0 0 12px; padding: 12px 12px 8px; background: #242729; border-radius: 6px; }
-.section-header { margin: -12px -12px 6px; padding: 2px 12px; background: #303438; border-radius: 6px 6px 0 0;
+.section { margin: 0 0 12px; background: #242729; border-radius: 6px; }
+.section-header { padding: 2px 12px; background: #303438; border-radius: 6px 6px 0 0;
     font-family: system-ui, sans-serif; }
-.message-content { white-space: pre-wrap; }
+.message-content { padding: 4px 12px; white-space: pre-wrap; }
 .system > .section-header, .tool-definition > .section-header { background: #555a5e; }
 .user > .section-header { background: #35634a; }
-.thinking > .section-header { background: #477da6; }
+.thinking > .section-header { background: #427788; }
 .thinking > .section-header .caption { color: #f0f0f0; }
 .agent > .section-header { background: #244a7c; }
 .error > .section-header { background: #813b3b; }
@@ -87,7 +87,7 @@ body { margin: 0; background: #181a1b; color: #e8e6e3; font: 14px/1.5 monospace;
 .tool-call > .section-header .timestamp, .tool-response > .section-header .timestamp { color: #4d555a; }
 .caption { color: #f0f0f0; font-weight: 600; }
 .timestamp { margin-right: 10px; color: #c0c3c5; font-size: 0.85em; font-weight: normal; }
-.timing { color: #9aa0a6; }
+.timing { font-family: system-ui, sans-serif; color: #9aa0a6; }
 </style></head><body><main id="transcript">
 <script>
 const transcript = document.getElementById('transcript');
