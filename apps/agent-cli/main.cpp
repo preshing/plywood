@@ -70,9 +70,9 @@ static void serveWebTranscript(HTTPServerRequest& request) {
     StringView documentStart = R"(<!doctype html>
 <html><head><meta charset="utf-8"><title>Agent Transcript</title>
 <style>
-body { margin: 0; background: #181a1b; color: #e8e6e3; font: 14px/1.5 monospace; }
+body { margin: 0; background: #101010; color: #e8e6e3; font: 14px/1.5 monospace; }
 #transcript { max-width: 960px; margin: auto; padding: 16px; }
-.section { margin: 0 0 12px; background: #242729; border-radius: 6px; }
+.section { margin: 0 0 12px; background: #282828; border-radius: 6px; }
 .section-header { padding: 2px 12px; background: #303438; border-radius: 6px 6px 0 0;
     font-family: system-ui, sans-serif; color: #d0d0d0; font-weight: 600; }
 .tool-call > .section-header, .tool-response > .section-header { color: #202426; }
@@ -86,8 +86,8 @@ body { margin: 0; background: #181a1b; color: #e8e6e3; font: 14px/1.5 monospace;
 .section.collapsed > .section-header { border-radius: 6px; }
 .message-content { padding: 4px 12px; white-space: pre-wrap; }
 .system > .section-header, .tool-definition > .section-header { background: #393c3f; }
-.user > .section-header { background: #35634a; }
-.thinking > .section-header { background: #427788; }
+.user > .section-header { background: #3b5d4b; }
+.thinking > .section-header { background: #4b7380; }
 .agent > .section-header { background: #244a7c; }
 .error > .section-header { background: #813b3b; }
 .tool-call > .section-header, .tool-response > .section-header { background: #8d9398; }
@@ -688,6 +688,7 @@ int main(int argc, const char* argv[]) {
 
     // Keep serving HTTP requests after the agent finishes.
     if (webServerThread.isValid()) {
+        getStdOut().write("Waiting for HTTP connections...");
         webServerThread.join();
         Network::shutdown();
     }
