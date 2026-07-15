@@ -74,18 +74,24 @@ body { margin: 0; background: #181a1b; color: #e8e6e3; font: 14px/1.5 monospace;
 #transcript { max-width: 960px; margin: auto; padding: 16px; }
 .section { margin: 0 0 12px; background: #242729; border-radius: 6px; }
 .section-header { padding: 2px 12px; background: #303438; border-radius: 6px 6px 0 0;
-    font-family: system-ui, sans-serif; }
+    font-family: system-ui, sans-serif; color: #d0d0d0; font-weight: 600; }
+.tool-call > .section-header, .tool-response > .section-header { color: #202426; }
+.collapse-toggle { width: 17px; height: 17px; margin: 0 8px 0 0; padding: 0; border: 0; background: transparent;
+    color: inherit; vertical-align: -3px; cursor: pointer; background-color: currentColor;
+    -webkit-mask: var(--collapse-icon) center / contain no-repeat; mask: var(--collapse-icon) center / contain no-repeat; }
+.section.collapsed .collapse-toggle { --collapse-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='6' fill='none' stroke='black' stroke-width='1'/%3E%3Cpath d='M5 8h6M8 5v6' fill='none' stroke='black' stroke-linecap='round' stroke-width='1'/%3E%3C/svg%3E"); }
+.section:not(.collapsed) .collapse-toggle { --collapse-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='6' fill='none' stroke='black' stroke-width='1'/%3E%3Cpath d='M5 8h6' fill='none' stroke='black' stroke-linecap='round' stroke-width='1'/%3E%3C/svg%3E"); }
+.collapse-toggle:focus-visible { outline: 1px solid currentColor; outline-offset: 2px; }
+.section.collapsed > .message-content { display: none; }
+.section.collapsed > .section-header { border-radius: 6px; }
 .message-content { padding: 4px 12px; white-space: pre-wrap; }
-.system > .section-header, .tool-definition > .section-header { background: #555a5e; }
+.system > .section-header, .tool-definition > .section-header { background: #393c3f; }
 .user > .section-header { background: #35634a; }
 .thinking > .section-header { background: #427788; }
-.thinking > .section-header .caption { color: #f0f0f0; }
 .agent > .section-header { background: #244a7c; }
 .error > .section-header { background: #813b3b; }
-.tool-call > .section-header, .tool-response > .section-header { background: #b7bbbe; }
-.tool-call > .section-header .caption, .tool-response > .section-header .caption { color: #202426; }
+.tool-call > .section-header, .tool-response > .section-header { background: #8d9398; }
 .tool-call > .section-header .timestamp, .tool-response > .section-header .timestamp { color: #4d555a; }
-.caption { color: #f0f0f0; font-weight: 600; }
 .timestamp { margin-right: 10px; color: #c0c3c5; font-size: 0.85em; font-weight: normal; }
 .timing { font-family: system-ui, sans-serif; color: #9aa0a6; }
 </style></head><body><main id="transcript">
@@ -96,6 +102,13 @@ function atBottom() { return innerHeight + scrollY >= document.documentElement.s
 addEventListener('scroll', () => pinned = atBottom(), {passive: true});
 new MutationObserver(() => { if (pinned) requestAnimationFrame(() => scrollTo(0, document.body.scrollHeight)); })
     .observe(transcript, {childList: true, subtree: true, characterData: true});
+transcript.addEventListener('click', event => {
+    const button = event.target.closest('.collapse-toggle');
+    if (!button)
+        return;
+    const section = button.closest('.section');
+    section.classList.toggle('collapsed');
+});
 </script>
 )";
     if (out.write(documentStart) != documentStart.numBytes())
@@ -244,7 +257,8 @@ void TranscriptPrinter::printStartup(StringView userPrompt) {
     }
     if (options.runWebServer) {
         // Stream system prompt to web browser.
-        webTranscript.append(String::format("<div class=\"section system\"><div class=\"section-header\">"
+        webTranscript.append(String::format("<div class=\"section system collapsed\"><div class=\"section-header\">"
+                                            "<button class=\"collapse-toggle\"></button>"
                                             "<span class=\"timestamp\">{}</span>"
                                             "<span class=\"caption\">System Prompt</span></div>"
                                             "<div class=\"message-content\">{}\n</div></div>\n",
@@ -265,7 +279,8 @@ void TranscriptPrinter::printStartup(StringView userPrompt) {
             if (options.runWebServer) {
                 // Stream tool definition to web browser.
                 MemStream html;
-                html.format("<div class=\"section tool-definition\"><div class=\"section-header\">"
+                html.format("<div class=\"section tool-definition collapsed\"><div class=\"section-header\">"
+                            "<button class=\"collapse-toggle\"></button>"
                             "<span class=\"timestamp\">{}</span><span class=\"caption\">"
                             "Tool Definition: {}</span></div><div class=\"message-content\">",
                             formatTimeStamp(now), escapeHtml(tool->name));
@@ -293,6 +308,7 @@ void TranscriptPrinter::printStartup(StringView userPrompt) {
     if (options.runWebServer) {
         // Stream user header to web browser.
         webTranscript.append(String::format("<div class=\"section user\"><div class=\"section-header\">"
+                                            "<button class=\"collapse-toggle\"></button>"
                                             "<span class=\"timestamp\">{}</span>"
                                             "<span class=\"caption\">User</span></div>"
                                             "<div class=\"message-content\">{}\n",
@@ -319,6 +335,7 @@ void TranscriptPrinter::openSection(Transcript::Role role, u32 toolCallID, s64 t
             out.format("{} [Agent Thinking]\n", formatTimeStamp(timeStamp));
             if (options.runWebServer) {
                 webTranscript.append(String::format("<div class=\"section thinking\"><div class=\"section-header\">"
+                                                    "<button class=\"collapse-toggle\"></button>"
                                                     "<span class=\"timestamp\">{}</span>"
                                                     "<span class=\"caption\">Agent Thinking</span></div>"
                                                     "<div class=\"message-content\">",
@@ -330,6 +347,7 @@ void TranscriptPrinter::openSection(Transcript::Role role, u32 toolCallID, s64 t
             out.format("{} [Agent]\n", formatTimeStamp(timeStamp));
             if (options.runWebServer) {
                 webTranscript.append(String::format("<div class=\"section agent\"><div class=\"section-header\">"
+                                                    "<button class=\"collapse-toggle\"></button>"
                                                     "<span class=\"timestamp\">{}</span>"
                                                     "<span class=\"caption\">Agent</span></div>"
                                                     "<div class=\"message-content\">",
@@ -341,6 +359,7 @@ void TranscriptPrinter::openSection(Transcript::Role role, u32 toolCallID, s64 t
             out.format("{} [Error]\n", formatTimeStamp(timeStamp));
             if (options.runWebServer) {
                 webTranscript.append(String::format("<div class=\"section error\"><div class=\"section-header\">"
+                                                    "<button class=\"collapse-toggle\"></button>"
                                                     "<span class=\"timestamp\">{}</span>"
                                                     "<span class=\"caption\">Error</span></div>"
                                                     "<div class=\"message-content\">",
@@ -382,6 +401,7 @@ void TranscriptPrinter::closeOpen(s64 endMicros) {
         if (options.runWebServer) {
             // Stream tool call to web browser.
             webTranscript.append(String::format("<div class=\"section tool-call\"><div class=\"section-header\">"
+                                                "<button class=\"collapse-toggle\"></button>"
                                                 "<span class=\"timestamp\">{}</span>"
                                                 "<span class=\"caption\">Tool Call #{}</span></div>"
                                                 "<div class=\"message-content\">{}\n</div></div>\n",
@@ -409,7 +429,8 @@ void TranscriptPrinter::flushToolResponses(s64 timeStamp) {
         out.format("{}\n", Separator);
         if (options.runWebServer) {
             // Stream message header to the browser.
-            webTranscript.append(String::format("<div class=\"section tool-response\"><div class=\"section-header\">"
+            webTranscript.append(String::format("<div class=\"section tool-response collapsed\"><div class=\"section-header\">"
+                                                "<button class=\"collapse-toggle\"></button>"
                                                 "<span class=\"timestamp\">{}</span>"
                                                 "<span class=\"caption\">Tool Response #{}</span></div>"
                                                 "<div class=\"message-content\">{}\n</div></div>\n",
