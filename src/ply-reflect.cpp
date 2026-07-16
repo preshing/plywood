@@ -983,7 +983,7 @@ void readFromJson(ReadFromJsonArgs& args, AnyObject obj, const json::Node& root)
 
             // Set subtype index and construct the active type
             *(u32*) obj.data = subtypeIndex;
-            u32 storageOffset = max(sizeof(u32), (uptr) variantType->alignment);
+            u32 storageOffset = max((u32) sizeof(u32), variantType->alignment);
             AnyObject value{PLY_PTR_OFFSET(obj.data, storageOffset), activeType};
             value.construct();
 

@@ -764,11 +764,9 @@ void performInferenceRequest(Agent::Impl* impl) {
     *headers.insert("Content-Type").value = "application/json";
     {
         String apiKey = impl->props.endPoint->getAPIKey();
-        PLY_ASSERT(apiKey);
         if (!apiKey) {
             LockGuard<Mutex> guard{impl->toolCtx.mutex};
-            OutputDebugStringA("====== ERROR\n");
-            onError(impl, "no api key");
+            onError(impl, "Missing API key");
             return;
         }
         *headers.insert("Authorization").value = String::format("Bearer {}", apiKey);
@@ -791,8 +789,6 @@ void performInferenceRequest(Agent::Impl* impl) {
             state.errorMessage = data;
             return;
         }
-
-        OutputDebugStringA("====== CURL DATA\n");
 
         // Write raw HTTP response to log file
         if (impl->httpLogFile.isOpen()) {
@@ -831,7 +827,6 @@ void performInferenceRequest(Agent::Impl* impl) {
     // Drive the multi handle until the request completes or the client cancels.
     // waitForHTTPResponse() performs curl_multi_perform/poll and returns false once the
     // request has finished.
-    OutputDebugStringA("====== START CURL REQ\n");
     for (;;) {
         // Check for cancellation between iterations. The client thread signals cancel
         // by setting `canceled` and calling wakeUpHTTPClient(), which unblocks the
@@ -852,7 +847,6 @@ void performInferenceRequest(Agent::Impl* impl) {
     // Report any error that occurred during the request.
     if (state.gotError) {
         LockGuard<Mutex> guard{impl->toolCtx.mutex};
-        OutputDebugStringA("====== ERROR\n");
         onError(impl, state.errorMessage);
     }
 
@@ -860,7 +854,6 @@ void performInferenceRequest(Agent::Impl* impl) {
     // waiting if the client canceled; the runAgentThread loop will observe
     // `canceled` afterwards and exit without appending another turn.
     {
-        OutputDebugStringA("====== WAIT FOR TOOLS\n");
         LockGuard<Mutex> guard{impl->toolCtx.mutex};
         while (!impl->pendingToolCalls.isEmpty()) {
             if (impl->toolCtx.canceled)
@@ -868,7 +861,6 @@ void performInferenceRequest(Agent::Impl* impl) {
             impl->inferenceCondVar.wait(guard);
         }
     }
-    OutputDebugStringA("====== END INFERENCE REQUEST\n");
 }
 
 void runAgentThread(Agent::Impl* impl) {
@@ -909,7 +901,6 @@ void runAgentThread(Agent::Impl* impl) {
 
     // The inference thread's Reference<Agent::Impl> (captured by the thread functor)
     // is released when this function returns and the functor is destroyed.
-    OutputDebugStringA("====== EXIT INFERENCE THREAD\n");
     impl->decRefCount();
 }
 
@@ -920,7 +911,6 @@ void runAgentThread(Agent::Impl* impl) {
 //
 
 void runToolThread(Agent::Impl* impl) {
-    OutputDebugStringA("====== START TOOLS\n");
     bool popHeadItem = false;
 
     for (;;) {
@@ -974,7 +964,6 @@ void runToolThread(Agent::Impl* impl) {
         const json::Node& arguments = parsedArgs.root;
 
         // Handle this tool call (no locks held).
-        OutputDebugStringA("====== RUN TOOL\n");
         // Look up the handler for this tool call by name.
         const Owned<ToolSet::Handler>* found = impl->props.toolSet->handlers.find(tcName);
         // FIXME: Improve error handling
@@ -1010,7 +999,6 @@ void runToolThread(Agent::Impl* impl) {
         popHeadItem = true;
     }
 
-    OutputDebugStringA("====== EXIT TOOL THREAD\n");
     impl->decRefCount();
 }
 
@@ -1124,7 +1112,7 @@ Array<TranscriptEvent> Agent::waitForEvents(s32 maxTimeInMillis) {
             impl->clientCondVar.wait(guard);
         } else {
             u64 elapsed = (getCpuTicks() - startTicks) / ticksPerMs;
-            if (elapsed >= maxTimeInMillis)
+            if (elapsed >= numericCast<u64>(maxTimeInMillis))
                 return std::move(impl->pendingEvents);
             impl->clientCondVar.timedWait(guard, numericCast<u32>(maxTimeInMillis - elapsed));
         }
@@ -1153,7 +1141,7 @@ Array<TranscriptEvent> Agent::waitForCompletion(s32 maxTimeInMillis) {
             impl->completionCondVar.wait(guard);
         } else {
             u64 elapsed = (getCpuTicks() - startTicks) / ticksPerMs;
-            if (elapsed >= maxTimeInMillis)
+            if (elapsed >= numericCast<u64>(maxTimeInMillis))
                 return std::move(impl->pendingEvents);
             impl->completionCondVar.timedWait(guard, numericCast<u32>(maxTimeInMillis - elapsed));
         }
@@ -1420,7 +1408,7 @@ static bool globMatches(StringView pattern, StringView name) {
         // Advance to the next non-wildcard character in the input pattern.
         do {
             wildCardPos++;
-        } while ((wildCardPos < pattern.numBytes()) && (pattern[wildCardPos] == '*'));
+        } while ((numericCast<u32>(wildCardPos) < pattern.numBytes()) && (pattern[wildCardPos] == '*'));
         // Trim the prefix from the input pattern.
         pattern = pattern.substr(wildCardPos);
         // If the pattern is now empty, that means the pattern ended with *,

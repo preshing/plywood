@@ -380,20 +380,28 @@ void TranscriptPrinter::openSection(Transcript::Role role, u32 toolCallID, s64 t
 void TranscriptPrinter::closeOpen(s64 endMicros) {
     Stream out = getStdOut();
     if (this->openIsTextMsg) {
-        double elapsedSec = double(endMicros - this->sectionStartTime) / 1000000.0;
-        if (elapsedSec < 0)
-            elapsedSec = 0;
-        double rate = (elapsedSec > 1e-9) ? double(this->openOutputBytes) / elapsedSec : 0;
         if (!this->openLastWasNewline)
             out.format("\n");
-        // Write message footer to stdout.
-        out.format("({:.1}s elapsed, {} output, {})\n", elapsedSec, formatSize(this->openOutputBytes),
-                   formatRate(rate));
-        if (options.runWebServer) {
-            // Stream footer to web browser.
-            webTranscript.append(String::format("\n<span class=\"timing\">({:.1}s elapsed, {} output, {})"
-                                                "</span>\n</div></div>\n",
-                                                elapsedSec, formatSize(this->openOutputBytes), formatRate(rate)));
+
+        // Error messages don't include output statistics.
+        if (this->openRole == Transcript::Role::Error) {
+            if (options.runWebServer)
+                webTranscript.append("\n</div></div>\n");
+        } else {
+            double elapsedSec = double(endMicros - this->sectionStartTime) / 1000000.0;
+            if (elapsedSec < 0)
+                elapsedSec = 0;
+            double rate = (elapsedSec > 1e-9) ? double(this->openOutputBytes) / elapsedSec : 0;
+
+            // Write message footer to stdout.
+            out.format("({:.1}s elapsed, {} output, {})\n", elapsedSec, formatSize(this->openOutputBytes),
+                       formatRate(rate));
+            if (options.runWebServer) {
+                // Stream footer to web browser.
+                webTranscript.append(String::format("\n<span class=\"timing\">({:.1}s elapsed, {} output, {})"
+                                                    "</span>\n</div></div>\n",
+                                                    elapsedSec, formatSize(this->openOutputBytes), formatRate(rate)));
+            }
         }
     } else if (this->openRole == Transcript::Role::ToolCall) {
         // Flush tool call to stdout.
@@ -547,7 +555,8 @@ static bool loadSettings() {
     String apiKeyEnvZ = String{ep.get("apiKeyEnv").text()} + '\0';
     endPoint.getAPIKey = [apiKeyEnvZ]() -> String {
         const char* envVar = getenv(apiKeyEnvZ.bytes());
-        PLY_ASSERT(envVar);
+        if (!envVar)
+            return {};
         return envVar;
     };
 

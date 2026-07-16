@@ -85,6 +85,19 @@ s64 getUnixTimestamp() {
 #include <sys/time.h>
 #endif
 
+// Returns the frequency of the platform's high-resolution timer.
+float getCpuTicksPerSecond() {
+#if defined(PLY_APPLE)
+    mach_timebase_info_data_t timeBase;
+    kern_return_t rc = mach_timebase_info(&timeBase);
+    PLY_ASSERT(rc == KERN_SUCCESS);
+    PLY_UNUSED(rc);
+    return 1000000000.f * timeBase.denom / timeBase.numer;
+#else
+    return 1000000000.f;
+#endif
+}
+
 s64 getUnixTimestamp() {
 #if PLY_USE_POSIX_2008_CLOCK
     struct timespec tick;

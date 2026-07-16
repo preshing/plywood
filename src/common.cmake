@@ -113,25 +113,19 @@ endfunction()
 # curl support
 #--------------------------------------
 function(add_curl)
+    add_library(curl INTERFACE)
     if(WIN32)
         # Curl must be installed using: vcpkg install curl[openssl]:x64-windows
-        add_library(curl INTERFACE)
         if (NOT DEFINED VCPKG_PATH)
             get_filename_component(VCPKG_PATH "${PLYWOOD_ROOT}/../vcpkg" REALPATH)
         endif()
         file(TO_NATIVE_PATH "${VCPKG_PATH}" VCPKG_NATIVE_PATH)
         if (NOT EXISTS "${VCPKG_PATH}/vcpkg.exe")
-            message("*** Could not locate vcpkg at: ${VCPKG_NATIVE_PATH} ***")
-            message("Pass -DVCPKG_PATH=<path> to the cmake command line to specify an alternative path.")
-            message("Otherwise, vcpkg can be installed using: git clone https://github.com/microsoft/vcpkg.git \"${VCPKG_NATIVE_PATH}\"")
-            message("Then run: \"${VCPKG_NATIVE_PATH}\\bootstrap-vcpkg.bat\"")
-            message(FATAL_ERROR "Could not locate vcpkg!")
+            message(FATAL_ERROR "Could not locate vcpkg at \"${VCPKG_NATIVE_PATH}\". Install vcpkg or set VCPKG_PATH.")
         endif()
         set(VCPKG_WIN64_PATH "${VCPKG_PATH}/installed/x64-windows")
         if (NOT EXISTS "${VCPKG_WIN64_PATH}/lib/libcurl.lib")
-            message("*** Could not locate: ${VCPKG_NATIVE_PATH}\\installed\\x64-windows\\lib\\libcurl.lib ***")
-            message("Install it using: \"${VCPKG_NATIVE_PATH}\\vcpkg\" install curl[openssl]:x64-windows")
-            message(FATAL_ERROR "Could not locate libcurl.lib!")
+            message(FATAL_ERROR "Could not locate the curl library. Install it using: \"${VCPKG_NATIVE_PATH}\\vcpkg\" install curl[openssl]:x64-windows")
         endif()
         target_include_directories(curl INTERFACE "${VCPKG_WIN64_PATH}/include")
         target_link_libraries(curl INTERFACE
@@ -140,6 +134,21 @@ function(add_curl)
             "${VCPKG_WIN64_PATH}/lib/libssl.lib")
         set(VCPKG_PATH "${VCPKG_PATH}" CACHE PATH "Path to vcpkg.exe" FORCE)
         set(VCPKG_WIN64_PATH "${VCPKG_WIN64_PATH}" PARENT_SCOPE)
+    elseif(UNIX)
+        # Use CMake's built-in find_library
+        find_library(CURL_LIB curl)
+        if (NOT CURL_LIB)
+            message(FATAL_ERROR "Could not locate the curl library. Install the curl development package or set CURL_LIB.")
+        endif()
+        find_library(SSL_LIB ssl)
+        if (NOT SSL_LIB)
+            message(FATAL_ERROR "Could not locate the SSL library. Install the OpenSSL development package or set SSL_LIB.")
+        endif()
+        find_library(CRYPTO_LIB crypto)
+        if (NOT CRYPTO_LIB)
+            message(FATAL_ERROR "Could not locate the crypto library. Install the OpenSSL development package or set CRYPTO_LIB.")
+        endif()
+        target_link_libraries(curl INTERFACE ${CURL_LIB} ${SSL_LIB} ${CRYPTO_LIB})
     endif()
 endfunction()
 
@@ -150,6 +159,10 @@ function(add_curl_dll_post_build_step target_name)
             "${VCPKG_WIN64_PATH}/bin/libssl-3-x64.dll"
             "${VCPKG_WIN64_PATH}/bin/libcrypto-3-x64.dll"
             "${VCPKG_WIN64_PATH}/bin/z.dll"
+            "${PLYWOOD_ROOT}/src/cacert.pem"
+            $<TARGET_FILE_DIR:${target_name}>)
+    elseif(UNIX)
+        add_custom_command(TARGET "${target_name}" POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different
             "${PLYWOOD_ROOT}/src/cacert.pem"
             $<TARGET_FILE_DIR:${target_name}>)
     endif()

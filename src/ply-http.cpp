@@ -64,7 +64,8 @@ static size_t curlWriteCallback(char* ptr, size_t size, size_t nmemb, void* user
 static void dumpCurlDebugInfo(CURL* requestHandle) {
     long verifyResult = 0;
     curl_easy_getinfo(requestHandle, CURLINFO_SSL_VERIFYRESULT, &verifyResult);
-    getStdErr().format("SSL verify result: {} ({})\n", X509_verify_cert_error_string(verifyResult), verifyResult);
+    getStdErr().format("SSL verify result: {} ({})\n", X509_verify_cert_error_string(verifyResult),
+                       numericCast<s64>(verifyResult));
 
     struct curl_certinfo* ci = NULL;
     if (curl_easy_getinfo(requestHandle, CURLINFO_CERTINFO, &ci) == CURLE_OK && ci) {
@@ -86,8 +87,7 @@ void sendHTTPRequest(HTTPClient* httpClient, HTTPClientArgs&& args) {
     httpClient->requestHandle = curl_easy_init();
     for (const auto& item : httpClient->args.headers.items()) {
         String header = String::format("{}: {}", item.key, item.value);
-        httpClient->requestHeaders =
-            curl_slist_append(httpClient->requestHeaders, (header + '\0').bytes());
+        httpClient->requestHeaders = curl_slist_append(httpClient->requestHeaders, (header + '\0').bytes());
     }
     curl_easy_setopt(httpClient->requestHandle, CURLOPT_URL, (httpClient->args.url + '\0').bytes());
     curl_easy_setopt(httpClient->requestHandle, CURLOPT_HTTPHEADER, httpClient->requestHeaders);
@@ -131,8 +131,7 @@ bool isHTTPRequestInProgress(const HTTPClient* httpClient) {
     return httpClient->requestHandle != nullptr;
 }
 
-bool waitForHTTPResponse(HTTPClient* httpClient, const Functor<void(StringView, bool)>& callback,
-                       u32 timeOutMillis) {
+bool waitForHTTPResponse(HTTPClient* httpClient, const Functor<void(StringView, bool)>& callback, u32 timeOutMillis) {
     PLY_ASSERT(httpClient->requestHandle);
     PLY_ASSERT(!httpClient->callback);
     PLY_SET_IN_SCOPE(httpClient->callback, &callback);
@@ -157,7 +156,8 @@ bool waitForHTTPResponse(HTTPClient* httpClient, const Functor<void(StringView, 
                 curl_easy_getinfo(httpClient->requestHandle, CURLINFO_RESPONSE_CODE, &responseCode);
                 if (responseCode != 200) {
                     // HTTP error sent from the server.
-                    callback(String::format("Error: HTTP response code {} from server", responseCode), true);
+                    callback(String::format("Error: HTTP response code {} from server", numericCast<s64>(responseCode)),
+                             true);
                 }
             }
             // Debug: dump the SSL verification result and certificate chain before
@@ -345,7 +345,7 @@ Stream HTTPServerRequest::beginStreamingResponse(HTTPServerResponse&& response) 
     // Add headers.
     *response.headers.insert("connection").value = "close";
 
-    // Begin response and send back the Stream 
+    // Begin response and send back the Stream
     req->responseType = HTTPServerResponseType::Streaming;
     req->canReuseConnection = false;
     writeResponseHeaders(*req->responseStream, response);
@@ -367,7 +367,7 @@ void HTTPServerRequest::sendGenericResponse(HTTPServerResponse::Code responseCod
 </body>
 </html>
 )",
-                                                      responseCode, message, responseCode, message));
+                                                              responseCode, message, responseCode, message));
 }
 
 // Send an HTML page that echoes request details for testing
