@@ -29,8 +29,8 @@ ToolSet toolSet;
 Reference<Transcript> transcript;
 
 //---------------------------------------------------
-// WebTranscript stores the HTML representation as an append-only stream. Each
-// browser replays the stream from the beginning, then waits for new chunks.
+// WebTranscript stores JSONL events as an append-only stream. Each browser
+// replays the stream from the beginning, then waits for new events.
 //---------------------------------------------------
 struct WebTranscript {
     Mutex mutex;
@@ -38,14 +38,16 @@ struct WebTranscript {
     Array<String> chunks;
     bool isComplete = false;
 
-    // Publishes another HTML fragment to all connected browsers.
-    void append(String&& html) {
+    // Publishes another JSON event to all connected browsers.
+    void append(json::Node&& event) {
+        String line = json::toString(event, {false});
+        line += '\n';
         LockGuard<Mutex> lock{this->mutex};
-        this->chunks.append(std::move(html));
+        this->chunks.append(std::move(line));
         this->changed.wakeAll();
     }
 
-    // Signals that no more HTML fragments will be published.
+    // Signals that no more JSON events will be published.
     void complete() {
         LockGuard<Mutex> lock{this->mutex};
         this->isComplete = true;
@@ -55,19 +57,12 @@ struct WebTranscript {
 
 WebTranscript webTranscript;
 
-// Converts transcript text to HTML-safe text while preserving whitespace.
-static String escapeHtml(StringView text) {
-    MemStream out;
-    printXmlEscapedString(out, text);
-    return out.moveToString();
-}
-
-// Streams the transcript accumulated so far, followed by new transcript chunks.
-static void serveWebTranscript(HTTPServerRequest& request) {
+// Sends the complete page that reconstructs the transcript from JSONL events.
+static void serveWebPage(HTTPServerRequest& request) {
     HTTPServerResponse response{HTTPServerResponse::OK};
     *response.headers.insert("content-type").value = "text/html; charset=utf-8";
-    Stream out = request.beginStreamingResponse(std::move(response));
-    StringView documentStart = R"(<!doctype html>
+    *response.headers.insert("cache-control").value = "no-store";
+    request.sendFullResponse(std::move(response), R"(<!doctype html>
 <html><head><meta charset="utf-8"><title>Agent Transcript</title>
 <style>
 body { margin: 0; background: #101010; color: #e8e6e3; font: 14px/1.5 monospace; }
@@ -94,9 +89,11 @@ body { margin: 0; background: #101010; color: #e8e6e3; font: 14px/1.5 monospace;
 .tool-call > .section-header .timestamp, .tool-response > .section-header .timestamp { color: #4d555a; }
 .timestamp { margin-right: 10px; color: #c0c3c5; font-size: 0.85em; font-weight: normal; }
 .timing { font-family: system-ui, sans-serif; color: #9aa0a6; }
-</style></head><body><main id="transcript">
+</style></head><body><main id="transcript"></main>
 <script>
 const transcript = document.getElementById('transcript');
+let openMessage = null;
+const toolResponses = new Map();
 let pinned = true;
 function atBottom() { return innerHeight + scrollY >= document.documentElement.scrollHeight - 24; }
 addEventListener('scroll', () => pinned = atBottom(), {passive: true});
@@ -109,14 +106,107 @@ transcript.addEventListener('click', event => {
     const section = button.closest('.section');
     section.classList.toggle('collapsed');
 });
-</script>
-)";
-    if (out.write(documentStart) != documentStart.numBytes())
-        return;
-    out.flush(true);
 
-    // Replay all existing chunks, then block until more are published. Once the
-    // transcript is complete, drain the remaining chunks and close the document.
+function createSection(className, caption, timeStamp, collapsed) {
+    const section = document.createElement('div');
+    section.className = 'section ' + className + (collapsed ? ' collapsed' : '');
+    section.innerHTML = '<div class="section-header"><button class="collapse-toggle"></button>' +
+                        '<span class="timestamp"></span><span class="caption"></span></div>' +
+                        '<div class="message-content"></div>';
+    section.querySelector('.timestamp').textContent = timeStamp;
+    section.querySelector('.caption').textContent = caption;
+    transcript.append(section);
+    return section.querySelector('.message-content');
+}
+
+function beginMessage(event) {
+    const roles = {
+        SystemPrompt: ['system', 'System Prompt', true],
+        ToolDefinition: ['tool-definition', 'Tool Definition: ' + event.name, true],
+        User: ['user', 'User', false],
+        AgentThinking: ['thinking', 'Agent Thinking', false],
+        Agent: ['agent', 'Agent', false],
+        Error: ['error', 'Error', false],
+        ToolCall: ['tool-call', 'Tool Call #' + event.toolCallID, false],
+    };
+    const role = roles[event.role];
+    if (!role)
+        return;
+    openMessage = createSection(role[0], role[1], event.timeStamp, role[2]);
+}
+
+function handleEvent(event) {
+    switch (event.operation) {
+        case 'BeginMessage':
+            beginMessage(event);
+            break;
+        case 'AppendText':
+            if (openMessage)
+                openMessage.append(document.createTextNode(event.text));
+            break;
+        case 'EndMessage':
+            if (!openMessage)
+                break;
+            openMessage.append(document.createTextNode('\n'));
+            if (event.footer) {
+                const footer = document.createElement('span');
+                footer.className = 'timing';
+                footer.textContent = event.footer;
+                openMessage.append(footer, document.createTextNode('\n'));
+            }
+            openMessage = null;
+            break;
+        case 'AppendToolResponse':
+            toolResponses.set(event.toolCallID, (toolResponses.get(event.toolCallID) || '') + event.text);
+            break;
+        case 'EndToolResponse': {
+            const content = createSection('tool-response', 'Tool Response #' + event.toolCallID,
+                                          event.timeStamp, true);
+            content.textContent = (toolResponses.get(event.toolCallID) || '') + '\n';
+            toolResponses.delete(event.toolCallID);
+            break;
+        }
+    }
+}
+
+async function streamEvents() {
+    const response = await fetch('/events');
+    if (!response.ok || !response.body)
+        throw new Error('Unable to stream transcript events');
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let pending = '';
+    for (;;) {
+        const result = await reader.read();
+        pending += decoder.decode(result.value || new Uint8Array(), {stream: !result.done});
+        const lines = pending.split('\n');
+        pending = lines.pop();
+        for (const line of lines) {
+            if (line)
+                handleEvent(JSON.parse(line));
+        }
+        if (result.done) {
+            if (pending)
+                handleEvent(JSON.parse(pending));
+            return;
+        }
+    }
+}
+
+streamEvents().catch(error => console.error(error));
+</script></body></html>
+)");
+}
+
+// Streams the transcript accumulated so far, followed by new JSONL events.
+static void serveWebEvents(HTTPServerRequest& request) {
+    HTTPServerResponse response{HTTPServerResponse::OK};
+    *response.headers.insert("content-type").value = "application/x-ndjson; charset=utf-8";
+    *response.headers.insert("cache-control").value = "no-store";
+    Stream out = request.beginStreamingResponse(std::move(response));
+
+    // Replay all existing events, then block until more are published. Once the
+    // transcript is complete, drain the remaining events and close the stream.
     u32 nextChunk = 0;
     for (;;) {
         String chunk;
@@ -132,15 +222,25 @@ transcript.addEventListener('click', event => {
             }
         }
         if (isComplete) {
-            StringView documentEnd = "</main></body></html>\n";
-            out.write(documentEnd);
             out.flush(true);
             return;
         }
-        StringView bytes = chunk ? StringView{chunk} : StringView{"<!-- keepalive -->\n"};
+        // A blank JSONL line keeps an idle connection alive and is ignored by the client.
+        StringView bytes = chunk ? StringView{chunk} : StringView{"\n"};
         if (out.write(bytes) != bytes.numBytes())
             return;
         out.flush(true);
+    }
+}
+
+// Routes browser page and event stream requests.
+static void serveWebTranscript(HTTPServerRequest& request) {
+    if (request.uri == "/events") {
+        serveWebEvents(request);
+    } else if (request.uri == "/" || request.uri == "/index.html") {
+        serveWebPage(request);
+    } else {
+        request.sendGenericResponse(HTTPServerResponse::NotFound);
     }
 }
 
@@ -150,12 +250,7 @@ transcript.addEventListener('click', event => {
 static const StringView Separator = "-------------------------------";
 
 static String formatTimeStamp(s64 micros) {
-    DateTime dt = convertToDateTime(micros);
-    u32 h12 = dt.hour % 12;
-    if (h12 == 0)
-        h12 = 12;
-    const char* ap = dt.hour < 12 ? "am" : "pm";
-    return String::format("{}:{:02}{}", h12, dt.minute, ap);
+    return String::fromDateTime("%l:%M%P", convertToDateTime(micros));
 }
 
 static String formatSize(uptr bytes) {
@@ -174,6 +269,56 @@ static String formatRate(double bytesPerSec) {
     if (kb < 1024.0)
         return String::format("{:.1}KB/s", kb);
     return String::format("{:.1}MB/s", kb / 1024.0);
+}
+
+// Creates a JSON object with the operation shared by every web event.
+static json::Node makeWebEvent(StringView operation) {
+    json::Node event{json::Node::Object{}};
+    event.set("operation", json::Node::Text{String{operation}});
+    return event;
+}
+
+// Publishes the header of a message section.
+static void webBeginMessage(StringView role, StringView timeStamp, StringView name = {}, u32 toolCallID = 0) {
+    json::Node event = makeWebEvent("BeginMessage");
+    event.set("timeStamp", json::Node::Text{String{timeStamp}});
+    event.set("role", json::Node::Text{String{role}});
+    if (name)
+        event.set("name", json::Node::Text{String{name}});
+    if (role == "ToolCall")
+        event.set("toolCallID", json::Node::Number{double(toolCallID)});
+    webTranscript.append(std::move(event));
+}
+
+// Publishes text belonging to the currently open message.
+static void webAppendText(StringView text) {
+    json::Node event = makeWebEvent("AppendText");
+    event.set("text", json::Node::Text{String{text}});
+    webTranscript.append(std::move(event));
+}
+
+// Publishes the end of the current message and its optional statistics footer.
+static void webEndMessage(StringView footer = {}) {
+    json::Node event = makeWebEvent("EndMessage");
+    if (footer)
+        event.set("footer", json::Node::Text{String{footer}});
+    webTranscript.append(std::move(event));
+}
+
+// Publishes a chunk belonging to a buffered tool response.
+static void webAppendToolResponse(u32 toolCallID, StringView text) {
+    json::Node event = makeWebEvent("AppendToolResponse");
+    event.set("toolCallID", json::Node::Number{double(toolCallID)});
+    event.set("text", json::Node::Text{String{text}});
+    webTranscript.append(std::move(event));
+}
+
+// Publishes the end of a tool response with the timestamp used by its section.
+static void webEndToolResponse(u32 toolCallID, StringView timeStamp) {
+    json::Node event = makeWebEvent("EndToolResponse");
+    event.set("toolCallID", json::Node::Number{double(toolCallID)});
+    event.set("timeStamp", json::Node::Text{String{timeStamp}});
+    webTranscript.append(std::move(event));
 }
 
 static String formatJsonValue(const json::Node& node) {
@@ -256,13 +401,10 @@ void TranscriptPrinter::printStartup(StringView userPrompt) {
         out.format("{}\n", Separator);
     }
     if (options.runWebServer) {
-        // Stream system prompt to web browser.
-        webTranscript.append(String::format("<div class=\"section system collapsed\"><div class=\"section-header\">"
-                                            "<button class=\"collapse-toggle\"></button>"
-                                            "<span class=\"timestamp\">{}</span>"
-                                            "<span class=\"caption\">System Prompt</span></div>"
-                                            "<div class=\"message-content\">{}\n</div></div>\n",
-                                            formatTimeStamp(now), escapeHtml(toolSet.systemMessage)));
+        // Stream the system prompt to the web browser.
+        webBeginMessage("SystemPrompt", formatTimeStamp(now));
+        webAppendText(toolSet.systemMessage);
+        webEndMessage();
     }
 
     // Tool definition blocks.
@@ -277,17 +419,14 @@ void TranscriptPrinter::printStartup(StringView userPrompt) {
             out.format("{}\n", Separator);
 
             if (options.runWebServer) {
-                // Stream tool definition to web browser.
-                MemStream html;
-                html.format("<div class=\"section tool-definition collapsed\"><div class=\"section-header\">"
-                            "<button class=\"collapse-toggle\"></button>"
-                            "<span class=\"timestamp\">{}</span><span class=\"caption\">"
-                            "Tool Definition: {}</span></div><div class=\"message-content\">",
-                            formatTimeStamp(now), escapeHtml(tool->name));
+                // Stream the tool definition to the web browser.
+                MemStream text;
                 for (const ToolSet::Parameter& param : tool->parameters)
-                    html.format("`{}`: {}\n", escapeHtml(param.name), escapeHtml(param.description));
-                html.format("{}\n</div></div>\n", escapeHtml(tool->description));
-                webTranscript.append(html.moveToString());
+                    text.format("`{}`: {}\n", param.name, param.description);
+                text.format("{}", tool->description);
+                webBeginMessage("ToolDefinition", formatTimeStamp(now), tool->name);
+                webAppendText(text.moveToString());
+                webEndMessage();
             }
         }
     }
@@ -306,13 +445,10 @@ void TranscriptPrinter::printStartup(StringView userPrompt) {
     this->sectionStartTime = now;
     this->openOutputBytes = userPrompt.numBytes();
     if (options.runWebServer) {
-        // Stream user header to web browser.
-        webTranscript.append(String::format("<div class=\"section user\"><div class=\"section-header\">"
-                                            "<button class=\"collapse-toggle\"></button>"
-                                            "<span class=\"timestamp\">{}</span>"
-                                            "<span class=\"caption\">User</span></div>"
-                                            "<div class=\"message-content\">{}\n",
-                                            formatTimeStamp(now), escapeHtml(userPrompt)));
+        // Stream the user message to the web browser.
+        webBeginMessage("User", formatTimeStamp(now));
+        webAppendText(userPrompt);
+        webAppendText("\n");
     }
 }
 
@@ -333,42 +469,26 @@ void TranscriptPrinter::openSection(Transcript::Role role, u32 toolCallID, s64 t
     switch (role) {
         case Transcript::Role::AgentThinking:
             out.format("{} [Agent Thinking]\n", formatTimeStamp(timeStamp));
-            if (options.runWebServer) {
-                webTranscript.append(String::format("<div class=\"section thinking\"><div class=\"section-header\">"
-                                                    "<button class=\"collapse-toggle\"></button>"
-                                                    "<span class=\"timestamp\">{}</span>"
-                                                    "<span class=\"caption\">Agent Thinking</span></div>"
-                                                    "<div class=\"message-content\">",
-                                                    formatTimeStamp(timeStamp)));
-            }
+            if (options.runWebServer)
+                webBeginMessage("AgentThinking", formatTimeStamp(timeStamp));
             this->openIsTextMsg = true;
             break;
         case Transcript::Role::Agent:
             out.format("{} [Agent]\n", formatTimeStamp(timeStamp));
-            if (options.runWebServer) {
-                webTranscript.append(String::format("<div class=\"section agent\"><div class=\"section-header\">"
-                                                    "<button class=\"collapse-toggle\"></button>"
-                                                    "<span class=\"timestamp\">{}</span>"
-                                                    "<span class=\"caption\">Agent</span></div>"
-                                                    "<div class=\"message-content\">",
-                                                    formatTimeStamp(timeStamp)));
-            }
+            if (options.runWebServer)
+                webBeginMessage("Agent", formatTimeStamp(timeStamp));
             this->openIsTextMsg = true;
             break;
         case Transcript::Role::Error:
             out.format("{} [Error]\n", formatTimeStamp(timeStamp));
-            if (options.runWebServer) {
-                webTranscript.append(String::format("<div class=\"section error\"><div class=\"section-header\">"
-                                                    "<button class=\"collapse-toggle\"></button>"
-                                                    "<span class=\"timestamp\">{}</span>"
-                                                    "<span class=\"caption\">Error</span></div>"
-                                                    "<div class=\"message-content\">",
-                                                    formatTimeStamp(timeStamp)));
-            }
+            if (options.runWebServer)
+                webBeginMessage("Error", formatTimeStamp(timeStamp));
             this->openIsTextMsg = true;
             break;
         case Transcript::Role::ToolCall:
             out.format("{} [Tool Call #{}]\n", formatTimeStamp(timeStamp), toolCallID);
+            if (options.runWebServer)
+                webBeginMessage("ToolCall", formatTimeStamp(timeStamp), {}, toolCallID);
             this->openIsTextMsg = false;
             break;
         default:
@@ -386,35 +506,28 @@ void TranscriptPrinter::closeOpen(s64 endMicros) {
         // Error messages don't include output statistics.
         if (this->openRole == Transcript::Role::Error) {
             if (options.runWebServer)
-                webTranscript.append("\n</div></div>\n");
+                webEndMessage();
         } else {
             double elapsedSec = double(endMicros - this->sectionStartTime) / 1000000.0;
             if (elapsedSec < 0)
                 elapsedSec = 0;
             double rate = (elapsedSec > 1e-9) ? double(this->openOutputBytes) / elapsedSec : 0;
+            String footer = String::format("({:.1}s elapsed, {} output, {})", elapsedSec,
+                                           formatSize(this->openOutputBytes), formatRate(rate));
 
             // Write message footer to stdout.
-            out.format("({:.1}s elapsed, {} output, {})\n", elapsedSec, formatSize(this->openOutputBytes),
-                       formatRate(rate));
-            if (options.runWebServer) {
-                // Stream footer to web browser.
-                webTranscript.append(String::format("\n<span class=\"timing\">({:.1}s elapsed, {} output, {})"
-                                                    "</span>\n</div></div>\n",
-                                                    elapsedSec, formatSize(this->openOutputBytes), formatRate(rate)));
-            }
+            out.format("{}\n", footer);
+            if (options.runWebServer)
+                webEndMessage(footer);
         }
     } else if (this->openRole == Transcript::Role::ToolCall) {
         // Flush tool call to stdout.
-        out.format("{}\n", formatToolCall(this->openToolCallText));
+        String formatted = formatToolCall(this->openToolCallText);
+        out.format("{}\n", formatted);
         if (options.runWebServer) {
-            // Stream tool call to web browser.
-            webTranscript.append(String::format("<div class=\"section tool-call\"><div class=\"section-header\">"
-                                                "<button class=\"collapse-toggle\"></button>"
-                                                "<span class=\"timestamp\">{}</span>"
-                                                "<span class=\"caption\">Tool Call #{}</span></div>"
-                                                "<div class=\"message-content\">{}\n</div></div>\n",
-                                                formatTimeStamp(this->sectionStartTime), this->openToolCallID,
-                                                escapeHtml(formatToolCall(this->openToolCallText))));
+            // Publish the formatted tool call as a complete message.
+            webAppendText(formatted);
+            webEndMessage();
         }
     }
     out.format("{}\n", Separator);
@@ -436,13 +549,8 @@ void TranscriptPrinter::flushToolResponses(s64 timeStamp) {
         out.format("{}\n", *text);
         out.format("{}\n", Separator);
         if (options.runWebServer) {
-            // Stream message header to the browser.
-            webTranscript.append(String::format("<div class=\"section tool-response collapsed\"><div class=\"section-header\">"
-                                                "<button class=\"collapse-toggle\"></button>"
-                                                "<span class=\"timestamp\">{}</span>"
-                                                "<span class=\"caption\">Tool Response #{}</span></div>"
-                                                "<div class=\"message-content\">{}\n</div></div>\n",
-                                                formatTimeStamp(timeStamp), id, escapeHtml(*text)));
+            // Display the response after all of its streamed chunks have arrived.
+            webEndToolResponse(id, formatTimeStamp(timeStamp));
         }
     }
     this->pendingResponses.clear();
@@ -462,10 +570,8 @@ void TranscriptPrinter::handleEvent(const TranscriptEvent& event) {
                     this->openOutputBytes += event.text.numBytes();
                     if (event.text)
                         this->openLastWasNewline = event.text.endsWith('\n');
-                    if (options.runWebServer) {
-                        // Also stream to the browser.
-                        webTranscript.append(escapeHtml(event.text));
-                    }
+                    if (options.runWebServer)
+                        webAppendText(event.text);
                 } else if (this->openRole == Transcript::Role::ToolCall) {
                     // Accumulate the tool call's raw text; it is formatted on close.
                     this->openToolCallText += event.text;
@@ -478,6 +584,8 @@ void TranscriptPrinter::handleEvent(const TranscriptEvent& event) {
             if (!ins.wasFound)
                 this->responseOrder.append(event.toolCallID);
             *ins.value += event.text;
+            if (options.runWebServer)
+                webAppendToolResponse(event.toolCallID, event.text);
             break;
         }
         case TranscriptEvent::EndToolResponse:
