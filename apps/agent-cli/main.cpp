@@ -29,6 +29,39 @@ ToolSet toolSet;
 Reference<Transcript> transcript;
 
 //---------------------------------------------------
+// Helpers for formatting the transcript output.
+//---------------------------------------------------
+static const StringView Separator = "-------------------------------";
+
+static String formatTimeStamp(s64 micros) {
+    return String::fromDateTime("%l:%M%P", convertToDateTime(micros));
+}
+
+static String formatSize(uptr bytes) {
+    if (bytes < 1024)
+        return String::format("{} bytes", bytes);
+    double kb = double(bytes) / 1024.0;
+    if (kb < 1024.0)
+        return String::format("{:.1}KB", kb);
+    return String::format("{:.1}MB", kb / 1024.0);
+}
+
+static String formatRate(double bytesPerSec) {
+    if (bytesPerSec < 1024.0)
+        return String::format("{:.1} bytes/s", bytesPerSec);
+    double kb = bytesPerSec / 1024.0;
+    if (kb < 1024.0)
+        return String::format("{:.1}KB/s", kb);
+    return String::format("{:.1}MB/s", kb / 1024.0);
+}
+
+//  ▄▄    ▄▄        ▄▄
+//  ██ ▄▄ ██  ▄▄▄▄  ██▄▄▄   ▄▄▄▄   ▄▄▄▄  ▄▄▄▄▄  ▄▄   ▄▄  ▄▄▄▄  ▄▄▄▄▄
+//  ▀█▄██▄█▀ ██▄▄██ ██  ██ ▀█▄▄▄  ██▄▄██ ██  ▀▀ ▀█▄ ▄█▀ ██▄▄██ ██  ▀▀
+//   ██▀▀██  ▀█▄▄▄  ██▄▄█▀  ▄▄▄█▀ ▀█▄▄▄  ██       ▀█▀   ▀█▄▄▄  ██
+//
+
+//---------------------------------------------------
 // WebTranscript stores JSONL events as an append-only stream. Each browser
 // replays the stream from the beginning, then waits for new events.
 //---------------------------------------------------
@@ -244,33 +277,6 @@ static void serveWebTranscript(HTTPServerRequest& request) {
     }
 }
 
-//---------------------------------------------------
-// Helpers for formatting the transcript output.
-//---------------------------------------------------
-static const StringView Separator = "-------------------------------";
-
-static String formatTimeStamp(s64 micros) {
-    return String::fromDateTime("%l:%M%P", convertToDateTime(micros));
-}
-
-static String formatSize(uptr bytes) {
-    if (bytes < 1024)
-        return String::format("{} bytes", bytes);
-    double kb = double(bytes) / 1024.0;
-    if (kb < 1024.0)
-        return String::format("{:.1}KB", kb);
-    return String::format("{:.1}MB", kb / 1024.0);
-}
-
-static String formatRate(double bytesPerSec) {
-    if (bytesPerSec < 1024.0)
-        return String::format("{:.1} bytes/s", bytesPerSec);
-    double kb = bytesPerSec / 1024.0;
-    if (kb < 1024.0)
-        return String::format("{:.1}KB/s", kb);
-    return String::format("{:.1}MB/s", kb / 1024.0);
-}
-
 // Creates a JSON object with the operation shared by every web event.
 static json::Node makeWebEvent(StringView operation) {
     json::Node event{json::Node::Object{}};
@@ -320,6 +326,12 @@ static void webEndToolResponse(u32 toolCallID, StringView timeStamp) {
     event.set("timeStamp", json::Node::Text{String{timeStamp}});
     webTranscript.append(std::move(event));
 }
+
+//  ▄▄▄▄▄▄                        ▄▄               ▄▄▄       ▄▄▄▄          ▄▄                  ▄▄
+//    ██    ▄▄▄▄  ▄▄▄▄▄  ▄▄▄▄▄▄▄  ▄▄ ▄▄▄▄▄   ▄▄▄▄   ██      ██  ██ ▄▄  ▄▄ ▄██▄▄ ▄▄▄▄▄  ▄▄  ▄▄ ▄██▄▄
+//    ██   ██▄▄██ ██  ▀▀ ██ ██ ██ ██ ██  ██  ▄▄▄██  ██      ██  ██ ██  ██  ██   ██  ██ ██  ██  ██
+//    ██   ▀█▄▄▄  ██     ██ ██ ██ ██ ██  ██ ▀█▄▄██ ▄██▄     ▀█▄▄█▀ ▀█▄▄██  ▀█▄▄ ██▄▄█▀ ▀█▄▄██  ▀█▄▄
+//                                                                              ██
 
 static String formatJsonValue(const json::Node& node) {
     if (node.isText())
@@ -609,6 +621,12 @@ void TranscriptPrinter::finish(s64 endMicros) {
     this->flushToolResponses(endMicros);
 }
 
+//  ▄▄   ▄▄        ▄▄
+//  ███▄███  ▄▄▄▄  ▄▄ ▄▄▄▄▄
+//  ██▀█▀██  ▄▄▄██ ██ ██  ██
+//  ██   ██ ▀█▄▄██ ██ ██  ██
+//
+
 //---------------------------------------------------
 // Load the agent configuration settings from agent.json.
 //---------------------------------------------------
@@ -736,9 +754,9 @@ int main(int argc, const char* argv[]) {
 
     // Parse command line options.
     CommandLineParser parser({
-        {"-s", PLY_LOOKUP_MEMBER(CommandLineOptions, settingsPath), "Directory containing agent.json"},
-        {"-h", PLY_LOOKUP_MEMBER(CommandLineOptions, enableHttpLog), "Enable HTTP logging"},
-        {"-w", PLY_LOOKUP_MEMBER(CommandLineOptions, runWebServer), "Serve transcript on port 8081"},
+        {"-j", PLY_LOOKUP_MEMBER(CommandLineOptions, settingsPath), "Path to JSON settings file"},
+        {"-l", PLY_LOOKUP_MEMBER(CommandLineOptions, enableHttpLog), "Write raw HTTP log"},
+        {"-s", PLY_LOOKUP_MEMBER(CommandLineOptions, runWebServer), "Serve transcript on port 8081"},
     });
     if (!parser.apply(argc, argv, &options))
         return 1; // parsing error
@@ -757,9 +775,7 @@ int main(int argc, const char* argv[]) {
     Thread webServerThread;
     if (options.runWebServer) {
         Network::initialize(IPV4);
-        webServerThread.run([] {
-            runHTTPServer(8081, serveWebTranscript);
-        });
+        webServerThread.run([] { runHTTPServer(8081, serveWebTranscript); });
     }
 
     // Create a transcript with the user's prompt as the first turn.
