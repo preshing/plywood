@@ -3060,6 +3060,54 @@ MemStream::MemStream() {
     this->hasWritePermission = true;
 }
 
+// Creates an independent copy with the same contents, mode and seek position.
+MemStream MemStream::duplicate() const {
+    PLY_ASSERT(this->type == Type::Mem);
+    MemStream result;
+
+    // Replace the destination's initial buffer with copies of all source storage buffers.
+    Heap::free(result.mem.buffers[0]);
+    result.mem.buffers.clear();
+    u32 lastBufferIndex = this->mem.buffers.numItems() - 1;
+    u32 numBytesInLastBuffer = this->mem.numBytesInLastBuffer;
+
+    // Include last-buffer writes that haven't updated numBytesInLastBuffer yet.
+    if ((this->mode == Mode::Writing) && !this->usingTempBuffer &&
+        (this->mem.bufferIndex == lastBufferIndex)) {
+        numBytesInLastBuffer =
+            max(numBytesInLastBuffer,
+                numericCast<u32>(this->curByte - this->mem.buffers[this->mem.bufferIndex]));
+    }
+    for (u32 i = 0; i < this->mem.buffers.numItems(); i++) {
+        char* buffer = (char*) Heap::alloc(BUFFER_SIZE);
+        u32 numBytes = (i == lastBufferIndex) ? numBytesInLastBuffer : BUFFER_SIZE;
+        memcpy(buffer, this->mem.buffers[i], numBytes);
+        result.mem.buffers.append(buffer);
+    }
+
+    // Copy memory-stream bookkeeping and any active cross-buffer temporary view.
+    result.mem.bufferIndex = this->mem.bufferIndex;
+    result.mem.numBytesInLastBuffer = this->mem.numBytesInLastBuffer;
+    result.mem.tempBufferOffset = this->mem.tempBufferOffset;
+    result.mode = this->mode;
+    result.atEof = this->atEof;
+    result.inputError = this->inputError;
+    result.usingTempBuffer = this->usingTempBuffer;
+    if (this->usingTempBuffer) {
+        result.mem.tempBuffer = (char*) Heap::alloc(MAX_CONSECUTIVE_BYTES);
+        u32 numBytes = numericCast<u32>(this->endByte - this->mem.tempBuffer);
+        memcpy(result.mem.tempBuffer, this->mem.tempBuffer, numBytes);
+        result.curByte = result.mem.tempBuffer + (this->curByte - this->mem.tempBuffer);
+        result.endByte = result.mem.tempBuffer + numBytes;
+    } else {
+        char* srcBuffer = this->mem.buffers[this->mem.bufferIndex];
+        char* dstBuffer = result.mem.buffers[result.mem.bufferIndex];
+        result.curByte = dstBuffer + (this->curByte - srcBuffer);
+        result.endByte = dstBuffer + (this->endByte - srcBuffer);
+    }
+    return result;
+}
+
 String MemStream::moveToString() {
     PLY_ASSERT(this->type == Type::Mem);
 

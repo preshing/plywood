@@ -1099,11 +1099,64 @@ void closeBlocksIfNotLazyContinuation(LineParser& lp) {
 //  ██     ▀█▄▄██ ██▄▄█▀ ▄██▄ ██ ▀█▄▄▄     ██  ██ ██     ▄██▄
 //
 
+// Repairs non-owning block pointers after a parser's block tree has been copied.
+void repairDuplicatedBlocks(Parser* dstParser, Parser* srcParser, Block* dstBlock, Block* srcBlock,
+                                   Block* dstParent) {
+    dstBlock->parent = dstParent;
+    if (srcParser->leafBlock == srcBlock) {
+        dstParser->leafBlock = dstBlock;
+    }
+    for (u32 i = 0; i < srcParser->activeBlocks.numItems(); i++) {
+        if (srcParser->activeBlocks[i] == srcBlock) {
+            dstParser->activeBlocks[i] = dstBlock;
+        }
+    }
+
+    // Descend through the matching source and destination child trees.
+    Block::Inner* srcInner = srcBlock->asInner();
+    Block::Inner* dstInner = dstBlock->asInner();
+    if (!srcInner) {
+        PLY_ASSERT(!dstInner);
+        return;
+    }
+    PLY_ASSERT(dstInner);
+    PLY_ASSERT(srcInner->childBlocks.numItems() == dstInner->childBlocks.numItems());
+    for (u32 i = 0; i < srcInner->childBlocks.numItems(); i++) {
+        repairDuplicatedBlocks(dstParser, srcParser, dstInner->childBlocks[i], srcInner->childBlocks[i],
+                                      dstBlock);
+    }
+}
+
 // Creates a parser with an initialized root container block.
 Owned<Parser> createParser() {
     Owned<Parser> parser = Heap::create<Parser>();
     parser->rootBlock.var.switchTo<Block::BlockQuote>();
     return parser;
+}
+
+// Creates an independent deep copy of a parser, including any unfinished block.
+Parser* duplicate(Parser* parser) {
+    Parser* result = Heap::create<Parser>();
+
+    // Duplicate the owned tree and scalar parsing state.
+    result->rootBlock = parser->rootBlock;
+    result->numBlankLinesInIndentedCodeBlock = parser->numBlankLinesInIndentedCodeBlock;
+    result->checkListContinuations = parser->checkListContinuations;
+    result->activeBlocks.resize(parser->activeBlocks.numItems());
+    for (Block*& activeBlock : result->activeBlocks) {
+        activeBlock = nullptr;
+    }
+
+    // Rebuild all pointers that refer to nodes owned by the copied tree.
+    repairDuplicatedBlocks(result, parser, &result->rootBlock, &parser->rootBlock, nullptr);
+    for (Block* activeBlock : result->activeBlocks) {
+        PLY_ASSERT(activeBlock);
+    }
+    PLY_ASSERT(!parser->leafBlock || result->leafBlock);
+
+    // Give the duplicate its own copy of the unfinished leaf text.
+    result->rawLeafText = parser->rawLeafText.duplicate();
+    return result;
 }
 
 // Parses one source line and returns the next completed top-level block, if one becomes available.

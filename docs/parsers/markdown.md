@@ -11,6 +11,7 @@ All functions and types in this module are defined in the `ply::markdown` namesp
 {apiSummary}
 -- Creation and Destruction
 Owned<Parser> createParser()
+Parser* duplicate(Parser* parser)
 void destroy(Parser* parser)
 -- Parsing
 Owned<Element> parseLine(Parser* parser, StringView line)
@@ -25,6 +26,9 @@ String convertToHtml(StringView src)
 
 `Owned<Parser> createParser()`
 > Creates and returns a new Markdown parser. The parser maintains state across multiple calls to `parseLine()`.
+
+`Parser* duplicate(Parser* parser)`
+> Creates a copy of an existing parser. The copy can serve as a restore point when re-parsing incremental input.
 
 `void destroy(Parser* parser)`
 > Destroys a parser and frees its resources. This is typically handled automatically when using `Owned<Parser>`.

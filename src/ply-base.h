@@ -4244,6 +4244,9 @@ void nativeWrite(Stream& out, const T& value) {
 class MemStream : public Stream {
 public:
     MemStream();
+
+    // Creates an independent copy with the same contents, mode and seek position.
+    MemStream duplicate() const;
     String moveToString();
 };
 

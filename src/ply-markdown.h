@@ -143,6 +143,9 @@ struct Parser;
 
 // Creation and destruction
 Owned<Parser> createParser();
+
+// Creates an independent deep copy that is automatically used when copying an Owned<Parser>.
+Parser* duplicate(Parser* parser);
 void destroy(Parser* parser);
 
 // Parsing

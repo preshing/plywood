@@ -138,6 +138,9 @@ Remember to write `'\n'` for newlines. There's no `endl` like C++ iostreams—us
 
 A `MemStream` writes to an in-memory buffer that grows as needed. This is useful for building strings or serializing data.
 
+`MemStream duplicate() const`
+> Creates an independent copy with the same contents, access mode and seek position.
+
 ## `ViewStream`
 
 A `ViewStream` reads from a fixed memory buffer (a `StringView`). This is useful for parsing strings or data already in memory.
