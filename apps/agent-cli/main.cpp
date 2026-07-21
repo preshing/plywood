@@ -103,7 +103,6 @@ body { margin: 0; background: #101010; color: #e8e6e3; font: 14px/1.5 monospace;
 .section { margin: 0 0 12px; background: #282828; border-radius: 6px; }
 .section-header { padding: 2px 12px; background: #303438; border-radius: 6px 6px 0 0;
     font-family: system-ui, sans-serif; color: #d0d0d0; font-weight: 600; }
-.tool-call > .section-header, .tool-response > .section-header { color: #202426; }
 .collapse-toggle { width: 17px; height: 17px; margin: 0 8px 0 0; padding: 0; border: 0; background: transparent;
     color: inherit; vertical-align: -3px; cursor: pointer; background-color: currentColor;
     -webkit-mask: var(--collapse-icon) center / contain no-repeat; mask: var(--collapse-icon) center / contain no-repeat; }
@@ -125,8 +124,8 @@ body { margin: 0; background: #101010; color: #e8e6e3; font: 14px/1.5 monospace;
 .markdown h4, .markdown h5, .markdown h6 { font-size: 1em; }
 .markdown a { color: #75b7ff; text-decoration-thickness: 1px; text-underline-offset: 2px; }
 .markdown code, .markdown pre { font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace; }
-.markdown code { padding: 0.12em 0.32em; background: #1d1f21; border-radius: 3px; font-size: 0.9em; }
-.markdown pre { overflow-x: auto; margin: 0.8em 0; padding: 10px 12px; background: #1d1f21; border-radius: 4px;
+.markdown code { padding: 0.12em 0.32em; background: #151617; border-radius: 3px; font-size: 0.9em; }
+.markdown pre { overflow-x: auto; margin: 0.8em 0; padding: 10px 12px; background: #151617; border-radius: 4px;
     line-height: 1.45; white-space: pre; }
 .markdown pre code { padding: 0; background: transparent; border-radius: 0; font-size: inherit; }
 .markdown blockquote { margin: 0.8em 0; padding: 0.05em 0 0.05em 1em; border-left: 3px solid #697178;
@@ -143,8 +142,7 @@ body { margin: 0; background: #101010; color: #e8e6e3; font: 14px/1.5 monospace;
 .thinking > .section-header { background: #4b7380; }
 .agent > .section-header { background: #244a7c; }
 .error > .section-header { background: #813b3b; }
-.tool-call > .section-header, .tool-response > .section-header { background: #8d9398; }
-.tool-call > .section-header .timestamp, .tool-response > .section-header .timestamp { color: #4d555a; }
+.tool-call > .section-header, .tool-response > .section-header { background: #393c3f; }
 .timestamp { margin-right: 10px; color: #c0c3c5; font-size: 0.85em; font-weight: normal; }
 .timing { font-family: system-ui, sans-serif; color: #9aa0a6; }
 </style></head><body><main id="transcript"></main>
