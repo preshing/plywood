@@ -197,6 +197,7 @@ function beginMessage(event) {
         content: createSection(role[0], role[1], event.timeStamp, role[2]),
         byteChunks: [],
         numBytes: 0,
+        isMarkdown: false,
     };
 }
 
@@ -209,11 +210,31 @@ function appendText(text) {
     openMessage.content.append(document.createTextNode(text));
 }
 
+// Reconstructs the visible message from its authoritative UTF-8 source bytes.
+function renderOpenMessage() {
+    const bytes = new Uint8Array(openMessage.numBytes);
+    let offset = 0;
+    for (const chunk of openMessage.byteChunks) {
+        bytes.set(chunk, offset);
+        offset += chunk.length;
+    }
+    const source = textDecoder.decode(bytes);
+    if (openMessage.isMarkdown) {
+        openMessage.content.innerHTML = source;
+    } else {
+        openMessage.content.textContent = source;
+    }
+}
+
 function appendHtml(html) {
     if (!openMessage)
         return;
+    const bytes = textEncoder.encode(html);
+    openMessage.byteChunks.push(bytes);
+    openMessage.numBytes += bytes.length;
+    openMessage.isMarkdown = true;
     openMessage.content.classList.add('markdown');
-    openMessage.content.insertAdjacentHTML('beforeend', html);
+    renderOpenMessage();
 }
 
 function eraseText(numBytes) {
@@ -235,14 +256,8 @@ function eraseText(numBytes) {
         }
     }
 
-    // Reconstruct the visible string from the authoritative UTF-8 bytes.
-    const bytes = new Uint8Array(openMessage.numBytes);
-    let offset = 0;
-    for (const chunk of openMessage.byteChunks) {
-        bytes.set(chunk, offset);
-        offset += chunk.length;
-    }
-    openMessage.content.textContent = textDecoder.decode(bytes);
+    // Reconstruct the visible content from the remaining authoritative bytes.
+    renderOpenMessage();
 }
 
 function handleEvent(event) {
@@ -328,8 +343,9 @@ static void serveWebEvents(HTTPServerRequest& request) {
         bool isComplete = false;
         {
             LockGuard<Mutex> lock{webTranscript.mutex};
-            if (nextChunk >= webTranscript.chunks.numItems() && !webTranscript.isComplete)
+            if (nextChunk >= webTranscript.chunks.numItems() && !webTranscript.isComplete) {
                 webTranscript.changed.timedWait(lock, 15000);
+            }
             if (nextChunk < webTranscript.chunks.numItems()) {
                 chunk = webTranscript.chunks[nextChunk++];
             } else {
@@ -371,10 +387,12 @@ static void webBeginMessage(StringView role, StringView timeStamp, StringView na
     json::Node event = makeWebEvent("BeginMessage");
     event.set("timeStamp", json::Node::Text{String{timeStamp}});
     event.set("role", json::Node::Text{String{role}});
-    if (name)
+    if (name) {
         event.set("name", json::Node::Text{String{name}});
-    if (role == "ToolCall")
+    }
+    if (role == "ToolCall") {
         event.set("toolCallID", json::Node::Number{double(toolCallID)});
+    }
     webTranscript.append(std::move(event));
 }
 
@@ -402,8 +420,9 @@ static void webEraseText(uptr numBytes) {
 // Publishes the end of the current message and its optional statistics footer.
 static void webEndMessage(StringView footer = {}) {
     json::Node event = makeWebEvent("EndMessage");
-    if (footer)
+    if (footer) {
         event.set("footer", json::Node::Text{String{footer}});
+    }
     webTranscript.append(std::move(event));
 }
 
@@ -457,8 +476,9 @@ static String formatToolCall(StringView raw) {
     MemStream out;
     out.format("{}", name);
     if (result.root.isObject()) {
-        for (const auto& item : result.root.object().items)
+        for (const auto& item : result.root.object().items) {
             out.format(" {}={}", item.key, formatJsonValue(item.value));
+        }
     }
     return out.moveToString();
 }
@@ -490,6 +510,7 @@ struct TranscriptPrinter {
     Owned<markdown::Parser> markdownParser;
     MemStream markdownLine;
     markdown::HTMLOptions markdownOptions;
+    String predictedMarkdownHtml;
 
     // Buffered tool responses, keyed by toolCallID, awaiting flush at EndTurn.
     Map<u32, String> pendingResponses;
@@ -504,7 +525,8 @@ struct TranscriptPrinter {
     void flushToolResponses(s64 timeStamp);
     void beginMarkdownMessage();
     void appendMarkdown(StringView text);
-    void emitMarkdownBlock(Owned<markdown::Block>&& block);
+    void appendMarkdownBlockHtml(MemStream* html, Owned<markdown::Block>&& block);
+    void reconcileMarkdownHtml(StringView finalizedHtml, StringView predictedHtml);
     void endMarkdownMessage(StringView footer = {});
 };
 
@@ -512,17 +534,38 @@ struct TranscriptPrinter {
 void TranscriptPrinter::beginMarkdownMessage() {
     this->markdownParser = markdown::createParser();
     this->markdownLine = {};
+    this->predictedMarkdownHtml = {};
 }
 
-// Converts a completed Markdown block to HTML and publishes it to the browser.
-void TranscriptPrinter::emitMarkdownBlock(Owned<markdown::Block>&& block) {
-    MemStream html;
-    markdown::convertToHtml(&html, block, this->markdownOptions);
-    webAppendHtml(html.moveToString());
+// Converts a completed Markdown block to HTML and appends it to the supplied buffer.
+void TranscriptPrinter::appendMarkdownBlockHtml(MemStream* html, Owned<markdown::Block>&& block) {
+    markdown::convertToHtml(html, block, this->markdownOptions);
 }
 
-// Separates streamed Markdown into lines and parses each completed line.
+// Replaces only the differing suffix of the previously predicted HTML.
+void TranscriptPrinter::reconcileMarkdownHtml(StringView finalizedHtml, StringView predictedHtml) {
+    String replacementHtml = finalizedHtml + predictedHtml;
+
+    // Preserve the longest byte-identical prefix already displayed by the browser.
+    uptr commonBytes = 0;
+    uptr maxCommonBytes = min(this->predictedMarkdownHtml.numBytes(), replacementHtml.numBytes());
+    while (commonBytes < maxCommonBytes && this->predictedMarkdownHtml[commonBytes] == replacementHtml[commonBytes]) {
+        commonBytes++;
+    }
+
+    uptr numBytesToErase = this->predictedMarkdownHtml.numBytes() - commonBytes;
+    if (numBytesToErase > 0) {
+        webEraseText(numBytesToErase);
+    }
+    if (commonBytes < replacementHtml.numBytes()) {
+        webAppendHtml(replacementHtml.substr(commonBytes));
+    }
+    this->predictedMarkdownHtml = predictedHtml;
+}
+
+// Parses completed lines, then predicts the HTML for all unfinished input without advancing the real parser.
 void TranscriptPrinter::appendMarkdown(StringView text) {
+    MemStream finalizedHtml;
     StringView remaining = text;
     while (remaining) {
         s32 newlinePos = remaining.find('\n');
@@ -535,22 +578,42 @@ void TranscriptPrinter::appendMarkdown(StringView text) {
         this->markdownLine.write(remaining.left(newlinePos + 1));
         String line = this->markdownLine.moveToString();
         this->markdownLine = {};
-        if (Owned<markdown::Block> block = markdown::parseLine(this->markdownParser, line))
-            this->emitMarkdownBlock(std::move(block));
+        if (Owned<markdown::Block> block = markdown::parseLine(this->markdownParser, line)) {
+            this->appendMarkdownBlockHtml(&finalizedHtml, std::move(block));
+        }
         remaining = remaining.substr(newlinePos + 1);
     }
+
+    // Parse the partial line and flush a duplicate so the authoritative parser remains resumable.
+    MemStream predictedHtml;
+    Owned<markdown::Parser> predictionParser = this->markdownParser;
+    if (this->markdownLine.getSeekPos() > 0) {
+        MemStream partialLineCopy = this->markdownLine.duplicate();
+        String partialLine = partialLineCopy.moveToString();
+        if (Owned<markdown::Block> block = markdown::parseLine(predictionParser, partialLine)) {
+            this->appendMarkdownBlockHtml(&predictedHtml, std::move(block));
+        }
+    }
+    if (Owned<markdown::Block> block = markdown::flush(predictionParser)) {
+        this->appendMarkdownBlockHtml(&predictedHtml, std::move(block));
+    }
+    this->reconcileMarkdownHtml(finalizedHtml.moveToString(), predictedHtml.moveToString());
 }
 
 // Parses the final partial line, flushes the parser and closes the browser section.
 void TranscriptPrinter::endMarkdownMessage(StringView footer) {
+    MemStream finalizedHtml;
     String line = this->markdownLine.moveToString();
     this->markdownLine = {};
     if (line) {
-        if (Owned<markdown::Block> block = markdown::parseLine(this->markdownParser, line))
-            this->emitMarkdownBlock(std::move(block));
+        if (Owned<markdown::Block> block = markdown::parseLine(this->markdownParser, line)) {
+            this->appendMarkdownBlockHtml(&finalizedHtml, std::move(block));
+        }
     }
-    if (Owned<markdown::Block> block = markdown::flush(this->markdownParser))
-        this->emitMarkdownBlock(std::move(block));
+    if (Owned<markdown::Block> block = markdown::flush(this->markdownParser)) {
+        this->appendMarkdownBlockHtml(&finalizedHtml, std::move(block));
+    }
+    this->reconcileMarkdownHtml(finalizedHtml.moveToString(), {});
     this->markdownParser = {};
     webEndMessage(footer);
 }
@@ -578,16 +641,18 @@ void TranscriptPrinter::printStartup(StringView userPrompt) {
         for (const Owned<ToolSet::Handler>& tool : toolSet.handlers) {
             // Write tool definition to stdout.
             out.format("{} [Tool Definition: {}]\n", formatTimeStamp(now), tool->name);
-            for (const ToolSet::Parameter& param : tool->parameters)
+            for (const ToolSet::Parameter& param : tool->parameters) {
                 out.format("`{}`: {}\n", param.name, param.description);
+            }
             out.format("{}\n", tool->description);
             out.format("{}\n", Separator);
 
             if (options.runWebServer) {
                 // Stream the tool definition to the web browser.
                 MemStream text;
-                for (const ToolSet::Parameter& param : tool->parameters)
+                for (const ToolSet::Parameter& param : tool->parameters) {
                     text.format("`{}`: {}\n", param.name, param.description);
+                }
                 text.format("{}", tool->description);
                 webBeginMessage("ToolDefinition", formatTimeStamp(now), tool->name);
                 webAppendText(text.moveToString());
@@ -621,8 +686,9 @@ void TranscriptPrinter::printStartup(StringView userPrompt) {
 
 void TranscriptPrinter::openSection(Transcript::Role role, u32 toolCallID, s64 timeStamp) {
     // Close any previously open section before starting a new one.
-    if (this->hasOpen)
+    if (this->hasOpen) {
         this->closeOpen(timeStamp);
+    }
 
     this->hasOpen = true;
     this->openRole = role;
@@ -637,52 +703,60 @@ void TranscriptPrinter::openSection(Transcript::Role role, u32 toolCallID, s64 t
     switch (role) {
         case Transcript::Role::AgentThinking:
             out.format("{} [Agent Thinking]\n", formatTimeStamp(timeStamp));
-            if (options.runWebServer)
+            if (options.runWebServer) {
                 webBeginMessage("AgentThinking", formatTimeStamp(timeStamp));
+            }
             this->openIsTextMsg = true;
             this->openUsesMarkdown = true;
             break;
         case Transcript::Role::Agent:
             out.format("{} [Agent]\n", formatTimeStamp(timeStamp));
-            if (options.runWebServer)
+            if (options.runWebServer) {
                 webBeginMessage("Agent", formatTimeStamp(timeStamp));
+            }
             this->openIsTextMsg = true;
             this->openUsesMarkdown = true;
             break;
         case Transcript::Role::Error:
             out.format("{} [Error]\n", formatTimeStamp(timeStamp));
-            if (options.runWebServer)
+            if (options.runWebServer) {
                 webBeginMessage("Error", formatTimeStamp(timeStamp));
+            }
             this->openIsTextMsg = true;
             break;
         case Transcript::Role::ToolCall:
             out.format("{} [Tool Call #{}]\n", formatTimeStamp(timeStamp), toolCallID);
-            if (options.runWebServer)
+            if (options.runWebServer) {
                 webBeginMessage("ToolCall", formatTimeStamp(timeStamp), {}, toolCallID);
+            }
             this->openIsTextMsg = false;
             break;
         default:
             this->openIsTextMsg = false;
             break;
     }
-    if (options.runWebServer && this->openUsesMarkdown)
+    if (options.runWebServer && this->openUsesMarkdown) {
         this->beginMarkdownMessage();
+    }
 }
 
 void TranscriptPrinter::closeOpen(s64 endMicros) {
     Stream out = getStdOut();
     if (this->openIsTextMsg) {
-        if (!this->openLastWasNewline)
+        if (!this->openLastWasNewline) {
             out.format("\n");
+        }
 
         // Error messages don't include output statistics.
         if (this->openRole == Transcript::Role::Error) {
-            if (options.runWebServer)
+            if (options.runWebServer) {
                 webEndMessage();
+            }
         } else {
             double elapsedSec = double(endMicros - this->sectionStartTime) / 1000000.0;
-            if (elapsedSec < 0)
+            if (elapsedSec < 0) {
                 elapsedSec = 0;
+            }
             double rate = (elapsedSec > 1e-9) ? double(this->openOutputBytes) / elapsedSec : 0;
             String footer = String::format("({:.1}s elapsed, {} output, {})", elapsedSec,
                                            formatSize(this->openOutputBytes), formatRate(rate));
@@ -745,8 +819,9 @@ void TranscriptPrinter::handleEvent(const TranscriptEvent& event) {
                     // Stream text messages to stdout as they arrive.
                     getStdOut().format("{}", event.text);
                     this->openOutputBytes += event.text.numBytes();
-                    if (event.text)
+                    if (event.text) {
                         this->openLastWasNewline = event.text.endsWith('\n');
+                    }
                     if (options.runWebServer) {
                         if (this->openUsesMarkdown) {
                             this->appendMarkdown(event.text);
@@ -763,19 +838,22 @@ void TranscriptPrinter::handleEvent(const TranscriptEvent& event) {
         case TranscriptEvent::AppendToolResponse: {
             // Buffer the response; it is flushed at EndTurn.
             auto ins = this->pendingResponses.insert(event.toolCallID);
-            if (!ins.wasFound)
+            if (!ins.wasFound) {
                 this->responseOrder.append(event.toolCallID);
+            }
             *ins.value += event.text;
-            if (options.runWebServer)
+            if (options.runWebServer) {
                 webAppendToolResponse(event.toolCallID, event.text);
+            }
             break;
         }
         case TranscriptEvent::EndToolResponse:
             // Nothing to do here; responses are flushed at EndTurn.
             break;
         case TranscriptEvent::EndTurn:
-            if (this->hasOpen)
+            if (this->hasOpen) {
                 this->closeOpen(event.timeStamp);
+            }
             this->flushToolResponses(event.timeStamp);
             break;
         default:
@@ -784,8 +862,9 @@ void TranscriptPrinter::handleEvent(const TranscriptEvent& event) {
 }
 
 void TranscriptPrinter::finish(s64 endMicros) {
-    if (this->hasOpen)
+    if (this->hasOpen) {
         this->closeOpen(endMicros);
+    }
     // Flush any tool responses that never got an EndTurn (e.g. the agent was
     // canceled mid-turn).
     this->flushToolResponses(endMicros);
@@ -843,8 +922,9 @@ static bool loadSettings() {
         endPoint.protocol = Protocol::Completions;
     }
     StringView modelView = ep.get("model").text();
-    if (modelView)
+    if (modelView) {
         endPoint.model = modelView;
+    }
 
     // The API key is read from the named environment variable on demand. Plywood
     // strings aren't null-terminated, so append an explicit NUL byte for getenv.
@@ -986,8 +1066,9 @@ int main(int argc, const char* argv[]) {
     // Close any section that was left open (e.g. the agent's final response) and
     // flush any tool responses that never received an EndTurn.
     printer.finish(getUnixTimestamp());
-    if (options.runWebServer)
+    if (options.runWebServer) {
         webTranscript.complete();
+    }
 
     // Keep serving HTTP requests after the agent finishes.
     if (webServerThread.isValid()) {
