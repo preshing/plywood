@@ -292,7 +292,7 @@ public:
 
 private:
     Stream& out;
-    markdown::HTML_Options options;
+    markdown::HTMLOptions options;
     Owned<markdown::Parser> parser = markdown::createParser();
     Array<Owned<markdown::Block>> pendingBlocks;
     String apiClassContext;

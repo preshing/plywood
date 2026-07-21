@@ -9,6 +9,7 @@
 #include <ply-json.h>
 #include <ply-agent.h>
 #include <ply-http.h>
+#include <ply-markdown.h>
 #include <curl/curl.h>
 
 using namespace ply;
@@ -113,6 +114,31 @@ body { margin: 0; background: #101010; color: #e8e6e3; font: 14px/1.5 monospace;
 .section.collapsed > .message-content { display: none; }
 .section.collapsed > .section-header { border-radius: 6px; }
 .message-content { padding: 4px 12px; white-space: pre-wrap; }
+.message-content.markdown { font: 15px/1.55 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    white-space: normal; }
+.markdown > :first-child { margin-top: 0; }
+.markdown p { margin: 0.65em 0; }
+.markdown h1, .markdown h2, .markdown h3, .markdown h4, .markdown h5, .markdown h6 {
+    margin: 1em 0 0.45em; line-height: 1.25; color: #f2f0ed; }
+.markdown h1 { font-size: 1.65em; }
+.markdown h2 { font-size: 1.4em; }
+.markdown h3 { font-size: 1.2em; }
+.markdown h4, .markdown h5, .markdown h6 { font-size: 1em; }
+.markdown a { color: #75b7ff; text-decoration-thickness: 1px; text-underline-offset: 2px; }
+.markdown code, .markdown pre { font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace; }
+.markdown code { padding: 0.12em 0.32em; background: #1d1f21; border-radius: 3px; font-size: 0.9em; }
+.markdown pre { overflow-x: auto; margin: 0.8em 0; padding: 10px 12px; background: #1d1f21; border-radius: 4px;
+    line-height: 1.45; white-space: pre; }
+.markdown pre code { padding: 0; background: transparent; border-radius: 0; font-size: inherit; }
+.markdown blockquote { margin: 0.8em 0; padding: 0.05em 0 0.05em 1em; border-left: 3px solid #697178;
+    color: #b9bdc1; }
+.markdown ul, .markdown ol { margin: 0.65em 0; padding-left: 1.8em; }
+.markdown li { margin: 0.2em 0; }
+.markdown hr { height: 1px; margin: 1.2em 0; border: 0; background: #555a5e; }
+.markdown table { display: block; overflow-x: auto; margin: 0.8em 0; border-collapse: collapse; }
+.markdown th, .markdown td { padding: 5px 9px; border: 1px solid #555a5e; text-align: left; }
+.markdown th { background: #34373a; }
+.markdown img { max-width: 100%; }
 .system > .section-header, .tool-definition > .section-header { background: #393c3f; }
 .user > .section-header { background: #3b5d4b; }
 .thinking > .section-header { background: #4b7380; }
@@ -126,6 +152,8 @@ body { margin: 0; background: #101010; color: #e8e6e3; font: 14px/1.5 monospace;
 <script>
 const transcript = document.getElementById('transcript');
 let openMessage = null;
+const textEncoder = new TextEncoder();
+const textDecoder = new TextDecoder();
 const toolResponses = new Map();
 let pinned = true;
 function atBottom() { return innerHeight + scrollY >= document.documentElement.scrollHeight - 24; }
@@ -165,7 +193,56 @@ function beginMessage(event) {
     const role = roles[event.role];
     if (!role)
         return;
-    openMessage = createSection(role[0], role[1], event.timeStamp, role[2]);
+    openMessage = {
+        content: createSection(role[0], role[1], event.timeStamp, role[2]),
+        byteChunks: [],
+        numBytes: 0,
+    };
+}
+
+function appendText(text) {
+    if (!openMessage)
+        return;
+    const bytes = textEncoder.encode(text);
+    openMessage.byteChunks.push(bytes);
+    openMessage.numBytes += bytes.length;
+    openMessage.content.append(document.createTextNode(text));
+}
+
+function appendHtml(html) {
+    if (!openMessage)
+        return;
+    openMessage.content.classList.add('markdown');
+    openMessage.content.insertAdjacentHTML('beforeend', html);
+}
+
+function eraseText(numBytes) {
+    if (!openMessage || numBytes <= 0)
+        return;
+
+    // Trim whole chunks first, then shorten the final remaining chunk if needed.
+    let remaining = Math.min(numBytes, openMessage.numBytes);
+    openMessage.numBytes -= remaining;
+    while (remaining > 0) {
+        const last = openMessage.byteChunks.length - 1;
+        const chunk = openMessage.byteChunks[last];
+        if (remaining >= chunk.length) {
+            remaining -= chunk.length;
+            openMessage.byteChunks.pop();
+        } else {
+            openMessage.byteChunks[last] = chunk.slice(0, chunk.length - remaining);
+            remaining = 0;
+        }
+    }
+
+    // Reconstruct the visible string from the authoritative UTF-8 bytes.
+    const bytes = new Uint8Array(openMessage.numBytes);
+    let offset = 0;
+    for (const chunk of openMessage.byteChunks) {
+        bytes.set(chunk, offset);
+        offset += chunk.length;
+    }
+    openMessage.content.textContent = textDecoder.decode(bytes);
 }
 
 function handleEvent(event) {
@@ -174,18 +251,23 @@ function handleEvent(event) {
             beginMessage(event);
             break;
         case 'AppendText':
-            if (openMessage)
-                openMessage.append(document.createTextNode(event.text));
+            appendText(event.text);
+            break;
+        case 'AppendHtml':
+            appendHtml(event.html);
+            break;
+        case 'EraseText':
+            eraseText(event.numBytes);
             break;
         case 'EndMessage':
             if (!openMessage)
                 break;
-            openMessage.append(document.createTextNode('\n'));
+            openMessage.content.append(document.createTextNode('\n'));
             if (event.footer) {
                 const footer = document.createElement('span');
                 footer.className = 'timing';
                 footer.textContent = event.footer;
-                openMessage.append(footer, document.createTextNode('\n'));
+                openMessage.content.append(footer, document.createTextNode('\n'));
             }
             openMessage = null;
             break;
@@ -303,6 +385,20 @@ static void webAppendText(StringView text) {
     webTranscript.append(std::move(event));
 }
 
+// Publishes rendered HTML belonging to the currently open message.
+static void webAppendHtml(StringView html) {
+    json::Node event = makeWebEvent("AppendHtml");
+    event.set("html", json::Node::Text{String{html}});
+    webTranscript.append(std::move(event));
+}
+
+// Removes bytes from the end of the currently open message.
+static void webEraseText(uptr numBytes) {
+    json::Node event = makeWebEvent("EraseText");
+    event.set("numBytes", json::Node::Number{double(numBytes)});
+    webTranscript.append(std::move(event));
+}
+
 // Publishes the end of the current message and its optional statistics footer.
 static void webEndMessage(StringView footer = {}) {
     json::Node event = makeWebEvent("EndMessage");
@@ -382,12 +478,18 @@ struct TranscriptPrinter {
     // size.
     bool hasOpen = false;
     bool openIsTextMsg = false; // true for User/AgentThinking/Agent/Error
+    bool openUsesMarkdown = false; // true only for User/AgentThinking/Agent
     Transcript::Role openRole = Transcript::Role::None;
     s64 sectionStartTime = 0;
     uptr openOutputBytes = 0;
     bool openLastWasNewline = true; // ensures the timing line starts on its own line
     u32 openToolCallID = 0;
     String openToolCallText; // accumulated raw text for a ToolCall section
+
+    // Incremental Markdown state for the currently open browser message.
+    Owned<markdown::Parser> markdownParser;
+    MemStream markdownLine;
+    markdown::HTMLOptions markdownOptions;
 
     // Buffered tool responses, keyed by toolCallID, awaiting flush at EndTurn.
     Map<u32, String> pendingResponses;
@@ -400,7 +502,58 @@ struct TranscriptPrinter {
     void openSection(Transcript::Role role, u32 toolCallID, s64 timeStamp);
     void closeOpen(s64 endMicros);
     void flushToolResponses(s64 timeStamp);
+    void beginMarkdownMessage();
+    void appendMarkdown(StringView text);
+    void emitMarkdownBlock(Owned<markdown::Block>&& block);
+    void endMarkdownMessage(StringView footer = {});
 };
+
+// Starts incremental Markdown conversion for a browser message section.
+void TranscriptPrinter::beginMarkdownMessage() {
+    this->markdownParser = markdown::createParser();
+    this->markdownLine = {};
+}
+
+// Converts a completed Markdown block to HTML and publishes it to the browser.
+void TranscriptPrinter::emitMarkdownBlock(Owned<markdown::Block>&& block) {
+    MemStream html;
+    markdown::convertToHtml(&html, block, this->markdownOptions);
+    webAppendHtml(html.moveToString());
+}
+
+// Separates streamed Markdown into lines and parses each completed line.
+void TranscriptPrinter::appendMarkdown(StringView text) {
+    StringView remaining = text;
+    while (remaining) {
+        s32 newlinePos = remaining.find('\n');
+        if (newlinePos < 0) {
+            this->markdownLine.write(remaining);
+            break;
+        }
+
+        // Include the newline in the line passed to the Markdown parser.
+        this->markdownLine.write(remaining.left(newlinePos + 1));
+        String line = this->markdownLine.moveToString();
+        this->markdownLine = {};
+        if (Owned<markdown::Block> block = markdown::parseLine(this->markdownParser, line))
+            this->emitMarkdownBlock(std::move(block));
+        remaining = remaining.substr(newlinePos + 1);
+    }
+}
+
+// Parses the final partial line, flushes the parser and closes the browser section.
+void TranscriptPrinter::endMarkdownMessage(StringView footer) {
+    String line = this->markdownLine.moveToString();
+    this->markdownLine = {};
+    if (line) {
+        if (Owned<markdown::Block> block = markdown::parseLine(this->markdownParser, line))
+            this->emitMarkdownBlock(std::move(block));
+    }
+    if (Owned<markdown::Block> block = markdown::flush(this->markdownParser))
+        this->emitMarkdownBlock(std::move(block));
+    this->markdownParser = {};
+    webEndMessage(footer);
+}
 
 void TranscriptPrinter::printStartup(StringView userPrompt) {
     s64 now = getUnixTimestamp();
@@ -454,13 +607,15 @@ void TranscriptPrinter::printStartup(StringView userPrompt) {
     this->hasOpen = true;
     this->openIsTextMsg = true;
     this->openRole = Transcript::Role::User;
+    this->openUsesMarkdown = true;
     this->sectionStartTime = now;
     this->openOutputBytes = userPrompt.numBytes();
     if (options.runWebServer) {
         // Stream the user message to the web browser.
         webBeginMessage("User", formatTimeStamp(now));
-        webAppendText(userPrompt);
-        webAppendText("\n");
+        this->beginMarkdownMessage();
+        this->appendMarkdown(userPrompt);
+        this->appendMarkdown("\n");
     }
 }
 
@@ -471,6 +626,7 @@ void TranscriptPrinter::openSection(Transcript::Role role, u32 toolCallID, s64 t
 
     this->hasOpen = true;
     this->openRole = role;
+    this->openUsesMarkdown = false;
     this->sectionStartTime = timeStamp;
     this->openOutputBytes = 0;
     this->openLastWasNewline = true;
@@ -484,12 +640,14 @@ void TranscriptPrinter::openSection(Transcript::Role role, u32 toolCallID, s64 t
             if (options.runWebServer)
                 webBeginMessage("AgentThinking", formatTimeStamp(timeStamp));
             this->openIsTextMsg = true;
+            this->openUsesMarkdown = true;
             break;
         case Transcript::Role::Agent:
             out.format("{} [Agent]\n", formatTimeStamp(timeStamp));
             if (options.runWebServer)
                 webBeginMessage("Agent", formatTimeStamp(timeStamp));
             this->openIsTextMsg = true;
+            this->openUsesMarkdown = true;
             break;
         case Transcript::Role::Error:
             out.format("{} [Error]\n", formatTimeStamp(timeStamp));
@@ -507,6 +665,8 @@ void TranscriptPrinter::openSection(Transcript::Role role, u32 toolCallID, s64 t
             this->openIsTextMsg = false;
             break;
     }
+    if (options.runWebServer && this->openUsesMarkdown)
+        this->beginMarkdownMessage();
 }
 
 void TranscriptPrinter::closeOpen(s64 endMicros) {
@@ -529,8 +689,13 @@ void TranscriptPrinter::closeOpen(s64 endMicros) {
 
             // Write message footer to stdout.
             out.format("{}\n", footer);
-            if (options.runWebServer)
-                webEndMessage(footer);
+            if (options.runWebServer) {
+                if (this->openUsesMarkdown) {
+                    this->endMarkdownMessage(footer);
+                } else {
+                    webEndMessage(footer);
+                }
+            }
         }
     } else if (this->openRole == Transcript::Role::ToolCall) {
         // Flush tool call to stdout.
@@ -582,8 +747,13 @@ void TranscriptPrinter::handleEvent(const TranscriptEvent& event) {
                     this->openOutputBytes += event.text.numBytes();
                     if (event.text)
                         this->openLastWasNewline = event.text.endsWith('\n');
-                    if (options.runWebServer)
-                        webAppendText(event.text);
+                    if (options.runWebServer) {
+                        if (this->openUsesMarkdown) {
+                            this->appendMarkdown(event.text);
+                        } else {
+                            webAppendText(event.text);
+                        }
+                    }
                 } else if (this->openRole == Transcript::Role::ToolCall) {
                     // Accumulate the tool call's raw text; it is formatted on close.
                     this->openToolCallText += event.text;

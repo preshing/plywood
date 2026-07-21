@@ -1259,7 +1259,7 @@ Array<Owned<Block>> parseWholeDocument(StringView markdown) {
 String convertToHtml(StringView src) {
     ViewStream in{src};
     MemStream out;
-    markdown::HTML_Options options;
+    markdown::HTMLOptions options;
     Owned<Parser> parser = createParser();
 
     while (StringView line = readLine(in)) {
@@ -1375,7 +1375,7 @@ void dump(Stream* outs, const Block* block, u32 level) {
 //
 
 // Renders one inline span subtree to HTML.
-void convertSpanToHtml(Stream* outs, const Span* span, const HTML_Options& options) {
+void convertSpanToHtml(Stream* outs, const Span* span, const HTMLOptions& options) {
     if (auto* text = span->var.as<Span::Text>()) {
         printXmlEscapedString(*outs, text->text);
     } else if (auto* link = span->var.as<Span::Link>()) {
@@ -1412,7 +1412,7 @@ void convertSpanToHtml(Stream* outs, const Span* span, const HTML_Options& optio
 }
 
 // Renders one block subtree to HTML.
-void convertToHtml(Stream* outs, const Block* block, const HTML_Options& options) {
+void convertToHtml(Stream* outs, const Block* block, const HTMLOptions& options) {
     if (auto* list = block->var.as<Block::List>()) {
         if (list->startNumber >= 0) {
             if (list->startNumber != 1) {

@@ -154,11 +154,11 @@ Owned<Block> flush(Parser* parser);
 Array<Owned<Block>> parseWholeDocument(StringView markdown);
 
 // Convert to HTML
-struct HTML_Options {
+struct HTMLOptions {
     bool childAnchors = false;
 };
 String convertToHtml(StringView src);
-void convertToHtml(Stream* outs, const Block* block, const HTML_Options& options);
+void convertToHtml(Stream* outs, const Block* block, const HTMLOptions& options);
 
 // Debugging
 #if PLY_WITH_MARKDOWN_DEBUGGING

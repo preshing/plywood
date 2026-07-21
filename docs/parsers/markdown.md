@@ -18,7 +18,7 @@ Owned<Element> parseLine(Parser* parser, StringView line)
 Owned<Element> flush(Parser* parser)
 Array<Owned<Element>> parseWholeDocument(StringView markdown)
 -- Converting to HTML
-void convertToHtml(Stream* outs, const Element* element, const HTML_Options& options)
+void convertToHtml(Stream* outs, const Element* element, const HTMLOptions& options)
 String convertToHtml(StringView src)
 {/apiSummary}
 
@@ -46,10 +46,10 @@ String convertToHtml(StringView src)
 
 ### Converting to HTML
 
-`void convertToHtml(Stream* outs, const Element* element, const HTML_Options& options)`
-> Converts an `Element` and all its children to HTML, writing the output to the provided stream. The `HTML_Options` struct controls conversion behavior:
+`void convertToHtml(Stream* outs, const Element* element, const HTMLOptions& options)`
+> Converts an `Element` and all its children to HTML, writing the output to the provided stream. The `HTMLOptions` struct controls conversion behavior:
 >
-> {table caption="`HTML_Options` members"}
+> {table caption="`HTMLOptions` members"}
 > `bool`|`childAnchors`|If true, generates anchor elements for headings
 > {/table}
 
