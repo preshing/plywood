@@ -31,9 +31,9 @@ void destroy(TranscriptUpdater* updater) {
     Heap::destroy(updater);
 }
 
-void applyTranscriptEvent(TranscriptUpdater* updater, const TranscriptEvent* event) {
+void applyTranscriptEvent(TranscriptUpdater* updater, const TranscriptEvent& event) {
     Transcript* transcript = updater->transcript;
-    switch (event->operation) {
+    switch (event.operation) {
         case TranscriptEvent::BeginMessage: {
             // Ensure there is a turn to append the message to.
             if (transcript->turns.isEmpty())
@@ -41,7 +41,7 @@ void applyTranscriptEvent(TranscriptUpdater* updater, const TranscriptEvent* eve
             Transcript::Turn& turn = transcript->turns.back();
             Owned<Transcript::Message> msg = Heap::create<Transcript::Message>();
             msg->timeStamp = (u64) getUnixTimestamp();
-            msg->role = event->role;
+            msg->role = event.role;
             turn.messages.append(std::move(msg));
             break;
         }
@@ -49,7 +49,7 @@ void applyTranscriptEvent(TranscriptUpdater* updater, const TranscriptEvent* eve
             PLY_ASSERT(!transcript->turns.isEmpty());
             Transcript::Turn& turn = transcript->turns.back();
             PLY_ASSERT(!turn.messages.isEmpty());
-            turn.messages.back()->text += event->text;
+            turn.messages.back()->text += event.text;
             break;
         }
         case TranscriptEvent::AppendToolResponse: {
@@ -60,8 +60,8 @@ void applyTranscriptEvent(TranscriptUpdater* updater, const TranscriptEvent* eve
             for (Owned<Transcript::Message>& msg : turn.messages) {
                 if (msg->role == Transcript::Role::ToolCall) {
                     id++;
-                    if (id == event->toolCallID) {
-                        msg->toolResponse += event->text;
+                    if (id == event.toolCallID) {
+                        msg->toolResponse += event.text;
                         break;
                     }
                 }
@@ -75,7 +75,7 @@ void applyTranscriptEvent(TranscriptUpdater* updater, const TranscriptEvent* eve
             for (Owned<Transcript::Message>& msg : turn.messages) {
                 if (msg->role == Transcript::Role::ToolCall) {
                     id++;
-                    if (id == event->toolCallID) {
+                    if (id == event.toolCallID) {
                         msg->toolEnded = true;
                         break;
                     }
@@ -134,12 +134,10 @@ struct Agent::Impl : RefCounted<Agent::Impl> {
     Thread inferenceThread;
     Thread toolThread;
 
-    // Properties passed in by the caller when constructing the Agent. The public Agent
-    // exposes a pointer to this object through Agent::props. The referenced EndPoint and
-    // ToolSet objects are owned by the caller and must outlive the Agent.
-    Agent::Properties props;
+    // Properties passed in by the caller when constructing the Agent. Must outlive the background threads.
+    const Agent::Properties* props = nullptr;
 
-    // internalTranscript is a copy of props.transcript, but links to the same parent.
+    // internalTranscript is a copy of props->initialTranscript, but links to the same parent.
     // Modified internally, but only when toolCtx.mutex is held.
     Reference<Transcript> internalTranscript;
     // TranscriptUpdater wraps internalTranscript and is used to apply TranscriptEvents
@@ -196,7 +194,7 @@ static void bufferEvent(Agent::Impl* impl, TranscriptEvent&& event) {
 // section (via applyTranscriptEvent) and then buffers it for delivery to the client
 // thread.
 static void addEvent(Agent::Impl* impl, TranscriptEvent&& event) {
-    applyTranscriptEvent(impl->updater, &event);
+    applyTranscriptEvent(impl->updater, event);
     bufferEvent(impl, std::move(event));
 }
 
@@ -277,18 +275,18 @@ static bool parseToolCallText(StringView text, StringView& name, json::Parser::R
 String makeRequestBody(Agent::Impl* impl) {
     json::Node root{json::Node::Object{}};
 
-    if (impl->props.endPoint->protocol == Protocol::Completions) {
+    if (impl->props->endPoint.protocol == Protocol::Completions) {
         //-------------------------------------------
         // OpenAI Chat Completions API
         //-------------------------------------------
 
         // model
-        root.set("model", json::Node::Text{impl->props.endPoint->model});
+        root.set("model", json::Node::Text{impl->props->endPoint.model});
 
         // tool definitions
-        if (impl->props.toolSet->handlers.items()) {
+        if (impl->props->toolSet.handlers.items()) {
             json::Node jTools{json::Node::Array{}};
-            for (const Owned<ToolSet::Handler>& tool : impl->props.toolSet->handlers) {
+            for (const Owned<ToolSet::Handler>& tool : impl->props->toolSet.handlers) {
                 json::Node& jTool = jTools.array().append(json::Node::Object{});
                 jTool.set("type", json::Node::Text{"function"});
                 json::Node jFunc{json::Node::Object{}};
@@ -320,10 +318,10 @@ String makeRequestBody(Agent::Impl* impl) {
 
         // messages
         json::Node jMessages{json::Node::Array{}};
-        if (impl->props.toolSet->systemMessage) {
+        if (impl->props->toolSet.systemMessage) {
             json::Node jMsg{json::Node::Object{}};
             jMsg.set("role", json::Node::Text{"developer"});
-            jMsg.set("content", json::Node::Text{impl->props.toolSet->systemMessage});
+            jMsg.set("content", json::Node::Text{impl->props->toolSet.systemMessage});
             jMessages.array().append(jMsg);
         }
 
@@ -442,7 +440,7 @@ String makeRequestBody(Agent::Impl* impl) {
         // reasoning_effort
         root.set("reasoning_effort", json::Node::Text{"medium"});
 
-    } else if (impl->props.endPoint->protocol == Protocol::Responses) {
+    } else if (impl->props->endPoint.protocol == Protocol::Responses) {
 #if 0
         //-------------------------------------------
         // OpenAI Responses API
@@ -563,7 +561,7 @@ String makeRequestBody(Agent::Impl* impl) {
 //                       ██
 
 void receiveLine(Agent::Impl* impl, StringView line) {
-    if (impl->props.endPoint->protocol == Protocol::Completions) {
+    if (impl->props->endPoint.protocol == Protocol::Completions) {
         //-----------------------------------------------------
         // Handle Completions API response line
         //-----------------------------------------------------
@@ -665,7 +663,7 @@ void receiveLine(Agent::Impl* impl, StringView line) {
             }
         }
 
-    } else if (impl->props.endPoint->protocol == Protocol::Responses) {
+    } else if (impl->props->endPoint.protocol == Protocol::Responses) {
         // Responses API
 #if 0
         if (line.startsWith("event: ")) {
@@ -746,11 +744,11 @@ void performInferenceRequest(Agent::Impl* impl) {
     // Message block.
     impl->currentRole = Transcript::Role::None;
 
-    if (impl->props.enableHttpLog) {
+    if (impl->props->enableHttpLog) {
         // Generate filename based on current date/time and URL
         DateTime dateTime = convertToDateTime(getUnixTimestamp());
         String timestampStr = String::fromDateTime("%Y-%m-%d_%H-%M-%S", dateTime);
-        String sanitizedUrl = sanitizeUrlForFilename(impl->props.endPoint->url);
+        String sanitizedUrl = sanitizeUrlForFilename(impl->props->endPoint.url);
         String logFilename = String::format("llm-log_{}_{}.txt", timestampStr, sanitizedUrl);
         impl->httpLogFile = Filesystem::openBinaryForWrite(logFilename);
     }
@@ -763,7 +761,7 @@ void performInferenceRequest(Agent::Impl* impl) {
     Map<String, String> headers;
     *headers.insert("Content-Type").value = "application/json";
     {
-        String apiKey = impl->props.endPoint->getAPIKey();
+        String apiKey = impl->props->endPoint.getAPIKey();
         if (!apiKey) {
             LockGuard<Mutex> guard{impl->toolCtx.mutex};
             onError(impl, "Missing API key");
@@ -817,7 +815,7 @@ void performInferenceRequest(Agent::Impl* impl) {
     // Send the request via HTTPClient (libcurl multi interface).
     {
         HTTPClientArgs args;
-        args.url = impl->props.endPoint->url;
+        args.url = impl->props->endPoint.url;
         args.headers = std::move(headers);
         args.body = std::move(body);
         args.useBundledCaCert = true; // Verify TLS against the shipped cacert.pem.
@@ -965,7 +963,7 @@ void runToolThread(Agent::Impl* impl) {
 
         // Handle this tool call (no locks held).
         // Look up the handler for this tool call by name.
-        const Owned<ToolSet::Handler>* found = impl->props.toolSet->handlers.find(tcName);
+        const Owned<ToolSet::Handler>* found = impl->props->toolSet.handlers.find(tcName);
         // FIXME: Improve error handling
         PLY_ASSERT(found);
         const ToolSet::Handler* toolDef = found->get();
@@ -1008,25 +1006,22 @@ void runToolThread(Agent::Impl* impl) {
 //  ██  ██ ▀█▄▄██ ▀█▄▄▄  ██  ██  ▀█▄▄
 //          ▄▄▄█▀
 
-Agent::Agent(Properties&& props) {
-    PLY_ASSERT(props.endPoint);
-    PLY_ASSERT(props.toolSet);
-    PLY_ASSERT(props.originalTranscript);
-    PLY_ASSERT(!props.originalTranscript->turns.isEmpty());
+Agent::Agent(const Properties* props) {
+    PLY_ASSERT(props->initialTranscript);
+    PLY_ASSERT(!props->initialTranscript->turns.isEmpty());
 
     // Initialize new Agent.
     this->impl = Heap::create<Agent::Impl>();
     Agent::Impl* impl = this->impl;
-    impl->props = std::move(props);
-    this->props = &impl->props; // Expose the Properties owned by Impl to the public Agent.
+    impl->props = props;
+    this->props = props;
     impl->toolCtx.agentImpl = impl;
-    // The ToolSet is owned by the caller and outlives the Agent.
-    impl->toolCtx.currentDirectory = impl->props.toolSet->currentDirectory;
+    impl->toolCtx.currentDirectory = impl->props->toolSet.currentDirectory;
     // The HTTPClient lives for the whole conversation and is reused across turns.
     impl->httpClient = createHTTPClient();
 
     // Make a copy of the transcript leaf, but link to the same parent.
-    impl->internalTranscript = Heap::create<Transcript>(*props.originalTranscript);
+    impl->internalTranscript = Heap::create<Transcript>(*props->initialTranscript);
     // Create the TranscriptUpdater that applies events to the internal transcript.
     impl->updater = createTranscriptUpdater(impl->internalTranscript);
 

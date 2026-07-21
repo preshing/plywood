@@ -87,7 +87,7 @@ struct TranscriptEvent {
 struct TranscriptUpdater;
 Owned<TranscriptUpdater> createTranscriptUpdater(Transcript* transcript);
 void destroy(TranscriptUpdater* updater);
-void applyTranscriptEvent(TranscriptUpdater* updater, const TranscriptEvent* event);
+void applyTranscriptEvent(TranscriptUpdater* updater, const TranscriptEvent& event);
 
 #if !PLY_AGENT_TRANSCRIPT_ONLY
 
@@ -148,22 +148,19 @@ struct ToolSet {
 struct Agent {
     struct Impl;
 
+    // The caller must keep the Properties object alive while the agent's background threads are running.
     struct Properties {
-        // The leaf transcript node gets copied to impl->internalTranscript in the Agent constructor,
-        // but both nodes share the same parent.
-        Transcript* originalTranscript = nullptr;
-
-        // The caller is responsible for creating separate EndPoint and ToolSet objects and keeping them alive for the
-        // lifetime of the agent.
-        const EndPoint* endPoint;
-        const ToolSet* toolSet;
+        // The agent doesn't modify initialTranscript; only uses it to initialize the HTTP request.
+        const Transcript* initialTranscript = nullptr;
+        EndPoint endPoint;
+        ToolSet toolSet;
         bool enableHttpLog = false;
     };
 
-    const Properties* props; // points to impl->props internally
-    Reference<Impl> impl;    // internal details
+    const Properties* props = nullptr;
+    Reference<Impl> impl; // internal details
 
-    Agent(Properties&& props);
+    Agent(const Properties* props);
     ~Agent();
 
     // TranscriptEvents are internally timestamped and buffered as they are received from the LLM.
@@ -183,17 +180,17 @@ struct Agent {
     // Any thread can freely call them at any point during the Agent's lifetime.
     // When cancel is called:
     // - Any thread calling waitForEvents or waitForCompletion immediately returns.
-    // - The background threads observe `canceled` and will no longer generate new TranscriptEvents.
-    //   At most, some in-flight tool calls may continue running briefly in the background.
-    // - isWorking will only start returning false after all remaining buffered events are consumed.
+    // - No new TranscriptEvents will be generated.
+    // - isWorking will start returning false only after all remaining buffered TranscriptEvents are consumed.
     bool isWorking();
     void cancel();
 };
 
 // ToolContext is used to implement tool handlers.
 struct ToolContext {
-    Mutex mutex;           // Protects `canceled` and serializes changes to the agent's transcript
-                           // and serializes event buffering across the inference and tool threads.
+    // Protects `canceled` and serializes changes to the agent's transcript
+    // and serializes event buffering across the inference and tool threads.
+    Mutex mutex;
     bool canceled = false; // Set by the client thread (via cancel or destruction) to request cancellation.
     Agent::Impl* agentImpl = nullptr;
     ArrayView<const ToolSet::Permission> permissions;

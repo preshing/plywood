@@ -25,8 +25,7 @@ struct CommandLineOptions {
 };
 
 CommandLineOptions options;
-EndPoint endPoint;
-ToolSet toolSet;
+Agent::Properties agentProps;
 Reference<Transcript> transcript;
 
 //---------------------------------------------------
@@ -497,7 +496,7 @@ struct TranscriptPrinter {
     // ends. This is what lets us compute the message's elapsed time and output
     // size.
     bool hasOpen = false;
-    bool openIsTextMsg = false; // true for User/AgentThinking/Agent/Error
+    bool openIsTextMsg = false;    // true for User/AgentThinking/Agent/Error
     bool openUsesMarkdown = false; // true only for User/AgentThinking/Agent
     Transcript::Role openRole = Transcript::Role::None;
     s64 sectionStartTime = 0;
@@ -625,20 +624,20 @@ void TranscriptPrinter::printStartup(StringView userPrompt) {
         // Write system prompt to stdout.
         Stream out = getStdOut();
         out.format("{} [System Prompt]\n", formatTimeStamp(now));
-        out.format("{}\n", toolSet.systemMessage);
+        out.format("{}\n", agentProps.toolSet.systemMessage);
         out.format("{}\n", Separator);
     }
     if (options.runWebServer) {
         // Stream the system prompt to the web browser.
         webBeginMessage("SystemPrompt", formatTimeStamp(now));
-        webAppendText(toolSet.systemMessage);
+        webAppendText(agentProps.toolSet.systemMessage);
         webEndMessage();
     }
 
     // Tool definition blocks.
     {
         Stream out = getStdOut();
-        for (const Owned<ToolSet::Handler>& tool : toolSet.handlers) {
+        for (const Owned<ToolSet::Handler>& tool : agentProps.toolSet.handlers) {
             // Write tool definition to stdout.
             out.format("{} [Tool Definition: {}]\n", formatTimeStamp(now), tool->name);
             for (const ToolSet::Parameter& param : tool->parameters) {
@@ -914,22 +913,22 @@ static bool loadSettings() {
 
     // Import endPoint settings.
     const json::Node& ep = root.get("endPoint");
-    endPoint.url = ep.get("url").text();
+    agentProps.endPoint.url = ep.get("url").text();
     StringView protocol = ep.get("protocol").text();
     if (protocol.endsWith("-responses")) {
-        endPoint.protocol = Protocol::Responses;
+        agentProps.endPoint.protocol = Protocol::Responses;
     } else {
-        endPoint.protocol = Protocol::Completions;
+        agentProps.endPoint.protocol = Protocol::Completions;
     }
     StringView modelView = ep.get("model").text();
     if (modelView) {
-        endPoint.model = modelView;
+        agentProps.endPoint.model = modelView;
     }
 
     // The API key is read from the named environment variable on demand. Plywood
     // strings aren't null-terminated, so append an explicit NUL byte for getenv.
     String apiKeyEnvZ = String{ep.get("apiKeyEnv").text()} + '\0';
-    endPoint.getAPIKey = [apiKeyEnvZ]() -> String {
+    agentProps.endPoint.getAPIKey = [apiKeyEnvZ]() -> String {
         const char* envVar = getenv(apiKeyEnvZ.bytes());
         if (!envVar)
             return {};
@@ -937,12 +936,13 @@ static bool loadSettings() {
     };
 
     // Import system prompt.
-    toolSet.systemMessage = root.get("systemPrompt").text();
+    agentProps.toolSet.systemMessage = root.get("systemPrompt").text();
 
     // Import current directory.
     StringView rawCwd = root.get("currentDirectory").text();
     StringView configDir = splitPath(configPath).directory;
-    toolSet.currentDirectory = rawCwd ? makeAbsolutePath(joinPath(configDir, rawCwd)) : makeAbsolutePath(configDir);
+    agentProps.toolSet.currentDirectory =
+        rawCwd ? makeAbsolutePath(joinPath(configDir, rawCwd)) : makeAbsolutePath(configDir);
 
     // Import directory permissions.
     Set<String> registeredTools; // union of all tools across trees (registered once each)
@@ -954,30 +954,30 @@ static bool loadSettings() {
             return false;
         }
 
-        String absPath = makeAbsolutePath(joinPath(toolSet.currentDirectory, rawRoot));
+        String absPath = makeAbsolutePath(joinPath(agentProps.toolSet.currentDirectory, rawRoot));
 
         const json::Node& toolsNode = perm.get("tools");
         for (const json::Node& t : toolsNode.arrayView()) {
             StringView toolName = t.text();
 
             // Register the tool on first encounter.
-            Owned<ToolSet::Handler>* found = toolSet.handlers.find(toolName);
+            Owned<ToolSet::Handler>* found = agentProps.toolSet.handlers.find(toolName);
             if (!found) {
                 if (toolName == "read") {
-                    addReadTool(&toolSet);
+                    addReadTool(&agentProps.toolSet);
                 } else if (toolName == "write") {
-                    addWriteTool(&toolSet);
+                    addWriteTool(&agentProps.toolSet);
                 } else if (toolName == "list_dir") {
-                    addListDirTool(&toolSet);
+                    addListDirTool(&agentProps.toolSet);
                 } else if (toolName == "find_in_files") {
-                    addFindInFilesTool(&toolSet);
+                    addFindInFilesTool(&agentProps.toolSet);
                 } else if (toolName == "edit") {
-                    addEditTool(&toolSet);
+                    addEditTool(&agentProps.toolSet);
                 } else {
                     getStdErr().format("Unknown tool in configuration: {}\n", toolName);
                     return false;
                 }
-                found = toolSet.handlers.find(toolName);
+                found = agentProps.toolSet.handlers.find(toolName);
                 PLY_ASSERT(found);
             }
 
@@ -988,7 +988,8 @@ static bool loadSettings() {
     }
 
     // Augment the system prompt.
-    toolSet.systemMessage += String::format("\nThe current working directory is: {}\n", toolSet.currentDirectory);
+    agentProps.toolSet.systemMessage +=
+        String::format("\nThe current working directory is: {}\n", agentProps.toolSet.currentDirectory);
 
     return true;
 }
@@ -1039,15 +1040,10 @@ int main(int argc, const char* argv[]) {
         turn.messages.append(std::move(userMsg));
     }
 
-    // Initialize Agent::Properties.
-    Agent::Properties props;
-    props.endPoint = &endPoint;
-    props.toolSet = &toolSet;
-    props.enableHttpLog = options.enableHttpLog;
-
     // Start the agent.
-    props.originalTranscript = transcript;
-    Owned<Agent> agent = Heap::create<Agent>(std::move(props));
+    agentProps.initialTranscript = transcript;
+    agentProps.enableHttpLog = options.enableHttpLog;
+    Owned<Agent> agent = Heap::create<Agent>(&agentProps);
 
     // Print the static portion of the transcript (system prompt, tool definitions
     // and the user prompt), then stream the agent's events as they arrive.
@@ -1058,7 +1054,7 @@ int main(int argc, const char* argv[]) {
     Owned<TranscriptUpdater> updater = createTranscriptUpdater(transcript);
     while (agent->isWorking()) {
         for (const TranscriptEvent& event : agent->waitForEvents()) {
-            applyTranscriptEvent(updater, &event);
+            applyTranscriptEvent(updater, event);
             printer.handleEvent(event);
         }
     }
