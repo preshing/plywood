@@ -134,10 +134,10 @@ struct Agent::Impl : RefCounted<Agent::Impl> {
     Thread inferenceThread;
     Thread toolThread;
 
-    // Properties passed in by the caller when constructing the Agent. Must outlive the background threads.
-    const Agent::Properties* props = nullptr;
+    // Settings moved into the Agent when it's constructed.
+    Agent::Settings settings;
 
-    // internalTranscript is a copy of props->initialTranscript, but links to the same parent.
+    // internalTranscript is a copy of settings.initialTranscript, but links to the same parent.
     // Modified internally, but only when toolCtx.mutex is held.
     Reference<Transcript> internalTranscript;
     // TranscriptUpdater wraps internalTranscript and is used to apply TranscriptEvents
@@ -275,18 +275,18 @@ static bool parseToolCallText(StringView text, StringView& name, json::Parser::R
 String makeRequestBody(Agent::Impl* impl) {
     json::Node root{json::Node::Object{}};
 
-    if (impl->props->endPoint.protocol == Protocol::Completions) {
+    if (impl->settings.endPoint.protocol == Protocol::Completions) {
         //-------------------------------------------
         // OpenAI Chat Completions API
         //-------------------------------------------
 
         // model
-        root.set("model", json::Node::Text{impl->props->endPoint.model});
+        root.set("model", json::Node::Text{impl->settings.endPoint.model});
 
         // tool definitions
-        if (impl->props->toolSet.handlers.items()) {
+        if (impl->settings.toolSet.handlers.items()) {
             json::Node jTools{json::Node::Array{}};
-            for (const Owned<ToolSet::Handler>& tool : impl->props->toolSet.handlers) {
+            for (const Owned<ToolSet::Handler>& tool : impl->settings.toolSet.handlers) {
                 json::Node& jTool = jTools.array().append(json::Node::Object{});
                 jTool.set("type", json::Node::Text{"function"});
                 json::Node jFunc{json::Node::Object{}};
@@ -318,10 +318,10 @@ String makeRequestBody(Agent::Impl* impl) {
 
         // messages
         json::Node jMessages{json::Node::Array{}};
-        if (impl->props->toolSet.systemMessage) {
+        if (impl->settings.toolSet.systemMessage) {
             json::Node jMsg{json::Node::Object{}};
             jMsg.set("role", json::Node::Text{"developer"});
-            jMsg.set("content", json::Node::Text{impl->props->toolSet.systemMessage});
+            jMsg.set("content", json::Node::Text{impl->settings.toolSet.systemMessage});
             jMessages.array().append(jMsg);
         }
 
@@ -440,7 +440,7 @@ String makeRequestBody(Agent::Impl* impl) {
         // reasoning_effort
         root.set("reasoning_effort", json::Node::Text{"medium"});
 
-    } else if (impl->props->endPoint.protocol == Protocol::Responses) {
+    } else if (impl->settings.endPoint.protocol == Protocol::Responses) {
 #if 0
         //-------------------------------------------
         // OpenAI Responses API
@@ -561,7 +561,7 @@ String makeRequestBody(Agent::Impl* impl) {
 //                       ██
 
 void receiveLine(Agent::Impl* impl, StringView line) {
-    if (impl->props->endPoint.protocol == Protocol::Completions) {
+    if (impl->settings.endPoint.protocol == Protocol::Completions) {
         //-----------------------------------------------------
         // Handle Completions API response line
         //-----------------------------------------------------
@@ -663,7 +663,7 @@ void receiveLine(Agent::Impl* impl, StringView line) {
             }
         }
 
-    } else if (impl->props->endPoint.protocol == Protocol::Responses) {
+    } else if (impl->settings.endPoint.protocol == Protocol::Responses) {
         // Responses API
 #if 0
         if (line.startsWith("event: ")) {
@@ -744,11 +744,11 @@ void performInferenceRequest(Agent::Impl* impl) {
     // Message block.
     impl->currentRole = Transcript::Role::None;
 
-    if (impl->props->enableHttpLog) {
+    if (impl->settings.enableHttpLog) {
         // Generate filename based on current date/time and URL
         DateTime dateTime = convertToDateTime(getUnixTimestamp());
         String timestampStr = String::fromDateTime("%Y-%m-%d_%H-%M-%S", dateTime);
-        String sanitizedUrl = sanitizeUrlForFilename(impl->props->endPoint.url);
+        String sanitizedUrl = sanitizeUrlForFilename(impl->settings.endPoint.url);
         String logFilename = String::format("llm-log_{}_{}.txt", timestampStr, sanitizedUrl);
         impl->httpLogFile = Filesystem::openBinaryForWrite(logFilename);
     }
@@ -761,7 +761,7 @@ void performInferenceRequest(Agent::Impl* impl) {
     Map<String, String> headers;
     *headers.insert("Content-Type").value = "application/json";
     {
-        String apiKey = impl->props->endPoint.getAPIKey();
+        String apiKey = impl->settings.endPoint.getAPIKey();
         if (!apiKey) {
             LockGuard<Mutex> guard{impl->toolCtx.mutex};
             onError(impl, "Missing API key");
@@ -815,7 +815,7 @@ void performInferenceRequest(Agent::Impl* impl) {
     // Send the request via HTTPClient (libcurl multi interface).
     {
         HTTPClientArgs args;
-        args.url = impl->props->endPoint.url;
+        args.url = impl->settings.endPoint.url;
         args.headers = std::move(headers);
         args.body = std::move(body);
         args.useBundledCaCert = true; // Verify TLS against the shipped cacert.pem.
@@ -963,7 +963,7 @@ void runToolThread(Agent::Impl* impl) {
 
         // Handle this tool call (no locks held).
         // Look up the handler for this tool call by name.
-        const Owned<ToolSet::Handler>* found = impl->props->toolSet.handlers.find(tcName);
+        const Owned<ToolSet::Handler>* found = impl->settings.toolSet.handlers.find(tcName);
         // FIXME: Improve error handling
         PLY_ASSERT(found);
         const ToolSet::Handler* toolDef = found->get();
@@ -1006,22 +1006,22 @@ void runToolThread(Agent::Impl* impl) {
 //  ██  ██ ▀█▄▄██ ▀█▄▄▄  ██  ██  ▀█▄▄
 //          ▄▄▄█▀
 
-Agent::Agent(const Properties* props) {
-    PLY_ASSERT(props->initialTranscript);
-    PLY_ASSERT(!props->initialTranscript->turns.isEmpty());
+Agent::Agent(const Settings& settings) {
+    PLY_ASSERT(settings.initialTranscript);
+    PLY_ASSERT(!settings.initialTranscript->turns.isEmpty());
 
     // Initialize new Agent.
     this->impl = Heap::create<Agent::Impl>();
     Agent::Impl* impl = this->impl;
-    impl->props = props;
-    this->props = props;
+    impl->settings = settings;        // copies the settings
+    this->settings = &impl->settings; // points to the internal copy of the settings
     impl->toolCtx.agentImpl = impl;
-    impl->toolCtx.currentDirectory = impl->props->toolSet.currentDirectory;
+    impl->toolCtx.currentDirectory = impl->settings.toolSet.currentDirectory;
     // The HTTPClient lives for the whole conversation and is reused across turns.
     impl->httpClient = createHTTPClient();
 
     // Make a copy of the transcript leaf, but link to the same parent.
-    impl->internalTranscript = Heap::create<Transcript>(*props->initialTranscript);
+    impl->internalTranscript = Heap::create<Transcript>(*impl->settings.initialTranscript);
     // Create the TranscriptUpdater that applies events to the internal transcript.
     impl->updater = createTranscriptUpdater(impl->internalTranscript);
 

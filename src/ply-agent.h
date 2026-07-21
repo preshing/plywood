@@ -148,8 +148,7 @@ struct ToolSet {
 struct Agent {
     struct Impl;
 
-    // The caller must keep the Properties object alive while the agent's background threads are running.
-    struct Properties {
+    struct Settings {
         // The agent doesn't modify initialTranscript; only uses it to initialize the HTTP request.
         const Transcript* initialTranscript = nullptr;
         EndPoint endPoint;
@@ -157,10 +156,11 @@ struct Agent {
         bool enableHttpLog = false;
     };
 
-    const Properties* props = nullptr;
-    Reference<Impl> impl; // internal details
+    const Settings* settings = nullptr; // points to the internal copy of the settings
+    Reference<Impl> impl;               // internal details
 
-    Agent(const Properties* props);
+    // The settings are copied to the internal state.
+    Agent(const Settings& settings);
     ~Agent();
 
     // TranscriptEvents are internally timestamped and buffered as they are received from the LLM.
