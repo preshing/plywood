@@ -114,7 +114,7 @@ struct EndPoint {
 // Forward declarations.
 struct ToolContext;
 
-// ToolSet defines the agent's available tools and its system message.
+// ToolSet defines the agent's available tools and its system prompt.
 struct ToolSet {
     struct Parameter {
         String name;
@@ -139,7 +139,7 @@ struct ToolSet {
         }
     };
 
-    String systemMessage;
+    String systemPrompt;
     Set<Owned<Handler>> handlers;
     String currentDirectory;
 };

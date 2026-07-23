@@ -21,6 +21,7 @@ struct CommandLineOptions {
     String settingsPath;
     bool enableHttpLog = false;
     bool runWebServer = false;
+    String userPrompt;
     PLY_DECLARE_TYPE_INFO(CommandLineOptions)
 };
 
@@ -622,13 +623,13 @@ void TranscriptPrinter::printStartup(StringView userPrompt) {
         // Write system prompt to stdout.
         Stream out = getStdOut();
         out.format("{} [System Prompt]\n", formatTimeStamp(now));
-        out.format("{}\n", agentSettings.toolSet.systemMessage);
+        out.format("{}\n", agentSettings.toolSet.systemPrompt);
         out.format("{}\n", Separator);
     }
     if (options.runWebServer) {
         // Stream the system prompt to the web browser.
         webBeginMessage("SystemPrompt", formatTimeStamp(now));
-        webAppendText(agentSettings.toolSet.systemMessage);
+        webAppendText(agentSettings.toolSet.systemPrompt);
         webEndMessage();
     }
 
@@ -934,7 +935,12 @@ static bool loadSettings() {
     };
 
     // Import system prompt.
-    agentSettings.toolSet.systemMessage = root.get("systemPrompt").text();
+    agentSettings.toolSet.systemPrompt = root.get("systemPrompt").text();
+
+    // Import user prompt.
+    if (!options.userPrompt) {
+        options.userPrompt = root.get("userPrompt").text();
+    }
 
     // Import current directory.
     StringView rawCwd = root.get("currentDirectory").text();
@@ -986,7 +992,7 @@ static bool loadSettings() {
     }
 
     // Augment the system prompt.
-    agentSettings.toolSet.systemMessage +=
+    agentSettings.toolSet.systemPrompt +=
         String::format("\nThe current working directory is: {}\n", agentSettings.toolSet.currentDirectory);
 
     return true;
@@ -1007,8 +1013,17 @@ int main(int argc, const char* argv[]) {
         {"-l", PLY_LOOKUP_MEMBER(CommandLineOptions, enableHttpLog), "Write raw HTTP log"},
         {"-s", PLY_LOOKUP_MEMBER(CommandLineOptions, runWebServer), "Serve transcript on port 8081"},
     });
+    u32 numUserPrompts = 0;
+    parser.defaultHandler = [&](ArrayView<const char*> args, u32 index) {
+        options.userPrompt = args[index];
+        numUserPrompts++;
+    };
     if (!parser.apply(argc, argv, &options))
         return 1; // parsing error
+    if (numUserPrompts > 1) {
+        getStdErr().write("Only one prompt may be specified on the command line.\n");
+        return 1;
+    }
 
     // Initialize curl.
     CURLcode rc = curl_global_init(CURL_GLOBAL_DEFAULT);
@@ -1019,6 +1034,12 @@ int main(int argc, const char* argv[]) {
     if (!loadSettings())
         return 1;
 
+    // A command line prompt overrides the prompt loaded from the settings.
+    if (!options.userPrompt) {
+        getStdErr().write("A prompt must be specified.\n");
+        return 1;
+    }
+
     // Start the echo webserver in parallel with the agent.
     Thread webServerThread;
     if (options.runWebServer) {
@@ -1027,19 +1048,18 @@ int main(int argc, const char* argv[]) {
     }
 
     // Create a transcript with the user's prompt as the first turn.
-    String userPrompt = "Please summarize the contents of the file sample.txt";
     transcript = new Transcript;
     Transcript::Turn& turn = transcript->turns.append();
     {
         Owned<Transcript::Message> userMsg = Heap::create<Transcript::Message>();
         userMsg->role = Transcript::Role::User;
-        userMsg->text = userPrompt;
+        userMsg->text = options.userPrompt;
         turn.messages.append(std::move(userMsg));
     }
 
     // Print the initial portion of the transcript (system prompt, tool definitions and user prompt).
     TranscriptPrinter printer;
-    printer.printStartup(userPrompt);
+    printer.printStartup(options.userPrompt);
 
     // Start the agent.
     agentSettings.initialTranscript = transcript;

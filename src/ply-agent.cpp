@@ -318,10 +318,10 @@ String makeRequestBody(Agent::Impl* impl) {
 
         // messages
         json::Node jMessages{json::Node::Array{}};
-        if (impl->settings.toolSet.systemMessage) {
+        if (impl->settings.toolSet.systemPrompt) {
             json::Node jMsg{json::Node::Object{}};
             jMsg.set("role", json::Node::Text{"developer"});
-            jMsg.set("content", json::Node::Text{impl->settings.toolSet.systemMessage});
+            jMsg.set("content", json::Node::Text{impl->settings.toolSet.systemPrompt});
             jMessages.array().append(jMsg);
         }
 
@@ -482,10 +482,10 @@ String makeRequestBody(Agent::Impl* impl) {
 
         // messages
         json::Node jInput{json::Node::Array{}};
-        if (session->systemMessage) {
+        if (session->systemPrompt) {
             json::Node jMsg{json::Node::Object{}};
             jMsg.set("role", json::Node::Text{"developer"});
-            jMsg.set("content", json::Node::Text{session->systemMessage});
+            jMsg.set("content", json::Node::Text{session->systemPrompt});
             jInput.array().append(jMsg);
         }
         for (const Message* msg : session->messages) {
