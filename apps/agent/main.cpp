@@ -881,16 +881,19 @@ static bool loadSettings() {
     // Make full settings path.
     String configPath;
     if (options.settingsPath) {
-        configPath = joinPath(options.settingsPath, "agent.json");
+        configPath = options.settingsPath;
     } else {
-        // First try the current working directory.
-        String cwdPath = joinPath(Filesystem::getWorkingDirectory(), "agent.json");
-        if (Filesystem::exists(cwdPath) == ER_FILE) {
-            configPath = std::move(cwdPath);
-        } else {
-            // Fall back to the executable's directory.
-            String exePath = getCurrentExecutablePath();
-            configPath = joinPath(splitPath(exePath).directory, "agent.json");
+        // Search the working directory and each of its ancestors up to the filesystem root.
+        String searchDir = Filesystem::getWorkingDirectory();
+        while (true) {
+            configPath = joinPath(searchDir, "agent.json");
+            if (Filesystem::exists(configPath) == ER_FILE)
+                break;
+
+            String parentDir = splitPath(searchDir).directory;
+            if (parentDir == searchDir)
+                break;
+            searchDir = std::move(parentDir);
         }
     }
 
