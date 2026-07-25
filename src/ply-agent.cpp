@@ -1016,7 +1016,7 @@ Agent::Agent(const Settings& settings) {
     impl->settings = settings;        // copies the settings
     this->settings = &impl->settings; // points to the internal copy of the settings
     impl->toolCtx.agentImpl = impl;
-    impl->toolCtx.currentDirectory = impl->settings.toolSet.currentDirectory;
+    impl->toolCtx.workingDirectory = impl->settings.toolSet.workingDirectory;
     // The HTTPClient lives for the whole conversation and is reused across turns.
     impl->httpClient = createHTTPClient();
 
@@ -1163,7 +1163,7 @@ bool dirContainsPath(String dir, String path) {
 }
 
 FilteredPath filterPath(ToolContext* toolCtx, StringView relPath) {
-    String absPath = joinPath(toolCtx->currentDirectory, relPath);
+    String absPath = joinPath(toolCtx->workingDirectory, relPath);
     for (const ToolSet::Permission& perm : toolCtx->permissions) {
         if (dirContainsPath(perm.absPath, absPath))
             return {true, std::move(absPath)};

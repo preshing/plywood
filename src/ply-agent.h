@@ -141,7 +141,7 @@ struct ToolSet {
 
     String systemPrompt;
     Set<Owned<Handler>> handlers;
-    String currentDirectory;
+    String workingDirectory;
 };
 
 // Agent provides the public API for operating LLM agents.
@@ -194,7 +194,7 @@ struct ToolContext {
     bool canceled = false; // Set by the client thread (via cancel or destruction) to request cancellation.
     Agent::Impl* agentImpl = nullptr;
     ArrayView<const ToolSet::Permission> permissions;
-    StringView currentDirectory;
+    StringView workingDirectory;
 };
 
 // These functions should be used to initialize the EndPoint and ToolSet before constructing an Agent.

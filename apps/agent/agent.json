@@ -6,15 +6,11 @@
         "model": "glm-5.1"
     },
     "systemPrompt": "You are a helpful assistant.",
-    "currentDirectory": "../../../arc80",
+    "workingDirectory": "../..",
     "permissions": [
         {
             "path": ".",
             "tools": ["read", "list_dir", "find_in_files", "write", "edit"]
-        },
-        {
-            "path": "../plywood",
-            "tools": ["read", "list_dir", "find_in_files"]
         }
     ]
 }

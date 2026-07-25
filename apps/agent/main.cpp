@@ -14,9 +14,12 @@
 
 using namespace ply;
 
-//---------------------------------------------------
-// Global variables and options.
-//---------------------------------------------------
+//   ▄▄▄▄  ▄▄▄         ▄▄            ▄▄▄
+//  ██  ▀▀  ██   ▄▄▄▄  ██▄▄▄   ▄▄▄▄   ██   ▄▄▄▄
+//  ██ ▀██  ██  ██  ██ ██  ██  ▄▄▄██  ██  ▀█▄▄▄
+//  ▀█▄▄█▀ ▄██▄ ▀█▄▄█▀ ██▄▄█▀ ▀█▄▄██ ▄██▄  ▄▄▄█▀
+//
+
 struct CommandLineOptions {
     String settingsPath;
     bool enableHttpLog = false;
@@ -440,11 +443,11 @@ static void webEndToolResponse(u32 toolCallID, StringView timeStamp) {
     webTranscript.append(std::move(event));
 }
 
-//  ▄▄▄▄▄▄                        ▄▄               ▄▄▄       ▄▄▄▄          ▄▄                  ▄▄
-//    ██    ▄▄▄▄  ▄▄▄▄▄  ▄▄▄▄▄▄▄  ▄▄ ▄▄▄▄▄   ▄▄▄▄   ██      ██  ██ ▄▄  ▄▄ ▄██▄▄ ▄▄▄▄▄  ▄▄  ▄▄ ▄██▄▄
-//    ██   ██▄▄██ ██  ▀▀ ██ ██ ██ ██ ██  ██  ▄▄▄██  ██      ██  ██ ██  ██  ██   ██  ██ ██  ██  ██
-//    ██   ▀█▄▄▄  ██     ██ ██ ██ ██ ██  ██ ▀█▄▄██ ▄██▄     ▀█▄▄█▀ ▀█▄▄██  ▀█▄▄ ██▄▄█▀ ▀█▄▄██  ▀█▄▄
-//                                                                              ██
+//   ▄▄▄▄                              ▄▄▄              ▄▄▄▄          ▄▄                  ▄▄
+//  ██  ▀▀  ▄▄▄▄  ▄▄▄▄▄   ▄▄▄▄   ▄▄▄▄   ██   ▄▄▄▄      ██  ██ ▄▄  ▄▄ ▄██▄▄ ▄▄▄▄▄  ▄▄  ▄▄ ▄██▄▄
+//  ██     ██  ██ ██  ██ ▀█▄▄▄  ██  ██  ██  ██▄▄██     ██  ██ ██  ██  ██   ██  ██ ██  ██  ██
+//  ▀█▄▄█▀ ▀█▄▄█▀ ██  ██  ▄▄▄█▀ ▀█▄▄█▀ ▄██▄ ▀█▄▄▄      ▀█▄▄█▀ ▀█▄▄██  ▀█▄▄ ██▄▄█▀ ▀█▄▄██  ▀█▄▄
+//                                                                         ██
 
 static String formatJsonValue(const json::Node& node) {
     if (node.isText())
@@ -868,22 +871,88 @@ void TranscriptPrinter::finish(s64 endMicros) {
     this->flushToolResponses(endMicros);
 }
 
-//  ▄▄   ▄▄        ▄▄
-//  ███▄███  ▄▄▄▄  ▄▄ ▄▄▄▄▄
-//  ██▀█▀██  ▄▄▄██ ██ ██  ██
-//  ██   ██ ▀█▄▄██ ██ ██  ██
-//
+//   ▄▄▄▄          ▄▄    ▄▄   ▄▄
+//  ██  ▀▀  ▄▄▄▄  ▄██▄▄ ▄██▄▄ ▄▄ ▄▄▄▄▄   ▄▄▄▄▄  ▄▄▄▄
+//   ▀▀▀█▄ ██▄▄██  ██    ██   ██ ██  ██ ██  ██ ▀█▄▄▄
+//  ▀█▄▄█▀ ▀█▄▄▄   ▀█▄▄  ▀█▄▄ ██ ██  ██ ▀█▄▄██  ▄▄▄█▀
+//                                       ▄▄▄█▀
 
-//---------------------------------------------------
-// Load the agent configuration settings from agent.json.
-//---------------------------------------------------
+// Load a chain of JSON settings files by following includes and merge them into one.
+static bool loadAndFollowIncludes(StringView configPath, Set<String>* activePaths, json::Node* mergedRoot) {
+    // Reject include cycles before loading the next file.
+    String absConfigPath = makeAbsolutePath(configPath);
+    auto insertResult = activePaths->insert(absConfigPath);
+    if (insertResult.wasFound) {
+        getStdErr().format("Configuration include cycle detected at: {}\n", absConfigPath);
+        return false;
+    }
+    PLY_ON_SCOPE_EXIT({ activePaths->erase(absConfigPath); });
+
+    // Load this settings file.
+    String jsonText = Filesystem::loadText(absConfigPath);
+    if (!jsonText) {
+        getStdErr().format("Could not load configuration file: {}\n", absConfigPath);
+        return false;
+    }
+
+    // Parse and validate the root node.
+    json::Parser parser;
+    json::Parser::Result result = parser.parse(absConfigPath, jsonText);
+    if (parser.anyError() || !result.root.isObject()) {
+        getStdErr().format("Failed to parse configuration file: {}\n", absConfigPath);
+        return false;
+    }
+    const json::Node& root = result.root;
+
+    // Load the parent first. Include paths are relative to the file that contains them.
+    *mergedRoot = json::Node{json::Node::Object{}};
+    const json::Node& includeNode = root.get("include");
+    if (includeNode.isValid()) {
+        if (!includeNode.isText() || !includeNode.text()) {
+            getStdErr().format("The 'include' property must be a non-empty string in: {}\n", absConfigPath);
+            return false;
+        }
+        String parentPath = joinPath(splitPath(absConfigPath).directory, includeNode.text());
+        if (!loadAndFollowIncludes(parentPath, activePaths, mergedRoot))
+            return false;
+    }
+
+    // Replace inherited scalar settings and replace the entire endpoint object.
+    const FixedArray<StringView, 4> replacedProperties = {
+        "endPoint", "systemPrompt", "userPrompt", "workingDirectory"};
+    for (StringView property : replacedProperties) {
+        const json::Node& value = root.get(property);
+        if (value.isValid()) {
+            mergedRoot->set(property, json::Node{value});
+        }
+    }
+
+    // Append this file's permissions after all inherited permissions.
+    const json::Node& childPermissions = root.get("permissions");
+    if (childPermissions.isValid()) {
+        if (!childPermissions.isArray()) {
+            getStdErr().format("The 'permissions' property must be an array in: {}\n", absConfigPath);
+            return false;
+        }
+        json::Node combinedPermissions{json::Node::Array{}};
+        for (const json::Node& permission : mergedRoot->get("permissions").arrayView()) {
+            combinedPermissions.array().append(json::Node{permission});
+        }
+        for (const json::Node& permission : childPermissions.arrayView()) {
+            combinedPermissions.array().append(json::Node{permission});
+        }
+        mergedRoot->set("permissions", std::move(combinedPermissions));
+    }
+    return true;
+}
+
+// Load settings from the appropriate JSON files and convert them to Agent::Settings.
 static bool loadSettings() {
-    // Make full settings path.
-    String configPath;
-    if (options.settingsPath) {
-        configPath = options.settingsPath;
-    } else {
-        // Search the working directory and each of its ancestors up to the filesystem root.
+    // Use the settings file specified on the command line, if any.
+    String configPath = options.settingsPath;
+
+    // Otherwise, search the working directory and each of its ancestors up to the filesystem root.
+    if (!configPath) {
         String searchDir = Filesystem::getWorkingDirectory();
         while (true) {
             configPath = joinPath(searchDir, "agent.json");
@@ -897,23 +966,13 @@ static bool loadSettings() {
         }
     }
 
-    // Load JSON settings file.
-    String jsonText = Filesystem::loadText(configPath);
-    if (!jsonText) {
-        getStdErr().format("Could not load configuration file: {}\n", configPath);
+    // Load and merge the complete settings chain.
+    json::Node root;
+    Set<String> activePaths;
+    if (!loadAndFollowIncludes(configPath, &activePaths, &root))
         return false;
-    }
 
-    // Parse the JSON structure.
-    json::Parser parser;
-    json::Parser::Result result = parser.parse(configPath, jsonText);
-    if (parser.anyError()) {
-        getStdErr().format("Failed to parse configuration file: {}\n", configPath);
-        return false;
-    }
-    const json::Node& root = result.root;
-
-    // Import endPoint settings.
+    // Import endpoint settings.
     const json::Node& ep = root.get("endPoint");
     agentSettings.endPoint.url = ep.get("url").text();
     StringView protocol = ep.get("protocol").text();
@@ -945,11 +1004,11 @@ static bool loadSettings() {
         options.userPrompt = root.get("userPrompt").text();
     }
 
-    // Import current directory.
-    StringView rawCwd = root.get("currentDirectory").text();
+    // Import working directory.
+    StringView rawWorkingDir = root.get("workingDirectory").text();
     StringView configDir = splitPath(configPath).directory;
-    agentSettings.toolSet.currentDirectory =
-        rawCwd ? makeAbsolutePath(joinPath(configDir, rawCwd)) : makeAbsolutePath(configDir);
+    agentSettings.toolSet.workingDirectory =
+        rawWorkingDir ? makeAbsolutePath(joinPath(configDir, rawWorkingDir)) : makeAbsolutePath(configDir);
 
     // Import directory permissions.
     Set<String> registeredTools; // union of all tools across trees (registered once each)
@@ -961,7 +1020,7 @@ static bool loadSettings() {
             return false;
         }
 
-        String absPath = makeAbsolutePath(joinPath(agentSettings.toolSet.currentDirectory, rawRoot));
+        String absPath = makeAbsolutePath(joinPath(agentSettings.toolSet.workingDirectory, rawRoot));
 
         const json::Node& toolsNode = perm.get("tools");
         for (const json::Node& t : toolsNode.arrayView()) {
@@ -996,14 +1055,17 @@ static bool loadSettings() {
 
     // Augment the system prompt.
     agentSettings.toolSet.systemPrompt +=
-        String::format("\nThe current working directory is: {}\n", agentSettings.toolSet.currentDirectory);
+        String::format("\nThe current working directory is: {}\n", agentSettings.toolSet.workingDirectory);
 
     return true;
 }
 
-//---------------------------------------------------
-// Main entry point.
-//---------------------------------------------------
+//  ▄▄   ▄▄        ▄▄
+//  ███▄███  ▄▄▄▄  ▄▄ ▄▄▄▄▄
+//  ██▀█▀██  ▄▄▄██ ██ ██  ██
+//  ██   ██ ▀█▄▄██ ██ ██  ██
+//
+
 int main(int argc, const char* argv[]) {
 #if defined(PLY_WINDOWS)
     // Configure terminal window for UTF8 output.
