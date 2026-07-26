@@ -1,6 +1,6 @@
 ﻿/*========================================================
        ____
-      ╱   ╱╲    Plywood C++ Base Library
+      ╱   ╱╲    Plywood C++ Runtime Library
      ╱___╱╭╮╲   https://plywood.dev/
       └──┴┴┴┘
 ========================================================*/
@@ -465,7 +465,7 @@ void convertPage(const json::Node& item, const json::Node* prevPage, const json:
     String navHtml = String::format("<div class=\"page-nav\">{}{}</div>", prevLink, nextLink);
 
     // Write content-only file for AJAX loading
-    String ajaxContent = String::format("{} :: Plywood C++ Base Library\n{}{}", pageTitle, articleContent, navHtml);
+    String ajaxContent = String::format("{} :: Plywood C++ Runtime Library\n{}{}", pageTitle, articleContent, navHtml);
     String ajaxPath = joinPath(outFolder, "content/docs", relName + ".html");
     Filesystem::makeDirs(splitPath(ajaxPath).directory);
     Filesystem::saveText(ajaxPath, ajaxContent, serverTextFormat);
