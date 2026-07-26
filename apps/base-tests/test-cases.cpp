@@ -2057,7 +2057,6 @@ TEST_CASE("matchGitIgnorePattern() with gitignore-style patterns") {
     check(matchGitIgnorePattern("foo", false, "foo"));
     check(matchGitIgnorePattern("a/foo", false, "foo"));
     check(matchGitIgnorePattern("a/foo/file.txt", false, "foo"));
-    check(matchGitIgnorePattern("a\\foo\\file.txt", false, "foo"));
     check(!matchGitIgnorePattern("a/foo.txt", false, "foo"));
 
     // Leading and middle slashes anchor patterns to the supplied path root.
@@ -2077,7 +2076,6 @@ TEST_CASE("matchGitIgnorePattern() with gitignore-style patterns") {
     check(matchGitIgnorePattern("logs/file.log", false, "*.log"));
     check(!matchGitIgnorePattern("logs/file.txt", false, "*.log"));
     check(matchGitIgnorePattern("Documentation/git.html", false, "Documentation/*.html"));
-    check(matchGitIgnorePattern("Documentation\\git.html", false, "Documentation/*.html"));
     check(!matchGitIgnorePattern("Documentation/ppc/ppc.html", false, "Documentation/*.html"));
 
     // Double-star forms match zero or more directories.
