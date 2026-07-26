@@ -3108,16 +3108,61 @@ MemStream MemStream::duplicate() const {
     return result;
 }
 
+// Helper function to copy a memory stream's backing buffers and any pending temporary writes into a new string.
+static String copyMemStreamToString(const MemStream& stream) {
+    // Determine the stored length, including direct writes that haven't updated the last buffer's length yet.
+    u32 lastBufferIndex = stream.mem.buffers.numItems() - 1;
+    u64 storedBytes = u64(lastBufferIndex) * Stream::BUFFER_SIZE + stream.mem.numBytesInLastBuffer;
+    if ((stream.mode == Stream::Mode::Writing) && !stream.usingTempBuffer &&
+        (stream.mem.bufferIndex == lastBufferIndex)) {
+        storedBytes = max(storedBytes, u64(lastBufferIndex) * Stream::BUFFER_SIZE +
+                                           (stream.curByte - stream.mem.buffers[lastBufferIndex]));
+    }
+
+    // An active write temporary buffer can extend or overwrite the stored contents across a buffer boundary.
+    u32 numTempBytes = 0;
+    u64 tempOffset = 0;
+    u64 totalBytes = storedBytes;
+    if ((stream.mode == Stream::Mode::Writing) && stream.usingTempBuffer) {
+        numTempBytes = numericCast<u32>(stream.curByte - stream.mem.tempBuffer);
+        tempOffset = u64(stream.mem.bufferIndex) * Stream::BUFFER_SIZE + stream.mem.tempBufferOffset;
+        totalBytes = max(totalBytes, tempOffset + numTempBytes);
+    }
+
+    // Copy the backing buffers directly into the final allocation.
+    String result = String::allocate(numericCast<u32>(totalBytes));
+    u64 dstOffset = 0;
+    for (u32 i = 0; (i < stream.mem.buffers.numItems()) && (dstOffset < storedBytes); i++) {
+        u32 numBytes = numericCast<u32>(min<u64>(Stream::BUFFER_SIZE, storedBytes - dstOffset));
+        memcpy(result.bytes() + dstOffset, stream.mem.buffers[i], numBytes);
+        dstOffset += numBytes;
+    }
+
+    // Overlay pending temporary writes without flushing or otherwise modifying the source stream.
+    if (numTempBytes > 0) {
+        memcpy(result.bytes() + tempOffset, stream.mem.tempBuffer, numTempBytes);
+    }
+    return result;
+}
+
+// Copies the stream's complete contents to a contiguous string without modifying the stream.
+String MemStream::copyToString() const {
+    PLY_ASSERT(this->type == Type::Mem);
+    return copyMemStreamToString(*this);
+}
+
+// Moves the stream's complete contents to a string and closes the stream.
 String MemStream::moveToString() {
     PLY_ASSERT(this->type == Type::Mem);
 
-    if (this->mem.bufferIndex + 1 == this->mem.buffers.numItems()) {
+    // Preserve the zero-copy path when the backing storage consists of a single buffer without temporary writes.
+    if ((this->mode == Mode::Writing) && !this->usingTempBuffer &&
+        (this->mem.bufferIndex + 1 == this->mem.buffers.numItems())) {
         // Extend number of bytes in the last buffer.
         this->mem.numBytesInLastBuffer =
             max(this->mem.numBytesInLastBuffer, numericCast<u32>(this->curByte - this->mem.buffers.back()));
     }
-
-    if (this->mem.buffers.numItems() == 1) {
+    if ((this->mem.buffers.numItems() == 1) && !this->usingTempBuffer) {
         u32 numBytes = this->mem.numBytesInLastBuffer;
         char* bytes = (char*) Heap::realloc(this->mem.buffers[0], numBytes);
         this->mem.~MemData();
@@ -3125,14 +3170,10 @@ String MemStream::moveToString() {
         return String::adopt(bytes, numBytes);
     }
 
-    u32 numBytes = (this->mem.buffers.numItems() - 1) * BUFFER_SIZE + this->mem.numBytesInLastBuffer;
-    char* bytes = (char*) Heap::alloc(numBytes);
-    for (u32 i = 0; i < this->mem.buffers.numItems(); i++) {
-        u32 toCopy = min(BUFFER_SIZE, numBytes - (BUFFER_SIZE * i));
-        memcpy(bytes + (BUFFER_SIZE * i), this->mem.buffers[i], toCopy);
-    }
+    // Copy multi-buffer contents and pending temporary writes before releasing the stream's backing storage.
+    String result = copyMemStreamToString(*this);
     this->close();
-    return String::adopt(bytes, numBytes);
+    return result;
 }
 
 //--------------------------------------------

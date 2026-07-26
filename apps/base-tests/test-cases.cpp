@@ -73,7 +73,7 @@ static bool isClose(const Mat4x4& a, const Mat4x4& b, float epsilon = 0.0001f) {
 
 TEST_CASE("Mat4x4::inverted affine") {
     Mat4x4 m = Mat4x4::translate({2, -3, 5}) * Mat4x4::rotate(Float3{1, 2, 3}.normalized(), 0.7f) *
-                Mat4x4::scale({2, -4, 0.5f});
+               Mat4x4::scale({2, -4, 0.5f});
     Mat4x4 inv = m.inverted();
 
     check(isClose(inv * m, Mat4x4::identity()));
@@ -1896,6 +1896,54 @@ TEST_CASE("Mem stream temp buffer") {
         }
         check(offset == fileSize);
     }
+}
+
+// Verifies that copying a memory stream handles all storage layouts without changing stream state.
+TEST_CASE("MemStream::copyToString") {
+    // Copy an unflushed single-buffer stream.
+    MemStream small;
+    small.write("hello");
+    u64 smallSeekPos = small.getSeekPos();
+    check(small.copyToString() == "hello");
+    check(small.copyToString() == "hello"); // Previous copyToString should not modify
+    check(small.getSeekPos() == smallSeekPos);
+
+    // Copy a stream spanning multiple backing buffers.
+    String largeText = String::allocate(Stream::BUFFER_SIZE * 2 + 17);
+    for (u32 i = 0; i < largeText.numBytes(); i++) {
+        largeText.bytes()[i] = (char) shuffleBits(i);
+    }
+    MemStream large;
+    large.write(largeText);
+    u64 largeSeekPos = large.getSeekPos();
+    check(large.copyToString() == largeText);
+    check(large.copyToString() == largeText); // Previous copyToString should not modify
+    check(large.getSeekPos() == largeSeekPos);
+
+    // Copy pending writes held in the temporary cross-buffer view.
+    String prefix = String::allocate(Stream::BUFFER_SIZE - 4);
+    memset(prefix.bytes(), 'a', prefix.numBytes());
+    MemStream crossing;
+    crossing.write(prefix);
+    check(crossing.makeWritable(8));
+    crossing.write("12345678");
+    u64 crossingSeekPos = crossing.getSeekPos();
+    check(crossing.copyToString() == prefix + "12345678");
+    check(crossing.copyToString() == prefix + "12345678"); // Previous copyToString should not modify
+    check(crossing.getSeekPos() == crossingSeekPos);
+}
+
+// Verifies that moving a memory stream includes pending writes held in a cross-buffer temporary view.
+TEST_CASE("MemStream::moveToString with pending writes") {
+    String prefix = String::allocate(Stream::BUFFER_SIZE - 4);
+    memset(prefix.bytes(), 'a', prefix.numBytes());
+    MemStream crossing;
+    crossing.write(prefix);
+    check(crossing.makeWritable(8));
+    crossing.write("12345678");
+
+    check(crossing.moveToString() == prefix + "12345678");
+    check(!crossing.isOpen());
 }
 
 //  ▄▄   ▄▄ ▄▄         ▄▄                 ▄▄▄  ▄▄   ▄▄

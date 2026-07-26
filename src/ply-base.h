@@ -3673,7 +3673,7 @@ void defaultConstruct(u32 index, char* storage) {
 template <typename First, typename Second, typename... Rest>
 void defaultConstruct(u32 index, char* storage) {
     if (index == 1) {
-        new(storage) First;
+        new (storage) First;
     } else {
         defaultConstruct<Second, Rest...>(index - 1, storage);
     }
@@ -4247,6 +4247,10 @@ public:
 
     // Creates an independent copy with the same contents, mode and seek position.
     MemStream duplicate() const;
+    // Copies the stream's complete contents to a string without modifying the stream.
+    String copyToString() const;
+    // Moves the stream's complete contents to a string and closes the stream.
+    // If the string fits within a chunk, the chunk itself is trimmed and returned directly, which avoids making a copy.
     String moveToString();
 };
 
@@ -4315,8 +4319,8 @@ StringView readIdentifier(ViewStream& viewIn, u32 flags = 0);
 u64 readU64FromText(Stream& in, u32 radix = 10);
 s64 readS64FromText(Stream& in, u32 radix = 10);
 double readDoubleFromText(Stream& in, u32 radix = 10);
-String readQuotedString(Stream& in, QuotedStringType type = QuotedStringType::C,
-                        bool strict = true, Functor<void(QuotedStringError)> errorCallback = {});
+String readQuotedString(Stream& in, QuotedStringType type = QuotedStringType::C, bool strict = true,
+                        Functor<void(QuotedStringError)> errorCallback = {});
 
 using MatchArg = Variant<String*, StringView*, u32*, s32*, u64*, s64*, double*, float*, bool*>;
 bool matchWithArgs(ViewStream& in, StringView pattern, ArrayView<const MatchArg> matchArgs);
@@ -4452,7 +4456,8 @@ struct DecodeResult {
 };
 
 // Returns the number of bytes written to buf.
-u32 encodeUnicode(FixedArray<char, 4>& buf, UnicodeType unicodeType, u32 codepoint, ExtendedTextParams* extParams = nullptr);
+u32 encodeUnicode(FixedArray<char, 4>& buf, UnicodeType unicodeType, u32 codepoint,
+                  ExtendedTextParams* extParams = nullptr);
 DecodeResult decodeUnicode(StringView str, UnicodeType unicodeType, ExtendedTextParams* extParams = nullptr);
 
 bool encodeUnicode(Stream& out, UnicodeType unicodeType, u32 codepoint, ExtendedTextParams* extParams = nullptr);
