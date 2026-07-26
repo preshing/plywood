@@ -2747,27 +2747,61 @@ Stream::~Stream() {
     }
 }
 
+// Maps a logical memory-stream position to its corresponding backing chunk and byte pointers.
+static void setMemStreamBackingPos(Stream* stream, u64 seekPos) {
+    PLY_ASSERT(stream->type == Stream::Type::Mem);
+    u64 storedBytes = u64(stream->mem.buffers.numItems() - 1) * stream->mem.chunkSize +
+                      stream->mem.numBytesInLastBuffer;
+    PLY_ASSERT(seekPos <= storedBytes);
+
+    // Select the backing chunk, representing the end of a full final chunk using that chunk's end pointer.
+    u32 bufferIndex = numericCast<u32>(seekPos / stream->mem.chunkSize);
+    u32 offsetInBuffer = numericCast<u32>(seekPos - u64(bufferIndex) * stream->mem.chunkSize);
+    if (bufferIndex == stream->mem.buffers.numItems()) {
+        PLY_ASSERT(offsetInBuffer == 0);
+        bufferIndex--;
+        offsetInBuffer = stream->mem.chunkSize;
+    }
+    stream->mem.bufferIndex = bufferIndex;
+    char* buffer = stream->mem.buffers[bufferIndex];
+    u32 numBytesInBuffer = (bufferIndex + 1 < stream->mem.buffers.numItems())
+                               ? stream->mem.chunkSize
+                               : stream->mem.numBytesInLastBuffer;
+    PLY_ASSERT(offsetInBuffer <= numBytesInBuffer);
+    stream->curByte = buffer + offsetInBuffer;
+    stream->endByte = buffer + numBytesInBuffer;
+    stream->usingTempBuffer = false;
+}
+
 void Stream::flushMemWrites() {
     PLY_ASSERT(this->type == Type::Mem);
     if (this->mode == Mode::Writing) {
         if (this->usingTempBuffer) {
+            // Copy pending temporary writes across as many backing chunks as necessary.
             u32 numBytesWritten = numericCast<u32>(this->curByte - this->mem.tempBuffer);
-            u32 spaceAvailable = BUFFER_SIZE - this->mem.tempBufferOffset;
-            memcpy(this->mem.buffers[this->mem.bufferIndex] + this->mem.tempBufferOffset, this->mem.tempBuffer,
-                   min(numBytesWritten, spaceAvailable));
-            if (spaceAvailable < numBytesWritten) {
-                if (this->mem.bufferIndex + 1 >= this->mem.buffers.numItems()) {
-                    this->mem.buffers.append((char*) Heap::alloc(BUFFER_SIZE));
-                    memcpy(this->mem.buffers.back(), this->mem.tempBuffer + spaceAvailable,
-                           numBytesWritten - spaceAvailable);
-                    this->mem.numBytesInLastBuffer = numBytesWritten - spaceAvailable;
+            u32 srcOffset = 0;
+            u32 bufferIndex = this->mem.bufferIndex;
+            u32 offsetInBuffer = this->mem.tempBufferOffset;
+            while (srcOffset < numBytesWritten) {
+                if (bufferIndex >= this->mem.buffers.numItems()) {
+                    this->mem.buffers.append((char*) Heap::alloc(this->mem.chunkSize));
+                    this->mem.numBytesInLastBuffer = 0;
                 }
-                this->mem.bufferIndex++;
-                this->curByte = this->mem.buffers[this->mem.bufferIndex] + (numBytesWritten - spaceAvailable);
-            } else {
-                this->curByte = this->mem.buffers[this->mem.bufferIndex] + this->mem.tempBufferOffset + numBytesWritten;
+                u32 numBytes = min(numBytesWritten - srcOffset, this->mem.chunkSize - offsetInBuffer);
+                memcpy(this->mem.buffers[bufferIndex] + offsetInBuffer, this->mem.tempBuffer + srcOffset, numBytes);
+                if (bufferIndex + 1 == this->mem.buffers.numItems()) {
+                    this->mem.numBytesInLastBuffer = max(this->mem.numBytesInLastBuffer, offsetInBuffer + numBytes);
+                }
+                srcOffset += numBytes;
+                offsetInBuffer += numBytes;
+                if (srcOffset < numBytesWritten) {
+                    bufferIndex++;
+                    offsetInBuffer = 0;
+                }
             }
-            this->endByte = this->mem.buffers[this->mem.bufferIndex] + BUFFER_SIZE;
+            this->mem.bufferIndex = bufferIndex;
+            this->curByte = this->mem.buffers[bufferIndex] + offsetInBuffer;
+            this->endByte = this->mem.buffers[bufferIndex] + this->mem.chunkSize;
             this->usingTempBuffer = false;
         } else {
             if (this->mem.bufferIndex + 1 == this->mem.buffers.numItems()) {
@@ -2776,6 +2810,9 @@ void Stream::flushMemWrites() {
                     max(this->mem.numBytesInLastBuffer, numericCast<u32>(this->curByte - this->mem.buffers.back()));
             }
         }
+    } else if ((this->mode == Mode::Reading) && this->usingTempBuffer) {
+        // Restore the backing-buffer position after reading through a temporary cross-chunk view.
+        setMemStreamBackingPos(this, this->getSeekPos());
     }
 }
 
@@ -2829,25 +2866,37 @@ bool Stream::makeReadableInternal(u32 minBytes) {
                 this->mem.bufferIndex++;
                 this->curByte = this->mem.buffers[this->mem.bufferIndex];
                 if (this->mem.bufferIndex + 1 < this->mem.buffers.numItems()) {
-                    this->endByte = this->curByte + BUFFER_SIZE;
+                    this->endByte = this->curByte + this->mem.chunkSize;
                 } else {
                     this->endByte = this->curByte + this->mem.numBytesInLastBuffer;
                 }
             }
         } else if (this->numRemainingBytes() < minBytes) {
             if (this->mem.bufferIndex + 1 < this->mem.buffers.numItems()) {
-                u32 numBytesInNextBuffer = BUFFER_SIZE;
-                if (this->mem.bufferIndex + 2 == this->mem.buffers.numItems()) {
-                    numBytesInNextBuffer = this->mem.numBytesInLastBuffer;
-                }
-                u32 numBytesToExpose = min(minBytes, this->numRemainingBytes() + numBytesInNextBuffer);
+                // Gather a consecutive view from as many backing chunks as necessary.
+                u64 storedBytes = u64(this->mem.buffers.numItems() - 1) * this->mem.chunkSize +
+                                  this->mem.numBytesInLastBuffer;
+                u64 seekPos = u64(this->mem.bufferIndex) * this->mem.chunkSize +
+                              (this->curByte - this->mem.buffers[this->mem.bufferIndex]);
+                u32 numBytesToExpose = numericCast<u32>(min<u64>(minBytes, storedBytes - seekPos));
                 if (!this->mem.tempBuffer) {
                     this->mem.tempBuffer = (char*) Heap::alloc(MAX_CONSECUTIVE_BYTES);
                 }
-                memcpy(this->mem.tempBuffer, this->curByte, this->numRemainingBytes());
-                memcpy(this->mem.tempBuffer + this->numRemainingBytes(), this->mem.buffers[this->mem.bufferIndex + 1],
-                       numBytesToExpose - this->numRemainingBytes());
                 this->mem.tempBufferOffset = numericCast<u32>(this->curByte - this->mem.buffers[this->mem.bufferIndex]);
+                u32 dstOffset = 0;
+                u32 bufferIndex = this->mem.bufferIndex;
+                u32 offsetInBuffer = this->mem.tempBufferOffset;
+                while (dstOffset < numBytesToExpose) {
+                    u32 numBytesInBuffer = (bufferIndex + 1 < this->mem.buffers.numItems())
+                                               ? this->mem.chunkSize
+                                               : this->mem.numBytesInLastBuffer;
+                    u32 numBytes = min(numBytesToExpose - dstOffset, numBytesInBuffer - offsetInBuffer);
+                    memcpy(this->mem.tempBuffer + dstOffset, this->mem.buffers[bufferIndex] + offsetInBuffer,
+                           numBytes);
+                    dstOffset += numBytes;
+                    bufferIndex++;
+                    offsetInBuffer = 0;
+                }
                 this->usingTempBuffer = true;
                 this->curByte = this->mem.tempBuffer;
                 this->endByte = this->mem.tempBuffer + numBytesToExpose;
@@ -2892,12 +2941,13 @@ bool Stream::makeWritableInternal(u32 minBytes) {
         if (!this->hasRemainingBytes()) {
             this->mem.bufferIndex++;
             if (this->mem.bufferIndex >= this->mem.buffers.numItems()) {
-                this->mem.buffers.append((char*) Heap::alloc(BUFFER_SIZE));
+                this->mem.buffers.append((char*) Heap::alloc(this->mem.chunkSize));
                 this->mem.numBytesInLastBuffer = 0;
             }
             this->curByte = this->mem.buffers[this->mem.bufferIndex];
-            this->endByte = this->curByte + BUFFER_SIZE;
-        } else if (this->numRemainingBytes() < minBytes) {
+            this->endByte = this->curByte + this->mem.chunkSize;
+        }
+        if (this->numRemainingBytes() < minBytes) {
             if (!this->mem.tempBuffer) {
                 this->mem.tempBuffer = (char*) Heap::alloc(MAX_CONSECUTIVE_BYTES);
             }
@@ -2997,11 +3047,11 @@ u64 Stream::getSeekPos() {
         return this->pipe.seekPosAtBuffer + (this->curByte - this->pipe.buffer);
     } else if (this->type == Type::Mem) {
         if (this->usingTempBuffer) {
-            return (this->mem.bufferIndex * BUFFER_SIZE) + this->mem.tempBufferOffset +
+            return (u64(this->mem.bufferIndex) * this->mem.chunkSize) + this->mem.tempBufferOffset +
                    (this->curByte - this->mem.tempBuffer);
         } else {
             char* buf = this->mem.buffers[this->mem.bufferIndex];
-            return (this->mem.bufferIndex * BUFFER_SIZE) + (this->curByte - buf);
+            return (u64(this->mem.bufferIndex) * this->mem.chunkSize) + (this->curByte - buf);
         }
     } else if (this->type == Type::View) {
         return (this->curByte - this->view.startByte);
@@ -3024,20 +3074,7 @@ void Stream::seekTo(u64 seekPos) {
         }
     } else if (this->type == Type::Mem) {
         this->flushMemWrites();
-
-        u32 bufferIndex = numericCast<u32>(seekPos / BUFFER_SIZE);
-        PLY_ASSERT(bufferIndex < this->mem.buffers.numItems());
-        this->mem.bufferIndex = bufferIndex;
-        char* buf = this->mem.buffers[bufferIndex];
-        u32 offsetInBuffer = numericCast<u32>(seekPos - u64(bufferIndex) * BUFFER_SIZE);
-        u32 numBytesInBuffer = BUFFER_SIZE;
-        if (bufferIndex == this->mem.buffers.numItems() - 1) {
-            numBytesInBuffer = this->mem.numBytesInLastBuffer;
-            PLY_ASSERT(bufferIndex < this->mem.buffers.numItems());
-            PLY_ASSERT(offsetInBuffer <= numBytesInBuffer);
-        }
-        this->curByte = buf + offsetInBuffer;
-        this->endByte = buf + numBytesInBuffer;
+        setMemStreamBackingPos(this, seekPos);
     } else if (this->type == Type::View) {
         PLY_ASSERT(seekPos <= numericCast<uptr>(this->endByte - this->view.startByte));
         this->curByte = this->view.startByte + seekPos;
@@ -3049,13 +3086,15 @@ void Stream::seekTo(u64 seekPos) {
 }
 
 //--------------------------------------------
-MemStream::MemStream() {
+MemStream::MemStream(u32 chunkSize) {
+    PLY_ASSERT(chunkSize > 0);
     this->type = Type::Mem;
     new (&this->mem) MemData;
-    char* buf = (char*) Heap::alloc(BUFFER_SIZE);
+    this->mem.chunkSize = chunkSize;
+    char* buf = (char*) Heap::alloc(chunkSize);
     this->mem.buffers.append(buf);
     this->curByte = buf;
-    this->endByte = buf + BUFFER_SIZE;
+    this->endByte = buf + chunkSize;
     this->hasReadPermission = true;
     this->hasWritePermission = true;
 }
@@ -3063,7 +3102,7 @@ MemStream::MemStream() {
 // Creates an independent copy with the same contents, mode and seek position.
 MemStream MemStream::duplicate() const {
     PLY_ASSERT(this->type == Type::Mem);
-    MemStream result;
+    MemStream result{this->mem.chunkSize};
 
     // Replace the destination's initial buffer with copies of all source storage buffers.
     Heap::free(result.mem.buffers[0]);
@@ -3079,8 +3118,8 @@ MemStream MemStream::duplicate() const {
                 numericCast<u32>(this->curByte - this->mem.buffers[this->mem.bufferIndex]));
     }
     for (u32 i = 0; i < this->mem.buffers.numItems(); i++) {
-        char* buffer = (char*) Heap::alloc(BUFFER_SIZE);
-        u32 numBytes = (i == lastBufferIndex) ? numBytesInLastBuffer : BUFFER_SIZE;
+        char* buffer = (char*) Heap::alloc(this->mem.chunkSize);
+        u32 numBytes = (i == lastBufferIndex) ? numBytesInLastBuffer : this->mem.chunkSize;
         memcpy(buffer, this->mem.buffers[i], numBytes);
         result.mem.buffers.append(buffer);
     }
@@ -3112,10 +3151,10 @@ MemStream MemStream::duplicate() const {
 static String copyMemStreamToString(const MemStream& stream) {
     // Determine the stored length, including direct writes that haven't updated the last buffer's length yet.
     u32 lastBufferIndex = stream.mem.buffers.numItems() - 1;
-    u64 storedBytes = u64(lastBufferIndex) * Stream::BUFFER_SIZE + stream.mem.numBytesInLastBuffer;
+    u64 storedBytes = u64(lastBufferIndex) * stream.mem.chunkSize + stream.mem.numBytesInLastBuffer;
     if ((stream.mode == Stream::Mode::Writing) && !stream.usingTempBuffer &&
         (stream.mem.bufferIndex == lastBufferIndex)) {
-        storedBytes = max(storedBytes, u64(lastBufferIndex) * Stream::BUFFER_SIZE +
+        storedBytes = max(storedBytes, u64(lastBufferIndex) * stream.mem.chunkSize +
                                            (stream.curByte - stream.mem.buffers[lastBufferIndex]));
     }
 
@@ -3125,7 +3164,7 @@ static String copyMemStreamToString(const MemStream& stream) {
     u64 totalBytes = storedBytes;
     if ((stream.mode == Stream::Mode::Writing) && stream.usingTempBuffer) {
         numTempBytes = numericCast<u32>(stream.curByte - stream.mem.tempBuffer);
-        tempOffset = u64(stream.mem.bufferIndex) * Stream::BUFFER_SIZE + stream.mem.tempBufferOffset;
+        tempOffset = u64(stream.mem.bufferIndex) * stream.mem.chunkSize + stream.mem.tempBufferOffset;
         totalBytes = max(totalBytes, tempOffset + numTempBytes);
     }
 
@@ -3133,7 +3172,7 @@ static String copyMemStreamToString(const MemStream& stream) {
     String result = String::allocate(numericCast<u32>(totalBytes));
     u64 dstOffset = 0;
     for (u32 i = 0; (i < stream.mem.buffers.numItems()) && (dstOffset < storedBytes); i++) {
-        u32 numBytes = numericCast<u32>(min<u64>(Stream::BUFFER_SIZE, storedBytes - dstOffset));
+        u32 numBytes = numericCast<u32>(min<u64>(stream.mem.chunkSize, storedBytes - dstOffset));
         memcpy(result.bytes() + dstOffset, stream.mem.buffers[i], numBytes);
         dstOffset += numBytes;
     }

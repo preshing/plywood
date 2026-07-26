@@ -4095,6 +4095,7 @@ struct Stream {
     };
     struct MemData {
         Array<char*> buffers;
+        u32 chunkSize = 0;
         u32 bufferIndex = 0;
         u32 numBytesInLastBuffer = 0;
         // Temporary buffer used when caller requests consecutive bytes that straddle buffer boundaries:
@@ -4243,7 +4244,10 @@ void nativeWrite(Stream& out, const T& value) {
 //--------------------------------------------
 class MemStream : public Stream {
 public:
-    MemStream();
+    static constexpr u32 DEFAULT_CHUNK_SIZE = 4000;
+
+    // Creates a memory stream using backing chunks of the specified size.
+    explicit MemStream(u32 chunkSize = DEFAULT_CHUNK_SIZE);
 
     // Creates an independent copy with the same contents, mode and seek position.
     MemStream duplicate() const;

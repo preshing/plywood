@@ -1920,6 +1920,34 @@ TEST_CASE("MemStream::copyToString") {
     check(large.copyToString() == largeText); // Previous copyToString should not modify
     check(large.getSeekPos() == largeSeekPos);
 
+    // Copy and duplicate a stream using a non-power-of-two custom chunk size.
+    String customText = largeText.left(6500);
+    MemStream custom{3000};
+    custom.write(customText);
+    check(custom.copyToString() == customText);
+    MemStream customDuplicate = custom.duplicate();
+    check(customDuplicate.copyToString() == customText);
+
+    // Read a consecutive view that spans several small custom chunks.
+    String alphabet = "abcdefghijklmnopqrstuvwxyz";
+    MemStream tiny{7};
+    tiny.write(alphabet);
+    tiny.seekTo(0);
+    check(tiny.makeReadable(20));
+    String firstLetters = String::allocate(20);
+    check(tiny.read({firstLetters.bytes(), firstLetters.numBytes()}) == 20);
+    check(firstLetters == alphabet.left(20));
+    check(tiny.getSeekPos() == 20);
+    check(tiny.readByte() == 'u');
+
+    // Flush a temporary write that spans several small custom chunks.
+    MemStream tinyWrite{7};
+    tinyWrite.write("abcde");
+    check(tinyWrite.makeWritable(20));
+    tinyWrite.write("12345678901234567890");
+    tinyWrite.flush();
+    check(tinyWrite.copyToString() == "abcde12345678901234567890");
+
     // Copy pending writes held in the temporary cross-buffer view.
     String prefix = String::allocate(Stream::BUFFER_SIZE - 4);
     memset(prefix.bytes(), 'a', prefix.numBytes());
