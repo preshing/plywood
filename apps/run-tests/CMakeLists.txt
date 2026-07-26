@@ -1,0 +1,96 @@
+#=========================================================
+#      ____
+#     ╱   ╱╲    Plywood C++ Runtime Library
+#    ╱___╱╭╮╲   https://plywood.dev/
+#     └──┴┴┴┘
+#=========================================================
+
+cmake_minimum_required(VERSION 3.10)
+set(CMAKE_CONFIGURATION_TYPES "Debug;Release;Final" CACHE INTERNAL "Build configs")
+project(run-tests)
+include(../../src/common.cmake)
+
+# Resolve the optional suite directives. Any nonzero directive creates an allowlist;
+# otherwise, zero directives create a denylist and unspecified suites stay enabled.
+set(TEST_DIRECTIVES
+    WITH_BASE_TESTS
+    WITH_UNICODE_LOADING_TESTS
+    WITH_MARKDOWN_TESTS
+    WITH_CPP_TESTS
+    WITH_FRAGMENTATION_TEST)
+set(HAS_EXPLICIT_TEST_INCLUDES FALSE)
+foreach(directive ${TEST_DIRECTIVES})
+    if(DEFINED ${directive})
+        if(${directive})
+            set(HAS_EXPLICIT_TEST_INCLUDES TRUE)
+        endif()
+    endif()
+endforeach()
+
+set(NUM_ENABLED_TEST_SUITES 0)
+foreach(directive ${TEST_DIRECTIVES})
+    if(HAS_EXPLICIT_TEST_INCLUDES)
+        set(enabled 0)
+        if(DEFINED ${directive})
+            if(${directive})
+                set(enabled 1)
+            endif()
+        endif()
+    else()
+        set(enabled 1)
+        if(DEFINED ${directive})
+            if(NOT ${directive})
+                set(enabled 0)
+            endif()
+        endif()
+    endif()
+    set(${directive}_ENABLED ${enabled})
+    if(enabled)
+        math(EXPR NUM_ENABLED_TEST_SUITES "${NUM_ENABLED_TEST_SUITES} + 1")
+    endif()
+endforeach()
+
+if(NUM_ENABLED_TEST_SUITES EQUAL 0)
+    message(FATAL_ERROR "run-tests must be built with at least one test suite enabled")
+endif()
+
+# Add only the Plywood components required by the enabled suites and command-line parser.
+set(PLYWOOD_COMPONENTS ply-base.* ply-json.* ply-math.* ply-reflect.* ply-tokenizer.*)
+if(WITH_BASE_TESTS_ENABLED)
+    list(APPEND PLYWOOD_COMPONENTS ply-btree.h)
+endif()
+if(WITH_MARKDOWN_TESTS_ENABLED)
+    list(APPEND PLYWOOD_COMPONENTS ply-markdown.*)
+endif()
+if(WITH_CPP_TESTS_ENABLED)
+    list(APPEND PLYWOOD_COMPONENTS ply-cpp.*)
+endif()
+list(REMOVE_DUPLICATES PLYWOOD_COMPONENTS)
+add_plywood(${PLYWOOD_COMPONENTS})
+
+# Add only the test-suite sources supported by this configuration.
+set(RUN_TEST_SOURCE_PATTERNS main.cpp)
+if(WITH_BASE_TESTS_ENABLED OR WITH_UNICODE_LOADING_TESTS_ENABLED)
+    list(APPEND RUN_TEST_SOURCE_PATTERNS base-tests.cpp run-base-tests.cpp run-base-tests.h)
+endif()
+if(WITH_MARKDOWN_TESTS_ENABLED)
+    list(APPEND RUN_TEST_SOURCE_PATTERNS markdown-tests.cpp)
+endif()
+if(WITH_CPP_TESTS_ENABLED)
+    list(APPEND RUN_TEST_SOURCE_PATTERNS cpp-tests.cpp)
+endif()
+if(WITH_FRAGMENTATION_TEST_ENABLED)
+    list(APPEND RUN_TEST_SOURCE_PATTERNS fragmentation-test.cpp)
+endif()
+
+add_source_files(RUN_TEST_SOURCES "${CMAKE_CURRENT_LIST_DIR}" ${RUN_TEST_SOURCE_PATTERNS})
+add_executable(run-tests ${RUN_TEST_SOURCES})
+target_link_libraries(run-tests PRIVATE plywood)
+target_compile_definitions(run-tests PRIVATE
+    RUN_TESTS_PATH="${CMAKE_CURRENT_LIST_DIR}"
+    BUILD_DIR="${CMAKE_BINARY_DIR}"
+    WITH_BASE_TESTS=${WITH_BASE_TESTS_ENABLED}
+    WITH_UNICODE_LOADING_TESTS=${WITH_UNICODE_LOADING_TESTS_ENABLED}
+    WITH_MARKDOWN_TESTS=${WITH_MARKDOWN_TESTS_ENABLED}
+    WITH_CPP_TESTS=${WITH_CPP_TESTS_ENABLED}
+    WITH_FRAGMENTATION_TEST=${WITH_FRAGMENTATION_TEST_ENABLED})

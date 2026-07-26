@@ -5,7 +5,7 @@
       └──┴┴┴┘
 ========================================================*/
 
-#include "test-suite.h"
+#include "run-base-tests.h"
 #include <ply-btree.h>
 #include <ply-math.h>
 
@@ -1832,8 +1832,8 @@ ExtractedFormat extractFormatFromName(StringView name) {
     return {true, tf};
 }
 
-TEST_CASE("Autodetect file encodings") {
-    String testsFolder = joinPath(BASE_LIBRARY_TESTS_PATH, "text-files");
+UNICODE_LOADING_TEST_CASE("Autodetect file encodings") {
+    String testsFolder = joinPath(RUN_TESTS_PATH, "unicode-test-files");
     u32 entryCount = 0;
     for (const DirectoryEntry& entry : Filesystem::listDir(testsFolder)) {
         if (!entry.isDir && entry.name.endsWith(".txt")) {

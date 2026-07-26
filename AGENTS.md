@@ -18,12 +18,9 @@ Additional components for 2D/3D math, networking and text parsing are also inclu
     - `ply-markdown.h/cpp` - Markdown parser with HTML output
     - `ply-cpp.h/cpp` - Experimental C++ parser
 - `apps/` - Sample applications. Each subdirectory contains a `CMakeLists.txt` file to build the app.
-    - `base-tests` - Main test suite to ensure correctness of `ply-base`, `ply-math` and `ply-btree`
+    - `run-tests` - Combined base, Unicode loading, Markdown, C++ parser and heap fragmentation test suites
     - `bigfont` - Converts its argument to a banner-style comment using Unicode block characters
-    - `cpp-tests` - Test suite for C++ parser
-    - `fragmentation-test` - Heap stress test that logs allocator behavior under changing memory pressure
     - `generate-docs` - Converts the documentation to HTML files written to `docs/build/`
-    - `markdown-tests` - Test suite for Markdown parser
     - `serve-docs` - Runs an HTTP server to serve the generated documentation on port 8080
 - `docs/` - Project documentation in Markdown format
     - `contents.json` - Table of contents

@@ -6,9 +6,9 @@ First, clone the Plywood repository:
 
     $ git clone https://github.com/preshing/plywood.git
 
-Next, navigate to the `apps/base-tests` subdirectory and generate project files for the tests. (If you're running on Windows, use backslashes `\` in the directory path instead.)
+Next, navigate to the `apps/run-tests` subdirectory and generate project files for the tests. (If you're running on Windows, use backslashes `\` in the directory path instead.)
 
-    $ cd plywood/apps/base-tests
+    $ cd plywood/apps/run-tests
     $ mkdir build
     $ cd build
     $ cmake ..
@@ -17,8 +17,18 @@ If CMake's Visual Studio or Xcode generator was used, you can now open the proje
 
     $ cmake --build .
 
-Finally, run the executable. If using the Visual Studio generator, the executable will be located at `Debug\base-tests.exe`.
+Finally, run all test suites. If using the Visual Studio generator, the executable will be located at `Debug\run-tests.exe`.
 
-    $ ./base-tests
+    $ ./run-tests -all
+
+Individual suites can be selected using `-base`, `-unicode`, `-markdown`, `-cpp` and `-frag`.
+Multiple options run in command-line order. Use `-regencpp` in place of `-cpp` to regenerate the C++
+parser and preprocessor golden files.
+
+The executable can be restricted at configure time using the `WITH_BASE_TESTS`,
+`WITH_UNICODE_LOADING_TESTS`, `WITH_MARKDOWN_TESTS`, `WITH_CPP_TESTS` and
+`WITH_FRAGMENTATION_TEST` CMake variables. If any variable is nonzero, only nonzero suites are
+included. Otherwise, variables set to zero exclude those suites and unspecified suites remain enabled.
+For example, `cmake -DWITH_BASE_TESTS=1 ..` builds a base-only test runner.
 
 There are several other sample applications in the `apps` subdirectory that you can also build and run.

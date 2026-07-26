@@ -10,8 +10,8 @@
 using namespace ply;
 using namespace ply::cpp;
 
-void runParserTests() {
-    String testSuitePath = joinPath(CPP_TESTS_PATH, "parser-tests.txt");
+// Generates the complete output for the C++ parser golden tests.
+static String generateParserTestOutput(StringView testSuitePath) {
     Stream in = Filesystem::openTextForReadAutodetect(testSuitePath);
     MemStream out;
     for (;;) {
@@ -50,11 +50,11 @@ void runParserTests() {
     }
     in.close();
 
-    Filesystem::saveText(testSuitePath, out.moveToString());
+    return out.moveToString();
 }
 
-void runPreprocessorTests() {
-    String testSuitePath = joinPath(CPP_TESTS_PATH, "preprocessor-tests.txt");
+// Generates the complete output for the C++ preprocessor golden tests.
+static String generatePreprocessorTestOutput(StringView testSuitePath) {
     Stream in = Filesystem::openTextForReadAutodetect(testSuitePath);
     MemStream out;
     for (;;) {
@@ -95,44 +95,35 @@ void runPreprocessorTests() {
     }
     in.close();
 
-    Filesystem::saveText(testSuitePath, out.moveToString());
+    return out.moveToString();
 }
 
-void parsePlywoodSource() {
-    String srcFolder = joinPath(CPP_TESTS_PATH, "../../src");
-    String filePath = joinPath(srcFolder, "ply-base.h");
-    String src = Filesystem::loadTextAutodetect(filePath);
-    Owned<Parser> parser = Parser::create();
-    parser->includePaths.append(srcFolder);
-    ParseResult result = parser->parseFile(filePath, src);
+// Compares or rewrites one C++ golden test file.
+static bool processCppTestFile(StringView path, bool write, String (*generateOutput)(StringView)) {
+    String generated = generateOutput(path);
     Stream out = getStdOut();
-    for (StringView diagnostic : result.diagnostics) {
-        out.write(diagnostic);
+    if (write) {
+        Filesystem::saveText(path, generated);
+        out.format("Rewrote {}\n", path);
+        return true;
     }
-    out.close();
-    for (const Declaration& decl : result.declarations) {
-        parser->dumpDeclaration(decl);
+
+    String expected = Filesystem::loadTextAutodetect(path);
+    if (generated != expected) {
+        out.format("***FAIL*** {} differs from generated output\n", path);
+        return false;
     }
+    out.format("success: {}\n", path);
+    return true;
 }
 
-void parseThisFile() {
-    String src = Filesystem::loadTextAutodetect(__FILE__);
-    Owned<Parser> parser = Parser::create();
-    ParseResult result = parser->parseFile(__FILE__, src);
-    for (const Declaration& decl : result.declarations) {
-        parser->dumpDeclaration(decl);
-    }
-}
+// Runs both C++ golden test suites, optionally rewriting their expected output.
+bool runCppTests(bool write) {
+    String parserPath = joinPath(RUN_TESTS_PATH, "cpp-parser-tests.txt");
+    String preprocessorPath = joinPath(RUN_TESTS_PATH, "cpp-preprocessor-tests.txt");
 
-int main(int argc, const char* argv[]) {
-#if defined(PLY_WINDOWS)
-    SetConsoleOutputCP(CP_UTF8);
-#endif
-
-    // runParserTests();
-    runPreprocessorTests();
-    // parsePlywoodSource();
-    // parseThisFile();
-
-    return 0;
+    bool success = processCppTestFile(parserPath, write, generateParserTestOutput);
+    if (!processCppTestFile(preprocessorPath, write, generatePreprocessorTestOutput))
+        success = false;
+    return success;
 }

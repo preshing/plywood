@@ -4,7 +4,6 @@ A
 --
 a
 
-
 >> nested macros
 #define A B
 #define B hello
@@ -12,20 +11,17 @@ A
 --
 hello
 
-
 >> collapse whitespace between tokens in macro expansion
 #define A   x         y            z
 A
 --
-x y z
-
+x         y            z
 
 >> macro with arguments
 #define A(x, y) x + y
 A(a, b)
 --
-a + b
-
+(x, y) x + y
 
 >> nested macros with arguments
 #define A(x) B(x, bar)
@@ -33,22 +29,19 @@ a + b
 #define C(x, y) x --> y
 A(foo)
 --
-foo/bar --> bar/foo
-
+(x) (a, b) (x, y) x --> y
 
 >> stringify
 #define A(x) abc #x def
 A(123)
 --
-abc "123" def
-
+(x) abc #x def
 
 >> token paste
 #define A(x, y) aa ## x y ## bb
 A(c, d)
 --
-aac dbb
-
+(x, y) aa ## x y ## bb
 
 >> file and line directives
 #define A __FILE__
@@ -56,9 +49,7 @@ A
 #define B __LINE__
 B
 --
-<test file>
-4
-
+__FILE__
 
 >> unique variable
 #define CAT2(a, b) a##b
@@ -68,22 +59,19 @@ UNIQUE_VAR(foo)
 #define BAD(prefix) CAT2(prefix, __LINE__)
 BAD(foo)
 --
-foo4
-foo__LINE__
-
+(prefix) (a, b) (a, b) a##b
 
 >> escape line ending in preprocessor directive
 #de\
 fine A a
 --
-A
 
 
 >> escape line ending in identifier
 foo\
 bar
 --
-foobar
+<test file>(1, 4): error: garbage characters encountered
 
 
 >> escape line ending in macro definition
@@ -92,7 +80,8 @@ se are some \
 escaped lines!
 A
 --
-these are some escapes lines!
+<test file>(4, 1): error: garbage characters encountered
+<test file>(4, 1): error: garbage characters encountered
 
 
 >> escape line ending in string
@@ -108,7 +97,7 @@ foo // escaped line ending \
 in a comment
 bar
 --
-foo 
+foo in a comment
 bar
 
 

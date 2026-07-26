@@ -63,12 +63,12 @@ void freeRandomBlock() {
 
 } // unnamed namespace
 
-// Main
-int main(int argc, const char* argv[]) {
-    Array<u32> TargetKB = {400, 100, 2000, 400, 5000, 2000, 10000, 8000, 10000, 400, 2000, 0};
+// Runs the heap fragmentation stress test.
+bool runFragmentationTest() {
+    Array<u32> targetKB = {400, 100, 2000, 400, 5000, 2000, 10000, 8000, 10000, 400, 2000, 0};
 
-    for (u32 i = 0; i < TargetKB.numItems(); i++) {
-        u32 targetAllocatedBytes = TargetKB[i] * 1000;
+    for (u32 i = 0; i < targetKB.numItems(); i++) {
+        u32 targetAllocatedBytes = targetKB[i] * 1000;
         if (totalAllocatedBytes < targetAllocatedBytes) {
             // Grow irregularly
             while (totalAllocatedBytes < targetAllocatedBytes) {
@@ -86,5 +86,5 @@ int main(int argc, const char* argv[]) {
         }
     }
 
-    return 0;
+    return true;
 }

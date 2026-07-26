@@ -9,13 +9,10 @@
 
 using namespace ply;
 
-int main(int argc, const char* argv[]) {
-#if defined(PLY_WINDOWS)
-    SetConsoleOutputCP(CP_UTF8);
-#endif
-
+// Runs the Markdown conversion tests and returns true if every case passes.
+bool runMarkdownTests() {
     // Open the markdown test suite.
-    String path = joinPath(MARKDOWN_TESTS_PATH, "test-suite.txt");
+    String path = joinPath(RUN_TESTS_PATH, "markdown-tests.txt");
     Stream in = Filesystem::openTextForReadAutodetect(path);
     String separatorLine = readLine(in);
     u32 numTests = 0;
@@ -73,4 +70,6 @@ int main(int argc, const char* argv[]) {
     }
 
     in.close();
+    getStdOut().format("{}/{} markdown tests passed\n", numPassed, numTests);
+    return numPassed == numTests;
 }
