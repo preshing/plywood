@@ -11,7 +11,8 @@ project(agent)
 include(../../src/common.cmake)
 
 # Add plywood
-add_plywood(ply-base.* ply-tokenizer.* ply-json.* ply-markdown.* ply-network.* ply-http.* ply-reflect.* ply-agent.*)
+add_plywood(ply-base.* ply-tokenizer.* ply-json.* ply-markdown.* ply-network.* ply-http.* ply-reflect.* ply-agent.*
+            ply-agent-tools.*)
 target_compile_definitions(plywood PUBLIC PLY_WITH_HTTP_CLIENT=1 PLY_WITH_HTTP_SERVER=1)
 
 # Add curl

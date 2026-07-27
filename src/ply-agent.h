@@ -199,6 +199,12 @@ struct Agent {
     void cancel();
 };
 
+//  ▄▄▄▄▄▄               ▄▄▄
+//    ██    ▄▄▄▄   ▄▄▄▄   ██   ▄▄▄▄
+//    ██   ██  ██ ██  ██  ██  ▀█▄▄▄
+//    ██   ▀█▄▄█▀ ▀█▄▄█▀ ▄██▄  ▄▄▄█▀
+//
+
 // ToolContext is used to implement tool handlers.
 struct ToolContext {
     // Protects `canceled` and serializes changes to the agent's transcript
@@ -210,18 +216,12 @@ struct ToolContext {
     StringView workingDirectory;
 };
 
-// These functions should be used to initialize the EndPoint and ToolSet before constructing an Agent.
-void setHardcodedEndpoint(EndPoint* endPoint);
-
 // Individual tool registration functions. Each adds a single tool to the ToolSet.
 void addReadTool(ToolSet* toolSet);
 void addWriteTool(ToolSet* toolSet);
 void addListDirTool(ToolSet* toolSet);
 void addFindInFilesTool(ToolSet* toolSet);
 void addEditTool(ToolSet* toolSet);
-
-// Convenience function that registers all of the above tools.
-void addDefaultTools(ToolSet* toolSet);
 
 #endif // !PLY_AGENT_TRANSCRIPT_ONLY
 
