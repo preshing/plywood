@@ -3100,6 +3100,19 @@ MemStream::MemStream(u32 chunkSize) {
 }
 
 // Creates an independent copy with the same contents, mode and seek position.
+MemStream::MemStream(const MemStream& other) : Stream{other.duplicate()} {
+}
+
+// Replaces this stream with an independent copy of another memory stream.
+MemStream& MemStream::operator=(const MemStream& other) {
+    if (this != &other) {
+        MemStream copy = other.duplicate();
+        Stream::operator=(std::move(copy));
+    }
+    return *this;
+}
+
+// Creates an independent copy with the same contents, mode and seek position.
 MemStream MemStream::duplicate() const {
     PLY_ASSERT(this->type == Type::Mem);
     MemStream result{this->mem.chunkSize};

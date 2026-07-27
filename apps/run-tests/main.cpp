@@ -19,6 +19,9 @@ bool runMarkdownTests();
 #if WITH_CPP_TESTS
 bool runCppTests(bool write);
 #endif
+#if WITH_TRANSCRIPT_TESTS
+bool runTranscriptTests();
+#endif
 #if WITH_FRAGMENTATION_TEST
 bool runFragmentationTest();
 #endif
@@ -30,6 +33,7 @@ struct CommandLineOptions {
     bool runMarkdown = false;
     bool runCpp = false;
     bool regenCpp = false;
+    bool runTranscript = false;
     bool runFragmentation = false;
     bool runAll = false;
     PLY_DECLARE_TYPE_INFO(CommandLineOptions)
@@ -42,6 +46,7 @@ enum class TestSuite {
     Markdown,
     Cpp,
     RegenCpp,
+    Transcript,
     Fragmentation,
 };
 
@@ -63,6 +68,9 @@ static void printUsage(StringView executablePath) {
     err.write("  -cpp        Run the C++ parser and preprocessor test suites\n");
     err.write("  -regencpp   Regenerate the C++ parser and preprocessor golden files\n");
 #endif
+#if WITH_TRANSCRIPT_TESTS
+    err.write("  -transcript Run the transcript tests\n");
+#endif
 #if WITH_FRAGMENTATION_TEST
     err.write("  -frag       Run the fragmentation test suite\n");
 #endif
@@ -81,8 +89,10 @@ static u32 getLogicalSuiteIndex(TestSuite suite) {
         case TestSuite::Cpp:
         case TestSuite::RegenCpp:
             return 3;
-        case TestSuite::Fragmentation:
+        case TestSuite::Transcript:
             return 4;
+        case TestSuite::Fragmentation:
+            return 5;
     }
     PLY_ASSERT(0);
     return 0;
@@ -113,6 +123,11 @@ static bool runTestSuite(TestSuite suite) {
         case TestSuite::RegenCpp:
             getStdOut().write("\nWriting C++ golden files\n");
             return runCppTests(true);
+#endif
+#if WITH_TRANSCRIPT_TESTS
+        case TestSuite::Transcript:
+            getStdOut().write("\nTranscript tests\n");
+            return runTranscriptTests();
 #endif
 #if WITH_FRAGMENTATION_TEST
         case TestSuite::Fragmentation:
@@ -148,6 +163,9 @@ int main(int argc, const char* argv[]) {
         {"-cpp", PLY_LOOKUP_MEMBER(CommandLineOptions, runCpp), "Run C++ tests"},
         {"-regencpp", PLY_LOOKUP_MEMBER(CommandLineOptions, regenCpp), "Regenerate C++ golden files"},
 #endif
+#if WITH_TRANSCRIPT_TESTS
+        {"-transcript", PLY_LOOKUP_MEMBER(CommandLineOptions, runTranscript), "Run transcript tests"},
+#endif
 #if WITH_FRAGMENTATION_TEST
         {"-frag", PLY_LOOKUP_MEMBER(CommandLineOptions, runFragmentation), "Run fragmentation tests"},
 #endif
@@ -178,11 +196,14 @@ int main(int argc, const char* argv[]) {
 #if WITH_CPP_TESTS
         suites.append(TestSuite::Cpp);
 #endif
+#if WITH_TRANSCRIPT_TESTS
+        suites.append(TestSuite::Transcript);
+#endif
 #if WITH_FRAGMENTATION_TEST
         suites.append(TestSuite::Fragmentation);
 #endif
     } else {
-        bool selectedSuites[5] = {};
+        bool selectedSuites[6] = {};
         for (int i = 1; i < argc; i++) {
             StringView arg = argv[i];
             TestSuite suite;
@@ -196,6 +217,8 @@ int main(int argc, const char* argv[]) {
                 suite = TestSuite::Cpp;
             } else if (arg == "-regencpp") {
                 suite = TestSuite::RegenCpp;
+            } else if (arg == "-transcript") {
+                suite = TestSuite::Transcript;
             } else {
                 PLY_ASSERT(arg == "-frag");
                 suite = TestSuite::Fragmentation;
@@ -234,6 +257,7 @@ PLY_STRUCT_MEMBER(runUnicode)
 PLY_STRUCT_MEMBER(runMarkdown)
 PLY_STRUCT_MEMBER(runCpp)
 PLY_STRUCT_MEMBER(regenCpp)
+PLY_STRUCT_MEMBER(runTranscript)
 PLY_STRUCT_MEMBER(runFragmentation)
 PLY_STRUCT_MEMBER(runAll)
 PLY_STRUCT_END()

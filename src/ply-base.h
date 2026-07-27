@@ -4248,6 +4248,11 @@ public:
 
     // Creates a memory stream using backing chunks of the specified size.
     explicit MemStream(u32 chunkSize = DEFAULT_CHUNK_SIZE);
+    // Creates an independent copy with the same contents, mode and seek position.
+    MemStream(const MemStream& other);
+    MemStream(MemStream&&) = default;
+    MemStream& operator=(const MemStream& other);
+    MemStream& operator=(MemStream&&) = default;
 
     // Creates an independent copy with the same contents, mode and seek position.
     MemStream duplicate() const;

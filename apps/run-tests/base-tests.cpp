@@ -1961,6 +1961,33 @@ TEST_CASE("MemStream::copyToString") {
     check(crossing.getSeekPos() == crossingSeekPos);
 }
 
+// Verifies that copied memory streams own independent backing storage and retain their position.
+TEST_CASE("MemStream copy operations") {
+    MemStream source{7};
+    source.write("original");
+
+    // Copy construction preserves the writing position and allows independent appends.
+    MemStream constructed = source;
+    source.write(" source");
+    constructed.write(" copy");
+    check(source.copyToString() == "original source");
+    check(constructed.copyToString() == "original copy");
+
+    // Copy assignment replaces existing storage and also remains independent.
+    MemStream assigned{3};
+    assigned.write("discarded");
+    assigned = source;
+    assigned.write(" assigned");
+    check(source.copyToString() == "original source");
+    check(assigned.copyToString() == "original source assigned");
+
+    // A copy made while reading retains the same seek position.
+    source.seekTo(4);
+    MemStream readingCopy = source;
+    check(readingCopy.getSeekPos() == source.getSeekPos());
+    check(readingCopy.readByte() == source.readByte());
+}
+
 // Verifies that moving a memory stream includes pending writes held in a cross-buffer temporary view.
 TEST_CASE("MemStream::moveToString with pending writes") {
     String prefix = String::allocate(Stream::BUFFER_SIZE - 4);

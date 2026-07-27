@@ -288,12 +288,17 @@ function handleEvent(event) {
             openMessage = null;
             break;
         case 'AppendToolResponse':
-            toolResponses.set(event.toolCallID, (toolResponses.get(event.toolCallID) || '') + event.text);
+            if (!toolResponses.has(event.toolCallID)) {
+                toolResponses.set(event.toolCallID, []);
+            }
+            toolResponses.get(event.toolCallID).push(event.text);
             break;
         case 'EndToolResponse': {
             const content = createSection('tool-response', 'Tool Response #' + event.toolCallID,
                                           event.timeStamp, true);
-            content.textContent = (toolResponses.get(event.toolCallID) || '') + '\n';
+            for (const line of toolResponses.get(event.toolCallID) || [])
+                content.append(document.createTextNode(line));
+            content.append(document.createTextNode('\n'));
             toolResponses.delete(event.toolCallID);
             break;
         }
@@ -514,7 +519,7 @@ struct TranscriptPrinter {
     String predictedMarkdownHtml;
 
     // Buffered tool responses, keyed by toolCallID, awaiting flush at EndTurn.
-    Map<u32, String> pendingResponses;
+    Map<u32, Transcript::Buffer> pendingResponses;
     Array<u32> responseOrder; // toolCallIDs in first-arrival order
 
     void printStartup(StringView userPrompt);
@@ -534,7 +539,7 @@ struct TranscriptPrinter {
 // Starts incremental Markdown conversion for a browser message section.
 void TranscriptPrinter::beginMarkdownMessage() {
     this->markdownParser = markdown::createParser();
-    this->markdownLine = {};
+    this->markdownLine = MemStream{};
     this->predictedMarkdownHtml = {};
 }
 
@@ -578,7 +583,7 @@ void TranscriptPrinter::appendMarkdown(StringView text) {
         // Include the newline in the line passed to the Markdown parser.
         this->markdownLine.write(remaining.left(newlinePos + 1));
         String line = this->markdownLine.moveToString();
-        this->markdownLine = {};
+        this->markdownLine = MemStream{};
         if (Owned<markdown::Block> block = markdown::parseLine(this->markdownParser, line)) {
             this->appendMarkdownBlockHtml(&finalizedHtml, std::move(block));
         }
@@ -605,7 +610,7 @@ void TranscriptPrinter::appendMarkdown(StringView text) {
 void TranscriptPrinter::endMarkdownMessage(StringView footer) {
     MemStream finalizedHtml;
     String line = this->markdownLine.moveToString();
-    this->markdownLine = {};
+    this->markdownLine = MemStream{};
     if (line) {
         if (Owned<markdown::Block> block = markdown::parseLine(this->markdownParser, line)) {
             this->appendMarkdownBlockHtml(&finalizedHtml, std::move(block));
@@ -793,12 +798,16 @@ void TranscriptPrinter::flushToolResponses(s64 timeStamp) {
     sort(ids);
     Stream out = getStdOut();
     for (u32 id : ids) {
-        String* text = this->pendingResponses.find(id);
-        if (!text)
+        Transcript::Buffer* response = this->pendingResponses.find(id);
+        if (!response)
             continue;
+        response->flush();
         // Write tool response to stdout.
         out.format("{} [Tool Response #{}]\n", formatTimeStamp(timeStamp), id);
-        out.format("{}\n", *text);
+        for (const String& line : response->lines) {
+            out.write(line);
+        }
+        out.write('\n');
         out.format("{}\n", Separator);
         if (options.runWebServer) {
             // Display the response after all of its streamed chunks have arrived.
@@ -842,14 +851,16 @@ void TranscriptPrinter::handleEvent(const TranscriptEvent& event) {
             if (!ins.wasFound) {
                 this->responseOrder.append(event.toolCallID);
             }
-            *ins.value += event.text;
+            ins.value->append(event.text);
             if (options.runWebServer) {
                 webAppendToolResponse(event.toolCallID, event.text);
             }
             break;
         }
         case TranscriptEvent::EndToolResponse:
-            // Nothing to do here; responses are flushed at EndTurn.
+            if (Transcript::Buffer* response = this->pendingResponses.find(event.toolCallID)) {
+                response->flush();
+            }
             break;
         case TranscriptEvent::EndTurn:
             if (this->hasOpen) {
@@ -1118,7 +1129,8 @@ int main(int argc, const char* argv[]) {
     {
         Owned<Transcript::Message> userMsg = Heap::create<Transcript::Message>();
         userMsg->role = Transcript::Role::User;
-        userMsg->text = options.userPrompt;
+        userMsg->content.append(options.userPrompt);
+        userMsg->content.flush();
         turn.messages.append(std::move(userMsg));
     }
 

@@ -21,6 +21,53 @@ struct TranscriptUpdater {
     Transcript* transcript = nullptr;
 };
 
+// Appends a streamed chunk while retaining each completed line as a separate string.
+void Transcript::Buffer::append(StringView text) {
+    while (text) {
+        s32 newLinePos = text.find('\n');
+        if (newLinePos < 0) {
+            this->tail.write(text);
+            break;
+        }
+
+        // Complete the current line, retaining the newline in its own line string.
+        this->tail.write(text.left(newLinePos + 1));
+        this->lines.append(this->tail.moveToString());
+        this->tail = MemStream{TailChunkSize};
+        text = text.substr(newLinePos + 1);
+    }
+}
+
+// Finalizes the incomplete last line without combining it with any completed lines.
+void Transcript::Buffer::flush() {
+    if (this->tail.getSeekPos() > 0) {
+        this->lines.append(this->tail.moveToString());
+        this->tail = MemStream{TailChunkSize};
+    }
+}
+
+// Returns the complete Buffer contents as a String.
+String Transcript::Buffer::toString() const {
+    // Copy the tail (often empty), then allocate the exact combined size.
+    String tailText = this->tail.copyToString();
+    u64 numBytes = tailText.numBytes();
+    for (const String& line : this->lines) {
+        numBytes += line.numBytes();
+    }
+    String result = String::allocate(numericCast<u32>(numBytes));
+
+    // Copy each stored fragment directly into its final location.
+    char* dst = result.bytes();
+    for (const String& line : this->lines) {
+        memcpy(dst, line.bytes(), line.numBytes());
+        dst += line.numBytes();
+    }
+    if (tailText) {
+        memcpy(dst, tailText.bytes(), tailText.numBytes());
+    }
+    return result;
+}
+
 Owned<TranscriptUpdater> createTranscriptUpdater(Transcript* transcript) {
     Owned<TranscriptUpdater> updater = Heap::create<TranscriptUpdater>();
     updater->transcript = transcript;
@@ -36,9 +83,13 @@ void applyTranscriptEvent(TranscriptUpdater* updater, const TranscriptEvent& eve
     switch (event.operation) {
         case TranscriptEvent::BeginMessage: {
             // Ensure there is a turn to append the message to.
-            if (transcript->turns.isEmpty())
+            if (transcript->turns.isEmpty()) {
                 transcript->turns.append();
+            }
             Transcript::Turn& turn = transcript->turns.back();
+            if (turn.messages) {
+                turn.messages.back()->content.flush();
+            }
             Owned<Transcript::Message> msg = Heap::create<Transcript::Message>();
             msg->timeStamp = (u64) getUnixTimestamp();
             msg->role = event.role;
@@ -49,7 +100,7 @@ void applyTranscriptEvent(TranscriptUpdater* updater, const TranscriptEvent& eve
             PLY_ASSERT(!transcript->turns.isEmpty());
             Transcript::Turn& turn = transcript->turns.back();
             PLY_ASSERT(!turn.messages.isEmpty());
-            turn.messages.back()->text += event.text;
+            turn.messages.back()->content.append(event.text);
             break;
         }
         case TranscriptEvent::AppendToolResponse: {
@@ -61,7 +112,7 @@ void applyTranscriptEvent(TranscriptUpdater* updater, const TranscriptEvent& eve
                 if (msg->role == Transcript::Role::ToolCall) {
                     id++;
                     if (id == event.toolCallID) {
-                        msg->toolResponse += event.text;
+                        msg->toolResponse.append(event.text);
                         break;
                     }
                 }
@@ -76,6 +127,7 @@ void applyTranscriptEvent(TranscriptUpdater* updater, const TranscriptEvent& eve
                 if (msg->role == Transcript::Role::ToolCall) {
                     id++;
                     if (id == event.toolCallID) {
+                        msg->toolResponse.flush();
                         msg->toolEnded = true;
                         break;
                     }
@@ -84,6 +136,9 @@ void applyTranscriptEvent(TranscriptUpdater* updater, const TranscriptEvent& eve
             break;
         }
         case TranscriptEvent::EndTurn: {
+            if (!transcript->turns.isEmpty() && transcript->turns.back().messages) {
+                transcript->turns.back().messages.back()->content.flush();
+            }
             // Append a new empty turn for the next round of messages.
             transcript->turns.append();
             break;
@@ -93,9 +148,13 @@ void applyTranscriptEvent(TranscriptUpdater* updater, const TranscriptEvent& eve
     }
 }
 
+PLY_STRUCT_BEGIN(Transcript::Buffer)
+PLY_STRUCT_MEMBER(lines)
+PLY_STRUCT_END()
+
 PLY_STRUCT_BEGIN(Transcript::Message)
 PLY_STRUCT_MEMBER(timeStamp)
-PLY_STRUCT_MEMBER(text)
+PLY_STRUCT_MEMBER(content)
 PLY_STRUCT_MEMBER(toolResponse)
 PLY_STRUCT_MEMBER(toolEnded)
 PLY_STRUCT_END()
@@ -254,11 +313,17 @@ static u32 toolCallIDForMessage(Agent::Impl* impl, Transcript::Message* toolCall
 // Helper function to create the message body that goes in the POST message associated with an API call.
 // This is basically a serialized JSON object containing certain properties in an expected format.
 
-// Parses a ToolCall message's text property, which encodes the tool name immediately
+// Parses a ToolCall message's content, which encodes the tool name immediately
 // followed by a JSON object of arguments (e.g. read{"path":"sample.txt"}). name is set
 // to the substring before the first '{'. argsOut receives the parsed JSON object.
 // Returns false if no JSON object could be parsed (name still holds the prefix).
-static bool parseToolCallText(StringView text, StringView& name, json::Parser::Result& argsOut) {
+static bool parseToolCallText(const Transcript::Buffer& content, StringView& name,
+                              json::Parser::Result& argsOut) {
+    PLY_ASSERT(content.lines.numItems() <= 1);
+    StringView text;
+    if (content.lines) {
+        text = content.lines[0];
+    }
     s32 brace = text.find('{');
     if (brace < 0) {
         name = text;
@@ -344,7 +409,7 @@ String makeRequestBody(Agent::Impl* impl) {
                         jMsg.set("role", json::Node::Text{"user"});
                         json::Node jContent{json::Node::Object{}};
                         jContent.set("type", json::Node::Text{"text"});
-                        jContent.set("text", json::Node::Text{msg->text});
+                        jContent.set("text", json::Node::Text{msg->content.toString()});
                         json::Node jArray{json::Node::Array{}};
                         jArray.array().append(std::move(jContent));
                         jMsg.set("content", std::move(jArray));
@@ -355,18 +420,18 @@ String makeRequestBody(Agent::Impl* impl) {
                         // Reasoning message
                         json::Node jMsg{json::Node::Object{}};
                         jMsg.set("role", json::Node::Text{"assistant"});
-                        jMsg.set("reasoning", json::Node::Text{msg->text});
+                        jMsg.set("reasoning", json::Node::Text{msg->content.toString()});
                         jMessages.array().append(std::move(jMsg));
                         prevMsg = msg;
                     } else if (msg->role == Transcript::Role::Agent) {
                         // Content message
                         if (prevMsg && prevMsg->role == Transcript::Role::AgentThinking) {
                             // Merge with previous reasoning message
-                            jMessages.array().back().set("content", json::Node::Text{msg->text});
+                            jMessages.array().back().set("content", json::Node::Text{msg->content.toString()});
                         } else {
                             json::Node jMsg{json::Node::Object{}};
                             jMsg.set("role", json::Node::Text{"assistant"});
-                            jMsg.set("content", json::Node::Text{msg->text});
+                            jMsg.set("content", json::Node::Text{msg->content.toString()});
                             jMessages.array().append(std::move(jMsg));
                         }
                         prevMsg = msg;
@@ -375,7 +440,7 @@ String makeRequestBody(Agent::Impl* impl) {
                         toolCallID++;
                         StringView tcName;
                         json::Parser::Result parsedArgs;
-                        parseToolCallText(msg->text, tcName, parsedArgs);
+                        parseToolCallText(msg->content, tcName, parsedArgs);
 
                         // Ensure we have a "tool_calls" JSON array in which to put the object.
                         if (!prevMsg) {
@@ -422,7 +487,7 @@ String makeRequestBody(Agent::Impl* impl) {
                         responseToolCallID++;
                         json::Node jMsg{json::Node::Object{}};
                         jMsg.set("role", json::Node::Text{"tool"});
-                        jMsg.set("content", json::Node::Text{msg->toolResponse});
+                        jMsg.set("content", json::Node::Text{msg->toolResponse.toString()});
                         jMsg.set("tool_call_id", json::Node::Text{String::format("{}", responseToolCallID)});
                         jMessages.array().append(std::move(jMsg));
                     }
@@ -654,6 +719,7 @@ void receiveLine(Agent::Impl* impl, StringView line) {
                 // Grab a pointer to the newly created tool call message so the tool
                 // thread can mutate its toolResponse/toolEnded directly.
                 Transcript::Message* toolCallMsg = impl->internalTranscript->turns.back().messages.back().get();
+                toolCallMsg->content.flush();
                 impl->currentRole = Transcript::Role::ToolCall;
 
                 // Hand this tool call off to the tool thread.
@@ -802,7 +868,7 @@ void performInferenceRequest(Agent::Impl* impl) {
                 impl->lineInProgress.write(remaining.left(newLinePos + 1));
                 String completedLine = impl->lineInProgress.moveToString();
                 receiveLine(impl, completedLine);
-                impl->lineInProgress = {};
+                impl->lineInProgress = MemStream{};
                 remaining = remaining.substr(newLinePos + 1);
             } else {
                 // Add incomplete line to lineInProgress.
@@ -954,11 +1020,11 @@ void runToolThread(Agent::Impl* impl) {
             toolCall = impl->pendingToolCalls[0];
         }
 
-        // Re-parse the tool call's text property to recover the tool name and its
+        // Re-parse the tool call's content to recover the tool name and its
         // JSON arguments, then look up the handler by name.
         StringView tcName;
         json::Parser::Result parsedArgs;
-        parseToolCallText(toolCall->text, tcName, parsedArgs);
+        parseToolCallText(toolCall->content, tcName, parsedArgs);
         const json::Node& arguments = parsedArgs.root;
 
         // Handle this tool call (no locks held).
@@ -981,11 +1047,14 @@ void runToolThread(Agent::Impl* impl) {
             LockGuard<Mutex> guard{impl->toolCtx.mutex};
             if (!impl->toolCtx.canceled) {
                 u32 toolCallID = toolCallIDForMessage(impl, toolCall);
-                TranscriptEvent appendResp;
-                appendResp.operation = TranscriptEvent::AppendToolResponse;
-                appendResp.toolCallID = toolCallID;
-                appendResp.text = toolCall->toolResponse;
-                bufferEvent(impl, std::move(appendResp));
+                toolCall->toolResponse.flush();
+                for (const String& line : toolCall->toolResponse.lines) {
+                    TranscriptEvent appendResp;
+                    appendResp.operation = TranscriptEvent::AppendToolResponse;
+                    appendResp.toolCallID = toolCallID;
+                    appendResp.text = line;
+                    bufferEvent(impl, std::move(appendResp));
+                }
 
                 TranscriptEvent endResp;
                 endResp.operation = TranscriptEvent::EndToolResponse;
@@ -1171,12 +1240,21 @@ FilteredPath filterPath(ToolContext* toolCtx, StringView relPath) {
     return {false, {}};
 }
 
-void setResponseText(ToolContext* toolCtx, Transcript::Message* toolCall, String&& text) {
+// Installs a completed line-oriented response on a tool call.
+void setResponseBuffer(ToolContext* toolCtx, Transcript::Message* toolCall, Transcript::Buffer&& response) {
+    response.flush();
     LockGuard<Mutex> guard{toolCtx->mutex};
     if (!toolCtx->canceled) {
-        toolCall->toolResponse = std::move(text);
+        toolCall->toolResponse = std::move(response);
         toolCall->toolEnded = true;
     }
+}
+
+// Installs a short response while still storing it through the line-oriented buffer API.
+void setResponseText(ToolContext* toolCtx, Transcript::Message* toolCall, String&& text) {
+    Transcript::Buffer response;
+    response.append(text);
+    setResponseBuffer(toolCtx, toolCall, std::move(response));
 }
 
 //--------------------------------------------------
@@ -1218,15 +1296,15 @@ void readToolHandler(ToolContext* toolCtx, Transcript::Message* toolCall, const 
         lineLimit = (u32) limitArg.getNumber();
     }
 
-    // Read desired file range into temporary buffer.
-    MemStream output;
+    // Read the desired file range directly into separate response lines.
+    Transcript::Buffer response;
     u32 lineNum = 0;
     u32 linesOutput = 0;
     while (StringView line = readLine(in)) {
         lineNum++;
         if (lineNum < lineOffset)
             continue;
-        output.write(line.left(sizeLimit));
+        response.append(line.left(sizeLimit));
         linesOutput++;
         if (linesOutput >= lineLimit)
             break;
@@ -1234,6 +1312,7 @@ void readToolHandler(ToolContext* toolCtx, Transcript::Message* toolCall, const 
             break;
         sizeLimit -= line.numBytes();
     }
+    setResponseBuffer(toolCtx, toolCall, std::move(response));
 }
 
 void addReadTool(ToolSet* toolSet) {
@@ -1350,16 +1429,16 @@ void listDirToolHandler(ToolContext* toolCtx, Transcript::Message* toolCall, con
         return a.name < b.name;
     });
 
-    // Write response.
-    MemStream output;
+    // Write each directory entry as a separate response line.
+    Transcript::Buffer response;
     for (const DirectoryEntry& entry : entries) {
         if (entry.isDir) {
-            output.format("{}\n", entry.name);
+            response.append(String::format("{}\n", entry.name));
         } else {
-            output.format("{} ({} bytes)\n", entry.name, entry.fileSize);
+            response.append(String::format("{} ({} bytes)\n", entry.name, entry.fileSize));
         }
     }
-    setResponseText(toolCtx, toolCall, output.moveToString());
+    setResponseBuffer(toolCtx, toolCall, std::move(response));
 }
 
 void addListDirTool(ToolSet* toolSet) {
@@ -1573,8 +1652,8 @@ void findInFiles(FindInFiles& findInfo, StringView absPath, bool isDir) {
             if (line.find(findInfo.text) >= 0) {
                 LockGuard<Mutex> guard{findInfo.toolCtx->mutex};
                 if (!findInfo.toolCtx->canceled) {
-                    findInfo.toolCall->toolResponse +=
-                        String::format("{}({}):{}\n", relPath, lineNum, line.trimRight());
+                    findInfo.toolCall->toolResponse.append(
+                        String::format("{}({}):{}\n", relPath, lineNum, line.trimRight()));
                 }
             }
         }

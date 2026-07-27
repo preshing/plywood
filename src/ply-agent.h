@@ -28,16 +28,29 @@ struct Transcript : RefCounted<Transcript> {
         User,
         AgentThinking,
         Agent,
-        ToolCall, // format is `write{"path":"foo.txt","content":"Hello world!\n"}`
+        ToolCall, // Format: `write{"path":"foo.txt","content":"Hello world!\n"}`
         Error,
+    };
+
+    // Internal type used to store a growing text buffer as a sequence of lines.
+    struct Buffer {
+        static constexpr u32 TailChunkSize = 256;
+
+        Array<String> lines; // Completed lines. Each one ends with \n except possibly the last.
+        MemStream tail{TailChunkSize}; // Accumulates the last line until a \n is received.
+        PLY_DECLARE_TYPE_INFO(Transcript::Buffer)
+
+        void append(StringView text); // Appends streamed text while preserving completed lines.
+        void flush(); // Moves the unfinished tail into lines.
+        String toString() const; // Returns all lines and the unfinished tail as contiguous text.
     };
 
     struct Message {
         u64 timeStamp = 0;
         Role role = Role::None;
-        String text;
+        Buffer content; // Tail is flushed when the message ends.
         // These members are only used by ToolCall:
-        String toolResponse;
+        Buffer toolResponse; // Tail is flushed when the tool response ends.
         bool toolEnded = false;
 
         PLY_DECLARE_TYPE_INFO(Transcript::Message)
@@ -63,10 +76,10 @@ struct Transcript : RefCounted<Transcript> {
 struct TranscriptEvent {
     enum Operation {
         NoOperation,
-        BeginMessage,       // requires role and toolCallID (if ToolCall)
-        AppendText,         // requires text
-        AppendToolResponse, // requires toolCallID and text
-        EndToolResponse,    // requires toolCallID
+        BeginMessage,       // Requires role and toolCallID (if ToolCall)
+        AppendText,         // Requires text
+        AppendToolResponse, // Requires toolCallID and text
+        EndToolResponse,    // Requires toolCallID
         EndTurn,
     };
 
@@ -111,7 +124,7 @@ struct EndPoint {
     String model;
 };
 
-// Forward declarations.
+// Forward declaration.
 struct ToolContext;
 
 // ToolSet defines the agent's available tools and its system prompt.
@@ -156,8 +169,8 @@ struct Agent {
         bool enableHttpLog = false;
     };
 
-    const Settings* settings = nullptr; // points to the internal copy of the settings
-    Reference<Impl> impl;               // internal details
+    const Settings* settings = nullptr; // Points to the internal copy of the settings.
+    Reference<Impl> impl;               // Internal details.
 
     // The settings are copied to the internal state.
     Agent(const Settings& settings);
@@ -181,7 +194,7 @@ struct Agent {
     // When cancel is called:
     // - Any thread calling waitForEvents or waitForCompletion immediately returns.
     // - No new TranscriptEvents will be generated.
-    // - isWorking will start returning false only after all remaining buffered TranscriptEvents are consumed.
+    // - isWorking will start returning false only after any remaining buffered TranscriptEvents are consumed.
     bool isWorking();
     void cancel();
 };
