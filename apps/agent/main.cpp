@@ -25,6 +25,7 @@ struct CommandLineOptions {
     bool enableHttpLog = false;
     bool runWebServer = false;
     String userPrompt;
+    bool printUsage = false;
     PLY_DECLARE_TYPE_INFO(CommandLineOptions)
 };
 
@@ -971,8 +972,10 @@ static bool loadSettings() {
                 break;
 
             String parentDir = splitPath(searchDir).directory;
-            if (parentDir == searchDir)
-                break;
+            if (parentDir == searchDir) {
+                getStdErr().write("Could not find agent.json.\n");
+                return false;
+            }
             searchDir = std::move(parentDir);
         }
     }
@@ -1087,24 +1090,27 @@ int main(int argc, const char* argv[]) {
     CommandLineParser parser({
         {"-j", PLY_LOOKUP_MEMBER(CommandLineOptions, settingsPath), "Path to JSON settings file"},
         {"-l", PLY_LOOKUP_MEMBER(CommandLineOptions, enableHttpLog), "Write raw HTTP log"},
-        {"-s", PLY_LOOKUP_MEMBER(CommandLineOptions, runWebServer), "Serve transcript on port 8081"},
+        {"-s", PLY_LOOKUP_MEMBER(CommandLineOptions, runWebServer), "Create a webserver on port 8081"},
+        {"-usage", PLY_LOOKUP_MEMBER(CommandLineOptions, printUsage), "Print available options"},
     });
     u32 numUserPrompts = 0;
     parser.defaultHandler = [&](ArrayView<const char*> args, u32 index) {
         options.userPrompt = args[index];
         numUserPrompts++;
     };
-    if (!parser.apply(argc, argv, &options))
-        return 1; // parsing error
+    if (!parser.apply(argc, argv, &options)) {
+        // Error during parsing.
+        parser.printAvailableOptions(true);
+        return 1;
+    }
+    if (options.printUsage) {
+        parser.printAvailableOptions(false);
+        return 0;
+    }
     if (numUserPrompts > 1) {
         getStdErr().write("Only one prompt may be specified on the command line.\n");
         return 1;
     }
-
-    // Initialize curl.
-    CURLcode rc = curl_global_init(CURL_GLOBAL_DEFAULT);
-    PLY_ASSERT(rc == CURLE_OK);
-    PLY_UNUSED(rc);
 
     // Load agent settings.
     if (!loadSettings())
@@ -1116,7 +1122,12 @@ int main(int argc, const char* argv[]) {
         return 1;
     }
 
-    // Start the echo webserver in parallel with the agent.
+    // Initialize curl.
+    CURLcode rc = curl_global_init(CURL_GLOBAL_DEFAULT);
+    PLY_ASSERT(rc == CURLE_OK);
+    PLY_UNUSED(rc);
+
+    // Start the webserver in parallel with the agent.
     Thread webServerThread;
     if (options.runWebServer) {
         Network::initialize(IPV4);
@@ -1176,4 +1187,5 @@ PLY_STRUCT_BEGIN(CommandLineOptions)
 PLY_STRUCT_MEMBER(settingsPath)
 PLY_STRUCT_MEMBER(enableHttpLog)
 PLY_STRUCT_MEMBER(runWebServer)
+PLY_STRUCT_MEMBER(printUsage)
 PLY_STRUCT_END()

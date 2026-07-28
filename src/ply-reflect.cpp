@@ -1224,6 +1224,20 @@ json::Node convertToJson(const json::WriteOptions& writeOptions, AnyObject obj) 
     }
 }
 
+// Prints the executable path and available command line options to stderr.
+void CommandLineParser::printAvailableOptions(bool withHeader) const {
+    Stream err = getStdErr();
+    if (withHeader) {
+        err.write("\nAvailable options:\n");
+    }
+    for (const CmdLineArgHandler& handler : this->handlers) {
+        err.format("  {}", handler.arg);
+        if (handler.dataMember->type->key == TypeKey::String)
+            err.write(" <value>");
+        err.format(": {}\n", handler.description);
+    }
+}
+
 // Returns true if argument parsing succeeds.
 // Otherwise, prints an error message and usage summary to stderr, then returns false.
 bool CommandLineParser::apply(int argc, const char* argv[], AnyObject obj) {

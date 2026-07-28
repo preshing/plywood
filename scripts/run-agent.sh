@@ -8,16 +8,22 @@
 
 set -e
 
-# Print usage information when no command-line arguments are provided.
+# Find the directory containing this script.
+scriptDir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+
+# Print usage information when no command-line options are provided.
 if [ "$#" -eq 0 ]; then
-    echo "Usage: ${0##*/} [-b] <agent arguments>" >&2
-    echo "-b : Build the agent app in Debug before running." >&2
-    exec "$scriptDir/../apps/agent/build/agent"
+    echo "Convenience script to build and run an agent in one command." >&2
+    echo >&2
+    echo "Usage: ${0##*/} [-b] <agent options>" >&2
+    echo "  -b: Build the agent (in Debug) before running" >&2
+    echo >&2
+    echo "Options accepted by the agent:" >&2
+    "$scriptDir/../apps/agent/build/agent" -usage
     exit 1
 fi
 
 # Optionally build the agent app before running it.
-scriptDir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 if [ "$1" = "-b" ]; then
     "$scriptDir/build-agent.sh"
     shift

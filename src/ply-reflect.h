@@ -460,8 +460,11 @@ struct CommandLineParser {
     CommandLineParser(Array<CmdLineArgHandler>&& handlers) : handlers{std::move(handlers)} {
     }
 
+    // Prints the available command line options to stderr.
+    void printAvailableOptions(bool withHeader = false) const;
+
     // Returns true if argument parsing succeeds.
-    // Otherwise, prints an error message and usage summary to stderr, then returns false.
+    // Otherwise, prints an error message to stderr, then returns false.
     bool apply(int argc, const char* argv[], AnyObject obj);
 };
 
