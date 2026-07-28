@@ -14,7 +14,7 @@ String docsFolder = joinPath(PLYWOOD_ROOT_DIR, "docs/build");
 //-------------------------------------
 // servePlywoodDocumentation
 //-------------------------------------
-void servePlywoodDocumentation(const HTTPServerRequest& request) {
+void servePlywoodDocumentation(HTTPServerRequest& request) {
     String urlPath = request.uri;
     s32 queryPos = urlPath.find('?');
     if (queryPos >= 0) {
