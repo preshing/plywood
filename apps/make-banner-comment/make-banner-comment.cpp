@@ -9,12 +9,6 @@
 
 using namespace ply;
 
-//  ▄▄     ▄▄          ▄▄▄                ▄▄
-//  ██▄▄▄  ▄▄  ▄▄▄▄▄  ██    ▄▄▄▄  ▄▄▄▄▄  ▄██▄▄
-//  ██  ██ ██ ██  ██ ▀██▀▀ ██  ██ ██  ██  ██
-//  ██▄▄█▀ ██ ▀█▄▄██  ██   ▀█▄▄█▀ ██  ██  ▀█▄▄
-//             ▄▄▄█▀
-
 // clang-format off
 const char* GlyphData[] = {
     "A ,,,, B,,,,, C ,,,, D,,,,, E,,,,,F,,,,,G ,,,, H,,  ,,I,,,,J    ,,K,,  ,,L,,   M,,   ,,",
@@ -45,6 +39,7 @@ const char* GlyphData[] = {
 };
 // clang-format on
 
+// Stores a glyph location within GlyphData.
 struct BigGlyph {
     u32 row = 0;
     u32 col = 0;
@@ -52,7 +47,9 @@ struct BigGlyph {
     static constexpr u32 height = 5;
 };
 
-void printBigfont(StringView text) {
+// Writes text as a banner-style C++ comment.
+void printBannerComment(StringView text) {
+    // Build the glyph lookup table.
     Array<BigGlyph> glyphs;
     glyphs.resize(128);
     u32 numRows = PLY_STATIC_ARRAY_SIZE(GlyphData) / BigGlyph::height;
@@ -75,6 +72,7 @@ void printBigfont(StringView text) {
         }
     }
 
+    // Render each row of the banner.
     Stream out = getStdOut();
     for (u32 i = 0; i < BigGlyph::height; i++) {
         MemStream mem;
@@ -108,6 +106,7 @@ void printBigfont(StringView text) {
     }
 }
 
+// Main function.
 int main(int argc, const char* argv[]) {
 #if defined(PLY_WINDOWS)
     SetConsoleOutputCP(CP_UTF8);
@@ -116,6 +115,6 @@ int main(int argc, const char* argv[]) {
         getStdErr().write("error: expected exactly 1 argument\n");
         return 1;
     }
-    printBigfont(argv[1]);
+    printBannerComment(argv[1]);
     return 0;
 }

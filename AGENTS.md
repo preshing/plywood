@@ -19,7 +19,7 @@ Additional components for 2D/3D math, networking and text parsing are also inclu
     - `ply-cpp.h/cpp` - Experimental C++ parser
 - `apps/` - Sample applications. Each subdirectory contains a `CMakeLists.txt` file to build the app.
     - `run-tests` - Combined base, Unicode loading, Markdown, C++ parser and heap fragmentation test suites
-    - `bigfont` - Converts its argument to a banner-style comment using Unicode block characters
+    - `make-banner-comment` - Converts its argument to a banner-style comment using Unicode block characters
     - `generate-docs` - Converts the documentation to HTML files written to `docs/build/`
     - `serve-docs` - Runs an HTTP server to serve the generated documentation on port 8080
 - `docs/` - Project documentation in Markdown format
@@ -34,12 +34,17 @@ $ cmake --build apps/<sample-name>/build
 $ apps/<sample-name>/build/<sample-name>
 ```
 
+The `agent` and `make-banner-comment` apps instead write their executables to the repository's `bin/`
+subdirectory. Run either app using `bin/<sample-name>` after building it.
+
 On Windows, CMake will generate a multi-configuration Visual Studio solution by default:
 ```
 > cmake -B apps\<sample-name>\build apps\<sample-name>
 > cmake --build plywood\apps\<sample-name>\build --config=Debug
 > plywood\apps\<sample-name>\build\Debug\<sample-name>.exe
 ```
+
+On Windows, run the `agent` and `make-banner-comment` apps using `bin\<sample-name>.exe` instead.
 
 ## Coding Conventions
 
@@ -55,7 +60,7 @@ Feel free to improve any existing code that you end up touching!)
 - The Plywood public API and all its implementation details are defined inside the `ply` namespace.
     - For convenient name lookups, outer scopes can import names directly using `using namespace ply`.
 - Organize all functions and type defintions into logical categories that layer in a natural way.
-- Use `bigfont`-generated banners to identify top-level categories in the source code. eg.
+- Use `make-banner-comment` to generate banners that identify top-level categories in the source code. eg.
     //  ▄▄▄▄▄
     //  ██  ██  ▄▄▄▄  ▄▄▄▄▄  ▄▄▄▄▄   ▄▄▄▄  ▄▄▄▄▄
     //  ██▀▀█▄  ▄▄▄██ ██  ██ ██  ██ ██▄▄██ ██  ▀▀

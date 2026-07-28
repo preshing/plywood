@@ -8,7 +8,7 @@
 @echo off
 setlocal
 
-rem Set PLYWOOD_ROOT to the normalized path to the parent directory.
+rem Set PLYWOOD_ROOT to the normalized path to the script's parent directory.
 for %%I in ("%~dp0..") do set "PLYWOOD_ROOT=%%~fI"
 
 rem Print usage information when no command-line options are provided.
@@ -23,7 +23,7 @@ if not "%~1"=="" goto haveArgs
 exit /b 1
 :haveArgs
 
-rem Optionally build the agent app before running it.
+rem Optionally build the agent app (in Debug) before running it.
 set "agentArgs=%*"
 if not "%~1"=="-b" goto runAgent
 

@@ -8,7 +8,7 @@
 
 set -e
 
-# Set PLYWOOD_ROOT to the normalized path to the parent directory.
+# Set PLYWOOD_ROOT to the normalized path to the script's parent directory.
 PLYWOOD_ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 
 # Print usage information when no command-line options are provided.
@@ -23,7 +23,7 @@ if [ "$#" -eq 0 ]; then
     exit 1
 fi
 
-# Optionally build the agent app before running it.
+# Optionally build the agent app (in Debug) before running it.
 if [ "$1" = "-b" ]; then
     "$PLYWOOD_ROOT/scripts/build-agent.sh"
     shift
