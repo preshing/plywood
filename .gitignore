@@ -5,6 +5,7 @@
 *.user
 build*/
 xcuserdata/
+/bin
 /Apple_Developer_ID.cmake
 /CLAUDE.md
 /GEMINI.md

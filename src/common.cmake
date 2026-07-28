@@ -98,6 +98,21 @@ function(add_source_files var_name root_path)
 endfunction()
 
 #--------------------------------------
+# set_runtime_output_directory
+#--------------------------------------
+function(set_runtime_output_directory target_name output_directory)
+    # Set the default output directory used by single-configuration generators.
+    set_target_properties("${target_name}" PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${output_directory}")
+
+    # Prevent multi-configuration generators from appending a configuration subdirectory.
+    foreach(config_name ${CMAKE_CONFIGURATION_TYPES})
+        string(TOUPPER "${config_name}" config_suffix)
+        set_target_properties("${target_name}" PROPERTIES
+            "RUNTIME_OUTPUT_DIRECTORY_${config_suffix}" "${output_directory}")
+    endforeach()
+endfunction()
+
+#--------------------------------------
 # plywood target
 #--------------------------------------
 function(add_plywood)
