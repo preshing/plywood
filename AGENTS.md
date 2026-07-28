@@ -27,24 +27,21 @@ Additional components for 2D/3D math, networking and text parsing are also inclu
 
 ## Building and Running Sample Apps
 
-Each subdirectory in `apps/` is a standalone CMake project. These apps require ongoing maintenance, so prefer Debug builds when doing general development. On Linux and macOS, CMake will generate a Debug-configured makefile by default:
+Each subdirectory in `apps/` is a standalone CMake project. All apps write their executables to the
+repository's `bin/` subdirectory. These apps require ongoing maintenance, so prefer Debug builds when doing
+general development. On Linux and macOS, CMake will generate a Debug-configured makefile by default:
 ```
 $ cmake -B apps/<sample-name>/build apps/<sample-name>
 $ cmake --build apps/<sample-name>/build
-$ apps/<sample-name>/build/<sample-name>
+$ bin/<sample-name>
 ```
-
-The `agent` and `make-banner-comment` apps instead write their executables to the repository's `bin/`
-subdirectory. Run either app using `bin/<sample-name>` after building it.
 
 On Windows, CMake will generate a multi-configuration Visual Studio solution by default:
 ```
 > cmake -B apps\<sample-name>\build apps\<sample-name>
-> cmake --build plywood\apps\<sample-name>\build --config=Debug
-> plywood\apps\<sample-name>\build\Debug\<sample-name>.exe
+> cmake --build apps\<sample-name>\build --config=Debug
+> bin\<sample-name>.exe
 ```
-
-On Windows, run the `agent` and `make-banner-comment` apps using `bin\<sample-name>.exe` instead.
 
 ## Coding Conventions
 

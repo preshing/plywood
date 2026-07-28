@@ -16,6 +16,7 @@ add_plywood(ply-base.* ply-network.* ply-http.*)
 # Add serve-docs
 add_source_files(SERVE_DOCS_SOURCES "${CMAKE_CURRENT_LIST_DIR}" serve-docs.cpp)
 add_executable(serve-docs ${SERVE_DOCS_SOURCES})
+set_runtime_output_directory(serve-docs "${PLYWOOD_ROOT}/bin")
 target_link_libraries(serve-docs PRIVATE plywood)
 if(WIN32)
     target_link_libraries(serve-docs PRIVATE ws2_32.lib)

@@ -22,6 +22,7 @@ endif()
 # Add generate-docs
 add_source_files(GENERATE_DOCS_SOURCES "${CMAKE_CURRENT_LIST_DIR}" generate-docs.cpp)
 add_executable(generate-docs ${GENERATE_DOCS_SOURCES})
+set_runtime_output_directory(generate-docs "${PLYWOOD_ROOT}/bin")
 target_link_libraries(generate-docs PRIVATE plywood)
 set(PLYWOOD_ROOT_DIR "${CMAKE_CURRENT_LIST_DIR}/../..")
 cmake_path(NORMAL_PATH PLYWOOD_ROOT_DIR)

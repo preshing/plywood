@@ -95,6 +95,7 @@ endif()
 
 add_source_files(RUN_TEST_SOURCES "${CMAKE_CURRENT_LIST_DIR}" ${RUN_TEST_SOURCE_PATTERNS})
 add_executable(run-tests ${RUN_TEST_SOURCES})
+set_runtime_output_directory(run-tests "${PLYWOOD_ROOT}/bin")
 target_link_libraries(run-tests PRIVATE plywood)
 target_compile_definitions(run-tests PRIVATE
     RUN_TESTS_PATH="${CMAKE_CURRENT_LIST_DIR}"
