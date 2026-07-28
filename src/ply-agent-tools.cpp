@@ -12,7 +12,7 @@
 namespace ply {
 
 //--------------------------------------------------
-// Helper functions
+// Permission helpers
 //--------------------------------------------------
 struct FilteredPath {
     bool ok = false;
@@ -36,23 +36,6 @@ FilteredPath filterPath(ToolContext* toolCtx, StringView relPath) {
     return {false, {}};
 }
 
-// Installs a completed line-oriented response on a tool call.
-void setResponseBuffer(ToolContext* toolCtx, Transcript::Message* toolCall, Transcript::Buffer&& response) {
-    response.flush();
-    LockGuard<Mutex> guard{toolCtx->mutex};
-    if (!toolCtx->canceled) {
-        toolCall->toolResponse = std::move(response);
-        toolCall->toolEnded = true;
-    }
-}
-
-// Installs a short response while still storing it through the line-oriented buffer API.
-void setResponseText(ToolContext* toolCtx, Transcript::Message* toolCall, String&& text) {
-    Transcript::Buffer response;
-    response.append(text);
-    setResponseBuffer(toolCtx, toolCall, std::move(response));
-}
-
 //                           ▄▄
 //  ▄▄▄▄▄   ▄▄▄▄   ▄▄▄▄   ▄▄▄██
 //  ██  ▀▀ ██▄▄██  ▄▄▄██ ██  ██
@@ -63,7 +46,7 @@ void readToolHandler(ToolContext* toolCtx, Transcript::Message* toolCall, const 
     // Validate path argument.
     const json::Node& pathArg = arguments.get("path");
     if (!pathArg.isText()) {
-        setResponseText(toolCtx, toolCall, "Error: 'path' argument is required.");
+        toolCtx->appendResponse(toolCall, "Error: 'path' argument is required.");
         return;
     }
 
@@ -71,14 +54,14 @@ void readToolHandler(ToolContext* toolCtx, Transcript::Message* toolCall, const 
     StringView path = pathArg.text();
     FilteredPath fp = filterPath(toolCtx, path);
     if (!fp.ok) {
-        setResponseText(toolCtx, toolCall, "Error: Permission denied.");
+        toolCtx->appendResponse(toolCall, "Error: Permission denied.");
         return;
     }
 
     // Open file.
     Stream in = Filesystem::openTextForReadAutodetect(fp.absPath);
     if (Filesystem::lastResult() != FS_OK) {
-        setResponseText(toolCtx, toolCall, String::format("Error: Could not read file '{}'.", path));
+        toolCtx->appendResponse(toolCall, String::format("Error: Could not read file '{}'.", path));
         return;
     }
 
@@ -95,15 +78,15 @@ void readToolHandler(ToolContext* toolCtx, Transcript::Message* toolCall, const 
         lineLimit = (u32) limitArg.getNumber();
     }
 
-    // Read the desired file range directly into separate response lines.
-    Transcript::Buffer response;
+    // Collect the desired file range into a single response to minimize mutex overhead.
+    MemStream response;
     u32 lineNum = 0;
     u32 linesOutput = 0;
     while (StringView line = readLine(in)) {
         lineNum++;
         if (lineNum < lineOffset)
             continue;
-        response.append(line.left(sizeLimit));
+        response.write(line.left(sizeLimit));
         linesOutput++;
         if (linesOutput >= lineLimit)
             break;
@@ -111,7 +94,10 @@ void readToolHandler(ToolContext* toolCtx, Transcript::Message* toolCall, const 
             break;
         sizeLimit -= line.numBytes();
     }
-    setResponseBuffer(toolCtx, toolCall, std::move(response));
+    String responseText = response.moveToString();
+    if (responseText) {
+        toolCtx->appendResponse(toolCall, responseText);
+    }
 }
 
 void addReadTool(ToolSet* toolSet) {
@@ -148,14 +134,14 @@ void writeToolHandler(ToolContext* toolCtx, Transcript::Message* toolCall, const
     // Validate path argument.
     const json::Node& pathArg = arguments.get("path");
     if (!pathArg.isText()) {
-        setResponseText(toolCtx, toolCall, "Error: 'path' argument is required.");
+        toolCtx->appendResponse(toolCall, "Error: 'path' argument is required.");
         return;
     }
 
     // Validate content argument.
     const json::Node& contentArg = arguments.get("content");
     if (!contentArg.isText()) {
-        setResponseText(toolCtx, toolCall, "Error: 'content' argument is required.");
+        toolCtx->appendResponse(toolCall, "Error: 'content' argument is required.");
         return;
     }
 
@@ -163,7 +149,7 @@ void writeToolHandler(ToolContext* toolCtx, Transcript::Message* toolCall, const
     StringView path = pathArg.text();
     FilteredPath fp = filterPath(toolCtx, path);
     if (!fp.ok) {
-        setResponseText(toolCtx, toolCall, "Error: Permission denied.");
+        toolCtx->appendResponse(toolCall, "Error: Permission denied.");
         return;
     }
 
@@ -171,10 +157,10 @@ void writeToolHandler(ToolContext* toolCtx, Transcript::Message* toolCall, const
     StringView content = contentArg.text();
     FSResult fsResult = Filesystem::saveText(fp.absPath, content);
     if (fsResult == FS_OK) {
-        setResponseText(toolCtx, toolCall,
-                        String::format("Successfully wrote {} bytes to '{}'.", content.numBytes(), path));
+        toolCtx->appendResponse(toolCall,
+                                String::format("Successfully wrote {} bytes to '{}'.", content.numBytes(), path));
     } else {
-        setResponseText(toolCtx, toolCall, String::format("Error: Could not write to '{}'.", path));
+        toolCtx->appendResponse(toolCall, String::format("Error: Could not write to '{}'.", path));
     }
 }
 
@@ -207,7 +193,7 @@ void listDirToolHandler(ToolContext* toolCtx, Transcript::Message* toolCall, con
     // Validate path argument.
     const json::Node& pathArg = arguments.get("path");
     if (!pathArg.isText()) {
-        setResponseText(toolCtx, toolCall, "Error: 'path' argument is required.");
+        toolCtx->appendResponse(toolCall, "Error: 'path' argument is required.");
         return;
     }
 
@@ -215,14 +201,14 @@ void listDirToolHandler(ToolContext* toolCtx, Transcript::Message* toolCall, con
     StringView path = pathArg.text();
     FilteredPath fp = filterPath(toolCtx, path);
     if (!fp.ok) {
-        setResponseText(toolCtx, toolCall, "Error: Permission denied.");
+        toolCtx->appendResponse(toolCall, "Error: Permission denied.");
         return;
     }
 
     // List directory.
     Array<DirectoryEntry> entries = Filesystem::listDir(fp.absPath);
     if (Filesystem::lastResult() != FS_OK) {
-        setResponseText(toolCtx, toolCall, String::format("Error: Could not list '{}'.", path));
+        toolCtx->appendResponse(toolCall, String::format("Error: Could not list '{}'.", path));
         return;
     }
 
@@ -234,16 +220,19 @@ void listDirToolHandler(ToolContext* toolCtx, Transcript::Message* toolCall, con
         return a.name < b.name;
     });
 
-    // Write each directory entry as a separate response line.
-    Transcript::Buffer response;
+    // Collect all directory entries into a single response to minimize mutex overhead.
+    MemStream response;
     for (const DirectoryEntry& entry : entries) {
         if (entry.isDir) {
-            response.append(String::format("{}\n", entry.name));
+            response.format("{}\n", entry.name);
         } else {
-            response.append(String::format("{} ({} bytes)\n", entry.name, entry.fileSize));
+            response.format("{} ({} bytes)\n", entry.name, entry.fileSize);
         }
     }
-    setResponseBuffer(toolCtx, toolCall, std::move(response));
+    String responseText = response.moveToString();
+    if (responseText) {
+        toolCtx->appendResponse(toolCall, responseText);
+    }
 }
 
 void addListDirTool(ToolSet* toolSet) {
@@ -457,11 +446,8 @@ void findInFiles(FindInFiles& findInfo, StringView absPath, bool isDir) {
                 break;
             lineNum++;
             if (line.find(findInfo.text) >= 0) {
-                LockGuard<Mutex> guard{findInfo.toolCtx->mutex};
-                if (!findInfo.toolCtx->canceled) {
-                    findInfo.toolCall->toolResponse.append(
-                        String::format("{}({}):{}\n", relPath, lineNum, line.trimRight()));
-                }
+                findInfo.toolCtx->appendResponse(
+                    findInfo.toolCall, String::format("{}({}):{}\n", relPath, lineNum, line.trimRight()));
             }
         }
     }
@@ -471,17 +457,17 @@ void findInFilesToolHandler(ToolContext* toolCtx, Transcript::Message* toolCall,
     // Validate arguments.
     const json::Node& pathArg = arguments.get("path");
     if (!pathArg.isText()) {
-        setResponseText(toolCtx, toolCall, "Error: 'path' argument is required.");
+        toolCtx->appendResponse(toolCall, "Error: 'path' argument is required.");
         return;
     }
     const json::Node& globArg = arguments.get("glob");
     if (!globArg.isText()) {
-        setResponseText(toolCtx, toolCall, "Error: 'glob' argument is required.");
+        toolCtx->appendResponse(toolCall, "Error: 'glob' argument is required.");
         return;
     }
     const json::Node& textArg = arguments.get("text");
     if (!textArg.isText()) {
-        setResponseText(toolCtx, toolCall, "Error: 'text' argument is required.");
+        toolCtx->appendResponse(toolCall, "Error: 'text' argument is required.");
         return;
     }
 
@@ -489,13 +475,13 @@ void findInFilesToolHandler(ToolContext* toolCtx, Transcript::Message* toolCall,
     StringView path = pathArg.text();
     FilteredPath fp = filterPath(toolCtx, path);
     if (!fp.ok) {
-        setResponseText(toolCtx, toolCall, "Error: Permission denied.");
+        toolCtx->appendResponse(toolCall, "Error: Permission denied.");
         return;
     }
 
     // Check that the search path exists.
     if (Filesystem::exists(fp.absPath) == ER_NOT_FOUND) {
-        setResponseText(toolCtx, toolCall, String::format("Error: Path '{}' does not exist.", path));
+        toolCtx->appendResponse(toolCall, String::format("Error: Path '{}' does not exist.", path));
         return;
     }
 
@@ -509,10 +495,6 @@ void findInFilesToolHandler(ToolContext* toolCtx, Transcript::Message* toolCall,
     findInfo.root = fp.absPath;
 
     findInFiles(findInfo, fp.absPath, Filesystem::isDir(fp.absPath));
-    LockGuard<Mutex> guard{findInfo.toolCtx->mutex};
-    if (!findInfo.toolCtx->canceled) {
-        findInfo.toolCall->toolEnded = true;
-    }
 }
 
 void addFindInFilesTool(ToolSet* toolSet) {
@@ -552,14 +534,14 @@ void editToolHandler(ToolContext* toolCtx, Transcript::Message* toolCall, const 
     // Validate path argument.
     const json::Node& pathArg = arguments.get("path");
     if (!pathArg.isText()) {
-        setResponseText(toolCtx, toolCall, "Error: 'path' argument is required.");
+        toolCtx->appendResponse(toolCall, "Error: 'path' argument is required.");
         return;
     }
 
     // Validate edits argument.
     const json::Node& editsArg = arguments.get("edits");
     if (!editsArg.isArray()) {
-        setResponseText(toolCtx, toolCall, "Error: 'edits' argument is required and must be an array.");
+        toolCtx->appendResponse(toolCall, "Error: 'edits' argument is required and must be an array.");
         return;
     }
 
@@ -567,14 +549,14 @@ void editToolHandler(ToolContext* toolCtx, Transcript::Message* toolCall, const 
     StringView path = pathArg.text();
     FilteredPath fp = filterPath(toolCtx, path);
     if (!fp.ok) {
-        setResponseText(toolCtx, toolCall, "Error: Permission denied.");
+        toolCtx->appendResponse(toolCall, "Error: Permission denied.");
         return;
     }
 
     // Load file contents.
     String text = Filesystem::loadTextAutodetect(fp.absPath);
     if (Filesystem::lastResult() != FS_OK) {
-        setResponseText(toolCtx, toolCall, String::format("Error: Could not read file '{}'.", path));
+        toolCtx->appendResponse(toolCall, String::format("Error: Could not read file '{}'.", path));
         return;
     }
 
@@ -588,13 +570,14 @@ void editToolHandler(ToolContext* toolCtx, Transcript::Message* toolCall, const 
 
     for (const json::Node& jEdit : editsArg.arrayView()) {
         if (!jEdit.isObject()) {
-            setResponseText(toolCtx, toolCall, "Error: Each edit must be an object with 'oldText' and 'newText'.");
+            toolCtx->appendResponse(toolCall, "Error: Each edit must be an object with 'oldText' and 'newText'.");
             return;
         }
         const json::Node& jOldText = jEdit.get("oldText");
         const json::Node& jNewText = jEdit.get("newText");
         if (!jOldText.isText() || !jNewText.isText()) {
-            setResponseText(toolCtx, toolCall, "Error: Each edit must have 'oldText' (string) and 'newText' (string).");
+            toolCtx->appendResponse(toolCall,
+                                    "Error: Each edit must have 'oldText' (string) and 'newText' (string).");
             return;
         }
 
@@ -604,24 +587,25 @@ void editToolHandler(ToolContext* toolCtx, Transcript::Message* toolCall, const 
         // Find position in original text.
         s32 pos = text.find(oldText);
         if (pos < 0) {
-            setResponseText(toolCtx, toolCall, String::format("Error: Could not find '{}' in '{}'.", oldText, path));
+            toolCtx->appendResponse(toolCall,
+                                    String::format("Error: Could not find '{}' in '{}'.", oldText, path));
             return;
         }
 
         // Check uniqueness.
         s32 secondPos = text.find(oldText, pos + oldText.numBytes());
         if (secondPos >= 0) {
-            setResponseText(toolCtx, toolCall,
-                            String::format("Error: '{}' appears multiple times in '{}'. Use a more unique oldText.",
-                                           oldText, path));
+            toolCtx->appendResponse(
+                toolCall, String::format("Error: '{}' appears multiple times in '{}'. Use a more unique oldText.",
+                                         oldText, path));
             return;
         }
 
         // Check for overlap with already-scheduled edits.
         for (const EditPos& ep : editPositions) {
             if (pos < ep.end && pos + (s32) oldText.numBytes() > ep.start) {
-                setResponseText(toolCtx, toolCall,
-                                String::format("Error: Edit for '{}' overlaps with another edit.", oldText));
+                toolCtx->appendResponse(toolCall,
+                                        String::format("Error: Edit for '{}' overlaps with another edit.", oldText));
                 return;
             }
         }
@@ -641,11 +625,11 @@ void editToolHandler(ToolContext* toolCtx, Transcript::Message* toolCall, const 
     // Save file.
     FSResult fsResult = Filesystem::saveText(fp.absPath, mutableText);
     if (fsResult == FS_OK) {
-        setResponseText(
-            toolCtx, toolCall,
+        toolCtx->appendResponse(
+            toolCall,
             String::format("Successfully edited '{}' with {} replacement(s).", path, editPositions.numItems()));
     } else {
-        setResponseText(toolCtx, toolCall, String::format("Error: Could not write to '{}'.", path));
+        toolCtx->appendResponse(toolCall, String::format("Error: Could not write to '{}'.", path));
     }
 }
 

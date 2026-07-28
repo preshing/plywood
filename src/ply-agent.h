@@ -214,6 +214,10 @@ struct ToolContext {
     Agent::Impl* agentImpl = nullptr;
     ArrayView<const ToolSet::Permission> permissions;
     StringView workingDirectory;
+
+    // Main function used by tool handlers to add text to the response. It locks the mutex, appends response text
+    // to the internal toolCall and creates a AppendToolResponse event for the client to consume.
+    void appendResponse(Transcript::Message* toolCall, StringView text);
 };
 
 // Individual tool registration functions. Each adds a single tool to the ToolSet.

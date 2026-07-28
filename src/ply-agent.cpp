@@ -1039,26 +1039,15 @@ void runToolThread(Agent::Impl* impl) {
             toolDef->handler(&impl->toolCtx, toolCall, arguments);
         }
 
-        // Push events to update the client thread's transcript, unless we were canceled.
-        // The internal transcript was already mutated directly by the tool handler
-        // (it set toolResponse/toolEnded on the Message), so these events are buffered
-        // for the client only via bufferEvent.
+        // Finalize the internal response and notify the client that the handler returned.
         {
             LockGuard<Mutex> guard{impl->toolCtx.mutex};
+            toolCall->toolResponse.flush();
+            toolCall->toolEnded = true;
             if (!impl->toolCtx.canceled) {
-                u32 toolCallID = toolCallIDForMessage(impl, toolCall);
-                toolCall->toolResponse.flush();
-                for (const String& line : toolCall->toolResponse.lines) {
-                    TranscriptEvent appendResp;
-                    appendResp.operation = TranscriptEvent::AppendToolResponse;
-                    appendResp.toolCallID = toolCallID;
-                    appendResp.text = line;
-                    bufferEvent(impl, std::move(appendResp));
-                }
-
                 TranscriptEvent endResp;
                 endResp.operation = TranscriptEvent::EndToolResponse;
-                endResp.toolCallID = toolCallID;
+                endResp.toolCallID = toolCallIDForMessage(impl, toolCall);
                 bufferEvent(impl, std::move(endResp));
             }
         }
@@ -1067,6 +1056,22 @@ void runToolThread(Agent::Impl* impl) {
     }
 
     impl->decRefCount();
+}
+
+// Main function used by tool handlers to add text to the response. It locks the mutex, appends response text
+// to the internal toolCall and creates a AppendToolResponse event for the client to consume.
+void ToolContext::appendResponse(Transcript::Message* toolCall, StringView text) {
+    LockGuard<Mutex> guard{this->mutex};
+    if (!this->canceled) {
+        // Append to the internal transcript while preserving completed line boundaries.
+        toolCall->toolResponse.append(text);
+
+        TranscriptEvent appendResp;
+        appendResp.operation = TranscriptEvent::AppendToolResponse;
+        appendResp.toolCallID = toolCallIDForMessage(this->agentImpl, toolCall);
+        appendResp.text = text;
+        bufferEvent(this->agentImpl, std::move(appendResp));
+    }
 }
 
 //   ▄▄▄▄                        ▄▄
