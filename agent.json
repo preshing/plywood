@@ -3,10 +3,9 @@
         "url": "https://ollama.com/v1/chat/completions",
         "protocol": "ollama-completions",
         "apiKeyEnv": "OLLAMA_API_KEY",
-        "model": "glm-5.1"
+        "model": "glm-5.2"
     },
     "systemPrompt": "You are a helpful assistant.",
-    "workingDirectory": "../..",
     "permissions": [
         {
             "path": ".",

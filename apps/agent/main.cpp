@@ -31,6 +31,7 @@ struct CommandLineOptions {
 
 CommandLineOptions options;
 Agent::Settings agentSettings;
+String tempUserPrompt; // Will remove later
 Reference<Transcript> transcript;
 
 //---------------------------------------------------
@@ -890,85 +891,225 @@ void TranscriptPrinter::finish(s64 endMicros) {
 //                                       ▄▄▄█▀
 
 // Load a chain of JSON settings files by following includes and merge them into one.
-static bool loadAndFollowIncludes(StringView configPath, Set<String>* activePaths, json::Node* mergedRoot) {
+static bool loadSettingsWithIncludes(StringView settingsPath, Array<String>& includedPaths) {
     // Reject include cycles before loading the next file.
-    String absConfigPath = makeAbsolutePath(configPath);
-    auto insertResult = activePaths->insert(absConfigPath);
-    if (insertResult.wasFound) {
-        getStdErr().format("Configuration include cycle detected at: {}\n", absConfigPath);
+    if (find(includedPaths, settingsPath) >= 0) {
+        getStdErr().format("Configuration include cycle detected at: {}\n", settingsPath);
         return false;
     }
-    PLY_ON_SCOPE_EXIT({ activePaths->erase(absConfigPath); });
+    includedPaths.append(settingsPath);
+    PLY_ON_SCOPE_EXIT({ includedPaths.pop(); });
 
     // Load this settings file.
-    String jsonText = Filesystem::loadText(absConfigPath);
+    String jsonText = Filesystem::loadText(settingsPath);
     if (!jsonText) {
-        getStdErr().format("Could not load configuration file: {}\n", absConfigPath);
+        getStdErr().format("Could not load configuration file: {}\n", settingsPath);
         return false;
     }
 
     // Parse and validate the root node.
     json::Parser parser;
-    json::Parser::Result result = parser.parse(absConfigPath, jsonText);
+    json::Parser::Result result = parser.parse(settingsPath, jsonText);
     if (parser.anyError() || !result.root.isObject()) {
-        getStdErr().format("Failed to parse configuration file: {}\n", absConfigPath);
+        getStdErr().format("Failed to parse configuration file: {}\n", settingsPath);
         return false;
     }
     const json::Node& root = result.root;
 
-    // Load the parent first. Include paths are relative to the file that contains them.
-    *mergedRoot = json::Node{json::Node::Object{}};
-    const json::Node& includeNode = root.get("include");
-    if (includeNode.isValid()) {
-        if (!includeNode.isText() || !includeNode.text()) {
-            getStdErr().format("The 'include' property must be a non-empty string in: {}\n", absConfigPath);
+    // Load included settings file (if any).
+    if (const json::Node& jInclude = root.get("include")) {
+        if (!jInclude.isText()) {
+            getStdErr().format("The 'include' property must be a string in: {}\n", settingsPath);
             return false;
         }
-        String parentPath = joinPath(splitPath(absConfigPath).directory, includeNode.text());
-        if (!loadAndFollowIncludes(parentPath, activePaths, mergedRoot))
+        String parentPath = joinPath(splitPath(settingsPath).directory, jInclude.text());
+        if (!loadSettingsWithIncludes(parentPath, includedPaths))
             return false;
     }
 
-    // Replace inherited scalar settings and replace the entire endpoint object.
-    const FixedArray<StringView, 4> replacedProperties = {
-        "endPoint", "systemPrompt", "userPrompt", "workingDirectory"};
-    for (StringView property : replacedProperties) {
-        const json::Node& value = root.get(property);
-        if (value.isValid()) {
-            mergedRoot->set(property, json::Node{value});
+    // Import workingDirectory.
+    String workingDir = splitPath(settingsPath).directory;
+    if (auto jWorkingDir = root.get("workingDirectory")) {
+        if (!jWorkingDir.isText()) {
+            getStdErr().format("workingDirectory must be a string in: {}\n", settingsPath);
+            return false;
+        }
+        workingDir = joinPath(workingDir, jWorkingDir.text());
+    }
+    // The agent's working directory is determined by the innermost settings file.
+    agentSettings.toolSet.workingDirectory = workingDir;
+
+    // Import endPoint.
+    if (const auto& jEndPoint = root.get("endPoint")) {
+        if (!jEndPoint.isObject()) {
+            getStdErr().format("endPoint must be an object in: {}\n", settingsPath);
+            return false;
+        }
+
+        // Inherited endpoints must be fully replaced.
+        agentSettings.endPoint = {};
+        agentSettings.endPoint.getAPIKey = []() -> String { return {}; };
+
+        // Import url.
+        if (const auto& jUrl = jEndPoint.get("url")) {
+            if (!jUrl.isText()) {
+                getStdErr().format("url must be a string in: {}\n", settingsPath);
+                return false;
+            }
+            agentSettings.endPoint.url = jUrl.text();
+        }
+        // Import apiKeyEnv.
+        if (const auto& jApiKeyEnv = jEndPoint.get("apiKeyEnv")) {
+            if (!jApiKeyEnv.isText()) {
+                getStdErr().format("apiKeyEnv must be a string in: {}\n", settingsPath);
+                return false;
+            }
+            // The API key is read from the named environment variable on demand. Plywood
+            // strings aren't null-terminated, so append an explicit null byte for getenv.
+            String apiKeyEnvZ = String{jEndPoint.get("apiKeyEnv").text()} + '\0';
+            agentSettings.endPoint.getAPIKey = [apiKeyEnvZ = std::move(apiKeyEnvZ)]() -> String {
+                const char* envVar = getenv(apiKeyEnvZ.bytes());
+                if (!envVar)
+                    return {};
+                return envVar;
+            };
+        }
+        // Import protocol.
+        if (const auto& jProtocol = jEndPoint.get("protocol")) {
+            if (!jProtocol.isText()) {
+                getStdErr().format("protocol must be a string in: {}\n", settingsPath);
+                return false;
+            }
+            StringView protocol = jProtocol.text();
+            if (protocol.endsWith("-responses")) {
+                agentSettings.endPoint.protocol = Protocol::Responses;
+            } else {
+                agentSettings.endPoint.protocol = Protocol::Completions;
+            }
+        }
+        // Import model.
+        if (const auto& jModel = jEndPoint.get("model")) {
+            if (!jModel.isText()) {
+                getStdErr().format("model must be a string in: {}\n", settingsPath);
+                return false;
+            }
+            agentSettings.endPoint.model = jModel.text();
         }
     }
 
-    // Append this file's permissions after all inherited permissions.
-    const json::Node& childPermissions = root.get("permissions");
-    if (childPermissions.isValid()) {
-        if (!childPermissions.isArray()) {
-            getStdErr().format("The 'permissions' property must be an array in: {}\n", absConfigPath);
+    // Import systemPrompt.
+    if (const auto& jSystemPrompt = root.get("systemPrompt")) {
+        if (!jSystemPrompt.isText()) {
+            getStdErr().format("systemPrompt must be a string in: {}\n", settingsPath);
             return false;
         }
-        json::Node combinedPermissions{json::Node::Array{}};
-        for (const json::Node& permission : mergedRoot->get("permissions").arrayView()) {
-            combinedPermissions.array().append(json::Node{permission});
-        }
-        for (const json::Node& permission : childPermissions.arrayView()) {
-            combinedPermissions.array().append(json::Node{permission});
-        }
-        mergedRoot->set("permissions", std::move(combinedPermissions));
+        agentSettings.toolSet.systemPrompt = jSystemPrompt.text();
     }
+
+    // Import userPrompt.
+    if (const auto& jUserPrompt = root.get("userPrompt")) {
+        if (!jUserPrompt.isText()) {
+            getStdErr().format("userPrompt must be a string in: {}\n", settingsPath);
+            return false;
+        }
+        tempUserPrompt = jUserPrompt.text();
+    }
+
+    // Import directory permissions.
+    if (const json::Node& jPerms = root.get("permissions")) {
+        if (!jPerms.isArray()) {
+            getStdErr().format("permissions must be an array in: {}\n", settingsPath);
+            return false;
+        }
+        // Iterate over permissions.
+        for (const json::Node& jPerm : jPerms.arrayView()) {
+            if (!jPerm.isObject()) {
+                getStdErr().format("Each permission entry must be an object in: {}\n", settingsPath);
+                return false;
+            }
+
+            // Import path.
+            const auto& jPath = jPerm.get("path");
+            if (!jPath) {
+                getStdErr().format("Each permission entry must have a 'path'.\n");
+                return false;
+            }
+            if (!jPath.isText()) {
+                getStdErr().format("path must be a string in: {}\n", settingsPath);
+                return false;
+            }
+            if (!jPath.text()) {
+                getStdErr().format("path must be a non-empty string in: {}\n", settingsPath);
+                return false;
+            }
+            // paths are relative to the current settings file's working directory.
+            String absPath = makeAbsolutePath(joinPath(workingDir, jPath.text()));
+
+            // Import tools.
+            const json::Node& jTools = jPerm.get("tools");
+            if (!jTools) {
+                getStdErr().format("Each permission entry must have 'tools'.\n");
+                return false;
+            }
+            if (!jTools.isArray()) {
+                getStdErr().format("tools must be an array in: {}\n", settingsPath);
+                return false;
+            }
+            for (const json::Node& t : jTools.arrayView()) {
+                if (!t.isText()) {
+                    getStdErr().format("Each tool entry must be a string in: {}\n", settingsPath);
+                    return false;
+                }
+                StringView toolName = t.text();
+
+                // Register the tool on first encounter.
+                Owned<ToolSet::Handler>* found = agentSettings.toolSet.handlers.find(toolName);
+                if (!found) {
+                    if (toolName == "read") {
+                        addReadTool(&agentSettings.toolSet);
+                    } else if (toolName == "write") {
+                        addWriteTool(&agentSettings.toolSet);
+                    } else if (toolName == "list_dir") {
+                        addListDirTool(&agentSettings.toolSet);
+                    } else if (toolName == "find_in_files") {
+                        addFindInFilesTool(&agentSettings.toolSet);
+                    } else if (toolName == "edit") {
+                        addEditTool(&agentSettings.toolSet);
+                    } else {
+                        getStdErr().format("Unknown tool in configuration: {}\n", toolName);
+                        return false;
+                    }
+                    found = agentSettings.toolSet.handlers.find(toolName);
+                    PLY_ASSERT(found);
+                }
+
+                // Grant this directory to the tool handler.
+                ToolSet::Permission& granted = found->get()->permissions.append();
+                granted.absPath = absPath;
+            }
+        }
+    }
+
     return true;
 }
 
 // Load settings from the appropriate JSON files and convert them to Agent::Settings.
 static bool loadSettings() {
-    // Use the settings file specified on the command line, if any.
-    String configPath = options.settingsPath;
+    // Set defaults.
+    agentSettings.endPoint.getAPIKey = []() -> String { return {}; };
+    agentSettings.toolSet.workingDirectory = Filesystem::getWorkingDirectory();
 
-    // Otherwise, search the working directory and each of its ancestors up to the filesystem root.
-    if (!configPath) {
+    // Find settings file.
+    String settingsPath;
+    if (options.settingsPath) {
+        // Use the settings file specified on the command line, if any.
+        settingsPath = makeAbsolutePath(options.settingsPath);
+    } else {
+        // Otherwise, search the working directory and each of its ancestors up to the filesystem root.
         String searchDir = Filesystem::getWorkingDirectory();
         while (true) {
-            configPath = joinPath(searchDir, "agent.json");
-            if (Filesystem::exists(configPath) == ER_FILE)
+            settingsPath = joinPath(searchDir, "agent.json");
+            if (Filesystem::exists(settingsPath) == ER_FILE)
                 break;
 
             String parentDir = splitPath(searchDir).directory;
@@ -981,90 +1122,11 @@ static bool loadSettings() {
     }
 
     // Load and merge the complete settings chain.
-    json::Node root;
-    Set<String> activePaths;
-    if (!loadAndFollowIncludes(configPath, &activePaths, &root))
+    Array<String> includedPaths;
+    if (!loadSettingsWithIncludes(settingsPath, includedPaths))
         return false;
-
-    // Import endpoint settings.
-    const json::Node& ep = root.get("endPoint");
-    agentSettings.endPoint.url = ep.get("url").text();
-    StringView protocol = ep.get("protocol").text();
-    if (protocol.endsWith("-responses")) {
-        agentSettings.endPoint.protocol = Protocol::Responses;
-    } else {
-        agentSettings.endPoint.protocol = Protocol::Completions;
-    }
-    StringView modelView = ep.get("model").text();
-    if (modelView) {
-        agentSettings.endPoint.model = modelView;
-    }
-
-    // The API key is read from the named environment variable on demand. Plywood
-    // strings aren't null-terminated, so append an explicit NUL byte for getenv.
-    String apiKeyEnvZ = String{ep.get("apiKeyEnv").text()} + '\0';
-    agentSettings.endPoint.getAPIKey = [apiKeyEnvZ]() -> String {
-        const char* envVar = getenv(apiKeyEnvZ.bytes());
-        if (!envVar)
-            return {};
-        return envVar;
-    };
-
-    // Import system prompt.
-    agentSettings.toolSet.systemPrompt = root.get("systemPrompt").text();
-
-    // Import user prompt.
     if (!options.userPrompt) {
-        options.userPrompt = root.get("userPrompt").text();
-    }
-
-    // Import working directory.
-    StringView rawWorkingDir = root.get("workingDirectory").text();
-    StringView configDir = splitPath(configPath).directory;
-    agentSettings.toolSet.workingDirectory =
-        rawWorkingDir ? makeAbsolutePath(joinPath(configDir, rawWorkingDir)) : makeAbsolutePath(configDir);
-
-    // Import directory permissions.
-    Set<String> registeredTools; // union of all tools across trees (registered once each)
-    const json::Node& perms = root.get("permissions");
-    for (const json::Node& perm : perms.arrayView()) {
-        StringView rawRoot = perm.get("path").text();
-        if (!rawRoot) {
-            getStdErr().format("Each permission entry must have a 'path'.\n");
-            return false;
-        }
-
-        String absPath = makeAbsolutePath(joinPath(agentSettings.toolSet.workingDirectory, rawRoot));
-
-        const json::Node& toolsNode = perm.get("tools");
-        for (const json::Node& t : toolsNode.arrayView()) {
-            StringView toolName = t.text();
-
-            // Register the tool on first encounter.
-            Owned<ToolSet::Handler>* found = agentSettings.toolSet.handlers.find(toolName);
-            if (!found) {
-                if (toolName == "read") {
-                    addReadTool(&agentSettings.toolSet);
-                } else if (toolName == "write") {
-                    addWriteTool(&agentSettings.toolSet);
-                } else if (toolName == "list_dir") {
-                    addListDirTool(&agentSettings.toolSet);
-                } else if (toolName == "find_in_files") {
-                    addFindInFilesTool(&agentSettings.toolSet);
-                } else if (toolName == "edit") {
-                    addEditTool(&agentSettings.toolSet);
-                } else {
-                    getStdErr().format("Unknown tool in configuration: {}\n", toolName);
-                    return false;
-                }
-                found = agentSettings.toolSet.handlers.find(toolName);
-                PLY_ASSERT(found);
-            }
-
-            // Grant this directory to the tool handler.
-            ToolSet::Permission& granted = found->get()->permissions.append();
-            granted.absPath = absPath;
-        }
+        options.userPrompt = tempUserPrompt;
     }
 
     // Augment the system prompt.
@@ -1116,7 +1178,7 @@ int main(int argc, const char* argv[]) {
     if (!loadSettings())
         return 1;
 
-    // A command line prompt overrides the prompt loaded from the settings.
+    // Ensure a prompt was specified on the command line or in the JSON settings.
     if (!options.userPrompt) {
         getStdErr().write("A prompt must be specified.\n");
         return 1;

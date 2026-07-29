@@ -57,6 +57,9 @@ struct Node {
     bool isValid() const {
         return !this->var.isEmpty();
     }
+    explicit operator bool() const {
+        return !this->var.isEmpty();
+    }
 
     //-----------------------------------------------------------
     // Bool
