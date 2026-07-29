@@ -11,7 +11,7 @@ using namespace ply;
 
 // This sample app scans a text file for embedded JSON objects and re-emits the objects it finds in a structured form.
 // Usage:
-//     json-extract <input-file> [-eval <expression>] [output-file]
+//     extract-json <input-file> [-eval <expression>] [output-file]
 // When no expression is provided, the app reads the input file in text mode, looks for '{' characters, and attempts
 // to parse a JSON object starting at each candidate offset. Successful parses are collected into a JSON array whose
 // items report the zero-based match index, the source line and column, and the parsed object itself.
@@ -206,7 +206,7 @@ void writeResults(Stream& out, const json::Node& results) {
 
 // Prints command-line usage.
 void printUsage(Stream out) {
-    out.write("usage: json-extract <input-file> [-e <expression>] [output-file]\n");
+    out.write("usage: extract-json <input-file> [-e <expression>] [output-file]\n");
 }
 
 int main(int argc, const char* argv[]) {
