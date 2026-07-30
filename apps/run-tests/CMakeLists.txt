@@ -7,6 +7,8 @@
 
 cmake_minimum_required(VERSION 3.10)
 set(CMAKE_CONFIGURATION_TYPES "Debug;Release;Final" CACHE INTERNAL "Build configs")
+set(CMAKE_C_COMPILER_FORCED TRUE)
+set(CMAKE_CXX_COMPILER_FORCED TRUE)
 project(run-tests)
 include(../../src/common.cmake)
 
