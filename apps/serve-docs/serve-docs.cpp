@@ -136,7 +136,9 @@ int main(int argc, const char* argv[]) {
 #endif
 
     Network::initialize(IPV4);
-    runHTTPServer(8080, servePlywoodDocumentation);
+    u16 port = 8080;
+    getStdOut().format("Listening for connections on port {}...\n", port);
+    runHTTPServer(port, servePlywoodDocumentation);
     Network::shutdown();
     return 0;
 }
