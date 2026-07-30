@@ -59,9 +59,6 @@ endif()
 
 # Add only the Plywood components required by the enabled suites and command-line parser.
 set(PLYWOOD_COMPONENTS ply-base.* ply-json.* ply-math.* ply-reflect.* ply-tokenizer.*)
-if(WITH_BASE_TESTS_ENABLED)
-    list(APPEND PLYWOOD_COMPONENTS ply-btree.h)
-endif()
 if(WITH_MARKDOWN_TESTS_ENABLED)
     list(APPEND PLYWOOD_COMPONENTS ply-markdown.*)
 endif()

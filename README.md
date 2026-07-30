@@ -7,7 +7,6 @@ Plywood's features are divided into `.cpp`/`.h` pairs located in the `src` folde
 * `<ply-base.h>` (4309 lines): Operating system access, commonly-used data structures, Unicode support.
 * `<ply-math.h>` (1750 lines): Matrix, vector and quaternion types for graphics and game development.
 * `<ply-network.h>` (270 lines): TCP/IP network interface supporting IPv4 and IPv6.
-* `<ply-btree.h>` (895 lines): B-Tree implementation for sorted key-value storage.
 * `<ply-tokenizer.h>` (153 lines): Common routines for reading tokens from text.
 * `<ply-json.h>` (285 lines): JSON parser and serializer.
 * `<ply-markdown.h>` (132 lines): Markdown parser with HTML output.

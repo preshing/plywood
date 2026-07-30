@@ -12,7 +12,6 @@ Additional components for 2D/3D math, networking and text parsing are also inclu
     - `ply-base.h/cpp` - Core: OS access, data structures, string formatting, Unicode conversion, threading, memory
     - `ply-math.h/cpp` - Vectors, matrices, quaternions for 2D and 3D graphics and layout
     - `ply-network.h/cpp` - TCP/IP networking (IPv4/IPv6)
-    - `ply-btree.h` - B-Tree for sorted key-value storage
     - `ply-json.h/cpp` - JSON parser/serializer
     - `ply-tokenizer.h/cpp` - Text tokenization utilities
     - `ply-markdown.h/cpp` - Markdown parser with HTML output

@@ -6,7 +6,6 @@
 ========================================================*/
 
 #include "run-base-tests.h"
-#include <ply-btree.h>
 #include <ply-math.h>
 
 //  ▄▄  ▄▄                               ▄▄
@@ -1433,95 +1432,6 @@ TEST_CASE("Map stress test") {
                     check(!map.find(absentKey));
                 }
             }
-        }
-    }
-}
-
-//  ▄▄▄▄▄  ▄▄▄▄▄▄
-//  ██  ██   ██   ▄▄▄▄▄   ▄▄▄▄   ▄▄▄▄
-//  ██▀▀█▄   ██   ██  ▀▀ ██▄▄██ ██▄▄██
-//  ██▄▄█▀   ██   ██     ▀█▄▄▄  ▀█▄▄▄
-//
-
-#undef TEST_CASE_PREFIX
-#define TEST_CASE_PREFIX BTree_
-
-TEST_CASE("BTree stress test u32") {
-    // Metrics collection.
-    Array<TestHistogramBucket> histogram = {{0, 0},  {1, 0},  {2, 0},  {4, 0},   {8, 0},
-                                            {16, 0}, {32, 0}, {64, 0}, {128, 0}, {256, 0}};
-
-    // Test setup.
-    BTree<u32> btree;
-    Array<u32> arr;
-    Random r{0};
-
-    // Main test loop.
-    for (u32 iters = 0; iters < 2500; iters++) {
-        // Ensure the B-tree and mirror array have the same number of items.
-        PLY_ASSERT(btree.numItems == arr.numItems());
-
-        // Decide what population size the B-tree should have next.
-        // We'll generate a random number using a Poisson distribution.
-        float exp = 1.f - r.generateFloat();
-        PLY_ASSERT(exp > 0);                      // Guaranteed because generateFloat returns numbers < 1.
-        float randomPopulation = -logf(exp) * 40; // A Poisson distribution yielding an average value of 40.
-        // Convert to integer and skew the distribution downwards so that the zero population occurs more often.
-        u32 desiredPopulation = (u32) clamp(randomPopulation - 4.f, 0.f, 512.f);
-
-        // Add items to the B-tree if needed.
-        while (desiredPopulation > arr.numItems()) {
-            u32 valueToInsert = r.generateU32() % 1000;
-            arr.append(valueToInsert);
-            btree.insert(valueToInsert);
-#if defined(PLY_WITH_ASSERTS)
-            btree.validate();
-#endif
-        }
-
-        // Remove items from the B-tree if needed.
-        while (desiredPopulation < arr.numItems()) {
-            u32 indexToRemove = r.generateU32() % arr.numItems();
-            u32 valueToRemove = arr[indexToRemove];
-            bool wasFound = btree.erase(valueToRemove);
-#if defined(PLY_WITH_ASSERTS)
-            btree.validate();
-#endif
-            check(wasFound);
-            arr.eraseQuick(indexToRemove);
-        }
-
-        // Check its population.
-        check(desiredPopulation == arr.numItems());
-        for (s32 i = histogram.numItems() - 1; i >= 0; i--) {
-            if (desiredPopulation >= histogram[i].population) {
-                histogram[i].numTimesOccurred++;
-                break;
-            }
-        }
-
-        // Test iteration.
-        sort(arr);
-        auto iter = btree.getFirstItem();
-        for (u32 i = 0; i < arr.numItems(); i++) {
-            check(iter);
-            check(*iter == arr[i]);
-            iter++;
-        }
-        check(!iter);
-
-        // Test reverse iteration.
-        iter = btree.getLastItem();
-        for (s32 i = arr.numItems() - 1; i >= 0; i--) {
-            check(iter);
-            check(*iter == arr[i]);
-            iter--;
-        }
-        check(!iter);
-
-        // Test find.
-        for (u32 i = 0; i < arr.numItems(); i++) {
-            check(btree.find(arr[i]));
         }
     }
 }

@@ -28,7 +28,6 @@
     {"title": "2D and 3D Math", "header-file": "ply-math.h", "path": "math"},
     {"title": "TCP/IP Networking", "header-file": "ply-network.h", "path": "network"},
     {"title": "HTTP Server", "header-file": "ply-http.h", "path": "http"},
-    {"title": "B-Trees", "header-file": "ply-btree.h", "path": "btrees"},
     {"title": "Text Parsers", "path": "parsers", "children": [
         {"title": "Tokenizer", "header-file": "ply-tokenizer.h", "path": "parsers/tokenizer"},
         {"title": "JSON", "header-file": "ply-json.h", "path": "parsers/json"},

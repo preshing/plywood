@@ -36,7 +36,7 @@ rem This also regenerates the build system if out of date.
 cmake --build "%BUILD_DIR%" --config Debug
 if errorlevel 1 exit /b %errorlevel%
 
-rem Optionally run the app with all arguments following -run.
+rem Optionally run the app with all arguments that follow -run.
 if not "%~2"=="-run" exit /b 0
 set "APP_ARGS=%* "
 set "APP_ARGS=%APP_ARGS:* =%"

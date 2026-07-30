@@ -43,7 +43,7 @@ fi
 # This also regenerates the build system if out of date.
 cmake --build "$BUILD_DIR" --config Debug
 
-# Optionally run the app with all arguments following -run.
+# Optionally run the app with all arguments that follow -run.
 if [ "$1" = "-run" ]; then
     shift
     exec "$PLYWOOD_ROOT/bin/$APP_NAME" "$@"
