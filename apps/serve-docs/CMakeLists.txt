@@ -10,7 +10,7 @@ set(CMAKE_CONFIGURATION_TYPES "Debug;Release;Final" CACHE INTERNAL "Build config
 set(CMAKE_C_COMPILER_FORCED TRUE)
 set(CMAKE_CXX_COMPILER_FORCED TRUE)
 project(serve-docs)
-include(../../src/common.cmake)
+include(../../share/common.cmake)
 
 # Add plywood
 add_plywood(ply-base.* ply-network.* ply-http.*)

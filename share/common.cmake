@@ -6,7 +6,7 @@
 #=========================================================
 
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
-get_filename_component(PLYWOOD_ROOT ../.. REALPATH)
+get_filename_component(PLYWOOD_ROOT "${CMAKE_CURRENT_LIST_DIR}/.." REALPATH)
 
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Debug CACHE STRING "" FORCE)
@@ -174,11 +174,11 @@ function(add_curl_dll_post_build_step target_name)
             "${VCPKG_WIN64_PATH}/bin/libssl-3-x64.dll"
             "${VCPKG_WIN64_PATH}/bin/libcrypto-3-x64.dll"
             "${VCPKG_WIN64_PATH}/bin/z.dll"
-            "${PLYWOOD_ROOT}/src/cacert.pem"
+            "${PLYWOOD_ROOT}/share/cacert.pem"
             $<TARGET_FILE_DIR:${target_name}>)
     elseif(UNIX)
         add_custom_command(TARGET "${target_name}" POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "${PLYWOOD_ROOT}/src/cacert.pem"
+            "${PLYWOOD_ROOT}/share/cacert.pem"
             $<TARGET_FILE_DIR:${target_name}>)
     endif()
 endfunction()

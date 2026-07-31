@@ -10,7 +10,7 @@ set(CMAKE_CONFIGURATION_TYPES "Debug;Release;Final" CACHE INTERNAL "Build config
 set(CMAKE_C_COMPILER_FORCED TRUE)
 set(CMAKE_CXX_COMPILER_FORCED TRUE)
 project(run-tests)
-include(../../src/common.cmake)
+include(../../share/common.cmake)
 
 # Resolve the optional suite directives. Any nonzero directive creates an allowlist;
 # otherwise, zero directives create a denylist and unspecified suites stay enabled.
