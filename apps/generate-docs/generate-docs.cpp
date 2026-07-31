@@ -15,9 +15,33 @@ using namespace ply::cpp;
 String sourceFolder = joinPath(PLYWOOD_ROOT_DIR, "apps/generate-docs/data");
 String docsFolder = joinPath(PLYWOOD_ROOT_DIR, "docs");
 String outFolder = joinPath(PLYWOOD_ROOT_DIR, "docs/build");
-TextFormat serverTextFormat = {UTF8, TextFormat::LF, false};
 json::Node contents;
 u32 publishKey = 0; // Prevent browsers from caching old stylesheets
+struct GenerationStats {
+    Set<String> generatedPaths;
+    u32 numUpdated = 0;
+    u32 numUnchanged = 0;
+    u32 numOrphansRemoved = 0;
+};
+GenerationStats stats;
+
+// Writes one generated file only when its contents changed and records its path as expected output.
+void writeFileIfChanged(StringView path, StringView contents) {
+    stats.generatedPaths.insert(path);
+
+    // Retain an existing file when its bytes already match the generated contents.
+    if ((Filesystem::exists(path) == ER_FILE) && (Filesystem::loadBinary(path) == contents)) {
+        stats.numUnchanged++;
+        return;
+    }
+
+    // Create the parent directory and write the new contents.
+    Filesystem::makeDirs(splitPath(path).directory);
+    FSResult result = Filesystem::saveBinary(path, contents);
+    PLY_ASSERT(result == FS_OK);
+    PLY_UNUSED(result);
+    stats.numUpdated++;
+}
 
 // Appends the current publish key query parameter to an asset path in HTML text.
 void appendPublishKeyToAsset(String& text, StringView assetPath) {
@@ -451,24 +475,23 @@ void convertPage(const json::Node& item, const json::Node* prevPage, const json:
     // Generate prev/next navigation
     String prevLink, nextLink;
     if (prevPage) {
-        prevLink = String::format(
-            "<a class=\"nav-card nav-prev\" href=\"/docs/{}\"><span class=\"nav-meta\">Previous</span>"
-            "<span class=\"nav-title\">{:&}</span></a>",
-            prevPage->get("path").text(), prevPage->get("title").text());
+        prevLink =
+            String::format("<a class=\"nav-card nav-prev\" href=\"/docs/{}\"><span class=\"nav-meta\">Previous</span>"
+                           "<span class=\"nav-title\">{:&}</span></a>",
+                           prevPage->get("path").text(), prevPage->get("title").text());
     }
     if (nextPage) {
-        nextLink = String::format(
-            "<a class=\"nav-card nav-next\" href=\"/docs/{}\"><span class=\"nav-meta\">Next</span>"
-            "<span class=\"nav-title\">{:&}</span></a>",
-            nextPage->get("path").text(), nextPage->get("title").text());
+        nextLink =
+            String::format("<a class=\"nav-card nav-next\" href=\"/docs/{}\"><span class=\"nav-meta\">Next</span>"
+                           "<span class=\"nav-title\">{:&}</span></a>",
+                           nextPage->get("path").text(), nextPage->get("title").text());
     }
     String navHtml = String::format("<div class=\"page-nav\">{}{}</div>", prevLink, nextLink);
 
     // Write content-only file for AJAX loading
     String ajaxContent = String::format("{} :: Plywood C++ Runtime Library\n{}{}", pageTitle, articleContent, navHtml);
     String ajaxPath = joinPath(outFolder, "content/docs", relName + ".html");
-    Filesystem::makeDirs(splitPath(ajaxPath).directory);
-    Filesystem::saveText(ajaxPath, ajaxContent, serverTextFormat);
+    writeFileIfChanged(ajaxPath, ajaxContent);
 }
 
 // Loads and parses a JSON file from disk.
@@ -481,15 +504,12 @@ json::Node parseJson(StringView path) {
 void generateWholeSite() {
     publishKey = Random{}.generateU32(); // Prevent browsers from caching old stylesheets
 
-    Filesystem::makeDirs(joinPath(outFolder, "content"));
-    Filesystem::makeDirs(joinPath(outFolder, "static"));
-
     // Copy front page to content/index.html.
     String frontPage = Filesystem::loadText(joinPath(sourceFolder, "index.html"));
     appendPublishKeyToAsset(frontPage, "/static/common.css");
     appendPublishKeyToAsset(frontPage, "/static/front.css");
     appendPublishKeyToAsset(frontPage, "/static/common.js");
-    Filesystem::saveText(joinPath(outFolder, "content/index.html"), frontPage, serverTextFormat);
+    writeFileIfChanged(joinPath(outFolder, "content/index.html"), frontPage);
 
     // Copy static files to static/.
     for (const DirectoryEntry& entry : Filesystem::listDir(joinPath(sourceFolder, "static"))) {
@@ -498,9 +518,9 @@ void generateWholeSite() {
             String dstPath = joinPath(outFolder, "static", entry.name);
             if (entry.name.endsWith(".css") || entry.name.endsWith(".js") || entry.name.endsWith(".html")) {
                 String text = Filesystem::loadTextAutodetect(srcPath);
-                Filesystem::saveText(dstPath, text, serverTextFormat);
+                writeFileIfChanged(dstPath, text);
             } else {
-                Filesystem::copyFile(srcPath, dstPath);
+                writeFileIfChanged(dstPath, Filesystem::loadBinary(srcPath));
             }
         }
     }
@@ -511,14 +531,13 @@ void generateWholeSite() {
     appendPublishKeyToAsset(templateText, "/static/docs.css");
     appendPublishKeyToAsset(templateText, "/static/common.js");
     appendPublishKeyToAsset(templateText, "/static/doc-viewer.js");
-    Filesystem::saveText(joinPath(outFolder, "content/docs-template.html"), templateText, serverTextFormat);
+    writeFileIfChanged(joinPath(outFolder, "content/docs-template.html"), templateText);
 
     // Parse contents.json and generate table of contents HTML.
     contents = parseJson(joinPath(docsFolder, "contents.json"));
     MemStream tocStream;
     generateTableOfContentsHtml(tocStream, contents);
-    Filesystem::makeDirs(joinPath(outFolder, "content/docs"));
-    Filesystem::saveText(joinPath(outFolder, "content/toc.html"), tocStream.moveToString(), serverTextFormat);
+    writeFileIfChanged(joinPath(outFolder, "content/toc.html"), tocStream.moveToString());
 
     // Traverse contents.json and generate pages in content/docs/.
     Array<const json::Node*> pages;
@@ -528,6 +547,39 @@ void generateWholeSite() {
         const json::Node* nextPage = (i + 1 < pages.numItems()) ? pages[i + 1] : nullptr;
         convertPage(*pages[i], prevPage, nextPage);
     }
+
+    // Delete files left behind by pages or assets that are no longer generated.
+    if (Filesystem::isDir(outFolder)) {
+        for (const WalkTriple& triple : Filesystem::walk(outFolder)) {
+            for (const DirectoryEntry& entry : triple.files) {
+                String path = joinPath(triple.dirPath, entry.name);
+                if (!stats.generatedPaths.find(path)) {
+                    FSResult result = Filesystem::deleteFile(path);
+                    PLY_ASSERT(result == FS_OK);
+                    PLY_UNUSED(result);
+                    stats.numOrphansRemoved++;
+                }
+            }
+        }
+    }
+
+    // Report the result of this generation pass.
+    Stream out = getStdOut();
+    out.write("Generation complete");
+    char separator = ':';
+    if (stats.numUpdated > 0) {
+        out.format("{} {} file{} updated", separator, stats.numUpdated, stats.numUpdated == 1 ? "" : "s");
+        separator = ',';
+    }
+    if (stats.numUnchanged > 0) {
+        out.format("{} {} file{} unchanged", separator, stats.numUnchanged, stats.numUnchanged == 1 ? "" : "s");
+        separator = ',';
+    }
+    if (stats.numOrphansRemoved > 0) {
+        out.format("{} {} orphaned file{} removed", separator, stats.numOrphansRemoved,
+                   stats.numOrphansRemoved == 1 ? "" : "s");
+    }
+    out.write(".\n");
 }
 
 // Entry point that runs a full generation pass and optional filesystem watch loop.
@@ -578,7 +630,6 @@ int main(int argc, const char* argv[]) {
             sleepMillis(100);
             changed.store(0, Release);
             generateWholeSite();
-            getStdOut().write("Done.\n");
         }
 #else
         getStdOut().write("-watch is not supported on this platform.");
