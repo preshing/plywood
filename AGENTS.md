@@ -17,7 +17,7 @@ Additional components for 2D/3D math, networking and text parsing are also inclu
     - `ply-markdown.h/cpp` - Markdown parser with HTML output
     - `ply-cpp.h/cpp` - Experimental C++ parser
 - `apps/` - Sample applications. Each subdirectory contains a `CMakeLists.txt` file to build the app.
-    - `run-tests` - Combined base, Unicode loading, Markdown, C++ parser and heap fragmentation test suites
+    - `test-suite` - Combined base, Unicode loading, Markdown, C++ parser and heap fragmentation test suites
     - `banner-comment` - Converts its argument to a banner-style comment using Unicode block characters
     - `generate-docs` - Converts the documentation to HTML files written to `docs/build/`
     - `serve-docs` - Runs an HTTP server to serve the generated documentation on port 8080

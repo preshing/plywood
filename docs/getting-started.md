@@ -6,9 +6,9 @@ First, clone the Plywood repository:
 
     $ git clone https://github.com/preshing/plywood.git
 
-Next, navigate to the `apps/run-tests` subdirectory and generate project files for the tests. (If you're running on Windows, use backslashes `\` in the directory path instead.)
+Next, navigate to the `apps/test-suite` subdirectory and generate project files for the tests. (If you're running on Windows, use backslashes `\` in the directory path instead.)
 
-    $ cd plywood/apps/run-tests
+    $ cd plywood/apps/test-suite
     $ mkdir build
     $ cd build
     $ cmake ..
@@ -17,9 +17,9 @@ If CMake's Visual Studio or Xcode generator was used, you can now open the proje
 
     $ cmake --build .
 
-Finally, run all test suites. If using the Visual Studio generator, the executable will be located at `Debug\run-tests.exe`.
+Finally, run all test suites. If using the Visual Studio generator, the executable will be located at `Debug\test-suite.exe`.
 
-    $ ./run-tests -all
+    $ ./test-suite -all
 
 Individual suites can be selected using `-base`, `-unicode`, `-markdown`, `-cpp` and `-frag`.
 Multiple options run in command-line order. Use `-regencpp` in place of `-cpp` to regenerate the C++

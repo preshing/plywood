@@ -1743,7 +1743,7 @@ ExtractedFormat extractFormatFromName(StringView name) {
 }
 
 UNICODE_LOADING_TEST_CASE("Autodetect file encodings") {
-    String testsFolder = joinPath(RUN_TESTS_PATH, "unicode-test-files");
+    String testsFolder = joinPath(TEST_SUITE_PATH, "unicode-test-files");
     u32 entryCount = 0;
     for (const DirectoryEntry& entry : Filesystem::listDir(testsFolder)) {
         if (!entry.isDir && entry.name.endsWith(".txt")) {

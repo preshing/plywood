@@ -9,7 +9,7 @@ cmake_minimum_required(VERSION 3.10)
 set(CMAKE_CONFIGURATION_TYPES "Debug;Release;Final" CACHE INTERNAL "Build configs")
 set(CMAKE_C_COMPILER_FORCED TRUE)
 set(CMAKE_CXX_COMPILER_FORCED TRUE)
-project(run-tests)
+project(test-suite)
 include(../../share/common.cmake)
 
 # Resolve the optional suite directives. Any nonzero directive creates an allowlist;
@@ -54,7 +54,7 @@ foreach(directive ${TEST_DIRECTIVES})
 endforeach()
 
 if(NUM_ENABLED_TEST_SUITES EQUAL 0)
-    message(FATAL_ERROR "run-tests must be built with at least one test suite enabled")
+    message(FATAL_ERROR "test-suite must be built with at least one test suite enabled")
 endif()
 
 # Add only the Plywood components required by the enabled suites and command-line parser.
@@ -75,29 +75,29 @@ if(WITH_TRANSCRIPT_TESTS_ENABLED)
 endif()
 
 # Add only the test-suite sources supported by this configuration.
-set(RUN_TEST_SOURCE_PATTERNS main.cpp)
+set(TEST_SUITE_SOURCE_PATTERNS main.cpp)
 if(WITH_BASE_TESTS_ENABLED OR WITH_UNICODE_LOADING_TESTS_ENABLED)
-    list(APPEND RUN_TEST_SOURCE_PATTERNS base-tests.cpp run-base-tests.cpp run-base-tests.h)
+    list(APPEND TEST_SUITE_SOURCE_PATTERNS base-tests.cpp run-base-tests.cpp run-base-tests.h)
 endif()
 if(WITH_MARKDOWN_TESTS_ENABLED)
-    list(APPEND RUN_TEST_SOURCE_PATTERNS markdown-tests.cpp)
+    list(APPEND TEST_SUITE_SOURCE_PATTERNS markdown-tests.cpp)
 endif()
 if(WITH_CPP_TESTS_ENABLED)
-    list(APPEND RUN_TEST_SOURCE_PATTERNS cpp-tests.cpp)
+    list(APPEND TEST_SUITE_SOURCE_PATTERNS cpp-tests.cpp)
 endif()
 if(WITH_TRANSCRIPT_TESTS_ENABLED)
-    list(APPEND RUN_TEST_SOURCE_PATTERNS transcript-tests.cpp)
+    list(APPEND TEST_SUITE_SOURCE_PATTERNS transcript-tests.cpp)
 endif()
 if(WITH_FRAGMENTATION_TEST_ENABLED)
-    list(APPEND RUN_TEST_SOURCE_PATTERNS fragmentation-test.cpp)
+    list(APPEND TEST_SUITE_SOURCE_PATTERNS fragmentation-test.cpp)
 endif()
 
-add_source_files(RUN_TEST_SOURCES "${CMAKE_CURRENT_LIST_DIR}" ${RUN_TEST_SOURCE_PATTERNS})
-add_executable(run-tests ${RUN_TEST_SOURCES})
-set_runtime_output_directory(run-tests "${PLYWOOD_ROOT}/bin")
-target_link_libraries(run-tests PRIVATE plywood)
-target_compile_definitions(run-tests PRIVATE
-    RUN_TESTS_PATH="${CMAKE_CURRENT_LIST_DIR}"
+add_source_files(TEST_SUITE_SOURCES "${CMAKE_CURRENT_LIST_DIR}" ${TEST_SUITE_SOURCE_PATTERNS})
+add_executable(test-suite ${TEST_SUITE_SOURCES})
+set_runtime_output_directory(test-suite "${PLYWOOD_ROOT}/bin")
+target_link_libraries(test-suite PRIVATE plywood)
+target_compile_definitions(test-suite PRIVATE
+    TEST_SUITE_PATH="${CMAKE_CURRENT_LIST_DIR}"
     BUILD_DIR="${CMAKE_BINARY_DIR}"
     WITH_BASE_TESTS=${WITH_BASE_TESTS_ENABLED}
     WITH_UNICODE_LOADING_TESTS=${WITH_UNICODE_LOADING_TESTS_ENABLED}

@@ -12,7 +12,7 @@ using namespace ply;
 // Runs the Markdown conversion tests and returns true if every case passes.
 bool runMarkdownTests() {
     // Open the markdown test suite.
-    String path = joinPath(RUN_TESTS_PATH, "markdown-tests.txt");
+    String path = joinPath(TEST_SUITE_PATH, "markdown-tests.txt");
     Stream in = Filesystem::openTextForReadAutodetect(path);
     String separatorLine = readLine(in);
     u32 numTests = 0;

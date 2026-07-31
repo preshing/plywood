@@ -119,8 +119,8 @@ static bool processCppTestFile(StringView path, bool write, String (*generateOut
 
 // Runs both C++ golden test suites, optionally rewriting their expected output.
 bool runCppTests(bool write) {
-    String parserPath = joinPath(RUN_TESTS_PATH, "cpp-parser-tests.txt");
-    String preprocessorPath = joinPath(RUN_TESTS_PATH, "cpp-preprocessor-tests.txt");
+    String parserPath = joinPath(TEST_SUITE_PATH, "cpp-parser-tests.txt");
+    String preprocessorPath = joinPath(TEST_SUITE_PATH, "cpp-preprocessor-tests.txt");
 
     bool success = processCppTestFile(parserPath, write, generateParserTestOutput);
     if (!processCppTestFile(preprocessorPath, write, generatePreprocessorTestOutput))
