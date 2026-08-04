@@ -143,4 +143,3 @@ Most just use compiler-specific predefined macros to determine it and offer a co
 
 `PLY_PTR_SIZE`
 > The size of a pointer in bytes. Defined as `4` when compiling for a 32-bit platform and `8` when compiling for a 64-bit platform. These days, most computers and mobile devices are 64-bit platforms, but it's still possible to compile 32-bit software if you need to support 32-bit Windows 10 or a 32-bit Linux. WebAssembly is strictly a 32-bit platform.
-

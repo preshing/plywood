@@ -1,9 +1,32 @@
 # Introduction
 
-Plywood is a lightweight, easy-to-use, general-purpose, cross-platform C++ library with minimal dependencies. All you need is a C++14 compiler and a supported platform SDK.
+Plywood is a cross-platform C++ runtime library that can be used as an alternative to the standard C and C++ libraries. It aims to deliver everything you need from a runtime library in a small package using a simple API.
 
-It's a complete alternative to the C and C++ Standard Libraries that packs a lot of features into a small code size, helping you build software that's easier to understand, distribute and maintain.
+It includes a built-in harness for coding agents
 
-If you're new to C++, Plywood offers a simple interface to help you get up to speed writing efficient native applications quickly.
+## Getting Started
 
-If you're an experienced C++ programmer, everything in Plywood should feel familiar. It's easy to integrate and coexists well with other libraries, so you can use it as the basis of new projects or adopt it incrementally in existing projects.
+[CMake](https://cmake.org/) is required to build the sample applications.
+
+On macOS and Linux, run the following command. On Windows, run `share\build-app.bat` instead.
+
+    $ git clone https://github.com/preshing/plywood.git
+    $ cd plywood
+    $ share/build-app.sh test-suite -run -all
+
+It uses Visual Studio automatically if installed.
+
+[Link to sample applications page]
+
+## Project Structure
+
+    plywood/
+    ├── apps/
+    ├── bin/
+    ├── docs/
+    │   └── ...
+    ├── share/
+    └── src/
+        └── ...
+
+[`ply-base.h`](docs/base) is an all-in-one header file where operating system features and common functions and data structures are exposed.

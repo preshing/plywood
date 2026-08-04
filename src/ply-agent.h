@@ -1,9 +1,16 @@
 ﻿/*========================================================
-       ____
-      ╱   ╱╲    Plywood C++ Runtime Library
-     ╱___╱╭╮╲   https://plywood.dev/
-      └──┴┴┴┘
+
+     ____      Plywood C++ Runtime Library
+    ╱   ╱╲     https://plywood.dev/
+   ╱___╱╭╮╲   
+    └──┴┴┴┘    # Agent Harness
+               See documentation at: docs/agent.md
+
 ========================================================*/
+
+// Agent harness
+// See documentation 
+// Documentation: docs/agent.md
 
 #pragma once
 #include "ply-reflect.h"

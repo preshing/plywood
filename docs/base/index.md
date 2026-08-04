@@ -1,6 +1,18 @@
-﻿{title text="OS and Common Primitives" include="ply-base.h" namespace="ply"}
+﻿{title text="The Base Library" include="ply-base.h" namespace="ply"}
 
-Most of the base library is exposed through the single header file `<ply-base.h>`. This is where you'll find cross-platform operating system support, container types and commonly-used convenience functions.
+This is where you'll find cross-platform operating system support, container types and commonly-used convenience functions. All other source files in Plywood include it.
+
+Because of its compact size, it's easy to integrate into existing projects or use as the starting point of existing projects.
+
+You can customize Plywood by defining the following preprocessor macros in your project's build settings.
+
+{table caption="Configuration Options"}
+`PLY_CONFIG_FILE` | The path to a file that will be automatically included by [`<ply-base.h>`](/docs/common). Additional configuration options can be put here.
+`PLY_WITH_ASSERTS` | Enables [assertions](/docs/base/macros#assertions). Default is 1 in debug builds, 0 otherwise.
+`PLY_WITH_DIRECTORY_WATCHER` | Enables the [`DirectoryWatcher`](/docs/base/filesystem#directory-watcher). Default is 0.
+`PLY_OVERRIDE_NEW` | Overrides the C++ `new` and `delete` operators to allocate from the [Plywood heap](/docs/base/memory#heap). Default is 1.
+`PLY_USE_NEW_ALLOCATOR` | Selects the heap backend. `1` uses Plywood's bespoke allocator, `0` uses legacy dlmalloc. Default is 1.
+{/table}
 
 ### About the Container Types
 

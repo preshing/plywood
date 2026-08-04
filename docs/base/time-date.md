@@ -105,4 +105,3 @@ float getCpuTicksPerSecond()
 {output}
 1.234 seconds elapsed.
 {/output}
-

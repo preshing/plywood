@@ -151,7 +151,7 @@ int main(int argc, const char* argv[]) {
     CommandLineOptions options;
     CommandLineParser parser({
 #if WITH_BASE_TESTS
-        {"-base", PLY_LOOKUP_MEMBER(CommandLineOptions, runBase), "Run the base test suite"},
+        {"-base", PLY_LOOKUP_MEMBER(CommandLineOptions, runBase), "Run the base tests"},
 #endif
 #if WITH_UNICODE_LOADING_TESTS
         {"-unicode", PLY_LOOKUP_MEMBER(CommandLineOptions, runUnicode), "Run Unicode file loading tests"},

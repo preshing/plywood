@@ -13,3 +13,9 @@ Plywood's features are divided into `.cpp`/`.h` pairs located in the `src` folde
 * `<ply-cpp.h>` (439 lines): Experimental C++ parser (mainly for documentation generation purposes).
 
 There are several sample applications in the `apps` folder that demonstrate how to use the library. CMake is required to build them. Detailed instructions can be found in the [Getting Started](https://plywood.dev/docs/getting-started) guide.
+
+## Coding Conventions
+
+* Uses C++14 features only.
+* Use the .clang-format file in the project root for formatting.
+* Each code block should begin with a brief comment to explain what it does.

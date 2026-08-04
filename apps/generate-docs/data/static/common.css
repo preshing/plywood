@@ -491,7 +491,7 @@ html {
     color: var(--text-muted);
 }
 .content dl.api_defs dt {
-    margin-bottom: 14px;
+    margin-bottom: 4px;
     margin-top: 24px;
     line-height: 1.2;
 }

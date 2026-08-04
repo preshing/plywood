@@ -35,7 +35,7 @@ bool check(bool cond) {
     return cond;
 }
 
-// Runs the selected group of registered base-library tests.
+// Runs the selected group of registered base tests.
 static bool runTestGroup(RegisterTest::Group group) {
     u32 numPassed = 0;
     const auto& testCases = getTestCases();
@@ -78,7 +78,7 @@ static bool runTestGroup(RegisterTest::Group group) {
     return numPassed == numTests;
 }
 
-// Runs the base-library test suite, excluding the file-loading tests.
+// Runs the base test suite, excluding the file-loading tests.
 bool runBaseTests() {
     return runTestGroup(RegisterTest::Base);
 }

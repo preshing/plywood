@@ -1,6 +1,6 @@
 # Project Overview
 
-Plywood is a low-level C++ base library for building cross-platform native software.
+Plywood is a low-level C++ runtime library for building cross-platform native software.
 It provides a simple, portable C++ API over OS features and commonly-used data structures and algorithms.
 Additional components for 2D/3D math, networking and text parsing are also included.
 
@@ -10,7 +10,7 @@ Additional components for 2D/3D math, networking and text parsing are also inclu
 - `src/` - Contains pairs of `.h`/`.cpp` files organized by feature category.
   Projects can compile and link with only the features they need.
     - `ply-base.h/cpp` - Core: OS access, data structures, string formatting, Unicode conversion, threading, memory
-    - `ply-math.h/cpp` - Vectors, matrices, quaternions for 2D and 3D graphics and layout
+    - `ply-math.h/cpp` - Vectors, matrices, quaternions for graphics and layout
     - `ply-network.h/cpp` - TCP/IP networking (IPv4/IPv6)
     - `ply-json.h/cpp` - JSON parser/serializer
     - `ply-tokenizer.h/cpp` - Text tokenization utilities
@@ -74,9 +74,8 @@ Feel free to improve any existing code that you end up touching!)
 
 ## Overview of `ply-base.h`
 
-The `src/ply-base.h' defines the public API of the Plywood base library in a single ~4500-line C++ header file.
+The `src/ply-base.h` defines the public API of Plywood's base library in a single ~4500-line C++ header file.
 All C++ code in the Plywood project should use this API while avoiding the Standard C/C++ Library API.
-If you feel that a function or feature is missing from this base library, and there's a strong argument for adding it, please bring it to the user's attention as part of your response.
 
 **Macros** (partial list): 
 - `PLY_ASSERT` - Runtime assertions when PLY_WITH_ASSERTS is defined

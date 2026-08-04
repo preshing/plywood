@@ -408,10 +408,30 @@ void parseMarkdown(Stream& out, ViewStream& in) {
             } else if (cmd == "output") {
                 parseOutput(out, in);
             } else if (cmd == "title") {
-                out.format("<h1><span class=\"right\"><span class=\"meta-label\">Header file:</span><span "
-                           "class=\"meta-value\">&lt;{:&}&gt;</span><span class=\"meta-label\">Namespace:</span><span "
-                           "class=\"meta-value\">{:&}</span></span>{:&}</h1>\n",
-                           *args.find("include"), *args.find("namespace"), *args.find("text"));
+                // Write any available header file and namespace metadata.
+                const String* include = args.find("include");
+                const String* nameSpace = args.find("namespace");
+                out.write("<h1>");
+                if (include || nameSpace) {
+                    out.write("<span class=\"right\">");
+                    if (include) {
+                        out.format("<span class=\"meta-label\">Header file:</span><span "
+                                   "class=\"meta-value\">&lt;{:&}&gt;</span>",
+                                   *include);
+                    }
+                    if (nameSpace) {
+                        out.format("<span class=\"meta-label\">Namespace:</span><span "
+                                   "class=\"meta-value\">{:&}</span>",
+                                   *nameSpace);
+                    }
+                    out.write("</span>");
+                }
+
+                // Write the title text when provided.
+                if (const String* text = args.find("text")) {
+                    out.format("{:&}", *text);
+                }
+                out.write("</h1>\n");
             } else {
                 PLY_ASSERT(0); // Unrecognized section type
             }
