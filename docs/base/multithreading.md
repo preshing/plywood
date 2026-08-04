@@ -1,6 +1,6 @@
-﻿{title text="Threads" include="ply-base.h" namespace="ply"}
+﻿{title text="Multithreading" include="ply-base.h" namespace="ply"}
 
-Plywood provides portable threading primitives that wrap the platform's native threading API. These include threads, mutexes, condition variables, and atomic operations.
+Multithreading is the co-ordination of multiple threads of execution within a single process. Access atomic operations, thread-local variables, mutexes, condition variables, semaphores and read-write locks.
 
 {apiSummary}
 TID getCurrentThreadId()

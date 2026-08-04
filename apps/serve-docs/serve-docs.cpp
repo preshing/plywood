@@ -75,7 +75,7 @@ void servePlywoodDocumentation(HTTPServerRequest& request) {
             if (parts.numItems() == 1) {
                 // FIXME: Include the hostname in the Location URL.
                 HTTPServerResponse response{HTTPServerResponse::PermanentRedirect};
-                *response.headers.insert("location").value = "/docs/intro";
+                *response.headers.insert("location").value = "/docs/introduction";
                 request.sendFullResponse(std::move(response));
                 return;
             }

@@ -1,16 +1,18 @@
-﻿{title text="The Base Library" include="ply-base.h" namespace="ply"}
+﻿# ply-base.h - Base API
 
-This is where you'll find cross-platform operating system support, container types and commonly-used convenience functions. All other source files in Plywood include it.
+`ply-base.h` contains the base [application programming interface (API)](https://en.wikipedia.org/wiki/API) of the Plywood C++ runtime library. It provides access to clocks, filesystems, processes, threads, virtual memory and basic data containers. All other header files in the library include this one.
 
-Because of its compact size, it's easy to integrate into existing projects or use as the starting point of existing projects.
+[diagram: plywood-include-graph]
+
+Lives alongside existing system APIs. You don't need to convert the your app to Plywood. You can adopt it incrementally or use it to build middleware that can be shared easily between C++ projects.
 
 You can customize Plywood by defining the following preprocessor macros in your project's build settings.
 
 {table caption="Configuration Options"}
 `PLY_CONFIG_FILE` | The path to a file that will be automatically included by [`<ply-base.h>`](/docs/common). Additional configuration options can be put here.
-`PLY_WITH_ASSERTS` | Enables [assertions](/docs/base/macros#assertions). Default is 1 in debug builds, 0 otherwise.
-`PLY_WITH_DIRECTORY_WATCHER` | Enables the [`DirectoryWatcher`](/docs/base/filesystem#directory-watcher). Default is 0.
-`PLY_OVERRIDE_NEW` | Overrides the C++ `new` and `delete` operators to allocate from the [Plywood heap](/docs/base/memory#heap). Default is 1.
+`PLY_WITH_ASSERTS` | Enables [assertions](/docs/base/preprocessor-macros.md#assertions). Default is 1 in debug builds, 0 otherwise.
+`PLY_WITH_DIRECTORY_WATCHER` | Enables the [`DirectoryWatcher`](/docs/base/filesystem.md#directory-watcher). Default is 0.
+`PLY_OVERRIDE_NEW` | Overrides the C++ `new` and `delete` operators to allocate from the [Plywood heap](/docs/base/memory-management.md#heap). Default is 1.
 `PLY_USE_NEW_ALLOCATOR` | Selects the heap backend. `1` uses Plywood's bespoke allocator, `0` uses legacy dlmalloc. Default is 1.
 {/table}
 

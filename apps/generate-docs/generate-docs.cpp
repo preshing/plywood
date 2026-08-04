@@ -148,11 +148,46 @@ void printDeclAsHtml(Stream& out, const Parser* parser, const Declaration& decl)
     out.write("</code></td></tr>\n");
 }
 
+// Converts a source documentation link to the corresponding generated site URL.
+String convertDocsPathToURL(StringView destination) {
+    if (!destination.startsWith("/docs/"))
+        return destination;
+
+    // Separate any query or fragment before inspecting the Markdown path.
+    s32 suffixPos = destination.find([](char c) { return c == '?' || c == '#'; });
+    StringView path = suffixPos >= 0 ? destination.left(suffixPos) : destination;
+    StringView suffix = suffixPos >= 0 ? destination.substr(suffixPos) : StringView{};
+
+    // Remove the source filename while retaining the documentation route and suffix.
+    if (path.endsWith("/index.md")) {
+        path = path.shortenedBy(9);
+    } else if (path.endsWith(".md")) {
+        path = path.shortenedBy(3);
+    } else {
+        return destination;
+    }
+    return path + suffix;
+}
+
+// Converts Markdown to HTML while adapting documentation links for the generated site.
+String convertDocsMarkdownToHtml(StringView source) {
+    Array<Owned<markdown::Block>> blocks = markdown::parseWholeDocument(source);
+    markdown::HTMLOptions options;
+    options.filterLinks = convertDocsPathToURL;
+    MemStream out;
+
+    // Render every top-level block in document order.
+    for (markdown::Block* block : blocks) {
+        markdown::convertToHtml(&out, block, options);
+    }
+    return out.moveToString();
+}
+
 // Parses an {apiSummary} section and emits the corresponding HTML table.
 void parseApiSummary(Stream& out, const Map<StringView, String>& args, ViewStream& in) {
     // Write optional caption.
     if (const String* caption = args.find("caption")) {
-        String html = markdown::convertToHtml(*caption);
+        String html = convertDocsMarkdownToHtml(*caption);
         out.format("<div class=\"caption\">{}</div>\n", html.substr(3, html.numBytes() - 8));
     }
 
@@ -205,7 +240,7 @@ void parseTable(Stream& out, const Map<StringView, String>& args, ViewStream& in
             break;
         out.write("<tr>");
         for (StringView column : s.split("|")) {
-            String html = markdown::convertToHtml(column);
+            String html = convertDocsMarkdownToHtml(column);
             out.format("<td>{}</td>", html.substr(3, html.numBytes() - 8));
         }
         out.write("</tr>\n");
@@ -292,6 +327,7 @@ class MarkdownBlockProcessor {
 public:
     // Creates a block processor that writes converted output to the supplied stream.
     MarkdownBlockProcessor(Stream& out) : out{out} {
+        this->options.filterLinks = convertDocsPathToURL;
     }
 
     // Sets the class context used when parsing declaration-only markdown entries.

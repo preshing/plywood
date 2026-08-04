@@ -1,4 +1,4 @@
-{title text="Markdown Parser" include="ply-markdown.h" namespace="ply::markdown"}
+# `ply-markdown.h`: Markdown Parser
 
 The Markdown parser converts Markdown-formatted text into sequences of `Element` objects, which can then be converted to HTML or processed in other ways.
 
@@ -51,6 +51,7 @@ String convertToHtml(StringView src)
 >
 > {table caption="`HTMLOptions` members"}
 > `bool`|`childAnchors`|If true, generates anchor elements for headings
+> `Functor<String(StringView)>`|`filterLinks`|If set, transforms each raw link destination before it is XML-escaped and written to HTML
 > {/table}
 
 `String convertToHtml(StringView src)`

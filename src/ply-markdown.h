@@ -156,6 +156,7 @@ Array<Owned<Block>> parseWholeDocument(StringView markdown);
 // Convert to HTML
 struct HTMLOptions {
     bool childAnchors = false;
+    Functor<String(StringView)> filterLinks;
 };
 String convertToHtml(StringView src);
 void convertToHtml(Stream* outs, const Block* block, const HTMLOptions& options);

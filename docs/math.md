@@ -2,7 +2,7 @@
 
 The math library provides small POD-style types for vectors, rectangles, matrices, colors and rotations.
 Most types expose public fields, support inline arithmetic operators and perform runtime bounds checks in
-`operator[]` when [assertions](/docs/base/macros#assertions) are enabled.
+`operator[]` when [assertions](/docs/base/preprocessor-macros.md#assertions) are enabled.
 
 ## Scalar Helpers
 

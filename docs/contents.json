@@ -1,38 +1,39 @@
 [
-    {"title": "Introduction", "path": "intro"},
-    {"title": "The Base Library", "header-file": "ply-base.h", "path": "base", "children": [
-        {"title": "Preprocessor Macros", "path": "base/macros"},
+    {"title": "Introduction", "path": "introduction"},
+    {"title": "Project Overview", "path": "project-overview"},
+    {"title": "Base API", "header-file": "ply-base.h", "path": "base", "children": [
+        {"title": "Preprocessor Macros", "path": "base/preprocessor-macros"},
         {"title": "Numeric Functions and Types", "path": "base/numeric"},
-        {"title": "Time and Date", "path": "base/time-date"},
-        {"title": "Random Numbers", "path": "base/random"},
-        {"title": "Memory Management", "path": "base/memory"},
+        {"title": "Time and Date", "path": "base/time-and-date"},
+        {"title": "Random Numbers", "path": "base/random-numbers"},
+        {"title": "Memory Management", "path": "base/memory-management"},
         {"title": "Strings", "path": "base/strings"},
         {"title": "Arrays", "path": "base/arrays"},
-        {"title": "Hash Maps", "path": "base/hash-maps"},
-        {"title": "Object Ownership", "path": "base/ownership"},
+        {"title": "Associative Maps", "path": "base/associative-maps"},
+        {"title": "Object Ownership", "path": "base/object-ownership"},
         {"title": "Functors", "path": "base/functors"},
         {"title": "Variants", "path": "base/variants"},
         {"title": "Generic Algorithms", "path": "base/algorithms"},
         {"title": "Input/Output", "path": "base/input-output"},
         {"title": "The Filesystem", "path": "base/filesystem"},
-        {"title": "Threads", "path": "base/multithreading"},
-        {"title": "Processes", "path": "base/processes"}
+        {"title": "Multithreading", "path": "base/multithreading"},
+        {"title": "Process Management", "path": "base/process-management"}
     ]},
-    {"title": "Agent Harness", "header-file": "ply-agent.h", "path": "agent"},
-    {"title": "Networking", "header-file": "ply-network.h", "path": "network"},
     {"title": "2D and 3D Math", "header-file": "ply-math.h", "path": "math"},
     {"title": "Reflection", "header-file": "ply-reflect.h", "path": "reflect"},
-    {"title": "Text Formats", "path": "text-formats", "children": [
-        {"title": "Tokenizer", "header-file": "ply-tokenizer.h", "path": "text-formats/tokenizer"},
-        {"title": "JSON Support", "header-file": "ply-json.h", "path": "text-formats/json"},
-        {"title": "Markdown Parser", "header-file": "ply-markdown.h", "path": "text-formats/markdown"},
-        {"title": "C++ Parser", "header-file": "ply-cpp.h", "path": "text-formats/cpp"}
+    {"title": "Networking", "header-file": "ply-network.h", "path": "networking"},
+    {"title": "Text-Based Formats", "path": "text", "children": [
+        {"title": "JSON Support", "header-file": "ply-json.h", "path": "text/json-support"},
+        {"title": "Markdown Parser", "header-file": "ply-markdown.h", "path": "text/markdown-parser"},
+        {"title": "C++ Parser", "header-file": "ply-cpp.h", "path": "text/cpp-parser"},
+        {"title": "Generic Tokenizer", "header-file": "ply-tokenizer.h", "path": "text/tokenizer"}
     ]},
-    {"title": "Sample Applications", "path": "apps", "children": [
-        {"title": "Agent", "header-file": "agent", "path": "apps/agent"},
-        {"title": "Banner Comment", "header-file": "banner-comment", "path": "apps/banner-comment"},
-        {"title": "Generate Docs", "header-file": "generate-docs", "path": "apps/generate-docs"},
-        {"title": "Serve Docs", "header-file": "apps/serve-docs", "path": "apps/serve-docs"},
-        {"title": "Test Suite", "header-file": "apps/test-suite", "path": "apps/test-suite"}
+    {"title": "Agent API", "header-file": "ply-agent.h", "path": "agent"},
+    {"title": "Sample Applications", "path": "sample-apps", "children": [
+        {"title": "Agent", "header-file": "agent", "path": "sample-apps/agent"},
+        {"title": "Banner Comment", "header-file": "banner-comment", "path": "sample-apps/banner-comment"},
+        {"title": "Generate Docs", "header-file": "generate-docs", "path": "sample-apps/generate-docs"},
+        {"title": "Serve Docs", "header-file": "serve-docs", "path": "sample-apps/serve-docs"},
+        {"title": "Test Suite", "header-file": "test-suite", "path": "sample-apps/test-suite"}
     ]}
 ]

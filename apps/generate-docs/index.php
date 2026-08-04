@@ -16,7 +16,7 @@ if ($path === '/') {
     echo $full_html;
     exit;
 } elseif (($path === "/docs") || ($path === "/docs/")) {
-    header("Location: /docs/intro");
+    header("Location: /docs/introduction");
     exit();
 } elseif (str_starts_with($path, '/docs/')) {
     $path = str_replace('\0', '', $path);

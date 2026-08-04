@@ -1,4 +1,4 @@
-﻿{title text="Sample Applications"}
+﻿# Sample Applications
 
 [TBD]
 

@@ -1,4 +1,6 @@
-﻿Individual suites can be selected using `-base`, `-unicode`, `-markdown`, `-cpp` and `-frag`.
+﻿# `test-suite`
+
+Individual suites can be selected using `-base`, `-unicode`, `-markdown`, `-cpp` and `-frag`.
 Multiple options run in command-line order. Use `-regencpp` in place of `-cpp` to regenerate the C++
 parser and preprocessor golden files.
 

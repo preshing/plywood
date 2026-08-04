@@ -8,10 +8,6 @@
 
 ========================================================*/
 
-// Agent harness
-// See documentation 
-// Documentation: docs/agent.md
-
 #pragma once
 #include "ply-reflect.h"
 

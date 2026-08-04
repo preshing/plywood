@@ -1,4 +1,4 @@
-{title text="Numeric Functions" include="ply-base.h" namespace="ply"}
+{title text="Numeric Functions and Types" include="ply-base.h" namespace="ply"}
 
 Plywood defines the following explicily-sized integer types, similar to `<stdint.h>` from the C standard library. These types are used internally throughout Plywood.
 
@@ -109,7 +109,7 @@ template <typename DstType, typename SrcType> DstType numericCast(SrcType value)
 `template <typename Type> Type convertBigEndian(Type value)`
 > Converts a native integer to little-endian or big-endian byte order. Also converts it back again. `Type` must be one of `u16`, `u32`, or `u64`.
 >
-> These days, nearly every platform is little-endian, so these functions aren't often needed. The main use for these functions today is to work with [networking APIs](/docs/network), where certain arguments are expected in big-endian order.
+> These days, nearly every platform is little-endian, so these functions aren't often needed. The main use for these functions today is to work with [networking APIs](/docs/networking.md), where certain arguments are expected in big-endian order.
 
 ### Power-of-2 Alignment
 
@@ -139,7 +139,7 @@ template <typename DstType, typename SrcType> DstType numericCast(SrcType value)
 > ```
 
 `template <typename DstType, typename SrcType> DstType numericCast(SrcType value)`
-> Casts `value` from one numeric type to another under the assumption that the value can be represented by the destination type. Will [assert](/docs/base/macros#assert) at runtime if the value can't be represented.
+> Casts `value` from one numeric type to another under the assumption that the value can be represented by the destination type. Will [assert](/docs/base/preprocessor-macros.md#assert) at runtime if the value can't be represented.
 > ```
 > s32 value = foo();
 > if (value >= 0) {

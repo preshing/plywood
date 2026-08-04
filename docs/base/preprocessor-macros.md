@@ -58,7 +58,7 @@ These macros are wrappers around compiler-specific extensions. They mainly hide 
 > Emits a CPU instruction that causes the program to crash immediately. Defined as `__ud2()` on MSVC and `__builtin_trap()` on GCC and Clang. Used internally by `PLY_ASSERT` when an assertion fails.
 
 `PLY_COMPILER_BARRIER()`
-> Prevents the compiler from [reordering adjacent memory operations](https://preshing.com/20120625/memory-ordering-at-compile-time/). Can help ensure correct memory ordering in multithreaded code, though [atomic operations](/docs/base/threads#atomic) are usually a better option. Defined as `_ReadWriteBarrier()` on MSVC and `asm volatile("" ::: "memory")` on GCC and Clang.
+> Prevents the compiler from [reordering adjacent memory operations](https://preshing.com/20120625/memory-ordering-at-compile-time/). Can help ensure correct memory ordering in multithreaded code, though [atomic operations](/docs/base/multithreading.md#atomic) are usually a better option. Defined as `_ReadWriteBarrier()` on MSVC and `asm volatile("" ::: "memory")` on GCC and Clang.
 
 `PLY_NO_DISCARD`
 > Equivalent to the `nodiscard` keyword that was added in C++17. Defined as `_Check_return_` on MSVC and `__attribute__((warn_unused_result))` on GCC and Clang.

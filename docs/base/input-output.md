@@ -1,6 +1,6 @@
 ﻿{title text="Input and Output" include="ply-base.h" namespace="ply"}
 
-Plywood provides a composable I/O system built around `Stream` and `Pipe` classes. Streams provide buffered, high-level read/write operations, while pipes represent the underlying I/O mechanisms (files, sockets, memory buffers).
+Plywood provides a composable I/O system built around `Stream` and `Pipe` classes. Streams provide buffered, high-level read/write operations, while pipes represent the underlying I/O mechanisms (files, sockets, memory buffers). You can also derive from `Pipe` to create adapters that perform encryption or compression.
 
 ## Standard I/O
 

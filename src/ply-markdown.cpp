@@ -1379,8 +1379,12 @@ void convertSpanToHtml(Stream* outs, const Span* span, const HTMLOptions& option
     if (auto* text = span->var.as<Span::Text>()) {
         printXmlEscapedString(*outs, text->text);
     } else if (auto* link = span->var.as<Span::Link>()) {
+        String destination = link->destination;
+        if (options.filterLinks) {
+            destination = options.filterLinks(destination);
+        }
         outs->write("<a href=\"");
-        printXmlEscapedString(*outs, link->destination);
+        printXmlEscapedString(*outs, destination);
         outs->write("\">");
         for (const Span* child : link->childSpans) {
             convertSpanToHtml(outs, child, options);
