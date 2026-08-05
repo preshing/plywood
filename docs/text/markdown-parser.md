@@ -1,174 +1,141 @@
 # `ply-markdown.h`: Markdown Parser
 
-The Markdown parser converts Markdown-formatted text into sequences of `Element` objects, which can then be converted to HTML or processed in other ways.
+The Markdown parser converts Markdown text into a tree of block and span objects. All functions and types in this
+module are defined in the `ply::markdown` namespace.
 
-All functions and types in this module are defined in the `ply::markdown` namespace.
+## Parsing options
 
-## `Parser`
+CommonMark parsing is the default. `ParseOptions` independently enables the supported GitHub Flavored Markdown
+(GFM) extensions:
 
-`Parser` is the main class for parsing Markdown. It's designed for incremental use. Create a parser with `createParser()`, feed it lines of input with `parseLine()`, and call `flush()` when input is complete. Each function returns an `Element` when a top-level block has ended.
+{table caption="`ParseOptions` members"}
+`bool`|`tables`|Enables GFM pipe tables
+`bool`|`taskListItems`|Recognizes task markers at the start of list items
+`bool`|`strikethrough`|Enables text delimited by pairs of tildes
+`bool`|`extendedAutolinks`|Recognizes GFM URL and email autolinks without angle brackets
+`bool`|`tagFilter`|Escapes the opening characters of the raw HTML tags disallowed by GFM
+{/table}
+
+Every field defaults to `false`. `ParseOptions::githubFlavored()` returns an options object with all five fields set
+to `true`.
+
+The tag filter implements GFM's tag-filter extension when raw HTML is rendered. It only filters the named GFM tags;
+it is not a general-purpose HTML sanitizer. Applications that accept untrusted input must apply an appropriate HTML
+sanitization policy to the rendered output.
+
+## Parser
+
+`Parser` supports incremental parsing. Create one with `createParser()`, pass input lines to `parseLine()`, then call
+`flush()` after the last line. A completed top-level `Block` is returned when one becomes available; otherwise these
+functions return `nullptr`.
 
 {apiSummary}
 -- Creation and Destruction
-Owned<Parser> createParser()
+Owned<Parser> createParser(const ParseOptions& options = {})
 Parser* duplicate(Parser* parser)
 void destroy(Parser* parser)
--- Parsing
-Owned<Element> parseLine(Parser* parser, StringView line)
-Owned<Element> flush(Parser* parser)
-Array<Owned<Element>> parseWholeDocument(StringView markdown)
+-- Streaming Parsing
+Owned<Block> parseLine(Parser* parser, StringView line)
+Owned<Block> flush(Parser* parser)
+-- Whole-Document Parsing
+Array<Owned<Block>> parseWholeDocument(StringView markdown, const ParseOptions& options = {})
 -- Converting to HTML
-void convertToHtml(Stream* outs, const Element* element, const HTMLOptions& options)
-String convertToHtml(StringView src)
+String convertToHtml(StringView src, const ParseOptions& options = {})
+void convertToHtml(Stream* outs, const Block* block, const HTMLOptions& options)
 {/apiSummary}
 
-### Creation and Destruction
+### Creation and streaming
 
-`Owned<Parser> createParser()`
-> Creates and returns a new Markdown parser. The parser maintains state across multiple calls to `parseLine()`.
+`Owned<Parser> createParser(const ParseOptions& options = {})`
+> Creates a stateful parser using the selected extensions. Retain the returned `Owned<Parser>` while streaming input.
 
 `Parser* duplicate(Parser* parser)`
-> Creates a copy of an existing parser. The copy can serve as a restore point when re-parsing incremental input.
+> Makes an independent deep copy, including any unfinished block. Copying an `Owned<Parser>` uses this function, so a
+> parser snapshot can be retained while either copy continues parsing.
 
 `void destroy(Parser* parser)`
-> Destroys a parser and frees its resources. This is typically handled automatically when using `Owned<Parser>`.
+> Destroys a parser created by `createParser()`. `Owned<Parser>` normally performs this automatically.
 
-### Parsing
+`Owned<Block> parseLine(Parser* parser, StringView line)`
+> Consumes one input line and returns a completed top-level block when available. Call it repeatedly in source order.
 
-`Owned<Element> parseLine(Parser* parser, StringView line)`
-> Parses a single line of Markdown input. Returns an `Element` representing a completed top-level block (such as a paragraph or list) if one has ended, or `nullptr` if the current block is still being built.
+`Owned<Block> flush(Parser* parser)`
+> Finishes the current top-level block and returns it. Call it once all lines have been supplied.
 
-`Owned<Element> flush(Parser* parser)`
-> Terminates the current top-level block and returns it. Call this after all input lines have been processed to retrieve any remaining content.
+### Whole-document parsing and HTML
 
-`Array<Owned<Element>> parseWholeDocument(StringView markdown)`
-> Parses an entire Markdown document and returns all top-level elements. This is a convenience function equivalent to calling `parseLine()` for each line followed by `flush()`.
+`Array<Owned<Block>> parseWholeDocument(StringView markdown, const ParseOptions& options = {})`
+> Parses a complete string and returns its top-level blocks in document order. This is the whole-document equivalent
+> of streaming the lines through a parser configured with the same options and then calling `flush()`.
 
-### Converting to HTML
+`String convertToHtml(StringView src, const ParseOptions& options = {})`
+> Parses a complete Markdown string and returns its HTML. This is the direct convenience API; parsing extensions are
+> selected with `ParseOptions`.
 
-`void convertToHtml(Stream* outs, const Element* element, const HTMLOptions& options)`
-> Converts an `Element` and all its children to HTML, writing the output to the provided stream. The `HTMLOptions` struct controls conversion behavior:
->
-> {table caption="`HTMLOptions` members"}
-> `bool`|`childAnchors`|If true, generates anchor elements for headings
-> `Functor<String(StringView)>`|`filterLinks`|If set, transforms each raw link destination before it is XML-escaped and written to HTML
-> {/table}
+`void convertToHtml(Stream* outs, const Block* block, const HTMLOptions& options)`
+> Renders an already-parsed block and its descendants to a stream. Use this overload to inspect or modify the AST, or
+> to render blocks incrementally. `HTMLOptions` controls rendering rather than Markdown syntax.
 
-`String convertToHtml(StringView src)`
-> Convenience function that parses an entire Markdown document and converts it directly to HTML. This is equivalent to parsing all lines, collecting the elements, and converting each to HTML.
-
-### Parser State
-
-The `Parser` struct exposes three members that represent the top-level element currently being built:
-
-{table caption="`Parser` member variables"}
-`Element`|`rootElement`|The top-level element being constructed; returned by `parseLine()` or `flush()` when complete
-`Array<Element*>`|`elementStack`|Ancestor elements (`BlockQuote` or `ListItem`) containing the current parsing location
-`Element*`|`leafElement`|The innermost block (`Paragraph` or `CodeBlock`) receiving text, or `nullptr` if none is active
+{table caption="`HTMLOptions` members"}
+`bool`|`childAnchors`|Writes a child anchor span for a heading with an `id`, instead of putting the `id` on the heading
+`Functor<String(StringView)>`|`filterLinks`|Transforms each link or image destination before XML escaping and output
 {/table}
 
-These members let you inspect the parser's current state. All elements in `elementStack` and `leafElement` are owned by `rootElement` (as descendants in its `children` tree). When a top-level block is complete, it is detached from `rootElement` and returned.
+## Block tree
 
-## `Element`
+`Block` stores its concrete type in `var`, a `Variant` of the block structs listed below. `parent` points to its parent
+block, or is `nullptr` for a returned top-level block. `userData` is available for application-specific state.
 
-The parser produces a tree of `Element` objects with the following member variables:
+Container types derive from `Block::Inner` and own `childBlocks`. Text-bearing leaf types derive from `Block::Leaf`
+and own parsed `spans`. `asInner()` and `asLeaf()` return the corresponding base pointer when applicable, or `nullptr`.
+Use `block.var.is<Type>()` and `block.var.as<Type>()` to test and access a concrete type.
 
-{table caption="`Element` member variables"}
-`Type`|`type`|The element type
-`u32`|`indentOrLevel`|Indentation (for list items) or heading level (1-6)
-`s32`|`listStartNumber`|Starting number for ordered lists; -1 for unordered
-`bool`|`isLoose`|Whether a list has blank lines between items
-`char`|`listPunc`|List marker character (`-`, `*`, `+`, or `.`)
-`Array<Owned<Element>>`|`children`|Child elements
-`Element*`|`parent`|Parent element (or `nullptr` for root)
-`Array<String>`|`rawLines`|Raw text lines for leaf blocks
-`String`|`text`|Text content for `Text`, `CodeSpan`, or link destination
-`String`|`id`|HTML id attribute for headings
+{table caption="Container block types"}
+`Block::List`|Ordered or unordered list; stores `punctuator`, `startNumber`, and loose-list state
+`Block::ListItem`|List item; stores indentation and optional GFM task state in `isTask` and `isChecked`
+`Block::BlockQuote`|Block quote containing child blocks
+`Block::Table`|GFM table; contains rows and one `TableAlignment` value per column
+`Block::TableRow`|Header or body row containing `TableCell` blocks
 {/table}
 
-Each element has a type indicating what kind of Markdown element it represents, and may contain child elements or text content depending on its type.
+{table caption="Leaf and standalone block types"}
+`Block::Heading`|Heading spans plus `level` and optional HTML `id`
+`Block::Paragraph`|Paragraph spans
+`Block::TableCell`|GFM table-cell spans
+`Block::IndentedCodeBlock`|Indented code stored as text spans
+`Block::FencedCodeBlock`|Fenced code plus `fenceMarker`, `infoString`, and `relativeIndent`
+`Block::HTMLBlock`|Raw HTML text and the `tagFilter` rendering choice captured during parsing
+`Block::ThematicBreak`|A thematic break
+{/table}
 
-{apiSummary title="Element types"}
--- Container Blocks
-Element::None
-Element::List
-Element::ListItem
-Element::BlockQuote
--- Leaf Blocks
-Element::Heading
-Element::Paragraph
-Element::CodeBlock
--- Inline Elements
-Element::Text
-Element::Link
-Element::CodeSpan
-Element::SoftBreak
-Element::Emphasis
-Element::Strong
-{/apiSummary}
+`TableAlignment` has the values `None`, `Left`, `Center`, and `Right`. The delimiter row of a GFM table determines the
+alignment recorded for each column.
 
-{context class=Element}
+## Spans
 
-`Element::None`
-> Default element type, typically used for the root of the document.
+Text-bearing blocks contain a sequence of `Span` objects. As with blocks, the concrete span type is stored in `var` and
+can be accessed with `span.var.is<Type>()` or `span.var.as<Type>()`. Container span types derive from `Span::Container`
+and own `childSpans`; `asContainer()` returns that base or `nullptr`.
 
-`Element::List`
-> An ordered or unordered list. Contains `ListItem` children. Use `listStartNumber` to determine if the list is ordered (>= 0) or unordered (-1). The `listPunc` member indicates the list marker character (e.g., `-`, `*`, or `.`).
+{table caption="Container span types"}
+`Span::Link`|Parsed label spans plus `destination` and optional `title`
+`Span::Image`|Parsed alt-text spans plus `destination` and optional `title`
+`Span::Italic`|Emphasized child spans
+`Span::Bold`|Strongly emphasized child spans
+`Span::Strikethrough`|GFM strikethrough child spans
+{/table}
 
-`Element::ListItem`
-> An individual item within a list. The `indentOrLevel` member indicates the indentation level.
+{table caption="Leaf span types"}
+`Span::Text`|Plain text
+`Span::Code`|Inline code
+`Span::RawHTML`|Raw HTML text and the `tagFilter` rendering choice captured during parsing
+`Span::SoftBreak`|A soft line break
+`Span::HardBreak`|A hard line break
+{/table}
 
-`Element::BlockQuote`
-> A block quote. Contains other block-level elements as children.
+## GitHub Flavored Markdown AST
 
-`Element::Heading`
-> A heading (H1-H6). The `indentOrLevel` member indicates the heading level (1-6). The `id` member can be used to set an HTML id attribute. Text content is stored in `rawLines`.
-
-`Element::Paragraph`
-> A paragraph of text. Text content is stored in `rawLines`.
-
-`Element::CodeBlock`
-> A fenced or indented code block. The raw code is stored in `rawLines`.
-
-`Element::Text`
-> Plain text content within an inline context. The text is stored in the `text` member.
-
-`Element::Link`
-> A hyperlink. The link destination URL is stored in the `text` member. Child elements contain the link text.
-
-`Element::CodeSpan`
-> Inline code (backtick-delimited). The code content is stored in the `text` member.
-
-`Element::SoftBreak`
-> A soft line break within a paragraph.
-
-`Element::Emphasis`
-> Emphasized text (typically rendered as italic). Child elements contain the emphasized content.
-
-`Element::Strong`
-> Strongly emphasized text (typically rendered as bold). Child elements contain the content.
-
-### `Element` Member Functions
-
-{apiSummary class=Element title="Element member functions"}
-bool isContainerBlock() const
-bool isLeafBlock() const
-bool isInlineElement() const
-bool isOrderedList() const
-void addChildren(ArrayView<Owned<Element>> newChildren)
-{/apiSummary}
-
-`bool isContainerBlock() const`
-> Returns `true` if the element is a container block (`None`, `List`, `ListItem`, or `BlockQuote`) that can have child blocks.
-
-`bool isLeafBlock() const`
-> Returns `true` if the element is a leaf block (`Heading`, `Paragraph`, or `CodeBlock`) that contains text but not child blocks.
-
-`bool isInlineElement() const`
-> Returns `true` if the element is an inline element (`Text`, `Link`, `CodeSpan`, `SoftBreak`, `Emphasis`, or `Strong`).
-
-`bool isOrderedList() const`
-> Returns `true` if the element is an ordered list (type is `List` and `listStartNumber` >= 0).
-
-`void addChildren(ArrayView<Owned<Element>> newChildren)`
-> Adds child elements to this element and sets their parent pointers.
+With the corresponding options enabled, pipe-table syntax produces `Block::Table`, `Block::TableRow`, and
+`Block::TableCell`; task-list markers set `Block::ListItem::isTask` and `isChecked`; and strikethrough syntax produces
+`Span::Strikethrough`. Extended autolinks produce ordinary `Span::Link` nodes. The tag-filter choice is captured on
+`Block::HTMLBlock` and `Span::RawHTML` nodes and applied by the HTML renderer.

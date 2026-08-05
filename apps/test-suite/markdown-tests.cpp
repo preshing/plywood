@@ -73,9 +73,65 @@ static bool runMarkdownTestFile(StringView fileName, StringView suiteName, const
     return numPassed == numTests;
 }
 
+// Verifies that each GFM extension is disabled by default and can be enabled without enabling its peers.
+static bool runMarkdownOptionIsolationTests() {
+    // Describes one representative extension input and its output in both parsing modes.
+    struct OptionTest {
+        StringView name;
+        bool markdown::ParseOptions::*flag;
+        StringView source;
+        StringView defaultHtml;
+        StringView enabledHtml;
+    };
+    OptionTest tests[] = {
+        {"tables", &markdown::ParseOptions::tables, "| a | b |\n| --- | --- |\n| c | d |\n",
+         "<p>| a | b |\n| --- | --- |\n| c | d |</p>\n",
+         "<table>\n<thead>\n<tr>\n<th>a</th>\n<th>b</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td>c</td>\n"
+         "<td>d</td>\n</tr>\n</tbody>\n</table>\n"},
+        {"taskListItems", &markdown::ParseOptions::taskListItems, "- [x] done\n",
+         "<ul>\n<li>[x] done</li>\n</ul>\n",
+         "<ul>\n<li><input checked=\"\" disabled=\"\" type=\"checkbox\"> done</li>\n</ul>\n"},
+        {"strikethrough", &markdown::ParseOptions::strikethrough, "~~gone~~\n", "<p>~~gone~~</p>\n",
+         "<p><del>gone</del></p>\n"},
+        {"extendedAutolinks", &markdown::ParseOptions::extendedAutolinks, "www.example.com\n",
+         "<p>www.example.com</p>\n", "<p><a href=\"http://www.example.com\">www.example.com</a></p>\n"},
+        {"tagFilter", &markdown::ParseOptions::tagFilter, "keep <title>unsafe</title>\n",
+         "<p>keep <title>unsafe</title></p>\n", "<p>keep &lt;title>unsafe&lt;/title></p>\n"},
+    };
+    bool allPassed = true;
+
+    // Check default output, then enable exactly one option and ensure every other extension stays disabled.
+    for (u32 enabledIndex = 0; enabledIndex < PLY_STATIC_ARRAY_SIZE(tests); enabledIndex++) {
+        const OptionTest& enabledTest = tests[enabledIndex];
+        String defaultHtml = markdown::convertToHtml(enabledTest.source);
+        if (defaultHtml != enabledTest.defaultHtml) {
+            getStdOut().format("Markdown option isolation failure: {} is enabled by default\nExpected:\n{}Actual:\n{}",
+                               enabledTest.name, enabledTest.defaultHtml, defaultHtml);
+            allPassed = false;
+        }
+
+        markdown::ParseOptions options;
+        options.*enabledTest.flag = true;
+        for (u32 syntaxIndex = 0; syntaxIndex < PLY_STATIC_ARRAY_SIZE(tests); syntaxIndex++) {
+            const OptionTest& syntaxTest = tests[syntaxIndex];
+            StringView expected = syntaxIndex == enabledIndex ? syntaxTest.enabledHtml : syntaxTest.defaultHtml;
+            String actual = markdown::convertToHtml(syntaxTest.source, options);
+            if (actual != expected) {
+                getStdOut().format("Markdown option isolation failure: enabling {} produced unexpected {} output\n"
+                                   "Expected:\n{}Actual:\n{}",
+                                   enabledTest.name, syntaxTest.name, expected, actual);
+                allPassed = false;
+            }
+        }
+    }
+    getStdOut().format("Markdown option isolation checks {}\n", allPassed ? "passed" : "failed");
+    return allPassed;
+}
+
 // Runs the CommonMark and GitHub Flavored Markdown conversion fixtures.
 bool runMarkdownTests() {
     bool commonMarkPassed = runMarkdownTestFile("markdown-tests.txt", "CommonMark", {});
     bool gfmPassed = runMarkdownTestFile("gfm-tests.txt", "GFM", markdown::ParseOptions::githubFlavored());
-    return commonMarkPassed && gfmPassed;
+    bool optionIsolationPassed = runMarkdownOptionIsolationTests();
+    return commonMarkPassed && gfmPassed && optionIsolationPassed;
 }

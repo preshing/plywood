@@ -175,7 +175,8 @@ String convertDocsPathToURL(StringView destination) {
 
 // Converts Markdown to HTML while adapting documentation links for the generated site.
 String convertDocsMarkdownToHtml(StringView source) {
-    Array<Owned<markdown::Block>> blocks = markdown::parseWholeDocument(source);
+    Array<Owned<markdown::Block>> blocks =
+        markdown::parseWholeDocument(source, markdown::ParseOptions::githubFlavored());
     markdown::HTMLOptions options;
     options.filterLinks = convertDocsPathToURL;
     MemStream out;
@@ -357,7 +358,7 @@ public:
 private:
     Stream& out;
     markdown::HTMLOptions options;
-    Owned<markdown::Parser> parser = markdown::createParser();
+    Owned<markdown::Parser> parser = markdown::createParser(markdown::ParseOptions::githubFlavored());
     Array<Owned<markdown::Block>> pendingBlocks;
     String apiClassContext;
 
