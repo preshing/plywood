@@ -344,10 +344,13 @@ bool consumeCompleteHTMLTag(StringView text) {
             if (!isAlpha(c) && !isDigit(c) && c != '_' && c != '.' && c != ':' && c != '-')
                 break;
         }
+        u32 nameEnd = pos;
         while (pos < text.numBytes() && isHTMLWhitespace(text[pos]))
             pos++;
-        if (pos >= text.numBytes() || text[pos] != '=')
+        if (pos >= text.numBytes() || text[pos] != '=') {
+            pos = nameEnd;
             continue;
+        }
         pos++;
         while (pos < text.numBytes() && isHTMLWhitespace(text[pos]))
             pos++;
@@ -372,6 +375,74 @@ bool consumeCompleteHTMLTag(StringView text) {
             }
             if (pos == valueStart)
                 return false;
+        }
+    }
+    return false;
+}
+
+// Consumes one CommonMark raw HTML construct beginning at start and returns its exclusive end position.
+bool consumeInlineHTML(StringView text, u32 start, u32* end) {
+    PLY_ASSERT(start < text.numBytes() && text[start] == '<');
+    StringView remaining = text.substr(start);
+
+    // Comments include two abbreviated empty forms and otherwise close at the first "-->" marker.
+    if (remaining.startsWith("<!--")) {
+        if (remaining.startsWith("<!-->")) {
+            *end = start + 5;
+            return true;
+        }
+        if (remaining.startsWith("<!--->")) {
+            *end = start + 6;
+            return true;
+        }
+        s32 marker = remaining.substr(4).find("-->");
+        if (marker < 0)
+            return false;
+        *end = start + 4 + numericCast<u32>(marker) + 3;
+        return true;
+    }
+
+    // Processing instructions and CDATA sections preserve everything through their closing marker.
+    if (remaining.startsWith("<?")) {
+        s32 marker = remaining.substr(2).find("?>");
+        if (marker < 0)
+            return false;
+        *end = start + 2 + numericCast<u32>(marker) + 2;
+        return true;
+    }
+    if (remaining.startsWith("<![CDATA[")) {
+        s32 marker = remaining.substr(9).find("]]>");
+        if (marker < 0)
+            return false;
+        *end = start + 9 + numericCast<u32>(marker) + 3;
+        return true;
+    }
+
+    // Declarations require an uppercase name followed by whitespace, then close at the next '>'.
+    if (remaining.startsWith("<!") && remaining.numBytes() > 2 && remaining[2] >= 'A' &&
+        remaining[2] <= 'Z') {
+        u32 pos = 3;
+        while (pos < remaining.numBytes() && remaining[pos] >= 'A' && remaining[pos] <= 'Z')
+            pos++;
+        if (pos >= remaining.numBytes() || !isHTMLWhitespace(remaining[pos]))
+            return false;
+        s32 marker = remaining.substr(pos + 1).find('>');
+        if (marker < 0)
+            return false;
+        *end = start + pos + 1 + numericCast<u32>(marker) + 1;
+        return true;
+    }
+
+    // A quoted attribute can contain '>', so test each possible terminator until a complete tag is found.
+    u32 candidateEnd = 1;
+    while (candidateEnd < remaining.numBytes()) {
+        s32 marker = remaining.substr(candidateEnd).find('>');
+        if (marker < 0)
+            return false;
+        candidateEnd += numericCast<u32>(marker) + 1;
+        if (consumeCompleteHTMLTag(remaining.left(candidateEnd))) {
+            *end = start + candidateEnd;
+            return true;
         }
     }
     return false;
@@ -1644,21 +1715,16 @@ Array<Owned<Span>> expandInlineSpans(const Parser* parser, StringView rawText) {
                 flushText();
             }
         } else if (c == '<') {
-            // An invalid reference definition remains a paragraph, including any complete inline HTML tag in it.
-            s32 definitionColon = rawText.left(i).find("]:");
-            s32 closing = definitionColon >= 0 ? rawText.substr(i + 1).find('>') : -1;
-            if (closing >= 0 && rawText.left(numericCast<u32>(definitionColon)).trimLeft().startsWith('[')) {
-                u32 tagEnd = i + numericCast<u32>(closing) + 2;
-                StringView tag = rawText.substr(i, tagEnd - i);
-                if (consumeCompleteHTMLTag(tag)) {
-                    flushText();
-                    Owned<Span> htmlSpan = makeSpan<Span::RawHTML>();
-                    htmlSpan->var.as<Span::RawHTML>()->text = tag;
-                    delimiters.append(std::move(htmlSpan));
-                    i = tagEnd;
-                    flushedIndex = i;
-                    continue;
-                }
+            // Raw HTML is one atomic inline so Markdown punctuation and line endings inside it remain verbatim.
+            u32 htmlEnd = 0;
+            if (consumeInlineHTML(rawText, i, &htmlEnd)) {
+                flushText();
+                Owned<Span> htmlSpan = makeSpan<Span::RawHTML>();
+                htmlSpan->var.as<Span::RawHTML>()->text = rawText.substr(i, htmlEnd - i);
+                delimiters.append(std::move(htmlSpan));
+                i = htmlEnd;
+                flushedIndex = i;
+                continue;
             }
             i++;
         } else if (c == '*') {
