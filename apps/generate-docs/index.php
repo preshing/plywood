@@ -3,6 +3,13 @@ define('CONTENT_PATH', '../../webcontent/plywood/');
 
 $path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 
+// Serve the introduction page at the documentation root, including AJAX requests from the page viewer.
+if (($path === "/docs") || ($path === "/docs/")) {
+    $path = "/docs/introduction";
+} elseif ($path === "/docs.ajax") {
+    $path = "/docs/introduction.ajax";
+}
+
 if ($path === '/') {
     $file = CONTENT_PATH . "index.html";
     if (!file_exists($file)) {
@@ -15,9 +22,6 @@ if ($path === '/') {
     $full_html = str_replace("{%toc%}", $toc, $template);
     echo $full_html;
     exit;
-} elseif (($path === "/docs") || ($path === "/docs/")) {
-    header("Location: /docs/introduction");
-    exit();
 } elseif (str_starts_with($path, '/docs/')) {
     $path = str_replace('\0', '', $path);
     // Split path into components and filter out those starting with '.'

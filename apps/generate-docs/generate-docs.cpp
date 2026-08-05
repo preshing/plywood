@@ -158,6 +158,10 @@ String convertDocsPathToURL(StringView destination) {
     StringView path = suffixPos >= 0 ? destination.left(suffixPos) : destination;
     StringView suffix = suffixPos >= 0 ? destination.substr(suffixPos) : StringView{};
 
+    // Use the documentation root as the public URL for the introduction page.
+    if (path == "/docs/introduction.md")
+        return StringView{"/docs"} + suffix;
+
     // Remove the source filename while retaining the documentation route and suffix.
     if (path.endsWith("/index.md")) {
         path = path.shortenedBy(9);

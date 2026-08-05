@@ -20,6 +20,14 @@ void servePlywoodDocumentation(HTTPServerRequest& request) {
     if (queryPos >= 0) {
         urlPath = urlPath.left(queryPos);
     }
+
+    // Serve the introduction page at the documentation root, including AJAX requests from the page viewer.
+    if ((urlPath == "/docs") || (urlPath == "/docs/")) {
+        urlPath = "/docs/introduction";
+    } else if (urlPath == "/docs.ajax") {
+        urlPath = "/docs/introduction.ajax";
+    }
+
     Array<StringView> parts = urlPath.split("/");
     if (parts.numItems() > 5) {
         parts = parts.subview(0, 5);
@@ -72,14 +80,6 @@ void servePlywoodDocumentation(HTTPServerRequest& request) {
             return;
         }
         if (parts[0] == "docs") {
-            if (parts.numItems() == 1) {
-                // FIXME: Include the hostname in the Location URL.
-                HTTPServerResponse response{HTTPServerResponse::PermanentRedirect};
-                *response.headers.insert("location").value = "/docs/introduction";
-                request.sendFullResponse(std::move(response));
-                return;
-            }
-
             String localPath = joinPath(docsFolder, "content/docs", StringView{'/'}.join(parts.subview(1)));
             bool isAjaxRequest = localPath.endsWith(".ajax");
             if (isAjaxRequest) {

@@ -50,7 +50,7 @@ function navigateTo(dstPath, forward, pageYOffset) {
     // Highlight current page in sidebar
     updateSelectedItem(dstPath);
 
-    // Extract anchor from path (e.g., /docs/introduction#section -> anchor = "section")
+    // Extract anchor from path (e.g., /docs/base#section -> anchor = "section")
     var anchorPos = dstPath.indexOf('#');
     var anchor = (anchorPos >= 0) ? dstPath.substr(anchorPos + 1) : '';
     var pathWithoutAnchor = (anchorPos >= 0) ? dstPath.substr(0, anchorPos) : dstPath;
