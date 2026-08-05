@@ -165,7 +165,7 @@ Owned<Span> makeSpan() {
 void finalizeLeafBlock(Parser* parser);
 
 // Forward declaration for fenced-code info strings parsed before inline parsing helpers.
-String decodeCharacterReferences(StringView src);
+String normalizeFenceInfoString(StringView src);
 
 // Helper function to extract a line from a code block without leading indentation.
 String extractCodeLine(StringView line, u32 startColumn, u32 optionalSpace = 0) {
@@ -241,7 +241,7 @@ bool parseOpeningFence(StringView remainingLine, u32 relativeIndent, Block::Fenc
     }
 
     outFenced.fenceMarker = remainingLine.left(fence.markerCount);
-    outFenced.infoString = decodeCharacterReferences(info);
+    outFenced.infoString = normalizeFenceInfoString(info);
     outFenced.relativeIndent = relativeIndent;
     return true;
 }
@@ -1426,6 +1426,17 @@ String decodeCharacterReferences(StringView src) {
         out.write(src[i++]);
     }
     return out.moveToString();
+}
+
+// Decodes backslash escapes and character references in a fenced-code info string.
+String normalizeFenceInfoString(StringView src) {
+    MemStream out;
+    for (u32 i = 0; i < src.numBytes(); i++) {
+        if (src[i] == '\\' && i + 1 < src.numBytes() && isAscPunc(src[i + 1]))
+            i++;
+        out.write(src[i]);
+    }
+    return decodeCharacterReferences(out.moveToString());
 }
 
 // Percent-encodes bytes that aren't permitted literally in an HTML link destination.
