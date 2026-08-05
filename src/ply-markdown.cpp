@@ -1849,6 +1849,8 @@ Array<Owned<Span>> processEmphasis(Array<Delimiter>& delimiters, u32 bottomPos) 
 
 // Parses inline Markdown spans within rawText and returns the expanded span sequence.
 Array<Owned<Span>> expandInlineSpans(const Parser* parser, StringView rawText) {
+    // A line ending is required to turn trailing spaces into a hard break; final trailing spaces are discarded.
+    rawText = rawText.trimRight([](char c) { return c == ' '; });
     Array<Delimiter> delimiters;
     u32 i = 0;
     u32 flushedIndex = 0;
