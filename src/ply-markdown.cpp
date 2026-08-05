@@ -161,6 +161,9 @@ Owned<Span> makeSpan() {
 // Forward declaration.
 void finalizeLeafBlock(Parser* parser);
 
+// Forward declaration for fenced-code info strings parsed before inline parsing helpers.
+String decodeCharacterReferences(StringView src);
+
 // Helper function to extract a line from a code block without leading indentation.
 String extractCodeLine(StringView line, u32 startColumn, u32 optionalSpace = 0) {
     u32 startColWithSpace = startColumn + optionalSpace;
@@ -235,7 +238,7 @@ bool parseOpeningFence(StringView remainingLine, u32 relativeIndent, Block::Fenc
     }
 
     outFenced.fenceMarker = remainingLine.left(fence.markerCount);
-    outFenced.infoString = String{info};
+    outFenced.infoString = decodeCharacterReferences(info);
     outFenced.relativeIndent = relativeIndent;
     return true;
 }
@@ -1292,41 +1295,108 @@ struct LinkDestination {
     String title;
 };
 
-// Decodes the character references needed while normalizing link destinations and titles.
-String decodeLinkText(StringView src) {
+// An HTML 5 named character reference and its UTF-8 replacement text.
+struct NamedCharacterReference {
+    StringView name;
+    StringView value;
+};
+
+// Complete semicolon-terminated HTML 5 named character reference lookup table.
+static const NamedCharacterReference NamedCharacterReferences[] = {
+#include "ply-markdown-entities.inc"
+};
+
+// Applies the replacements required for invalid and legacy numeric character references.
+u32 normalizeNumericCharacterReference(u32 point) {
+    static const u16 Windows1252Replacements[] = {
+        0x20ac, 0x81, 0x201a, 0x192, 0x201e, 0x2026, 0x2020, 0x2021,
+        0x2c6, 0x2030, 0x160, 0x2039, 0x152, 0x8d, 0x17d, 0x8f,
+        0x90, 0x2018, 0x2019, 0x201c, 0x201d, 0x2022, 0x2013, 0x2014,
+        0x2dc, 0x2122, 0x161, 0x203a, 0x153, 0x9d, 0x17e, 0x178,
+    };
+    if (point == 0 || point > 0x10ffff || (point >= 0xd800 && point <= 0xdfff))
+        return 0xfffd;
+    if (point >= 0x80 && point <= 0x9f)
+        return Windows1252Replacements[point - 0x80];
+    return point;
+}
+
+// Decodes one semicolon-terminated HTML character reference at the start of src.
+bool decodeCharacterReference(MemStream& out, StringView src, u32* numBytes) {
+    if (src.numBytes() < 3 || src[0] != '&')
+        return false;
+
+    // Numeric references contain at most seven decimal or six hexadecimal digits.
+    if (src[1] == '#') {
+        u32 pos = 2;
+        u32 radix = 10;
+        u32 maxDigits = 7;
+        if (pos < src.numBytes() && (src[pos] == 'x' || src[pos] == 'X')) {
+            pos++;
+            radix = 16;
+            maxDigits = 6;
+        }
+        u32 digits = 0;
+        u32 point = 0;
+        while (pos < src.numBytes() && digits < maxDigits) {
+            u32 digit;
+            char c = src[pos];
+            if (c >= '0' && c <= '9') {
+                digit = c - '0';
+            } else if (radix == 16 && c >= 'a' && c <= 'f') {
+                digit = c - 'a' + 10;
+            } else if (radix == 16 && c >= 'A' && c <= 'F') {
+                digit = c - 'A' + 10;
+            } else {
+                break;
+            }
+            point = point * radix + digit;
+            digits++;
+            pos++;
+        }
+        if (digits == 0 || pos >= src.numBytes() || src[pos] != ';')
+            return false;
+        encodeUnicode(out, UTF8, normalizeNumericCharacterReference(point));
+        *numBytes = pos + 1;
+        return true;
+    }
+
+    // Named references use ASCII alphanumeric names and require their semicolon in Markdown.
+    u32 end = 1;
+    while (end < src.numBytes() && ((src[end] >= 'a' && src[end] <= 'z') ||
+                                    (src[end] >= 'A' && src[end] <= 'Z') ||
+                                    (src[end] >= '0' && src[end] <= '9'))) {
+        end++;
+    }
+    if (end == 1 || end >= src.numBytes() || src[end] != ';')
+        return false;
+    StringView name = src.substr(1, end - 1);
+    u32 lo = 0;
+    u32 hi = PLY_STATIC_ARRAY_SIZE(NamedCharacterReferences);
+    while (lo < hi) {
+        u32 mid = (lo + hi) / 2;
+        s32 order = compare(name, NamedCharacterReferences[mid].name);
+        if (order < 0) {
+            hi = mid;
+        } else if (order > 0) {
+            lo = mid + 1;
+        } else {
+            out.write(NamedCharacterReferences[mid].value);
+            *numBytes = end + 1;
+            return true;
+        }
+    }
+    return false;
+}
+
+// Decodes character references while normalizing link destinations, titles and fence info strings.
+String decodeCharacterReferences(StringView src) {
     MemStream out;
     for (u32 i = 0; i < src.numBytes();) {
-        if (src[i] == '&') {
-            s32 semi = src.substr(i + 1).find(';');
-            if (semi >= 0) {
-                StringView name = src.substr(i + 1, semi);
-                u32 point = 0;
-                bool recognized = true;
-                if (name == "quot") {
-                    point = '"';
-                } else if (name == "amp") {
-                    point = '&';
-                } else if (name == "lt") {
-                    point = '<';
-                } else if (name == "gt") {
-                    point = '>';
-                } else if (name == "auml") {
-                    point = 0xe4;
-                } else if (name.startsWith("#x") || name.startsWith("#X")) {
-                    ViewStream in{name.substr(2)};
-                    point = numericCast<u32>(readU64FromText(in, 16));
-                } else if (name.startsWith('#')) {
-                    ViewStream in{name.substr(1)};
-                    point = numericCast<u32>(readU64FromText(in, 10));
-                } else {
-                    recognized = false;
-                }
-                if (recognized && point > 0 && point <= 0x10ffff) {
-                    encodeUnicode(out, UTF8, point);
-                    i += semi + 2;
-                    continue;
-                }
-            }
+        u32 numBytes = 0;
+        if (src[i] == '&' && decodeCharacterReference(out, src.substr(i), &numBytes)) {
+            i += numBytes;
+            continue;
         }
         out.write(src[i++]);
     }
@@ -1335,7 +1405,7 @@ String decodeLinkText(StringView src) {
 
 // Percent-encodes bytes that aren't permitted literally in an HTML link destination.
 String normalizeLinkDestination(StringView src) {
-    String decoded = decodeLinkText(src);
+    String decoded = decodeCharacterReferences(src);
     static const char Hex[] = "0123456789ABCDEF";
     MemStream out;
     for (u8 c : decoded) {
@@ -1357,7 +1427,7 @@ bool parseLinkTitle(StringView rawText, u32* pos, char closing, String* title) {
         char c = rawText[i];
         if (c == closing) {
             *pos = i + 1;
-            *title = decodeLinkText(out.moveToString());
+            *title = decodeCharacterReferences(out.moveToString());
             return true;
         }
         if (c == '\\' && i + 1 < rawText.numBytes() && isAscPunc(rawText[i + 1])) {
@@ -1727,6 +1797,18 @@ Array<Owned<Span>> expandInlineSpans(const Parser* parser, StringView rawText) {
                 continue;
             }
             i++;
+        } else if (c == '&') {
+            // Decoded punctuation is text, not Markdown syntax, so keep each reference in an atomic delimiter.
+            MemStream decoded;
+            u32 numBytes = 0;
+            if (decodeCharacterReference(decoded, rawText.substr(i), &numBytes)) {
+                flushText();
+                delimiters.append({Delimiter::RawText, decoded.moveToString()});
+                i += numBytes;
+                flushedIndex = i;
+            } else {
+                i++;
+            }
         } else if (c == '*') {
             flushText();
             u32 runLength = 1;
