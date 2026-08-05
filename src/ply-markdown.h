@@ -51,7 +51,9 @@ struct Span {
         String text;
     };
     struct RawHTML {
+        // Source text is retained verbatim; this records whether tag filtering was selected while parsing.
         String text;
+        bool tagFilter = false;
     };
     struct SoftBreak {};
     struct HardBreak {};
@@ -113,9 +115,10 @@ struct Block {
         String infoString;  // Optional info string for fenced code blocks.
         u32 relativeIndent = 0;
     };
-    // An HTML block retains its source text for verbatim rendering.
+    // An HTML block retains its source text; tagFilter records the rendering behavior selected while parsing.
     struct HTMLBlock {
         String text;
+        bool tagFilter = false;
     };
     struct ThematicBreak {};
 

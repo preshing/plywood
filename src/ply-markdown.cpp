@@ -1693,7 +1693,7 @@ bool consumeAutolink(StringView rawText, u32 start, u32* end, bool* isEmail) {
 }
 
 // Parses an autolink or raw HTML at start as one atomic inline, with autolinks taking precedence.
-Owned<Span> parseAtomicAngleSpan(StringView rawText, u32 start, u32* end) {
+Owned<Span> parseAtomicAngleSpan(StringView rawText, u32 start, u32* end, bool tagFilter) {
     PLY_ASSERT(start < rawText.numBytes() && rawText[start] == '<');
 
     // Consume the entire autolink so later inline parsing can't interpret backticks in its label.
@@ -1713,6 +1713,7 @@ Owned<Span> parseAtomicAngleSpan(StringView rawText, u32 start, u32* end) {
     if (consumeInlineHTML(rawText, start, end)) {
         Owned<Span> htmlSpan = makeSpan<Span::RawHTML>();
         htmlSpan->var.as<Span::RawHTML>()->text = rawText.substr(start, *end - start);
+        htmlSpan->var.as<Span::RawHTML>()->tagFilter = tagFilter;
         return htmlSpan;
     }
     return nullptr;
@@ -2114,7 +2115,7 @@ Array<Owned<Span>> expandInlineSpans(const Parser* parser, StringView rawText) {
         } else if (c == '<') {
             // Angle constructs are consumed before scanning any backticks they contain.
             u32 angleEnd = 0;
-            if (Owned<Span> angleSpan = parseAtomicAngleSpan(rawText, i, &angleEnd)) {
+            if (Owned<Span> angleSpan = parseAtomicAngleSpan(rawText, i, &angleEnd, parser->options.tagFilter)) {
                 flushText();
                 delimiters.append(std::move(angleSpan));
                 i = angleEnd;
@@ -2291,6 +2292,7 @@ void finalizeLeafBlock(Parser* parser) {
     new (&parser->rawLeafText) MemStream;
     if (auto* html = parser->leafBlock->var.as<Block::HTMLBlock>()) {
         html->text = std::move(rawText);
+        html->tagFilter = parser->options.tagFilter;
     } else {
         Block::Leaf* leaf = parser->leafBlock->asLeaf();
         PLY_ASSERT(leaf);
@@ -2639,6 +2641,8 @@ void dumpSpan(Stream* outs, const Span* span, u32 level) {
         outs->write("rawhtml \"");
         printEscapedString(*outs, html->text);
         outs->write('"');
+        if (html->tagFilter)
+            outs->write(" (tag_filter)");
     } else if (span->var.is<Span::SoftBreak>()) {
         outs->write("softbreak");
     } else if (span->var.is<Span::HardBreak>()) {
@@ -2689,8 +2693,10 @@ void dump(Stream* outs, const Block* block, u32 level) {
         outs->write("indented_code_block");
     } else if (block->var.is<Block::FencedCodeBlock>()) {
         outs->write("fenced_code_block");
-    } else if (block->var.is<Block::HTMLBlock>()) {
+    } else if (auto* html = block->var.as<Block::HTMLBlock>()) {
         outs->write("html_block");
+        if (html->tagFilter)
+            outs->write(" (tag_filter)");
     } else if (block->var.is<Block::ThematicBreak>()) {
         outs->write("thematic_break");
     } else {
@@ -2718,6 +2724,40 @@ void dump(Stream* outs, const Block* block, u32 level) {
 //  ██▀▀██   ██   ██▀█▀██ ██
 //  ██  ██   ██   ██   ██ ██▄▄▄
 //
+
+// Writes raw HTML while escaping the opening delimiter of tags disallowed by GFM's tagfilter extension.
+void writeFilteredRawHTML(Stream* outs, StringView text) {
+    static const StringView disallowedTags[] = {
+        "title", "textarea", "style", "xmp", "iframe", "noembed", "noframes", "script", "plaintext",
+    };
+    u32 flushedPos = 0;
+    for (u32 pos = 0; pos < text.numBytes(); pos++) {
+        if (text[pos] != '<')
+            continue;
+
+        // Match an optional closing slash, then a disallowed name and a valid tag-name boundary.
+        u32 nameStart = pos + 1;
+        if (nameStart < text.numBytes() && text[nameStart] == '/')
+            nameStart++;
+        for (StringView tag : disallowedTags) {
+            u32 nameEnd = nameStart + tag.numBytes();
+            if (nameEnd > text.numBytes() ||
+                !isEqualAsciiCaseInsensitive(text.substr(nameStart, tag.numBytes()), tag)) {
+                continue;
+            }
+            bool hasBoundary = nameEnd < text.numBytes() &&
+                               (isHTMLWhitespace(text[nameEnd]) || text[nameEnd] == '>' ||
+                                (text[nameEnd] == '/' && nameEnd + 1 < text.numBytes() && text[nameEnd + 1] == '>'));
+            if (!hasBoundary)
+                continue;
+            outs->write(text.substr(flushedPos, pos - flushedPos));
+            outs->write("&lt;");
+            flushedPos = pos + 1;
+            break;
+        }
+    }
+    outs->write(text.substr(flushedPos));
+}
 
 // Renders the plain-text contribution of one parsed image-label span, escaping it for an HTML attribute.
 void convertImageAltToHtml(Stream* outs, const Span* span) {
@@ -2769,7 +2809,11 @@ void convertSpanToHtml(Stream* outs, const Span* span, const HTMLOptions& option
     } else if (auto* code = span->var.as<Span::Code>()) {
         outs->format("<code>{:&}</code>", code->text);
     } else if (auto* html = span->var.as<Span::RawHTML>()) {
-        outs->write(html->text);
+        if (html->tagFilter) {
+            writeFilteredRawHTML(outs, html->text);
+        } else {
+            outs->write(html->text);
+        }
     } else if (span->var.is<Span::SoftBreak>()) {
         outs->write("\n");
     } else if (span->var.is<Span::HardBreak>()) {
@@ -2894,7 +2938,11 @@ void convertToHtml(Stream* outs, const Block* block, const HTMLOptions& options)
         }
         outs->write("</code></pre>\n");
     } else if (auto* html = block->var.as<Block::HTMLBlock>()) {
-        outs->write(html->text);
+        if (html->tagFilter) {
+            writeFilteredRawHTML(outs, html->text);
+        } else {
+            outs->write(html->text);
+        }
     } else if (block->var.is<Block::ThematicBreak>()) {
         outs->write("<hr />\n");
     } else {
