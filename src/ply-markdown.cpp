@@ -14,6 +14,13 @@ namespace markdown {
 // Parser implementation details not exposed in the public API.
 //------------------------------------------------------------------
 struct Parser {
+    // A normalized link-reference definition collected before whole-document parsing.
+    struct LinkReference {
+        String label;
+        String destination;
+        String title;
+    };
+
     // The current stack of nested Markdown blocks based on the content of previous lines.
     // Consists of ListItems and BlockQuotes.
     Array<Block*> activeBlocks;
@@ -24,6 +31,9 @@ struct Parser {
     // Accumulates raw text to be added to the leaf block.
     // Inline delimiter spans are parsed when the leaf block is flushed.
     MemStream rawLeafText;
+
+    // Link reference definitions are populated by the whole-document convenience functions.
+    Array<LinkReference> linkReferences;
 
     // Root block of the document. Top-level blocks are popped from the front and returned to the caller as we go.
     Block rootBlock;
@@ -738,6 +748,7 @@ struct Delimiter {
     bool leftFlanking = false;  // Stars & Underscores only
     bool rightFlanking = false; // Stars & Underscores only
     bool active = true;         // OpenLink only
+    u32 sourcePos = 0;          // OpenLink only
     String textStorage;
     StringView text;
     Owned<Span> span; // InlineElem only
@@ -764,74 +775,273 @@ struct Delimiter {
     }
 };
 
+// Normalizes a reference label using CommonMark's whitespace and ASCII case-folding rules.
+String normalizeReferenceLabel(StringView label) {
+    MemStream out;
+    bool pendingSpace = false;
+    for (u32 i = 0; i < label.numBytes(); i++) {
+        char c = label[i];
+        // Unicode case folding maps both forms of German sharp S to "ss".
+        if ((u8(c) == 0xc3 && i + 1 < label.numBytes() && u8(label[i + 1]) == 0x9f) ||
+            (u8(c) == 0xe1 && i + 2 < label.numBytes() && u8(label[i + 1]) == 0xba &&
+             u8(label[i + 2]) == 0x9e)) {
+            if (pendingSpace) {
+                out.write(' ');
+                pendingSpace = false;
+            }
+            out.write("ss");
+            i += u8(c) == 0xc3 ? 1 : 2;
+            continue;
+        }
+        if (isWhite(c)) {
+            pendingSpace = out.getSeekPos() > 0;
+            continue;
+        }
+        if (pendingSpace) {
+            out.write(' ');
+            pendingSpace = false;
+        }
+        if (c >= 'A' && c <= 'Z')
+            c += 'a' - 'A';
+        out.write(c);
+    }
+    return out.moveToString();
+}
+
+// Finds a previously collected reference definition by normalized label.
+const Parser::LinkReference* findLinkReference(const Parser* parser, StringView label) {
+    String normalized = normalizeReferenceLabel(label);
+    for (const Parser::LinkReference& reference : parser->linkReferences) {
+        if (reference.label == normalized)
+            return &reference;
+    }
+    return nullptr;
+}
+
 // Result of parsing a link destination after a closing ']'.
 struct LinkDestination {
     bool success = false;
     String dest;
+    String title;
 };
 
-// Parses a link destination from rawText starting at pos and advances pos past the closing ')' on success.
-LinkDestination parseLinkDestination(StringView rawText, u32* pos) {
-    // FIXME: Support < > destinations
-    // FIXME: Support link titles
+// Decodes the character references needed while normalizing link destinations and titles.
+String decodeLinkText(StringView src) {
+    MemStream out;
+    for (u32 i = 0; i < src.numBytes();) {
+        if (src[i] == '&') {
+            s32 semi = src.substr(i + 1).find(';');
+            if (semi >= 0) {
+                StringView name = src.substr(i + 1, semi);
+                u32 point = 0;
+                bool recognized = true;
+                if (name == "quot") {
+                    point = '"';
+                } else if (name == "amp") {
+                    point = '&';
+                } else if (name == "lt") {
+                    point = '<';
+                } else if (name == "gt") {
+                    point = '>';
+                } else if (name == "auml") {
+                    point = 0xe4;
+                } else if (name.startsWith("#x") || name.startsWith("#X")) {
+                    ViewStream in{name.substr(2)};
+                    point = numericCast<u32>(readU64FromText(in, 16));
+                } else if (name.startsWith('#')) {
+                    ViewStream in{name.substr(1)};
+                    point = numericCast<u32>(readU64FromText(in, 10));
+                } else {
+                    recognized = false;
+                }
+                if (recognized && point > 0 && point <= 0x10ffff) {
+                    encodeUnicode(out, UTF8, point);
+                    i += semi + 2;
+                    continue;
+                }
+            }
+        }
+        out.write(src[i++]);
+    }
+    return out.moveToString();
+}
 
+// Percent-encodes bytes that aren't permitted literally in an HTML link destination.
+String normalizeLinkDestination(StringView src) {
+    String decoded = decodeLinkText(src);
+    static const char Hex[] = "0123456789ABCDEF";
+    MemStream out;
+    for (u8 c : decoded) {
+        if (c <= 0x20 || c >= 0x7f || c == '"' || c == '\\' || c == '<' || c == '>') {
+            out.write('%');
+            out.write(Hex[c >> 4]);
+            out.write(Hex[c & 15]);
+        } else {
+            out.write(c);
+        }
+    }
+    return out.moveToString();
+}
+
+// Reads backslash escapes until the specified closing title delimiter.
+bool parseLinkTitle(StringView rawText, u32* pos, char closing, String* title) {
+    MemStream out;
+    for (u32 i = *pos; i < rawText.numBytes(); i++) {
+        char c = rawText[i];
+        if (c == closing) {
+            *pos = i + 1;
+            *title = decodeLinkText(out.moveToString());
+            return true;
+        }
+        if (c == '\\' && i + 1 < rawText.numBytes() && isAscPunc(rawText[i + 1])) {
+            c = rawText[++i];
+        }
+        out.write(c);
+    }
+    return false;
+}
+
+// Parses a link destination from rawText starting after '(' and advances pos past ')' on success.
+LinkDestination parseLinkDestination(StringView rawText, u32* pos) {
     u32 i = *pos;
 
-    // Skip initial whitespace
+    // Skip initial whitespace, then parse either an angle-bracketed or bare destination.
     while (i < rawText.numBytes() && isWhite(rawText[i])) {
         i++;
     }
-    if (i >= rawText.numBytes())
-        return {false, String{}};
-
     MemStream mout;
-    u32 parenNestLevel = 0;
-    for (; i < rawText.numBytes(); i++) {
-        char c = rawText[i];
-        if (c == '\n')
-            break;
-
-        if (c == '\\') {
-            i++;
-            if (i >= rawText.numBytes() || rawText[i] == '\n') {
-                mout.write('\\');
+    if (i < rawText.numBytes() && rawText[i] == '<') {
+        bool closed = false;
+        for (i++; i < rawText.numBytes(); i++) {
+            char c = rawText[i];
+            if (c == '\n' || c == '<')
+                return {};
+            if (c == '>') {
+                closed = true;
+                i++;
                 break;
             }
-            c = rawText[i];
-            if (!isAscPunc(c)) {
-                mout.write('\\');
+            if (c == '\\' && i + 1 < rawText.numBytes() && isAscPunc(rawText[i + 1])) {
+                c = rawText[++i];
             }
             mout.write(c);
-        } else if (c == '(') {
-            mout.write(c);
-            parenNestLevel++;
-        } else if (c == ')') {
-            if (parenNestLevel > 0) {
+        }
+        if (!closed)
+            return {};
+    } else {
+        u32 parenNestLevel = 0;
+        for (; i < rawText.numBytes(); i++) {
+            char c = rawText[i];
+            if (c == '\n' || isWhite(c))
+                break;
+            if (c == '\\' && i + 1 < rawText.numBytes() && isAscPunc(rawText[i + 1])) {
+                mout.write(rawText[++i]);
+            } else if (c == '(') {
+                mout.write(c);
+                if (++parenNestLevel > 32)
+                    return {};
+            } else if (c == ')') {
+                if (parenNestLevel == 0)
+                    break;
                 mout.write(c);
                 parenNestLevel--;
             } else {
-                break;
+                mout.write(c);
             }
-        } else if (c >= 0 && c <= 32)
-            break;
-        else {
-            mout.write(c);
         }
+        if (parenNestLevel != 0)
+            return {};
     }
 
-    if (parenNestLevel != 0)
-        return {false, String{}};
+    String destination = normalizeLinkDestination(mout.moveToString());
 
-    // Skip trailing whitespace
+    // A title is allowed only when separated from the destination by whitespace.
+    bool hadWhitespace = false;
     while (i < rawText.numBytes() && isWhite(rawText[i])) {
+        hadWhitespace = true;
         i++;
     }
+    String title;
+    if (hadWhitespace && i < rawText.numBytes() && (rawText[i] == '"' || rawText[i] == '\'' || rawText[i] == '(')) {
+        char opening = rawText[i++];
+        char closing = opening == '(' ? ')' : opening;
+        if (!parseLinkTitle(rawText, &i, closing, &title))
+            return {};
+        while (i < rawText.numBytes() && isWhite(rawText[i])) {
+            i++;
+        }
+    }
     if (i >= rawText.numBytes() || rawText[i] != ')')
-        return {false, String{}};
+        return {};
 
-    i++;
-    *pos = i;
-    return {true, mout.moveToString()};
+    *pos = i + 1;
+    return {true, std::move(destination), std::move(title)};
+}
+
+// Collects simple reference definitions and removes their source lines before block parsing.
+String collectLinkReferences(StringView src, Parser* parser) {
+    MemStream cleaned;
+    u32 lineStart = 0;
+    while (lineStart < src.numBytes()) {
+        u32 lineEnd = lineStart;
+        while (lineEnd < src.numBytes() && src[lineEnd] != '\n')
+            lineEnd++;
+        u32 nextLine = min(lineEnd + 1, src.numBytes());
+
+        // A definition may be indented by at most three spaces and its label may span one line break.
+        u32 start = lineStart;
+        while (start < lineEnd && start - lineStart < 3 && src[start] == ' ')
+            start++;
+        bool consumed = false;
+        if (start < lineEnd && src[start] == '[') {
+            u32 close = start + 1;
+            u32 labelLineBreaks = 0;
+            bool invalid = false;
+            while (close < src.numBytes()) {
+                if (src[close] == '\\' && close + 1 < src.numBytes()) {
+                    close += 2;
+                    continue;
+                }
+                if (src[close] == '[' || labelLineBreaks > 1) {
+                    invalid = true;
+                    break;
+                }
+                if (src[close] == ']')
+                    break;
+                if (src[close] == '\n')
+                    labelLineBreaks++;
+                close++;
+            }
+            if (!invalid && close < src.numBytes() && close > start + 1 && close + 1 < src.numBytes() &&
+                src[close + 1] == ':') {
+                u32 definitionEnd = close + 2;
+                while (definitionEnd < src.numBytes() && src[definitionEnd] != '\n')
+                    definitionEnd++;
+
+                // Reuse inline destination parsing by wrapping the definition's target in parentheses.
+                StringView target = src.substr(close + 2, definitionEnd - close - 2).trimRight();
+                String wrapped = StringView{"("} + target + ')';
+                u32 targetPos = 1;
+                LinkDestination destination = parseLinkDestination(wrapped, &targetPos);
+                String label = normalizeReferenceLabel(src.substr(start + 1, close - start - 1));
+                if (destination.success && label) {
+                    if (!findLinkReference(parser, label)) {
+                        Parser::LinkReference& reference = parser->linkReferences.append();
+                        reference.label = std::move(label);
+                        reference.destination = std::move(destination.dest);
+                        reference.title = std::move(destination.title);
+                    }
+                    nextLine = min(definitionEnd + 1, src.numBytes());
+                    consumed = true;
+                }
+            }
+        }
+
+        if (!consumed)
+            cleaned.write(src.substr(lineStart, nextLine - lineStart));
+        lineStart = nextLine;
+    }
+    return cleaned.moveToString();
 }
 
 // Converts delimiters to spans, merging plain-text delimiters into adjacent Span::Text nodes.
@@ -903,7 +1113,7 @@ Array<Owned<Span>> processEmphasis(Array<Delimiter>& delimiters, u32 bottomPos) 
 }
 
 // Parses inline Markdown spans within rawText and returns the expanded span sequence.
-Array<Owned<Span>> expandInlineSpans(StringView rawText) {
+Array<Owned<Span>> expandInlineSpans(const Parser* parser, StringView rawText) {
     Array<Delimiter> delimiters;
     u32 i = 0;
     u32 flushedIndex = 0;
@@ -990,41 +1200,79 @@ Array<Owned<Span>> expandInlineSpans(StringView rawText) {
         } else if (c == '[') {
             flushText();
             delimiters.append({Delimiter::OpenLink, rawText.substr(i, 1)});
+            delimiters.back().sourcePos = i;
             i++;
             flushedIndex = i;
         } else if (c == ']') {
-            // Try to parse an inline link
+            // Locate the nearest active link opener before examining its inline or reference suffix.
             flushText();
             i++;
-            if (!(i < rawText.numBytes() && rawText[i] == '('))
-                continue; // No parenthesis
-
-            // Got opening parenthesis
-            i++;
-
-            // Look for preceding OpenLink delimiter
-            s32 openLink =
-                reverseFind(delimiters, [](const Delimiter& delim) { return delim.type == Delimiter::OpenLink; });
+            s32 openLink = reverseFind(delimiters, [](const Delimiter& delim) {
+                return delim.type == Delimiter::OpenLink && delim.active;
+            });
             if (openLink < 0)
-                continue; // No preceding OpenLink delimiter
+                continue;
 
-            // Found a preceding OpenLink delimiter
-            // Try to parse link destination
-            u32 backup = i;
-            LinkDestination linkDest = parseLinkDestination(rawText, &i);
-            if (!linkDest.success) {
-                // Couldn't parse link destination
-                i = backup;
+            // Inline destinations take precedence over all reference-link forms.
+            LinkDestination linkDest;
+            u32 suffixEnd = i;
+            bool hasInlineSuffix = i < rawText.numBytes() && rawText[i] == '(';
+            if (hasInlineSuffix) {
+                suffixEnd++;
+                linkDest = parseLinkDestination(rawText, &suffixEnd);
+            }
+
+            // If the inline suffix is invalid, try full, collapsed, then shortcut references.
+            const Parser::LinkReference* reference = nullptr;
+            bool hasReferenceSuffix = !linkDest.success && i < rawText.numBytes() && rawText[i] == '[';
+            if (hasReferenceSuffix) {
+                u32 labelEnd = i + 1;
+                while (labelEnd < rawText.numBytes() && rawText[labelEnd] != ']' && rawText[labelEnd] != '\n') {
+                    if (rawText[labelEnd] == '\\' && labelEnd + 1 < rawText.numBytes())
+                        labelEnd++;
+                    labelEnd++;
+                }
+                if (labelEnd < rawText.numBytes() && rawText[labelEnd] == ']') {
+                    StringView explicitLabel = rawText.substr(i + 1, labelEnd - i - 1);
+                    StringView linkLabel = rawText.substr(delimiters[openLink].sourcePos + 1,
+                                                          i - delimiters[openLink].sourcePos - 2);
+                    reference = findLinkReference(parser, explicitLabel ? explicitLabel : linkLabel);
+                    if (reference)
+                        suffixEnd = labelEnd + 1;
+                }
+            } else if (!linkDest.success) {
+                StringView linkLabel = rawText.substr(delimiters[openLink].sourcePos + 1,
+                                                      i - delimiters[openLink].sourcePos - 2);
+                reference = findLinkReference(parser, linkLabel);
+                if (reference)
+                    suffixEnd = i;
+            }
+
+            // An unmatched closer makes this opener unavailable to subsequent closing brackets.
+            if (!linkDest.success && !reference) {
+                delimiters[openLink].type = Delimiter::RawText;
                 continue;
             }
 
-            // Successfully parsed link destination
+            // Build the link and deactivate earlier openers to prohibit nested links.
             Owned<Span> linkSpan = makeSpan<Span::Link>();
-            linkSpan->var.as<Span::Link>()->destination = std::move(linkDest.dest);
+            Span::Link* link = linkSpan->var.as<Span::Link>();
+            if (reference) {
+                link->destination = reference->destination;
+                link->title = reference->title;
+            } else {
+                link->destination = std::move(linkDest.dest);
+                link->title = std::move(linkDest.title);
+            }
             linkSpan->asContainer()->childSpans = processEmphasis(delimiters, openLink + 1);
             delimiters.resize(openLink);
+            for (Delimiter& delimiter : delimiters) {
+                if (delimiter.type == Delimiter::OpenLink)
+                    delimiter.active = false;
+            }
             delimiters.append(std::move(linkSpan));
-            flushedIndex = i;
+            i = suffixEnd;
+            flushedIndex = suffixEnd;
         } else {
             i++;
         }
@@ -1051,7 +1299,7 @@ void finalizeLeafBlock(Parser* parser) {
             leaf->spans.append(std::move(textSpan));
         }
     } else {
-        leaf->spans = expandInlineSpans(rawText);
+        leaf->spans = expandInlineSpans(parser, rawText);
     }
     parser->leafBlock = nullptr;
     parser->numBlankLinesInIndentedCodeBlock = 0;
@@ -1140,6 +1388,7 @@ Parser* duplicate(Parser* parser) {
 
     // Duplicate the owned tree and scalar parsing state.
     result->rootBlock = parser->rootBlock;
+    result->linkReferences = parser->linkReferences;
     result->numBlankLinesInIndentedCodeBlock = parser->numBlankLinesInIndentedCodeBlock;
     result->checkListContinuations = parser->checkListContinuations;
     result->activeBlocks.resize(parser->activeBlocks.numItems());
@@ -1241,7 +1490,8 @@ void destroy(Parser* parser) {
 Array<Owned<Block>> parseWholeDocument(StringView markdown) {
     Array<Owned<Block>> blocks;
     Owned<Parser> parser = createParser();
-    ViewStream in{markdown};
+    String cleaned = collectLinkReferences(markdown, parser);
+    ViewStream in{cleaned};
 
     while (StringView line = readLine(in)) {
         if (Owned<Block> block = parseLine(parser, line)) {
@@ -1257,10 +1507,11 @@ Array<Owned<Block>> parseWholeDocument(StringView markdown) {
 
 // Convenience helper that parses Markdown source and returns rendered HTML.
 String convertToHtml(StringView src) {
-    ViewStream in{src};
     MemStream out;
     markdown::HTMLOptions options;
     Owned<Parser> parser = createParser();
+    String cleaned = collectLinkReferences(src, parser);
+    ViewStream in{cleaned};
 
     while (StringView line = readLine(in)) {
         if (Owned<Block> block = parseLine(parser, line)) {
@@ -1383,7 +1634,10 @@ void convertSpanToHtml(Stream* outs, const Span* span, const HTMLOptions& option
         if (options.filterLinks) {
             destination = options.filterLinks(destination);
         }
-        outs->format("<a href=\"{:&}\">", destination);
+        outs->format("<a href=\"{:&}\"", destination);
+        if (link->title)
+            outs->format(" title=\"{:&}\"", link->title);
+        outs->write('>');
         for (const Span* child : link->childSpans) {
             convertSpanToHtml(outs, child, options);
         }

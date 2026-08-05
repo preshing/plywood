@@ -31,6 +31,7 @@ struct Span {
     };
     struct Link : Container {
         String destination;
+        String title;
     };
     struct Italic : Container {};
     struct Bold : Container {};
