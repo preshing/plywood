@@ -2297,6 +2297,27 @@ void finalizeLeafBlock(Parser* parser) {
         Block::Leaf* leaf = parser->leafBlock->asLeaf();
         PLY_ASSERT(leaf);
         PLY_ASSERT(leaf->spans.isEmpty());
+
+        // Recognize a task marker only in the first paragraph of a list item, before expanding inline spans.
+        if (parser->options.taskListItems && parser->leafBlock->var.is<Block::Paragraph>() &&
+            parser->leafBlock->parent) {
+            auto* listItem = parser->leafBlock->parent->var.as<Block::ListItem>();
+            if (listItem && listItem->childBlocks && listItem->childBlocks[0] == parser->leafBlock) {
+                u32 markerStart = 0;
+                while (markerStart < rawText.numBytes() && rawText[markerStart] == ' ')
+                    markerStart++;
+                if (markerStart + 3 < rawText.numBytes() && rawText[markerStart] == '[' &&
+                    (rawText[markerStart + 1] == ' ' || rawText[markerStart + 1] == 'x' ||
+                     rawText[markerStart + 1] == 'X') &&
+                    rawText[markerStart + 2] == ']' &&
+                    isInlineWhitespace(getInlineCodepoint(rawText, markerStart + 3))) {
+                    listItem->isTask = true;
+                    listItem->isChecked = rawText[markerStart + 1] != ' ';
+                    rawText = String{rawText.substr(markerStart + 3)};
+                }
+            }
+        }
+
         if (parser->leafBlock->var.is<Block::IndentedCodeBlock>() ||
             parser->leafBlock->var.is<Block::FencedCodeBlock>()) {
             if (rawText) {
@@ -2681,8 +2702,10 @@ void dump(Stream* outs, const Block* block, u32 level) {
         } else {
             outs->write(", unordered)");
         }
-    } else if (block->var.is<Block::ListItem>()) {
+    } else if (auto* listItem = block->var.as<Block::ListItem>()) {
         outs->write("item");
+        if (listItem->isTask)
+            outs->write(listItem->isChecked ? " (task, checked)" : " (task, unchecked)");
     } else if (block->var.is<Block::BlockQuote>()) {
         outs->write("block_quote");
     } else if (auto* heading = block->var.as<Block::Heading>()) {
@@ -2910,6 +2933,17 @@ void convertToHtml(Stream* outs, const Block* block, const HTMLOptions& options)
         }
         if (!isInsideTight) {
             outs->write("<p>");
+        }
+        // A task checkbox replaces the marker at the start of the list item's first paragraph.
+        auto* listItem = block->parent ? block->parent->var.as<Block::ListItem>() : nullptr;
+        bool isFirstTaskParagraph = listItem && listItem->isTask && listItem->childBlocks &&
+                                    listItem->childBlocks[0] == block;
+        if (isFirstTaskParagraph) {
+            if (listItem->isChecked) {
+                outs->write("<input checked=\"\" disabled=\"\" type=\"checkbox\">");
+            } else {
+                outs->write("<input disabled=\"\" type=\"checkbox\">");
+            }
         }
         for (const Span* span : para->spans) {
             convertSpanToHtml(outs, span, options);

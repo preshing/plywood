@@ -104,3 +104,28 @@ a.b-c_d@a.b_
 <blockquote>
   &lt;xmp> is disallowed.  &lt;XMP> is also disallowed.
 </blockquote>
+
+--------------------- #15 (Task list items extension)
+- [ ] foo
+- [x] bar
+--
+<ul>
+<li><input disabled="" type="checkbox"> foo</li>
+<li><input checked="" disabled="" type="checkbox"> bar</li>
+</ul>
+
+--------------------- #16 (Task list items extension)
+- [x] foo
+  - [ ] bar
+  - [x] baz
+- [ ] bim
+--
+<ul>
+<li><input checked="" disabled="" type="checkbox"> foo
+<ul>
+<li><input disabled="" type="checkbox"> bar</li>
+<li><input checked="" disabled="" type="checkbox"> baz</li>
+</ul>
+</li>
+<li><input disabled="" type="checkbox"> bim</li>
+</ul>

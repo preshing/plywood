@@ -96,7 +96,10 @@ struct Block {
         bool isLoose = false;
     };
     struct ListItem : Inner {
+        // Task-list state is recorded when the first child is a paragraph beginning with a valid task marker.
         u32 relativeIndent = 0;
+        bool isTask = false;
+        bool isChecked = false;
     };
     struct BlockQuote : Inner {};
 
