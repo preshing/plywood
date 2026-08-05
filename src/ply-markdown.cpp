@@ -31,6 +31,9 @@ struct Parser {
     // The current leaf block, if any; paragraphs, headings, code blocks and HTML blocks go here.
     Block* leafBlock = nullptr;
 
+    // The table currently accepting body rows, if any.
+    Block* tableBlock = nullptr;
+
     // Accumulates raw text to be added to the leaf block.
     // Inline delimiter spans are parsed when the leaf block is flushed.
     MemStream rawLeafText;
@@ -166,6 +169,10 @@ Owned<Span> makeSpan() {
 
 // Forward declaration.
 void finalizeLeafBlock(Parser* parser);
+
+// Table helpers are implemented after inline parsing so each cell can be expanded independently.
+bool tryConvertParagraphToTable(Parser* parser, StringView delimiterLine, u32 relativeIndent);
+void appendTableBodyRow(Parser* parser, StringView line);
 
 // Forward declaration for fenced-code info strings parsed before inline parsing helpers.
 String normalizeFenceInfoString(StringView src);
@@ -2283,6 +2290,153 @@ Array<Owned<Span>> expandInlineSpans(const Parser* parser, StringView rawText) {
     return processInlineDelimiters(delimiters, 0);
 }
 
+//--------------------------------------------------------------------
+// Tables
+//--------------------------------------------------------------------
+
+// Splits a table row at unescaped pipes that aren't inside valid code spans.
+Array<StringView> splitTableRow(StringView source, u32* numSeparators = nullptr) {
+    StringView text = source.trim();
+    Array<u32> separators;
+    for (u32 pos = 0; pos < text.numBytes();) {
+        if (text[pos] == '\\') {
+            pos += min(2u, text.numBytes() - pos);
+            continue;
+        }
+        if (text[pos] == '`') {
+            u32 runEnd = pos + 1;
+            while (runEnd < text.numBytes() && text[runEnd] == '`')
+                runEnd++;
+            u32 runLength = runEnd - pos;
+
+            // Only a matched backtick run forms code; unmatched backticks remain ordinary cell text.
+            u32 closePos = runEnd;
+            while (closePos < text.numBytes()) {
+                if (text[closePos] != '`') {
+                    closePos++;
+                    continue;
+                }
+                u32 closeEnd = closePos + 1;
+                while (closeEnd < text.numBytes() && text[closeEnd] == '`')
+                    closeEnd++;
+                if (closeEnd - closePos == runLength)
+                    break;
+                closePos = closeEnd;
+            }
+            if (closePos < text.numBytes()) {
+                pos = closePos + runLength;
+                continue;
+            }
+            pos = runEnd;
+            continue;
+        }
+        if (text[pos] == '|')
+            separators.append(pos);
+        pos++;
+    }
+    if (numSeparators)
+        *numSeparators = separators.numItems();
+
+    // Boundary pipes decorate the row and don't create empty cells.
+    Array<StringView> cells;
+    u32 start = separators && separators[0] == 0 ? 1 : 0;
+    for (u32 separator : separators) {
+        if (separator < start)
+            continue;
+        cells.append(text.substr(start, separator - start).trim());
+        start = separator + 1;
+    }
+    if (start < text.numBytes() || separators.isEmpty() || separators.back() != text.numBytes() - 1)
+        cells.append(text.substr(start).trim());
+    return cells;
+}
+
+// Parses a table delimiter row and records one alignment value per cell.
+bool parseTableDelimiterRow(StringView line, Array<TableAlignment>* alignments) {
+    u32 numSeparators = 0;
+    Array<StringView> cells = splitTableRow(line, &numSeparators);
+    if (numSeparators == 0 || cells.isEmpty())
+        return false;
+
+    for (StringView cell : cells) {
+        if (!cell)
+            return false;
+        bool left = cell[0] == ':';
+        bool right = cell.back() == ':';
+        u32 start = left ? 1 : 0;
+        u32 end = cell.numBytes() - (right ? 1 : 0);
+        if (start >= end)
+            return false;
+        for (u32 pos = start; pos < end; pos++) {
+            if (cell[pos] != '-')
+                return false;
+        }
+        alignments->append(left ? (right ? TableAlignment::Center : TableAlignment::Left) :
+                                  (right ? TableAlignment::Right : TableAlignment::None));
+    }
+    return true;
+}
+
+// Appends a row with exactly the table's column count, parsing each retained cell as inline Markdown.
+void appendTableRow(Parser* parser, Block* tableBlock, Array<StringView> sourceCells) {
+    auto* table = tableBlock->var.as<Block::Table>();
+    PLY_ASSERT(table);
+    Block* rowBlock = addBlock<Block::TableRow>(tableBlock);
+    for (u32 column = 0; column < table->alignments.numItems(); column++) {
+        Block* cellBlock = addBlock<Block::TableCell>(rowBlock);
+        if (column < sourceCells.numItems()) {
+            // Pipe escapes are table syntax even inside code spans, so remove only that escape before inline parsing.
+            StringView source = sourceCells[column];
+            MemStream normalized;
+            u32 flushedPos = 0;
+            for (u32 pos = 0; pos + 1 < source.numBytes(); pos++) {
+                if (source[pos] == '\\' && source[pos + 1] == '|') {
+                    normalized.write(source.substr(flushedPos, pos - flushedPos));
+                    flushedPos = pos + 1;
+                    pos++;
+                }
+            }
+            normalized.write(source.substr(flushedPos));
+            cellBlock->var.as<Block::TableCell>()->spans = expandInlineSpans(parser, normalized.moveToString());
+        }
+    }
+}
+
+// Converts an open one-line paragraph into a table when the current line is a matching delimiter row.
+bool tryConvertParagraphToTable(Parser* parser, StringView delimiterLine, u32 relativeIndent) {
+    if (relativeIndent > 3)
+        return false;
+    String headerText = parser->rawLeafText.moveToString();
+    new (&parser->rawLeafText) MemStream;
+    if (headerText.find('\n') >= 0) {
+        parser->rawLeafText.write(headerText);
+        return false;
+    }
+
+    u32 numHeaderSeparators = 0;
+    Array<StringView> headerCells = splitTableRow(headerText, &numHeaderSeparators);
+    Array<TableAlignment> alignments;
+    if (numHeaderSeparators == 0 || !parseTableDelimiterRow(delimiterLine, &alignments) ||
+        headerCells.numItems() != alignments.numItems()) {
+        parser->rawLeafText.write(headerText);
+        return false;
+    }
+
+    Block* tableBlock = parser->leafBlock;
+    auto& table = tableBlock->var.switchTo<Block::Table>();
+    table.alignments = std::move(alignments);
+    parser->leafBlock = nullptr;
+    parser->tableBlock = tableBlock;
+    appendTableRow(parser, tableBlock, std::move(headerCells));
+    return true;
+}
+
+// Adds an ordinary body row, filling omitted cells and discarding excess cells.
+void appendTableBodyRow(Parser* parser, StringView line) {
+    PLY_ASSERT(parser->tableBlock);
+    appendTableRow(parser, parser->tableBlock, splitTableRow(line));
+}
+
 // Finalizes parser->leafBlock by moving raw text into spans, then clears leaf parsing state.
 void finalizeLeafBlock(Parser* parser) {
     if (!parser->leafBlock)
@@ -2412,6 +2566,52 @@ void closeBlocksIfNotLazyContinuation(LineParser& lp) {
     }
 }
 
+// Returns true when a nonblank line starts a block that terminates a table before being parsed normally.
+bool lineStartsBlockAfterTable(LineParser& lp) {
+    StringView remaining = lp.ctReader.viewRemaining();
+    if (lp.relativeIndent() >= 4 || isThematicBreak(remaining, lp.relativeIndent()))
+        return true;
+
+    Block::FencedCodeBlock maybeFence;
+    HTMLBlockStart maybeHTML;
+    if (parseOpeningFence(remaining, lp.relativeIndent(), maybeFence) ||
+        parseHTMLBlockStart(remaining, lp.relativeIndent(), false, &maybeHTML)) {
+        return true;
+    }
+    if (lp.relativeIndent() > 3)
+        return false;
+
+    ColumnTrackingReader reader = lp.ctReader;
+    if (reader.point == '>')
+        return true;
+    if (reader.point == '#') {
+        u32 count = 0;
+        while (reader.point == '#') {
+            count++;
+            reader.advance();
+        }
+        if (count <= 6 && (reader.point == ' ' || reader.point == '\t' || reader.point == '\n' || reader.atEnd()))
+            return true;
+    }
+
+    // Any syntactically valid list marker starts a new block after a table.
+    if (reader.point == '*' || reader.point == '-' || reader.point == '+') {
+        reader.advance();
+    } else if (reader.point >= '0' && reader.point <= '9') {
+        u32 numDigits = 0;
+        while (reader.point >= '0' && reader.point <= '9' && numDigits < 10) {
+            reader.advance();
+            numDigits++;
+        }
+        if (numDigits > 9 || (reader.point != '.' && reader.point != ')'))
+            return false;
+        reader.advance();
+    } else {
+        return false;
+    }
+    return reader.point == ' ' || reader.point == '\t' || reader.point == '\n' || reader.atEnd();
+}
+
 //  ▄▄▄▄▄         ▄▄     ▄▄▄  ▄▄            ▄▄▄▄  ▄▄▄▄▄  ▄▄▄▄
 //  ██  ██ ▄▄  ▄▄ ██▄▄▄   ██  ▄▄  ▄▄▄▄     ██  ██ ██  ██  ██
 //  ██▀▀▀  ██  ██ ██  ██  ██  ██ ██        ██▀▀██ ██▀▀▀   ██
@@ -2424,6 +2624,9 @@ void repairDuplicatedBlocks(Parser* dstParser, Parser* srcParser, Block* dstBloc
     dstBlock->parent = dstParent;
     if (srcParser->leafBlock == srcBlock) {
         dstParser->leafBlock = dstBlock;
+    }
+    if (srcParser->tableBlock == srcBlock) {
+        dstParser->tableBlock = dstBlock;
     }
     for (u32 i = 0; i < srcParser->activeBlocks.numItems(); i++) {
         if (srcParser->activeBlocks[i] == srcBlock) {
@@ -2488,6 +2691,7 @@ Parser* duplicate(Parser* parser) {
         PLY_ASSERT(activeBlock);
     }
     PLY_ASSERT(!parser->leafBlock || result->leafBlock);
+    PLY_ASSERT(!parser->tableBlock || result->tableBlock);
 
     // Give the duplicate its own copy of the unfinished leaf text.
     result->rawLeafText = parser->rawLeafText.duplicate();
@@ -2501,10 +2705,23 @@ Owned<Block> parseLine(Parser* parser, StringView line) {
     // Match existing indentation and blockquote '>' markers.
     matchExistingIndentation(lp);
 
+    // A table consumes ordinary nonblank lines as rows, but yields block starts back to the normal parser.
+    bool handledTableLine = false;
+    if (parser->tableBlock) {
+        bool isInsideSameContainers = lp.blockDepth == parser->activeBlocks.numItems();
+        bool isBlank = lp.ctReader.viewRemaining().trim().isEmpty();
+        if (isInsideSameContainers && !isBlank && !lineStartsBlockAfterTable(lp)) {
+            appendTableBodyRow(parser, lp.ctReader.viewRemaining());
+            handledTableLine = true;
+        } else {
+            parser->tableBlock = nullptr;
+        }
+    }
+
     // Continue an HTML block before interpreting blank lines or Markdown markers. Types 6 and 7 end before the
     // first blank line; types 1-5 include blank lines and end only when their closing marker is found.
     bool handledHTMLLine = false;
-    if (parser->leafBlock && parser->leafBlock->var.is<Block::HTMLBlock>()) {
+    if (!handledTableLine && parser->leafBlock && parser->leafBlock->var.is<Block::HTMLBlock>()) {
         if (lp.blockDepth == parser->activeBlocks.numItems()) {
             bool isBlank = lp.ctReader.viewRemaining().trim().isEmpty();
             if (parser->htmlBlockType >= 6 && isBlank) {
@@ -2518,7 +2735,8 @@ Owned<Block> parseLine(Parser* parser, StringView line) {
     }
 
     bool handledFencedLine = false;
-    if (auto* fenced = parser->leafBlock ? parser->leafBlock->var.as<Block::FencedCodeBlock>() : nullptr) {
+    if (auto* fenced = !handledTableLine && parser->leafBlock ?
+                           parser->leafBlock->var.as<Block::FencedCodeBlock>() : nullptr) {
         if (lp.blockDepth == parser->activeBlocks.numItems()) {
             if (isClosingFence(lp.ctReader.viewRemaining(), lp.relativeIndent(), fenced->fenceMarker)) {
                 finalizeLeafBlock(parser);
@@ -2531,7 +2749,7 @@ Owned<Block> parseLine(Parser* parser, StringView line) {
         }
     }
 
-    if (!handledHTMLLine && !handledFencedLine) {
+    if (!handledTableLine && !handledHTMLLine && !handledFencedLine) {
         if (lp.ctReader.viewRemaining().trim().isEmpty()) {
             // The rest of the line is blank.
             handleBlankLine(lp);
@@ -2546,10 +2764,16 @@ Owned<Block> parseLine(Parser* parser, StringView line) {
                 }
                 finalizeLeafBlock(parser);
             }
-            // Parse new markers.
-            parseNewMarkers(lp);
-            // Handle remaining paragraph text.
-            parseParagraphText(lp);
+            // A valid table delimiter takes precedence over list markers, Setext underlines and thematic breaks.
+            bool convertedTable = parser->options.tables && parser->leafBlock &&
+                                  parser->leafBlock->var.is<Block::Paragraph>() && !lp.isLazyContinuation &&
+                                  tryConvertParagraphToTable(parser, lp.ctReader.viewRemaining(), lp.relativeIndent());
+            if (!convertedTable) {
+                // Parse new markers.
+                parseNewMarkers(lp);
+                // Handle remaining paragraph text.
+                parseParagraphText(lp);
+            }
         }
     }
 
@@ -2569,6 +2793,7 @@ Owned<Block> parseLine(Parser* parser, StringView line) {
 Owned<Block> flush(Parser* parser) {
     // Terminate all existing blocks.
     finalizeLeafBlock(parser);
+    parser->tableBlock = nullptr;
     parser->activeBlocks.clear();
 
     auto& rootChildren = parser->rootBlock.asInner()->childBlocks;
@@ -2708,10 +2933,16 @@ void dump(Stream* outs, const Block* block, u32 level) {
             outs->write(listItem->isChecked ? " (task, checked)" : " (task, unchecked)");
     } else if (block->var.is<Block::BlockQuote>()) {
         outs->write("block_quote");
+    } else if (auto* table = block->var.as<Block::Table>()) {
+        outs->format("table columns={}", table->alignments.numItems());
+    } else if (block->var.is<Block::TableRow>()) {
+        outs->write("table_row");
     } else if (auto* heading = block->var.as<Block::Heading>()) {
         outs->format("heading level={}", heading->level);
     } else if (block->var.is<Block::Paragraph>()) {
         outs->write("paragraph");
+    } else if (block->var.is<Block::TableCell>()) {
+        outs->write("table_cell");
     } else if (block->var.is<Block::IndentedCodeBlock>()) {
         outs->write("indented_code_block");
     } else if (block->var.is<Block::FencedCodeBlock>()) {
@@ -2910,6 +3141,57 @@ void convertToHtml(Stream* outs, const Block* block, const HTMLOptions& options)
             convertToHtml(outs, child, options);
         }
         outs->write("</blockquote>\n");
+    } else if (auto* table = block->var.as<Block::Table>()) {
+        PLY_ASSERT(table->childBlocks);
+        outs->write("<table>\n<thead>\n");
+        convertToHtml(outs, table->childBlocks[0], options);
+        outs->write("</thead>\n");
+        if (table->childBlocks.numItems() > 1) {
+            outs->write("<tbody>\n");
+            for (u32 row = 1; row < table->childBlocks.numItems(); row++) {
+                convertToHtml(outs, table->childBlocks[row], options);
+            }
+            outs->write("</tbody>\n");
+        }
+        outs->write("</table>\n");
+    } else if (auto* row = block->var.as<Block::TableRow>()) {
+        outs->write("<tr>\n");
+        for (const Block* cell : row->childBlocks) {
+            convertToHtml(outs, cell, options);
+        }
+        outs->write("</tr>\n");
+    } else if (auto* cell = block->var.as<Block::TableCell>()) {
+        const Block* rowBlock = block->parent;
+        const Block* tableBlock = rowBlock->parent;
+        auto* table = tableBlock->var.as<Block::Table>();
+        PLY_ASSERT(table && table->childBlocks && table->childBlocks[0]->var.is<Block::TableRow>());
+        bool isHeader = table->childBlocks[0] == rowBlock;
+        StringView tag = isHeader ? "th" : "td";
+        outs->format("<{}", tag);
+
+        u32 column = 0;
+        auto* row = rowBlock->var.as<Block::TableRow>();
+        while (column < row->childBlocks.numItems() && row->childBlocks[column] != block)
+            column++;
+        PLY_ASSERT(column < table->alignments.numItems());
+        switch (table->alignments[column]) {
+            case TableAlignment::Left:
+                outs->write(" align=\"left\"");
+                break;
+            case TableAlignment::Center:
+                outs->write(" align=\"center\"");
+                break;
+            case TableAlignment::Right:
+                outs->write(" align=\"right\"");
+                break;
+            case TableAlignment::None:
+                break;
+        }
+        outs->write('>');
+        for (const Span* span : cell->spans) {
+            convertSpanToHtml(outs, span, options);
+        }
+        outs->format("</{}>\n", tag);
     } else if (auto* heading = block->var.as<Block::Heading>()) {
         outs->format("<h{}", heading->level);
         if (heading->id) {

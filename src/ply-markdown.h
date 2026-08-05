@@ -80,7 +80,16 @@ struct Span {
 };
 
 //------------------------------------------------------
-// A Block can be a List, ListItem, BlockQuote, Heading, Paragraph, code block, HTML block or ThematicBreak.
+// Alignment selected for one table column by its delimiter cell.
+enum class TableAlignment : u8 {
+    None,
+    Left,
+    Center,
+    Right,
+};
+
+//------------------------------------------------------
+// A Block can be a container block, table component, text leaf, HTML block or thematic break.
 //------------------------------------------------------
 struct Block {
     // Inner block types can have child blocks.
@@ -102,6 +111,10 @@ struct Block {
         bool isChecked = false;
     };
     struct BlockQuote : Inner {};
+    struct Table : Inner {
+        Array<TableAlignment> alignments;
+    };
+    struct TableRow : Inner {};
 
     // Leaf block types are leaves and can only contain text.
     struct Leaf {
@@ -112,6 +125,7 @@ struct Block {
         String id;
     };
     struct Paragraph : Leaf {};
+    struct TableCell : Leaf {};
     struct IndentedCodeBlock : Leaf {};
     struct FencedCodeBlock : Leaf {
         String fenceMarker; // Indented code blocks leave this empty.
@@ -125,8 +139,8 @@ struct Block {
     };
     struct ThematicBreak {};
 
-    Variant<List, ListItem, BlockQuote, Heading, Paragraph, IndentedCodeBlock, FencedCodeBlock, HTMLBlock,
-            ThematicBreak>
+    Variant<List, ListItem, BlockQuote, Table, TableRow, Heading, Paragraph, TableCell, IndentedCodeBlock,
+            FencedCodeBlock, HTMLBlock, ThematicBreak>
         var;
     Block* parent = nullptr;
     void* userData = nullptr;
@@ -139,6 +153,10 @@ struct Block {
             return p;
         if (auto* p = var.as<BlockQuote>())
             return p;
+        if (auto* p = var.as<Table>())
+            return p;
+        if (auto* p = var.as<TableRow>())
+            return p;
         return nullptr;
     }
     const Inner* asInner() const {
@@ -148,6 +166,8 @@ struct Block {
         if (auto* p = var.as<Heading>())
             return p;
         if (auto* p = var.as<Paragraph>())
+            return p;
+        if (auto* p = var.as<TableCell>())
             return p;
         if (auto* p = var.as<IndentedCodeBlock>())
             return p;

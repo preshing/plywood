@@ -129,3 +129,164 @@ a.b-c_d@a.b_
 </li>
 <li><input disabled="" type="checkbox"> bim</li>
 </ul>
+
+--------------------- #17 (Table extension)
+| foo | bar |
+| --- | --- |
+| baz | bim |
+--
+<table>
+<thead>
+<tr>
+<th>foo</th>
+<th>bar</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>baz</td>
+<td>bim</td>
+</tr>
+</tbody>
+</table>
+
+--------------------- #18 (Table extension)
+| abc | defghi |
+:-: | -----------:
+bar | baz
+--
+<table>
+<thead>
+<tr>
+<th align="center">abc</th>
+<th align="right">defghi</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td align="center">bar</td>
+<td align="right">baz</td>
+</tr>
+</tbody>
+</table>
+
+--------------------- #19 (Table extension)
+| f\|oo  |
+| ------ |
+| b `\|` az |
+| b **\|** im |
+--
+<table>
+<thead>
+<tr>
+<th>f|oo</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>b <code>|</code> az</td>
+</tr>
+<tr>
+<td>b <strong>|</strong> im</td>
+</tr>
+</tbody>
+</table>
+
+--------------------- #20 (Table extension)
+| abc | def |
+| --- | --- |
+| bar | baz |
+> bar
+--
+<table>
+<thead>
+<tr>
+<th>abc</th>
+<th>def</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>bar</td>
+<td>baz</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>bar</p>
+</blockquote>
+
+--------------------- #21 (Table extension)
+| abc | def |
+| --- | --- |
+| bar | baz |
+bar
+
+bar
+--
+<table>
+<thead>
+<tr>
+<th>abc</th>
+<th>def</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>bar</td>
+<td>baz</td>
+</tr>
+<tr>
+<td>bar</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<p>bar</p>
+
+--------------------- #22 (Table extension)
+| abc | def |
+| --- |
+| bar |
+--
+<p>| abc | def |
+| --- |
+| bar |</p>
+
+--------------------- #23 (Table extension)
+| abc | def |
+| --- | --- |
+| bar |
+| bar | baz | boo |
+--
+<table>
+<thead>
+<tr>
+<th>abc</th>
+<th>def</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>bar</td>
+<td></td>
+</tr>
+<tr>
+<td>bar</td>
+<td>baz</td>
+</tr>
+</tbody>
+</table>
+
+--------------------- #24 (Table extension)
+| abc | def |
+| --- | --- |
+--
+<table>
+<thead>
+<tr>
+<th>abc</th>
+<th>def</th>
+</tr>
+</thead>
+</table>
