@@ -21,6 +21,12 @@ if not exist "%PLYWOOD_ROOT%\apps\%APP_NAME%\CMakeLists.txt" (
     exit /b 1
 )
 
+rem Require -run before passing arguments to the app.
+if not "%~2"=="" if not "%~2"=="-run" (
+    >&2 echo Error: Expected -run after the app name, but got '%~2'.
+    exit /b 1
+)
+
 rem Generate the build system for the app in Debug mode.
 rem Skip this step if -run was specified and CMakeCache.txt already exists.
 set "BUILD_DIR=%PLYWOOD_ROOT%\apps\%APP_NAME%\build-win"

@@ -19,10 +19,9 @@ fi
 APP_NAME=$1
 shift
 
-# Accept optional -run argument after the app name.
+# Require -run before passing arguments to the app.
 if [ "$#" -gt 0 ] && [ "$1" != "-run" ]; then
-    # Print usage.
-    echo "Usage: ${0##*/} <app> [-run [app arguments...]]" >&2
+    echo "Error: Expected -run after the app name, but got '$1'." >&2
     exit 1
 fi
 
