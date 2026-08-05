@@ -64,7 +64,7 @@ struct Span {
 };
 
 //------------------------------------------------------
-// A Block can be a List, ListItem, BlockQuote, Heading, Paragraph, CodeBlock or ThematicBreak.
+// A Block can be a List, ListItem, BlockQuote, Heading, Paragraph, code block, HTML block or ThematicBreak.
 //------------------------------------------------------
 struct Block {
     // Inner block types can have child blocks.
@@ -99,9 +99,15 @@ struct Block {
         String infoString;  // Optional info string for fenced code blocks.
         u32 relativeIndent = 0;
     };
+    // An HTML block retains its source text for verbatim rendering.
+    struct HTMLBlock {
+        String text;
+    };
     struct ThematicBreak {};
 
-    Variant<List, ListItem, BlockQuote, Heading, Paragraph, IndentedCodeBlock, FencedCodeBlock, ThematicBreak> var;
+    Variant<List, ListItem, BlockQuote, Heading, Paragraph, IndentedCodeBlock, FencedCodeBlock, HTMLBlock,
+            ThematicBreak>
+        var;
     Block* parent = nullptr;
     void* userData = nullptr;
 

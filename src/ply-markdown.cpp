@@ -25,7 +25,7 @@ struct Parser {
     // Consists of ListItems and BlockQuotes.
     Array<Block*> activeBlocks;
 
-    // The current leaf block, if any; Paragraphs, Headings, IndentedCodeBlocks and FencedCodeBlocks go here.
+    // The current leaf block, if any; paragraphs, headings, code blocks and HTML blocks go here.
     Block* leafBlock = nullptr;
 
     // Accumulates raw text to be added to the leaf block.
@@ -40,6 +40,10 @@ struct Parser {
 
     // Only used if leafBlock is IndentedCodeBlock.
     u32 numBlankLinesInIndentedCodeBlock = 0;
+
+    // Only used if leafBlock is HTMLBlock. Types 1-5 use htmlEndMarker; types 6-7 end at a blank line.
+    u8 htmlBlockType = 0;
+    String htmlEndMarker;
 
     // This flag indicates that some Lists on the stack have their isLooseIfContinued flag set: (Alternatively, we
     // *could* store the number of such Lists on the stack, and eliminate the isLooseIfContinued flag completely, but
@@ -258,6 +262,214 @@ bool isClosingFence(StringView remainingLine, u32 relativeIndent, StringView ope
     return true;
 }
 
+// Converts one ASCII letter to lowercase without depending on the current locale.
+char toLowerAscii(char c) {
+    return (c >= 'A' && c <= 'Z') ? c + ('a' - 'A') : c;
+}
+
+// Returns true when two ASCII strings are equal without regard to letter case.
+bool isEqualAsciiCaseInsensitive(StringView a, StringView b) {
+    if (a.numBytes() != b.numBytes())
+        return false;
+    for (u32 i = 0; i < a.numBytes(); i++) {
+        if (toLowerAscii(a[i]) != toLowerAscii(b[i]))
+            return false;
+    }
+    return true;
+}
+
+// Finds an ASCII marker in text without regard to letter case.
+bool containsAsciiCaseInsensitive(StringView text, StringView marker) {
+    if (marker.numBytes() > text.numBytes())
+        return false;
+    for (u32 i = 0; i + marker.numBytes() <= text.numBytes(); i++) {
+        if (isEqualAsciiCaseInsensitive(text.substr(i, marker.numBytes()), marker))
+            return true;
+    }
+    return false;
+}
+
+// Returns true for whitespace permitted between HTML tag components.
+bool isHTMLWhitespace(char c) {
+    return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f';
+}
+
+// Consumes one CommonMark HTML tag name and leaves pos immediately after it.
+bool consumeHTMLTagName(StringView text, u32* pos) {
+    if (*pos >= text.numBytes() || !isAlpha(text[*pos]))
+        return false;
+    for ((*pos)++; *pos < text.numBytes(); (*pos)++) {
+        char c = text[*pos];
+        if (!isAlpha(c) && !isDigit(c) && c != '-')
+            break;
+    }
+    return true;
+}
+
+// Consumes a complete CommonMark open or closing tag used by type 7 HTML blocks.
+bool consumeCompleteHTMLTag(StringView text) {
+    u32 pos = 0;
+    if (text.numBytes() < 3 || text[pos++] != '<')
+        return false;
+
+    // Closing tags contain only a name and optional trailing whitespace.
+    if (text[pos] == '/') {
+        pos++;
+        if (!consumeHTMLTagName(text, &pos))
+            return false;
+        while (pos < text.numBytes() && isHTMLWhitespace(text[pos]))
+            pos++;
+        return pos + 1 == text.numBytes() && text[pos] == '>';
+    }
+
+    // Opening tags can contain any number of well-formed attributes.
+    if (!consumeHTMLTagName(text, &pos))
+        return false;
+    while (pos < text.numBytes()) {
+        u32 whitespaceStart = pos;
+        while (pos < text.numBytes() && isHTMLWhitespace(text[pos]))
+            pos++;
+        if (pos < text.numBytes() && text[pos] == '>')
+            return pos + 1 == text.numBytes();
+        if (pos + 1 < text.numBytes() && text[pos] == '/' && text[pos + 1] == '>')
+            return pos + 2 == text.numBytes();
+        if (pos == whitespaceStart || pos >= text.numBytes())
+            return false;
+
+        char first = text[pos];
+        if (!isAlpha(first) && first != '_' && first != ':')
+            return false;
+        for (pos++; pos < text.numBytes(); pos++) {
+            char c = text[pos];
+            if (!isAlpha(c) && !isDigit(c) && c != '_' && c != '.' && c != ':' && c != '-')
+                break;
+        }
+        while (pos < text.numBytes() && isHTMLWhitespace(text[pos]))
+            pos++;
+        if (pos >= text.numBytes() || text[pos] != '=')
+            continue;
+        pos++;
+        while (pos < text.numBytes() && isHTMLWhitespace(text[pos]))
+            pos++;
+        if (pos >= text.numBytes())
+            return false;
+        if (text[pos] == '\'' || text[pos] == '"') {
+            char quote = text[pos++];
+            while (pos < text.numBytes() && text[pos] != quote)
+                pos++;
+            if (pos >= text.numBytes())
+                return false;
+            pos++;
+        } else {
+            u32 valueStart = pos;
+            while (pos < text.numBytes()) {
+                char c = text[pos];
+                if (isHTMLWhitespace(c) || c == '"' || c == '\'' || c == '=' || c == '<' || c == '>' ||
+                    c == '`') {
+                    break;
+                }
+                pos++;
+            }
+            if (pos == valueStart)
+                return false;
+        }
+    }
+    return false;
+}
+
+// Describes how a recognized HTML block terminates.
+struct HTMLBlockStart {
+    String endMarker;
+    u8 type = 0;
+};
+
+// Recognizes the first line of one of CommonMark's seven HTML block types.
+bool parseHTMLBlockStart(StringView remainingLine, u32 relativeIndent, bool hasParagraph, HTMLBlockStart* result) {
+    if (relativeIndent > 3)
+        return false;
+    StringView text = remainingLine.trimRight([](char c) { return c == '\n' || c == '\r'; });
+    if (!text.startsWith('<'))
+        return false;
+
+    // Types 1-5 terminate at a marker that can occur anywhere in a subsequent line.
+    StringView rawTag = text.substr(1);
+    u32 tagEnd = 0;
+    if (consumeHTMLTagName(rawTag, &tagEnd)) {
+        StringView tag = rawTag.left(tagEnd);
+        bool hasBoundary = tagEnd == rawTag.numBytes() || isHTMLWhitespace(rawTag[tagEnd]) || rawTag[tagEnd] == '>';
+        if (hasBoundary && (isEqualAsciiCaseInsensitive(tag, "script") ||
+                            isEqualAsciiCaseInsensitive(tag, "pre") ||
+                            isEqualAsciiCaseInsensitive(tag, "style") ||
+                            isEqualAsciiCaseInsensitive(tag, "textarea"))) {
+            result->type = 1;
+            result->endMarker = "</" + tag.lower() + ">";
+            return true;
+        }
+    }
+    if (text.startsWith("<!--")) {
+        result->type = 2;
+        result->endMarker = "-->";
+        return true;
+    }
+    if (text.startsWith("<?")) {
+        result->type = 3;
+        result->endMarker = "?>";
+        return true;
+    }
+    if (text.numBytes() >= 3 && text.startsWith("<!") && text[2] >= 'A' && text[2] <= 'Z') {
+        result->type = 4;
+        result->endMarker = ">";
+        return true;
+    }
+    if (text.startsWith("<![CDATA[")) {
+        result->type = 5;
+        result->endMarker = "]]>";
+        return true;
+    }
+
+    // Type 6 recognizes block-level tag names even when the rest of the tag is malformed.
+    static const StringView blockTags[] = {
+        "address", "article", "aside", "base", "basefont", "blockquote", "body", "caption", "center", "col",
+        "colgroup", "dd", "details", "dialog", "dir", "div", "dl", "dt", "fieldset", "figcaption", "figure",
+        "footer", "form", "frame", "frameset", "h1", "h2", "h3", "h4", "h5", "h6", "head", "header",
+        "hr", "html", "iframe", "legend", "li", "link", "main", "menu", "menuitem", "nav", "noframes", "ol",
+        "optgroup", "option", "p", "param", "search", "section", "summary", "table", "tbody", "td", "tfoot",
+        "th", "thead", "title", "tr", "track", "ul",
+    };
+    u32 nameStart = 1;
+    if (nameStart < text.numBytes() && text[nameStart] == '/')
+        nameStart++;
+    u32 nameEnd = nameStart;
+    if (consumeHTMLTagName(text, &nameEnd)) {
+        bool hasBoundary = nameEnd == text.numBytes() || isHTMLWhitespace(text[nameEnd]) || text[nameEnd] == '/' ||
+                           text[nameEnd] == '>';
+        if (hasBoundary) {
+            StringView tag = text.substr(nameStart, nameEnd - nameStart);
+            for (StringView blockTag : blockTags) {
+                if (isEqualAsciiCaseInsensitive(tag, blockTag)) {
+                    result->type = 6;
+                    return true;
+                }
+            }
+        }
+    }
+
+    // Type 7 must be a complete tag and cannot interrupt a paragraph.
+    StringView completeTagText = text.trimRight(isHTMLWhitespace);
+    if (!hasParagraph && consumeCompleteHTMLTag(completeTagText)) {
+        result->type = 7;
+        return true;
+    }
+    return false;
+}
+
+// Appends one source line verbatim and returns true when it closes an HTML block of type 1-5.
+bool appendHTMLBlockLine(Parser* parser, LineParser& lp) {
+    String line = extractCodeLine({lp.ctReader.startByte, lp.ctReader.endByte}, lp.outerColumn);
+    parser->rawLeafText.write(line);
+    return parser->htmlBlockType <= 5 && containsAsciiCaseInsensitive(line, parser->htmlEndMarker);
+}
+
 // Returns true if the remaining line is a thematic break, according to basic CommonMark rules:
 // up to 3 columns of indentation, followed by at least 3 matching '-', '*' or '_' markers
 // separated only by spaces/tabs.
@@ -369,8 +581,9 @@ void handleBlankLine(LineParser& lp) {
     Parser* parser = lp.parser;
     ColumnTrackingReader& ctReader = lp.ctReader;
 
-    // Terminate paragraph if any.
-    if (parser->leafBlock && parser->leafBlock->var.is<Block::Paragraph>()) {
+    // Terminate paragraph or blank-line-terminated HTML block if any.
+    if (parser->leafBlock && (parser->leafBlock->var.is<Block::Paragraph>() ||
+                              parser->leafBlock->var.is<Block::HTMLBlock>())) {
         finalizeLeafBlock(parser);
     }
 
@@ -610,6 +823,21 @@ void parseParagraphText(LineParser& lp) {
         }
     } else {
         if (remainingText) {
+            HTMLBlockStart newHTML;
+            if (parseHTMLBlockStart(lp.ctReader.viewRemaining(), lp.relativeIndent(), hasPara, &newHTML)) {
+                if (hasPara)
+                    finalizeLeafBlock(parser);
+                Block* parent = parser->activeBlocks ? parser->activeBlocks.back() : &parser->rootBlock;
+                Block* htmlBlock = addBlock<Block::HTMLBlock>(parent);
+                parser->leafBlock = htmlBlock;
+                parser->htmlBlockType = newHTML.type;
+                parser->htmlEndMarker = std::move(newHTML.endMarker);
+                PLY_ASSERT(parser->rawLeafText.getSeekPos() == 0);
+                if (appendHTMLBlockLine(parser, lp))
+                    finalizeLeafBlock(parser);
+                return;
+            }
+
             Block::FencedCodeBlock newFenced;
             if (parseOpeningFence(lp.ctReader.viewRemaining(), lp.relativeIndent(), newFenced)) {
                 if (hasPara) {
@@ -1287,22 +1515,29 @@ void finalizeLeafBlock(Parser* parser) {
     if (!parser->leafBlock)
         return;
 
-    Block::Leaf* leaf = parser->leafBlock->asLeaf();
-    PLY_ASSERT(leaf);
-    PLY_ASSERT(leaf->spans.isEmpty());
     String rawText = parser->rawLeafText.moveToString();
     new (&parser->rawLeafText) MemStream;
-    if (parser->leafBlock->var.is<Block::IndentedCodeBlock>() || parser->leafBlock->var.is<Block::FencedCodeBlock>()) {
-        if (rawText) {
-            Owned<Span> textSpan = makeSpan<Span::Text>();
-            textSpan->var.as<Span::Text>()->text = std::move(rawText);
-            leaf->spans.append(std::move(textSpan));
-        }
+    if (auto* html = parser->leafBlock->var.as<Block::HTMLBlock>()) {
+        html->text = std::move(rawText);
     } else {
-        leaf->spans = expandInlineSpans(parser, rawText);
+        Block::Leaf* leaf = parser->leafBlock->asLeaf();
+        PLY_ASSERT(leaf);
+        PLY_ASSERT(leaf->spans.isEmpty());
+        if (parser->leafBlock->var.is<Block::IndentedCodeBlock>() ||
+            parser->leafBlock->var.is<Block::FencedCodeBlock>()) {
+            if (rawText) {
+                Owned<Span> textSpan = makeSpan<Span::Text>();
+                textSpan->var.as<Span::Text>()->text = std::move(rawText);
+                leaf->spans.append(std::move(textSpan));
+            }
+        } else {
+            leaf->spans = expandInlineSpans(parser, rawText);
+        }
     }
     parser->leafBlock = nullptr;
     parser->numBlankLinesInIndentedCodeBlock = 0;
+    parser->htmlBlockType = 0;
+    parser->htmlEndMarker.clear();
 }
 
 // For non-blank lines that no longer match all open containers, either keep a paragraph as a lazy continuation
@@ -1315,6 +1550,7 @@ void closeBlocksIfNotLazyContinuation(LineParser& lp) {
     bool canLazyContinueParagraph = parser->leafBlock && parser->leafBlock->var.is<Block::Paragraph>();
     if (canLazyContinueParagraph) {
         Block::FencedCodeBlock maybeFence;
+        HTMLBlockStart maybeHTML;
         u32 maybeSetextLevel = 0;
         for (u32 i = lp.blockDepth; i < parser->activeBlocks.numItems(); i++) {
             if (!parser->activeBlocks[i]->var.is<Block::BlockQuote>()) {
@@ -1322,13 +1558,19 @@ void closeBlocksIfNotLazyContinuation(LineParser& lp) {
                 break;
             }
         }
-        if (canLazyContinueParagraph && parseOpeningFence(lp.ctReader.viewRemaining(), lp.relativeIndent(), maybeFence)) {
+        if (canLazyContinueParagraph &&
+            parseOpeningFence(lp.ctReader.viewRemaining(), lp.relativeIndent(), maybeFence)) {
+            canLazyContinueParagraph = false;
+        }
+        if (canLazyContinueParagraph &&
+            parseHTMLBlockStart(lp.ctReader.viewRemaining(), lp.relativeIndent(), true, &maybeHTML)) {
             canLazyContinueParagraph = false;
         }
         if (canLazyContinueParagraph && isThematicBreak(lp.ctReader.viewRemaining(), lp.relativeIndent())) {
             canLazyContinueParagraph = false;
         }
-        if (canLazyContinueParagraph && isSetextUnderline(lp.ctReader.viewRemaining(), lp.relativeIndent(), &maybeSetextLevel)) {
+        if (canLazyContinueParagraph &&
+            isSetextUnderline(lp.ctReader.viewRemaining(), lp.relativeIndent(), &maybeSetextLevel)) {
             canLazyContinueParagraph = false;
         }
     }
@@ -1390,6 +1632,8 @@ Parser* duplicate(Parser* parser) {
     result->rootBlock = parser->rootBlock;
     result->linkReferences = parser->linkReferences;
     result->numBlankLinesInIndentedCodeBlock = parser->numBlankLinesInIndentedCodeBlock;
+    result->htmlBlockType = parser->htmlBlockType;
+    result->htmlEndMarker = parser->htmlEndMarker;
     result->checkListContinuations = parser->checkListContinuations;
     result->activeBlocks.resize(parser->activeBlocks.numItems());
     for (Block*& activeBlock : result->activeBlocks) {
@@ -1415,6 +1659,22 @@ Owned<Block> parseLine(Parser* parser, StringView line) {
     // Match existing indentation and blockquote '>' markers.
     matchExistingIndentation(lp);
 
+    // Continue an HTML block before interpreting blank lines or Markdown markers. Types 6 and 7 end before the
+    // first blank line; types 1-5 include blank lines and end only when their closing marker is found.
+    bool handledHTMLLine = false;
+    if (parser->leafBlock && parser->leafBlock->var.is<Block::HTMLBlock>()) {
+        if (lp.blockDepth == parser->activeBlocks.numItems()) {
+            bool isBlank = lp.ctReader.viewRemaining().trim().isEmpty();
+            if (parser->htmlBlockType >= 6 && isBlank) {
+                finalizeLeafBlock(parser);
+            } else {
+                if (appendHTMLBlockLine(parser, lp))
+                    finalizeLeafBlock(parser);
+                handledHTMLLine = true;
+            }
+        }
+    }
+
     bool handledFencedLine = false;
     if (auto* fenced = parser->leafBlock ? parser->leafBlock->var.as<Block::FencedCodeBlock>() : nullptr) {
         if (lp.blockDepth == parser->activeBlocks.numItems()) {
@@ -1429,7 +1689,7 @@ Owned<Block> parseLine(Parser* parser, StringView line) {
         }
     }
 
-    if (!handledFencedLine) {
+    if (!handledHTMLLine && !handledFencedLine) {
         if (lp.ctReader.viewRemaining().trim().isEmpty()) {
             // The rest of the line is blank.
             handleBlankLine(lp);
@@ -1597,6 +1857,8 @@ void dump(Stream* outs, const Block* block, u32 level) {
         outs->write("indented_code_block");
     } else if (block->var.is<Block::FencedCodeBlock>()) {
         outs->write("fenced_code_block");
+    } else if (block->var.is<Block::HTMLBlock>()) {
+        outs->write("html_block");
     } else if (block->var.is<Block::ThematicBreak>()) {
         outs->write("thematic_break");
     } else {
@@ -1759,6 +2021,8 @@ void convertToHtml(Stream* outs, const Block* block, const HTMLOptions& options)
             printXmlEscapedString(*outs, text->text);
         }
         outs->write("</code></pre>\n");
+    } else if (auto* html = block->var.as<Block::HTMLBlock>()) {
+        outs->write(html->text);
     } else if (block->var.is<Block::ThematicBreak>()) {
         outs->write("<hr />\n");
     } else {
