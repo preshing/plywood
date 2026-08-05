@@ -1534,6 +1534,32 @@ bool consumeAutolink(StringView rawText, u32 start, u32* end, bool* isEmail) {
     return true;
 }
 
+// Parses an autolink or raw HTML at start as one atomic inline, with autolinks taking precedence.
+Owned<Span> parseAtomicAngleSpan(StringView rawText, u32 start, u32* end) {
+    PLY_ASSERT(start < rawText.numBytes() && rawText[start] == '<');
+
+    // Consume the entire autolink so later inline parsing can't interpret backticks in its label.
+    bool isEmail = false;
+    if (consumeAutolink(rawText, start, end, &isEmail)) {
+        StringView label = rawText.substr(start + 1, *end - start - 2);
+        Owned<Span> linkSpan = makeSpan<Span::Link>();
+        String destination = isEmail ? "mailto:" + label : String{label};
+        linkSpan->var.as<Span::Link>()->destination = normalizeLinkDestination(destination);
+        Owned<Span> textSpan = makeSpan<Span::Text>();
+        textSpan->var.as<Span::Text>()->text = label;
+        linkSpan->var.as<Span::Link>()->childSpans.append(std::move(textSpan));
+        return linkSpan;
+    }
+
+    // Raw HTML has the same atomicity: Markdown delimiters within the construct remain literal.
+    if (consumeInlineHTML(rawText, start, end)) {
+        Owned<Span> htmlSpan = makeSpan<Span::RawHTML>();
+        htmlSpan->var.as<Span::RawHTML>()->text = rawText.substr(start, *end - start);
+        return htmlSpan;
+    }
+    return nullptr;
+}
+
 // Reads backslash escapes until the specified closing title delimiter.
 bool parseLinkTitle(StringView rawText, u32* pos, char closing, String* title) {
     MemStream out;
@@ -1901,32 +1927,12 @@ Array<Owned<Span>> expandInlineSpans(const Parser* parser, StringView rawText) {
                 flushText();
             }
         } else if (c == '<') {
-            // Autolinks take precedence over raw HTML and keep all Markdown punctuation in their labels literal.
-            u32 autolinkEnd = 0;
-            bool isEmail = false;
-            if (consumeAutolink(rawText, i, &autolinkEnd, &isEmail)) {
+            // Angle constructs are consumed before scanning any backticks they contain.
+            u32 angleEnd = 0;
+            if (Owned<Span> angleSpan = parseAtomicAngleSpan(rawText, i, &angleEnd)) {
                 flushText();
-                StringView label = rawText.substr(i + 1, autolinkEnd - i - 2);
-                Owned<Span> linkSpan = makeSpan<Span::Link>();
-                String destination = isEmail ? "mailto:" + label : String{label};
-                linkSpan->var.as<Span::Link>()->destination = normalizeLinkDestination(destination);
-                Owned<Span> textSpan = makeSpan<Span::Text>();
-                textSpan->var.as<Span::Text>()->text = label;
-                linkSpan->var.as<Span::Link>()->childSpans.append(std::move(textSpan));
-                delimiters.append(std::move(linkSpan));
-                i = autolinkEnd;
-                flushedIndex = i;
-                continue;
-            }
-
-            // Raw HTML is one atomic inline so Markdown punctuation and line endings inside it remain verbatim.
-            u32 htmlEnd = 0;
-            if (consumeInlineHTML(rawText, i, &htmlEnd)) {
-                flushText();
-                Owned<Span> htmlSpan = makeSpan<Span::RawHTML>();
-                htmlSpan->var.as<Span::RawHTML>()->text = rawText.substr(i, htmlEnd - i);
-                delimiters.append(std::move(htmlSpan));
-                i = htmlEnd;
+                delimiters.append(std::move(angleSpan));
+                i = angleEnd;
                 flushedIndex = i;
                 continue;
             }
