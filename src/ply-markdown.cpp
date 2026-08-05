@@ -1409,7 +1409,8 @@ String normalizeLinkDestination(StringView src) {
     static const char Hex[] = "0123456789ABCDEF";
     MemStream out;
     for (u8 c : decoded) {
-        if (c <= 0x20 || c >= 0x7f || c == '"' || c == '\\' || c == '<' || c == '>') {
+        if (c <= 0x20 || c >= 0x7f || c == '"' || c == '\\' || c == '<' || c == '>' || c == '[' ||
+            c == ']' || c == '`') {
             out.write('%');
             out.write(Hex[c >> 4]);
             out.write(Hex[c & 15]);
@@ -1418,6 +1419,83 @@ String normalizeLinkDestination(StringView src) {
         }
     }
     return out.moveToString();
+}
+
+// Consumes a CommonMark URI or email autolink beginning at start and returns its exclusive end position.
+bool consumeAutolink(StringView rawText, u32 start, u32* end, bool* isEmail) {
+    PLY_ASSERT(start < rawText.numBytes() && rawText[start] == '<');
+
+    // Locate the closing angle bracket. Autolink contents cannot contain whitespace, controls or another '<'.
+    u32 close = start + 1;
+    while (close < rawText.numBytes() && rawText[close] != '>') {
+        u8 c = rawText[close];
+        if (c <= 0x20 || c == 0x7f || c == '<')
+            return false;
+        close++;
+    }
+    if (close >= rawText.numBytes())
+        return false;
+    StringView contents = rawText.substr(start + 1, close - start - 1);
+
+    // A URI scheme is an ASCII letter followed by 1-31 letters, digits, '+', '-' or '.', then ':'.
+    u32 pos = 0;
+    if (contents && ((contents[0] >= 'a' && contents[0] <= 'z') ||
+                     (contents[0] >= 'A' && contents[0] <= 'Z'))) {
+        for (pos = 1; pos < contents.numBytes() && pos < 32; pos++) {
+            char c = contents[pos];
+            if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
+                  c == '+' || c == '-' || c == '.'))
+                break;
+        }
+        if (pos >= 2 && pos < contents.numBytes() && contents[pos] == ':') {
+            *end = close + 1;
+            *isEmail = false;
+            return true;
+        }
+    }
+
+    // Email local parts use RFC 5322 atext plus '.', followed by one or more valid DNS-style labels.
+    pos = 0;
+    while (pos < contents.numBytes() && contents[pos] != '@') {
+        char c = contents[pos];
+        bool isAlphaNumeric = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+                              (c >= '0' && c <= '9');
+        bool isAtextPunctuation = c == '!' || c == '#' || c == '$' || c == '%' || c == '&' || c == '\'' ||
+                                  c == '*' || c == '+' || c == '-' || c == '/' || c == '=' || c == '?' ||
+                                  c == '^' || c == '_' || c == '`' || c == '{' || c == '|' || c == '}' ||
+                                  c == '~' || c == '.';
+        if (!isAlphaNumeric && !isAtextPunctuation)
+            return false;
+        pos++;
+    }
+    if (pos == 0 || pos >= contents.numBytes() || contents[pos] != '@')
+        return false;
+    pos++;
+    if (pos >= contents.numBytes())
+        return false;
+
+    // Domain labels are 1-63 characters, begin and end alphanumeric, and may contain interior hyphens.
+    while (pos < contents.numBytes()) {
+        u32 labelStart = pos;
+        while (pos < contents.numBytes() && contents[pos] != '.') {
+            char c = contents[pos];
+            bool isAlphaNumeric = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+                                  (c >= '0' && c <= '9');
+            if (!isAlphaNumeric && c != '-')
+                return false;
+            pos++;
+        }
+        u32 labelLength = pos - labelStart;
+        if (labelLength == 0 || labelLength > 63 || contents[labelStart] == '-' || contents[pos - 1] == '-')
+            return false;
+        if (pos < contents.numBytes())
+            pos++;
+    }
+    if (pos == 0 || contents.back() == '.')
+        return false;
+    *end = close + 1;
+    *isEmail = true;
+    return true;
 }
 
 // Reads backslash escapes until the specified closing title delimiter.
@@ -1785,6 +1863,24 @@ Array<Owned<Span>> expandInlineSpans(const Parser* parser, StringView rawText) {
                 flushText();
             }
         } else if (c == '<') {
+            // Autolinks take precedence over raw HTML and keep all Markdown punctuation in their labels literal.
+            u32 autolinkEnd = 0;
+            bool isEmail = false;
+            if (consumeAutolink(rawText, i, &autolinkEnd, &isEmail)) {
+                flushText();
+                StringView label = rawText.substr(i + 1, autolinkEnd - i - 2);
+                Owned<Span> linkSpan = makeSpan<Span::Link>();
+                String destination = isEmail ? "mailto:" + label : String{label};
+                linkSpan->var.as<Span::Link>()->destination = normalizeLinkDestination(destination);
+                Owned<Span> textSpan = makeSpan<Span::Text>();
+                textSpan->var.as<Span::Text>()->text = label;
+                linkSpan->var.as<Span::Link>()->childSpans.append(std::move(textSpan));
+                delimiters.append(std::move(linkSpan));
+                i = autolinkEnd;
+                flushedIndex = i;
+                continue;
+            }
+
             // Raw HTML is one atomic inline so Markdown punctuation and line endings inside it remain verbatim.
             u32 htmlEnd = 0;
             if (consumeInlineHTML(rawText, i, &htmlEnd)) {
