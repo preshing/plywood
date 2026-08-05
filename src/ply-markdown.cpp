@@ -1383,17 +1383,13 @@ void convertSpanToHtml(Stream* outs, const Span* span, const HTMLOptions& option
         if (options.filterLinks) {
             destination = options.filterLinks(destination);
         }
-        outs->write("<a href=\"");
-        printXmlEscapedString(*outs, destination);
-        outs->write("\">");
+        outs->format("<a href=\"{:&}\">", destination);
         for (const Span* child : link->childSpans) {
             convertSpanToHtml(outs, child, options);
         }
         outs->write("</a>");
     } else if (auto* code = span->var.as<Span::Code>()) {
-        outs->write("<code>");
-        printXmlEscapedString(*outs, code->text);
-        outs->write("</code>");
+        outs->format("<code>{:&}</code>", code->text);
     } else if (span->var.is<Span::SoftBreak>()) {
         outs->write("\n");
     } else if (span->var.is<Span::HardBreak>()) {
@@ -1463,13 +1459,9 @@ void convertToHtml(Stream* outs, const Block* block, const HTMLOptions& options)
         outs->format("<h{}", heading->level);
         if (heading->id) {
             if (options.childAnchors) {
-                outs->write(" class=\"anchored\"><span class=\"anchor\" id=\"");
-                printXmlEscapedString(*outs, heading->id);
-                outs->write("\">&nbsp;</span>");
+                outs->format(" class=\"anchored\"><span class=\"anchor\" id=\"{:&}\">&nbsp;</span>", heading->id);
             } else {
-                outs->write(" id=\"");
-                printXmlEscapedString(*outs, heading->id);
-                outs->write("\">");
+                outs->format(" id=\"{:&}\">", heading->id);
             }
         } else {
             outs->write('>');
