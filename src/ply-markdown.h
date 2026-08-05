@@ -22,7 +22,7 @@ namespace markdown {
 //
 
 //------------------------------------------------------
-// A Span can be a Link, Italic, Bold, Code, SoftBreak or HardBreak.
+// A Span can be a Link, Italic, Bold, Text, Code, RawHTML, SoftBreak or HardBreak.
 //------------------------------------------------------
 struct Span {
     // Container spans can contain child spans.
@@ -43,10 +43,13 @@ struct Span {
     struct Code {
         String text;
     };
+    struct RawHTML {
+        String text;
+    };
     struct SoftBreak {};
     struct HardBreak {};
 
-    Variant<Link, Italic, Bold, Text, Code, SoftBreak, HardBreak> var;
+    Variant<Link, Italic, Bold, Text, Code, RawHTML, SoftBreak, HardBreak> var;
 
     // Convenience functions:
     Container* asContainer() {

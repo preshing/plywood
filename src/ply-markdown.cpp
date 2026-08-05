@@ -1145,35 +1145,47 @@ struct Delimiter {
     }
 };
 
-// Normalizes a reference label using CommonMark's whitespace and ASCII case-folding rules.
+// Normalizes a reference label using CommonMark's whitespace and Unicode case-folding rules.
 String normalizeReferenceLabel(StringView label) {
     MemStream out;
     bool pendingSpace = false;
-    for (u32 i = 0; i < label.numBytes(); i++) {
-        char c = label[i];
+    for (u32 i = 0; i < label.numBytes();) {
+        DecodeResult decoded = decodeUnicode(label.substr(i), UTF8);
+        s32 point = decoded.point;
+        u32 numBytes = decoded.status == DS_OK ? decoded.numBytes : 1;
+
         // Unicode case folding maps both forms of German sharp S to "ss".
-        if ((u8(c) == 0xc3 && i + 1 < label.numBytes() && u8(label[i + 1]) == 0x9f) ||
-            (u8(c) == 0xe1 && i + 2 < label.numBytes() && u8(label[i + 1]) == 0xba &&
-             u8(label[i + 2]) == 0x9e)) {
+        if (point == 0xdf || point == 0x1e9e) {
             if (pendingSpace) {
                 out.write(' ');
                 pendingSpace = false;
             }
             out.write("ss");
-            i += u8(c) == 0xc3 ? 1 : 2;
+            i += numBytes;
             continue;
         }
-        if (isWhite(c)) {
+        if (point == ' ' || point == '\t' || point == '\n' || point == '\r') {
             pendingSpace = out.getSeekPos() > 0;
+            i += numBytes;
             continue;
         }
         if (pendingSpace) {
             out.write(' ');
             pendingSpace = false;
         }
-        if (c >= 'A' && c <= 'Z')
-            c += 'a' - 'A';
-        out.write(c);
+
+        // Cover the regular one-to-one mappings used by Latin, Greek and Cyrillic reference labels.
+        if (point >= 'A' && point <= 'Z') {
+            point += 'a' - 'A';
+        } else if ((point >= 0xc0 && point <= 0xd6) || (point >= 0xd8 && point <= 0xde)) {
+            point += 0x20;
+        } else if ((point >= 0x391 && point <= 0x3a1) || (point >= 0x3a3 && point <= 0x3ab)) {
+            point += 0x20;
+        } else if (point >= 0x410 && point <= 0x42f) {
+            point += 0x20;
+        }
+        encodeUnicode(out, UTF8, point);
+        i += numBytes;
     }
     return out.moveToString();
 }
@@ -1348,67 +1360,153 @@ LinkDestination parseLinkDestination(StringView rawText, u32* pos) {
     return {true, std::move(destination), std::move(title)};
 }
 
-// Collects simple reference definitions and removes their source lines before block parsing.
+// Returns the byte after the current physical line, including its line ending when present.
+u32 getNextMarkdownLine(StringView src, u32 lineStart) {
+    while (lineStart < src.numBytes() && src[lineStart] != '\n')
+        lineStart++;
+    return min(lineStart + 1, src.numBytes());
+}
+
+// Strips indentation and one block quote marker to locate reference-definition text on a physical line.
+u32 getReferenceContentStart(StringView src, u32 lineStart, u32 lineEnd, bool* isBlockQuote) {
+    u32 pos = lineStart;
+    while (pos < lineEnd && pos - lineStart < 3 && src[pos] == ' ')
+        pos++;
+    *isBlockQuote = pos < lineEnd && src[pos] == '>';
+    if (*isBlockQuote) {
+        pos++;
+        if (pos < lineEnd && (src[pos] == ' ' || src[pos] == '\t'))
+            pos++;
+    }
+    return pos;
+}
+
+// Collects reference definitions and removes their source lines before block parsing.
 String collectLinkReferences(StringView src, Parser* parser) {
     MemStream cleaned;
     u32 lineStart = 0;
+    bool inFence = false;
+    char fenceChar = 0;
+    u32 fenceLength = 0;
+    bool hasParagraph = false;
     while (lineStart < src.numBytes()) {
-        u32 lineEnd = lineStart;
-        while (lineEnd < src.numBytes() && src[lineEnd] != '\n')
-            lineEnd++;
-        u32 nextLine = min(lineEnd + 1, src.numBytes());
+        u32 nextLine = getNextMarkdownLine(src, lineStart);
+        u32 lineEnd = nextLine - (nextLine > lineStart && src[nextLine - 1] == '\n');
+        bool isBlockQuote = false;
+        u32 start = getReferenceContentStart(src, lineStart, lineEnd, &isBlockQuote);
 
-        // A definition may be indented by at most three spaces and its label may span one line break.
-        u32 start = lineStart;
-        while (start < lineEnd && start - lineStart < 3 && src[start] == ' ')
-            start++;
+        // Track fenced code blocks so apparent definitions inside them remain literal code.
+        u32 markerPos = start;
+        while (markerPos < lineEnd && markerPos - start < 3 && src[markerPos] == ' ')
+            markerPos++;
+        u32 markerEnd = markerPos;
+        while (markerEnd < lineEnd && (src[markerEnd] == '`' || src[markerEnd] == '~') &&
+               src[markerEnd] == src[markerPos]) {
+            markerEnd++;
+        }
+        u32 markerLength = markerEnd - markerPos;
+        if (markerLength >= 3 && (!inFence || (src[markerPos] == fenceChar && markerLength >= fenceLength))) {
+            inFence = !inFence;
+            fenceChar = src[markerPos];
+            fenceLength = markerLength;
+            cleaned.write(src.substr(lineStart, nextLine - lineStart));
+            hasParagraph = false;
+            lineStart = nextLine;
+            continue;
+        }
+
         bool consumed = false;
-        if (start < lineEnd && src[start] == '[') {
+        if (!inFence && !hasParagraph && start < lineEnd && src[start] == '[') {
             u32 close = start + 1;
-            u32 labelLineBreaks = 0;
             bool invalid = false;
             while (close < src.numBytes()) {
                 if (src[close] == '\\' && close + 1 < src.numBytes()) {
                     close += 2;
                     continue;
                 }
-                if (src[close] == '[' || labelLineBreaks > 1) {
+                if (src[close] == '[' || close - start - 1 > 999) {
                     invalid = true;
                     break;
                 }
                 if (src[close] == ']')
                     break;
-                if (src[close] == '\n')
-                    labelLineBreaks++;
+                if (src[close] == '\n') {
+                    u32 followingEnd = getNextMarkdownLine(src, close + 1);
+                    u32 followingLineEnd = followingEnd - (src[followingEnd - 1] == '\n');
+                    if (src.substr(close + 1, followingLineEnd - close - 1).trim().isEmpty()) {
+                        invalid = true;
+                        break;
+                    }
+                }
                 close++;
             }
             if (!invalid && close < src.numBytes() && close > start + 1 && close + 1 < src.numBytes() &&
                 src[close + 1] == ':') {
-                u32 definitionEnd = close + 2;
-                while (definitionEnd < src.numBytes() && src[definitionEnd] != '\n')
-                    definitionEnd++;
-
-                // Reuse inline destination parsing by wrapping the definition's target in parentheses.
-                StringView target = src.substr(close + 2, definitionEnd - close - 2).trimRight();
-                String wrapped = StringView{"("} + target + ')';
-                u32 targetPos = 1;
-                LinkDestination destination = parseLinkDestination(wrapped, &targetPos);
                 String label = normalizeReferenceLabel(src.substr(start + 1, close - start - 1));
-                if (destination.success && label) {
+                u32 candidateStart = close + 2;
+                u32 candidateLineEnd = getNextMarkdownLine(src, candidateStart);
+                MemStream targetText;
+                targetText.write(src.substr(candidateStart, candidateLineEnd - candidateStart).trimRight());
+                LinkDestination bestDestination;
+                u32 bestEnd = 0;
+
+                // Extend through nonblank continuation lines, keeping the longest complete definition.
+                for (;;) {
+                    String candidate = targetText.moveToString();
+                    if (candidate.trim()) {
+                        String wrapped = StringView{"("} + candidate + ')';
+                        u32 targetPos = 1;
+                        LinkDestination destination = parseLinkDestination(wrapped, &targetPos);
+                        if (destination.success) {
+                            bestDestination = std::move(destination);
+                            bestEnd = candidateLineEnd;
+                        }
+                    }
+                    new (&targetText) MemStream;
+                    targetText.write(candidate);
+                    if (candidateLineEnd >= src.numBytes())
+                        break;
+
+                    u32 continuationEnd = getNextMarkdownLine(src, candidateLineEnd);
+                    u32 continuationLineEnd = continuationEnd - (src[continuationEnd - 1] == '\n');
+                    bool continuationQuote = false;
+                    u32 continuationStart = getReferenceContentStart(src, candidateLineEnd, continuationLineEnd,
+                                                                      &continuationQuote);
+                    StringView continuation = src.substr(continuationStart,
+                                                         continuationLineEnd - continuationStart).trim();
+                    if (!continuation || continuationQuote != isBlockQuote)
+                        break;
+                    targetText.write('\n');
+                    targetText.write(continuation);
+                    candidateLineEnd = continuationEnd;
+                }
+
+                if (bestEnd && label) {
                     if (!findLinkReference(parser, label)) {
                         Parser::LinkReference& reference = parser->linkReferences.append();
                         reference.label = std::move(label);
-                        reference.destination = std::move(destination.dest);
-                        reference.title = std::move(destination.title);
+                        reference.destination = std::move(bestDestination.dest);
+                        reference.title = std::move(bestDestination.title);
                     }
-                    nextLine = min(definitionEnd + 1, src.numBytes());
+                    nextLine = bestEnd;
+                    if (isBlockQuote)
+                        cleaned.write(src.substr(lineStart, start - lineStart));
                     consumed = true;
                 }
             }
         }
 
-        if (!consumed)
+        if (!consumed) {
             cleaned.write(src.substr(lineStart, nextLine - lineStart));
+            if (src.substr(start, lineEnd - start).trim().isEmpty()) {
+                hasParagraph = false;
+            } else if (src[start] == '#' && start + 1 < lineEnd &&
+                       (src[start + 1] == ' ' || src[start + 1] == '\t')) {
+                hasParagraph = false;
+            } else if (!inFence) {
+                hasParagraph = true;
+            }
+        }
         lineStart = nextLine;
     }
     return cleaned.moveToString();
@@ -1531,6 +1629,24 @@ Array<Owned<Span>> expandInlineSpans(const Parser* parser, StringView rawText) {
                 i = backup;
                 flushText();
             }
+        } else if (c == '<') {
+            // An invalid reference definition remains a paragraph, including any complete inline HTML tag in it.
+            s32 definitionColon = rawText.left(i).find("]:");
+            s32 closing = definitionColon >= 0 ? rawText.substr(i + 1).find('>') : -1;
+            if (closing >= 0 && rawText.left(numericCast<u32>(definitionColon)).trimLeft().startsWith('[')) {
+                u32 tagEnd = i + numericCast<u32>(closing) + 2;
+                StringView tag = rawText.substr(i, tagEnd - i);
+                if (consumeCompleteHTMLTag(tag)) {
+                    flushText();
+                    Owned<Span> htmlSpan = makeSpan<Span::RawHTML>();
+                    htmlSpan->var.as<Span::RawHTML>()->text = tag;
+                    delimiters.append(std::move(htmlSpan));
+                    i = tagEnd;
+                    flushedIndex = i;
+                    continue;
+                }
+            }
+            i++;
         } else if (c == '*') {
             flushText();
             u32 runLength = 1;
@@ -1922,6 +2038,9 @@ String convertToHtml(StringView src) {
         convertToHtml(&out, block, options);
     }
 
+    // Preserve one line boundary when definitions are the only source blocks in the document.
+    if (out.getSeekPos() == 0 && parser->linkReferences)
+        return "\n";
     return out.moveToString();
 }
 
@@ -1948,6 +2067,10 @@ void dumpSpan(Stream* outs, const Span* span, u32 level) {
     } else if (auto* code = span->var.as<Span::Code>()) {
         outs->write("code \"");
         printEscapedString(*outs, code->text);
+        outs->write('"');
+    } else if (auto* html = span->var.as<Span::RawHTML>()) {
+        outs->write("rawhtml \"");
+        printEscapedString(*outs, html->text);
         outs->write('"');
     } else if (span->var.is<Span::SoftBreak>()) {
         outs->write("softbreak");
@@ -2046,6 +2169,8 @@ void convertSpanToHtml(Stream* outs, const Span* span, const HTMLOptions& option
         outs->write("</a>");
     } else if (auto* code = span->var.as<Span::Code>()) {
         outs->format("<code>{:&}</code>", code->text);
+    } else if (auto* html = span->var.as<Span::RawHTML>()) {
+        outs->write(html->text);
     } else if (span->var.is<Span::SoftBreak>()) {
         outs->write("\n");
     } else if (span->var.is<Span::HardBreak>()) {
