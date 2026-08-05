@@ -529,6 +529,10 @@ void matchExistingIndentation(LineParser& lp) {
     // Iterate over stack items, matching as much leading indentation and BlockQuote '>' markers as possible.
     PLY_ASSERT(lp.blockDepth == 0);
     while (lp.blockDepth < parser->activeBlocks.numItems()) {
+        // Each nested container marker can have its own leading indentation.
+        while (ctReader.point == ' ' || ctReader.point == '\t') {
+            ctReader.advance();
+        }
         Block* block = parser->activeBlocks[lp.blockDepth];
         if (block->var.is<Block::BlockQuote>()) {
             // If there is a '>' within 3 columns of outerColumn, match this BlockQuote.
@@ -542,10 +546,6 @@ void matchExistingIndentation(LineParser& lp) {
                     lp.outerColumn++;
                 }
                 continue;
-            }
-            // Consume additional spaces.
-            while (ctReader.point == ' ' || ctReader.point == '\t') {
-                ctReader.advance();
             }
         } else if (auto* listItem = block->var.as<Block::ListItem>()) {
             // If the line's indentation surpasses the list item's indentation, match this ListItem.
@@ -562,8 +562,11 @@ void matchExistingIndentation(LineParser& lp) {
     }
 }
 
-// Marks ancestor lists as "loose if continued" when a blank line is seen inside them.
+// Marks containing lists as potentially loose when a blank line is seen directly inside a list item.
 void markContainingListsLooseIfContinued(Parser* parser) {
+    if (!parser->activeBlocks || !parser->activeBlocks.back()->var.is<Block::ListItem>())
+        return;
+
     for (Block* block : parser->activeBlocks) {
         if (block->var.is<Block::ListItem>()) {
             auto* parentList = block->parent->var.as<Block::List>();
@@ -626,6 +629,13 @@ void handleBlankLine(LineParser& lp) {
     } else {
         // There's no leaf block and the remainder of the line is blank.
         markContainingListsLooseIfContinued(parser);
+
+        // A blank line closes an empty item. A later marker can still rejoin its list, but indented content cannot
+        // retroactively become the empty item's first child.
+        if (parser->activeBlocks && parser->activeBlocks.back()->var.is<Block::ListItem>() &&
+            parser->activeBlocks.back()->asInner()->childBlocks.isEmpty()) {
+            parser->activeBlocks.pop();
+        }
     }
 }
 
@@ -683,11 +693,6 @@ bool tryStartListItem(Parser* parser, LineParser& lp, char punctuator, s32 start
                 listBlock = potentialParent;
             }
         }
-    } else if (parentCtr->var.is<Block::ListItem>()) {
-        // Begin new list as a sublist of existing list
-        parentCtr = parentCtr->parent;
-        PLY_ASSERT(parentCtr->var.is<Block::List>());
-        parentInner = parentCtr->asInner();
     }
     if (!listBlock) {
         // Begin new list
@@ -790,15 +795,23 @@ void parseParagraphText(LineParser& lp) {
         lp.ctReader.viewRemaining().trimLeft().trimRight([](char c) { return c == '\n' || c == '\r'; });
     bool hasPara = parser->leafBlock && parser->leafBlock->var.is<Block::Paragraph>();
     if (remainingText && parser->checkListContinuations) {
-        // A non-blank continuation after a blank line turns pending lists loose.
+        // The deepest continued list owns the blank-line separation; pending ancestors remain tight.
+        Block::List* deepestContinuedList = nullptr;
         for (Block* block : parser->activeBlocks) {
             if (block->var.is<Block::ListItem>()) {
                 auto* parentList = block->parent->var.as<Block::List>();
                 PLY_ASSERT(parentList);
-                if (parentList->isLooseIfContinued) {
-                    parentList->isLoose = true;
-                    parentList->isLooseIfContinued = false;
-                }
+                if (parentList->isLooseIfContinued)
+                    deepestContinuedList = parentList;
+            }
+        }
+        if (deepestContinuedList)
+            deepestContinuedList->isLoose = true;
+        for (Block* block : parser->activeBlocks) {
+            if (block->var.is<Block::ListItem>()) {
+                auto* parentList = block->parent->var.as<Block::List>();
+                PLY_ASSERT(parentList);
+                parentList->isLooseIfContinued = false;
             }
         }
         parser->checkListContinuations = false;
@@ -1815,8 +1828,49 @@ void finalizeLeafBlock(Parser* parser) {
     parser->htmlEndMarker.clear();
 }
 
-// For non-blank lines that no longer match all open containers, either keep a paragraph as a lazy continuation
-// (by restoring full block depth) or finalize the current leaf and trim active containers to the matched depth.
+// Returns true if the remaining line starts a container marker that must end the open paragraph.
+bool listMarkerInterruptsParagraph(LineParser& lp) {
+    ColumnTrackingReader reader = lp.ctReader;
+    if (lp.relativeIndent() > 3)
+        return false;
+
+    // Parse an unordered marker or an ordered marker with at most nine digits.
+    u64 startNumber = 0;
+    if (reader.point == '*' || reader.point == '-' || reader.point == '+') {
+        reader.advance();
+    } else if (reader.point >= '0' && reader.point <= '9') {
+        u32 numDigits = 0;
+        while (reader.point >= '0' && reader.point <= '9' && numDigits < 10) {
+            startNumber = startNumber * 10 + reader.point - '0';
+            reader.advance();
+            numDigits++;
+        }
+        if (numDigits > 9 || (reader.point != '.' && reader.point != ')'))
+            return false;
+        reader.advance();
+    } else {
+        return reader.point == '>';
+    }
+
+    if (!(reader.point == ' ' || reader.point == '\t' || reader.point == '\n' || reader.atEnd()))
+        return false;
+
+    // A marker for the currently open list starts its next item even when empty or numbered other than one.
+    if (lp.blockDepth < lp.parser->activeBlocks.numItems()) {
+        Block* unmatched = lp.parser->activeBlocks[lp.blockDepth];
+        if (unmatched->var.is<Block::ListItem>()) {
+            PLY_ASSERT(unmatched->parent->var.is<Block::List>());
+            return true;
+        }
+    }
+
+    StringView suffix = reader.viewRemaining().trim();
+    if (!suffix)
+        return false;
+    return startNumber <= 1;
+}
+
+// Closes unmatched containers unless the current line can lazily continue their paragraph.
 void closeBlocksIfNotLazyContinuation(LineParser& lp) {
     Parser* parser = lp.parser;
     if (lp.blockDepth >= parser->activeBlocks.numItems())
@@ -1827,12 +1881,6 @@ void closeBlocksIfNotLazyContinuation(LineParser& lp) {
         Block::FencedCodeBlock maybeFence;
         HTMLBlockStart maybeHTML;
         u32 maybeSetextLevel = 0;
-        for (u32 i = lp.blockDepth; i < parser->activeBlocks.numItems(); i++) {
-            if (!parser->activeBlocks[i]->var.is<Block::BlockQuote>()) {
-                canLazyContinueParagraph = false;
-                break;
-            }
-        }
         if (canLazyContinueParagraph &&
             parseOpeningFence(lp.ctReader.viewRemaining(), lp.relativeIndent(), maybeFence)) {
             canLazyContinueParagraph = false;
@@ -1842,6 +1890,9 @@ void closeBlocksIfNotLazyContinuation(LineParser& lp) {
             canLazyContinueParagraph = false;
         }
         if (canLazyContinueParagraph && isThematicBreak(lp.ctReader.viewRemaining(), lp.relativeIndent())) {
+            canLazyContinueParagraph = false;
+        }
+        if (canLazyContinueParagraph && listMarkerInterruptsParagraph(lp)) {
             canLazyContinueParagraph = false;
         }
         if (canLazyContinueParagraph &&
@@ -2268,7 +2319,9 @@ void convertToHtml(Stream* outs, const Block* block, const HTMLOptions& options)
     } else if (auto* listItem = block->var.as<Block::ListItem>()) {
         auto* parentList = block->parent->var.as<Block::List>();
         outs->write("<li>");
-        if (!parentList->isLoose && listItem->childBlocks && listItem->childBlocks[0]->var.is<Block::Paragraph>()) {
+        if (listItem->childBlocks.isEmpty()) {
+            // Empty items have no line break between their tags.
+        } else if (!parentList->isLoose && listItem->childBlocks[0]->var.is<Block::Paragraph>()) {
             // Don't output a newline before the paragraph in a tight list.
         } else {
             outs->write("\n");
