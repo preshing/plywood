@@ -1105,6 +1105,7 @@ struct Delimiter {
         Stars,
         Underscores,
         OpenLink,
+        OpenImage,
         InlineElem,
     };
 
@@ -1112,7 +1113,7 @@ struct Delimiter {
     bool canOpen = false;  // Stars & Underscores only
     bool canClose = false; // Stars & Underscores only
     bool active = true;         // OpenLink only
-    u32 sourcePos = 0;          // OpenLink only
+    u32 sourcePos = 0;          // OpenLink & OpenImage only
     u32 originalLength = 0;     // Stars & Underscores only
     String textStorage;
     StringView text;
@@ -1681,6 +1682,12 @@ Array<Owned<Span>> expandInlineSpans(const Parser* parser, StringView rawText) {
                 delimiters.append({Delimiter::RawText, StringView{"\\"}});
                 flushedIndex = i;
             }
+        } else if (c == '!' && i + 1 < rawText.numBytes() && rawText[i + 1] == '[') {
+            flushText();
+            delimiters.append({Delimiter::OpenImage, rawText.substr(i, 2)});
+            delimiters.back().sourcePos = i + 1;
+            i += 2;
+            flushedIndex = i;
         } else if (c == '[') {
             flushText();
             delimiters.append({Delimiter::OpenLink, rawText.substr(i, 1)});
@@ -1688,14 +1695,20 @@ Array<Owned<Span>> expandInlineSpans(const Parser* parser, StringView rawText) {
             i++;
             flushedIndex = i;
         } else if (c == ']') {
-            // Locate the nearest active link opener before examining its inline or reference suffix.
+            // Locate the nearest bracket opener before examining its inline or reference suffix.
             flushText();
             i++;
             s32 openLink = reverseFind(delimiters, [](const Delimiter& delim) {
-                return delim.type == Delimiter::OpenLink && delim.active;
+                return delim.type == Delimiter::OpenLink || delim.type == Delimiter::OpenImage;
             });
             if (openLink < 0)
                 continue;
+
+            // An inactive link opener cannot form a nested link, but still takes precedence over outer openers.
+            if (delimiters[openLink].type == Delimiter::OpenLink && !delimiters[openLink].active) {
+                delimiters[openLink].type = Delimiter::RawText;
+                continue;
+            }
 
             // Inline destinations take precedence over all reference-link forms.
             LinkDestination linkDest;
@@ -1738,21 +1751,27 @@ Array<Owned<Span>> expandInlineSpans(const Parser* parser, StringView rawText) {
                 continue;
             }
 
-            // Build the link and deactivate earlier openers to prohibit nested links.
-            Owned<Span> linkSpan = makeSpan<Span::Link>();
-            Span::Link* link = linkSpan->var.as<Span::Link>();
+            // Build the resolved link or image, retaining parsed label spans for rendering.
+            bool isImage = delimiters[openLink].type == Delimiter::OpenImage;
+            Owned<Span> linkSpan = isImage ? makeSpan<Span::Image>() : makeSpan<Span::Link>();
+            String* destination = isImage ? &linkSpan->var.as<Span::Image>()->destination :
+                                            &linkSpan->var.as<Span::Link>()->destination;
+            String* title = isImage ? &linkSpan->var.as<Span::Image>()->title :
+                                      &linkSpan->var.as<Span::Link>()->title;
             if (reference) {
-                link->destination = reference->destination;
-                link->title = reference->title;
+                *destination = reference->destination;
+                *title = reference->title;
             } else {
-                link->destination = std::move(linkDest.dest);
-                link->title = std::move(linkDest.title);
+                *destination = std::move(linkDest.dest);
+                *title = std::move(linkDest.title);
             }
             linkSpan->asContainer()->childSpans = processEmphasis(delimiters, openLink + 1);
             delimiters.resize(openLink);
-            for (Delimiter& delimiter : delimiters) {
-                if (delimiter.type == Delimiter::OpenLink)
-                    delimiter.active = false;
+            if (!isImage) {
+                for (Delimiter& delimiter : delimiters) {
+                    if (delimiter.type == Delimiter::OpenLink)
+                        delimiter.active = false;
+                }
             }
             delimiters.append(std::move(linkSpan));
             i = suffixEnd;
@@ -2064,6 +2083,10 @@ void dumpSpan(Stream* outs, const Span* span, u32 level) {
         outs->write("link destination=\"");
         printEscapedString(*outs, link->destination);
         outs->write('"');
+    } else if (auto* image = span->var.as<Span::Image>()) {
+        outs->write("image destination=\"");
+        printEscapedString(*outs, image->destination);
+        outs->write('"');
     } else if (auto* code = span->var.as<Span::Code>()) {
         outs->write("code \"");
         printEscapedString(*outs, code->text);
@@ -2150,6 +2173,23 @@ void dump(Stream* outs, const Block* block, u32 level) {
 //  ██  ██   ██   ██   ██ ██▄▄▄
 //
 
+// Renders the plain-text contribution of one parsed image-label span, escaping it for an HTML attribute.
+void convertImageAltToHtml(Stream* outs, const Span* span) {
+    if (auto* text = span->var.as<Span::Text>()) {
+        printXmlEscapedString(*outs, text->text);
+    } else if (auto* code = span->var.as<Span::Code>()) {
+        printXmlEscapedString(*outs, code->text);
+    } else if (auto* html = span->var.as<Span::RawHTML>()) {
+        printXmlEscapedString(*outs, html->text);
+    } else if (span->var.is<Span::SoftBreak>() || span->var.is<Span::HardBreak>()) {
+        outs->write('\n');
+    } else if (const Span::Container* container = span->asContainer()) {
+        for (const Span* child : container->childSpans) {
+            convertImageAltToHtml(outs, child);
+        }
+    }
+}
+
 // Renders one inline span subtree to HTML.
 void convertSpanToHtml(Stream* outs, const Span* span, const HTMLOptions& options) {
     if (auto* text = span->var.as<Span::Text>()) {
@@ -2167,6 +2207,19 @@ void convertSpanToHtml(Stream* outs, const Span* span, const HTMLOptions& option
             convertSpanToHtml(outs, child, options);
         }
         outs->write("</a>");
+    } else if (auto* image = span->var.as<Span::Image>()) {
+        String destination = image->destination;
+        if (options.filterLinks) {
+            destination = options.filterLinks(destination);
+        }
+        outs->format("<img src=\"{:&}\" alt=\"", destination);
+        for (const Span* child : image->childSpans) {
+            convertImageAltToHtml(outs, child);
+        }
+        outs->write('"');
+        if (image->title)
+            outs->format(" title=\"{:&}\"", image->title);
+        outs->write(" />");
     } else if (auto* code = span->var.as<Span::Code>()) {
         outs->format("<code>{:&}</code>", code->text);
     } else if (auto* html = span->var.as<Span::RawHTML>()) {
