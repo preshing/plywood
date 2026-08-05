@@ -117,6 +117,9 @@ struct LineParser {
     // blockquote > markers.
     u32 blockDepth = 0;
 
+    // True when unmatched containers were retained so this line can lazily continue an open paragraph.
+    bool isLazyContinuation = false;
+
     // If the last matching stack entry was a blockquote, this is the column number after the > marker and optional
     // following single space (if any). If the last matching stack entry was a list item, this is the column number
     // where sufficient indentation was reached for the rest of the line to be considered part of the list item. Note
@@ -589,6 +592,26 @@ bool isSetextUnderline(StringView remainingLine, u32 relativeIndent, u32* level)
     return true;
 }
 
+// Removes an optional closing sequence of ATX '#' markers and its surrounding whitespace.
+StringView trimClosingATXMarkers(StringView text) {
+    text = text.trimRight([](char c) { return c == ' ' || c == '\t'; });
+    char* markerEnd = text.end();
+    char* markerStart = markerEnd;
+    while (markerStart > text.bytes() && markerStart[-1] == '#') {
+        markerStart--;
+    }
+    if (markerStart == markerEnd || (markerStart > text.bytes() && markerStart[-1] != ' ' && markerStart[-1] != '\t'))
+        return text;
+    return StringView{text.bytes(), markerStart}.trimRight([](char c) { return c == ' ' || c == '\t'; });
+}
+
+// Removes whitespace between Setext heading content and its underline without changing earlier line endings.
+void trimSetextHeadingContent(Parser* parser) {
+    String rawText = parser->rawLeafText.moveToString();
+    new (&parser->rawLeafText) MemStream;
+    parser->rawLeafText.write(rawText.trimRight([](char c) { return c == ' ' || c == '\t'; }));
+}
+
 // This is called at the start of each line. It figures out which of the existing blocks we are still inside by
 // consuming indentation and blockquote '>' markers that match activeBlocks.
 void matchExistingIndentation(LineParser& lp) {
@@ -941,9 +964,11 @@ void parseParagraphText(LineParser& lp) {
             }
 
             u32 setextLevel = 0;
-            if (hasPara && isSetextUnderline(lp.ctReader.viewRemaining(), lp.relativeIndent(), &setextLevel)) {
+            if (hasPara && !lp.isLazyContinuation &&
+                isSetextUnderline(lp.ctReader.viewRemaining(), lp.relativeIndent(), &setextLevel)) {
                 // Convert current paragraph block to a Setext heading.
                 PLY_ASSERT(parser->leafBlock->var.is<Block::Paragraph>());
+                trimSetextHeadingContent(parser);
                 auto& heading = parser->leafBlock->var.switchTo<Block::Heading>();
                 heading.level = setextLevel;
                 finalizeLeafBlock(parser);
@@ -979,8 +1004,8 @@ void parseParagraphText(LineParser& lp) {
                     heading->level = poundCount;
                     parser->leafBlock = headingBlock;
                     PLY_ASSERT(parser->rawLeafText.getSeekPos() == 0);
-                    if (StringView remainingText = in.viewRemainingBytes().trim()) {
-                        parser->rawLeafText.write(remainingText);
+                    if (StringView headingText = trimClosingATXMarkers(in.viewRemainingBytes())) {
+                        parser->rawLeafText.write(headingText);
                     }
                     finalizeLeafBlock(parser);
                     return;
@@ -2124,7 +2149,6 @@ void closeBlocksIfNotLazyContinuation(LineParser& lp) {
     if (canLazyContinueParagraph) {
         Block::FencedCodeBlock maybeFence;
         HTMLBlockStart maybeHTML;
-        u32 maybeSetextLevel = 0;
         if (canLazyContinueParagraph &&
             parseOpeningFence(lp.ctReader.viewRemaining(), lp.relativeIndent(), maybeFence)) {
             canLazyContinueParagraph = false;
@@ -2139,14 +2163,11 @@ void closeBlocksIfNotLazyContinuation(LineParser& lp) {
         if (canLazyContinueParagraph && listMarkerInterruptsParagraph(lp)) {
             canLazyContinueParagraph = false;
         }
-        if (canLazyContinueParagraph &&
-            isSetextUnderline(lp.ctReader.viewRemaining(), lp.relativeIndent(), &maybeSetextLevel)) {
-            canLazyContinueParagraph = false;
-        }
     }
 
     if (canLazyContinueParagraph) {
         lp.blockDepth = parser->activeBlocks.numItems();
+        lp.isLazyContinuation = true;
     } else {
         finalizeLeafBlock(parser);
         parser->activeBlocks.resize(lp.blockDepth);
