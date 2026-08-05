@@ -1461,6 +1461,160 @@ String normalizeLinkDestination(StringView src) {
     return out.moveToString();
 }
 
+// Consumes a GFM extended URL or email autolink beginning at start.
+bool consumeExtendedAutolink(StringView rawText, u32 start, u32* end, String* destination) {
+    PLY_ASSERT(start < rawText.numBytes());
+
+    // Extended autolinks only begin at a line boundary or after one of GFM's permitted delimiters.
+    if (start > 0) {
+        char previous = rawText[start - 1];
+        if (!isWhite(previous) && previous != '*' && previous != '_' && previous != '~' && previous != '(')
+            return false;
+    }
+    auto isAlphaNumeric = [](char c) { return isAlpha(c) || isDigit(c); };
+    auto equalIgnoringCase = [](char a, char b) {
+        return a == b || (a >= 'A' && a <= 'Z' && a - 'A' + 'a' == b);
+    };
+
+    // Recognize www and the three supported URL schemes, then validate their domain.
+    u32 domainStart = 0;
+    bool addHttpScheme = false;
+    bool requireDomainPeriod = false;
+    if (rawText.substr(start).startsWith("www.")) {
+        domainStart = start;
+        addHttpScheme = true;
+        requireDomainPeriod = true;
+    } else {
+        static const StringView Schemes[] = {"http://", "https://", "ftp://"};
+        for (StringView scheme : Schemes) {
+            if (start + scheme.numBytes() > rawText.numBytes())
+                continue;
+            bool matches = true;
+            for (u32 i = 0; i < scheme.numBytes(); i++) {
+                if (!equalIgnoringCase(rawText[start + i], scheme[i])) {
+                    matches = false;
+                    break;
+                }
+            }
+            if (matches) {
+                domainStart = start + scheme.numBytes();
+                break;
+            }
+        }
+    }
+    if (domainStart || addHttpScheme) {
+        // The domain is the initial run of domain characters; sentence-ending periods belong to the path.
+        u32 domainEnd = domainStart;
+        while (domainEnd < rawText.numBytes()) {
+            char c = rawText[domainEnd];
+            if (!isAlphaNumeric(c) && c != '_' && c != '-' && c != '.')
+                break;
+            domainEnd++;
+        }
+        while (domainEnd > domainStart && rawText[domainEnd - 1] == '.')
+            domainEnd--;
+        if (domainEnd == domainStart)
+            return false;
+
+        // Domain segments are nonempty, and underscores are forbidden in the final two segments.
+        u32 numPeriods = 0;
+        u32 lastPeriod = domainStart;
+        u32 secondLastPeriod = domainStart;
+        for (u32 i = domainStart; i < domainEnd; i++) {
+            if (rawText[i] == '.') {
+                if (i == domainStart || rawText[i - 1] == '.')
+                    return false;
+                secondLastPeriod = lastPeriod;
+                lastPeriod = i + 1;
+                numPeriods++;
+            }
+        }
+        u32 protectedStart = numPeriods > 0 ? secondLastPeriod : domainStart;
+        for (u32 i = protectedStart; i < domainEnd; i++) {
+            if (rawText[i] == '_')
+                return false;
+        }
+        if (requireDomainPeriod && numPeriods == 0)
+            return false;
+
+        // Paths continue through every non-space byte except '<', then GFM endpoint validation trims them.
+        u32 linkEnd = domainEnd;
+        while (linkEnd < rawText.numBytes() && !isWhite(rawText[linkEnd]) && rawText[linkEnd] != '<')
+            linkEnd++;
+        for (;;) {
+            char trailing = rawText[linkEnd - 1];
+            if (trailing == '?' || trailing == '!' || trailing == '.' || trailing == ',' || trailing == ':' ||
+                trailing == '*' || trailing == '_' || trailing == '~') {
+                linkEnd--;
+                continue;
+            }
+            if (trailing == ')') {
+                u32 numOpen = 0;
+                u32 numClose = 0;
+                for (u32 i = start; i < linkEnd; i++) {
+                    numOpen += rawText[i] == '(';
+                    numClose += rawText[i] == ')';
+                }
+                if (numClose > numOpen) {
+                    linkEnd--;
+                    continue;
+                }
+            } else if (trailing == ';') {
+                u32 entityStart = linkEnd - 1;
+                while (entityStart > domainEnd && isAlphaNumeric(rawText[entityStart - 1]))
+                    entityStart--;
+                if (entityStart > domainEnd && rawText[entityStart - 1] == '&') {
+                    linkEnd = entityStart - 1;
+                    continue;
+                }
+            }
+            break;
+        }
+        StringView label = rawText.substr(start, linkEnd - start);
+        *destination = normalizeLinkDestination(addHttpScheme ? "http://" + label : String{label});
+        *end = linkEnd;
+        return true;
+    }
+
+    // GFM email local parts accept only alphanumerics and four punctuation characters.
+    u32 at = start;
+    while (at < rawText.numBytes()) {
+        char c = rawText[at];
+        if (!isAlphaNumeric(c) && c != '.' && c != '-' && c != '_' && c != '+')
+            break;
+        at++;
+    }
+    if (at == start || at >= rawText.numBytes() || rawText[at] != '@')
+        return false;
+
+    // Email domains require at least one period, and cannot end in '-' or '_'.
+    u32 emailEnd = at + 1;
+    if (emailEnd >= rawText.numBytes() ||
+        (!isAlphaNumeric(rawText[emailEnd]) && rawText[emailEnd] != '-' && rawText[emailEnd] != '_'))
+        return false;
+    u32 numPeriods = 0;
+    while (emailEnd < rawText.numBytes()) {
+        char c = rawText[emailEnd];
+        if (isAlphaNumeric(c) || c == '-' || c == '_') {
+            emailEnd++;
+        } else if (c == '.' && emailEnd + 1 < rawText.numBytes() &&
+                   (isAlphaNumeric(rawText[emailEnd + 1]) || rawText[emailEnd + 1] == '-' ||
+                    rawText[emailEnd + 1] == '_')) {
+            numPeriods++;
+            emailEnd++;
+        } else {
+            break;
+        }
+    }
+    if (numPeriods == 0 || (emailEnd < rawText.numBytes() && rawText[emailEnd] == '@') ||
+        rawText[emailEnd - 1] == '-' || rawText[emailEnd - 1] == '_')
+        return false;
+    StringView label = rawText.substr(start, emailEnd - start);
+    *destination = normalizeLinkDestination("mailto:" + label);
+    *end = emailEnd;
+    return true;
+}
+
 // Consumes a CommonMark URI or email autolink beginning at start and returns its exclusive end position.
 bool consumeAutolink(StringView rawText, u32 start, u32* end, bool* isEmail) {
     PLY_ASSERT(start < rawText.numBytes() && rawText[start] == '<');
@@ -1898,6 +2052,27 @@ Array<Owned<Span>> expandInlineSpans(const Parser* parser, StringView rawText) {
     };
     while (i < rawText.numBytes()) {
         char c = rawText[i];
+
+        // Extended autolinks are atomic and disabled while an ordinary link or image label is open.
+        if (parser->options.extendedAutolinks) {
+            bool inBracket = find(delimiters, [](const Delimiter& delimiter) {
+                return delimiter.type == Delimiter::OpenLink || delimiter.type == Delimiter::OpenImage;
+            }) >= 0;
+            u32 linkEnd = 0;
+            String destination;
+            if (!inBracket && consumeExtendedAutolink(rawText, i, &linkEnd, &destination)) {
+                flushText();
+                Owned<Span> linkSpan = makeSpan<Span::Link>();
+                linkSpan->var.as<Span::Link>()->destination = std::move(destination);
+                Owned<Span> textSpan = makeSpan<Span::Text>();
+                textSpan->var.as<Span::Text>()->text = rawText.substr(i, linkEnd - i);
+                linkSpan->var.as<Span::Link>()->childSpans.append(std::move(textSpan));
+                delimiters.append(std::move(linkSpan));
+                i = linkEnd;
+                flushedIndex = i;
+                continue;
+            }
+        }
         if (c == '\n') {
             // At line boundaries, trailing spaces are trimmed and can convert to hard breaks.
             u32 savedPos = i;

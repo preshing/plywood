@@ -10,3 +10,85 @@ new paragraph~~.
 --
 <p>This ~~has a</p>
 <p>new paragraph~~.</p>
+
+--------------------- #3 (Autolinks extension)
+www.commonmark.org
+--
+<p><a href="http://www.commonmark.org">www.commonmark.org</a></p>
+
+--------------------- #4 (Autolinks extension)
+Visit www.commonmark.org/help for more information.
+--
+<p>Visit <a href="http://www.commonmark.org/help">www.commonmark.org/help</a> for more information.</p>
+
+--------------------- #5 (Autolinks extension)
+Visit www.commonmark.org.
+
+Visit www.commonmark.org/a.b.
+--
+<p>Visit <a href="http://www.commonmark.org">www.commonmark.org</a>.</p>
+<p>Visit <a href="http://www.commonmark.org/a.b">www.commonmark.org/a.b</a>.</p>
+
+--------------------- #6 (Autolinks extension)
+www.google.com/search?q=Markup+(business)
+
+www.google.com/search?q=Markup+(business)))
+
+(www.google.com/search?q=Markup+(business))
+
+(www.google.com/search?q=Markup+(business)
+--
+<p><a href="http://www.google.com/search?q=Markup+(business)">www.google.com/search?q=Markup+(business)</a></p>
+<p><a href="http://www.google.com/search?q=Markup+(business)">www.google.com/search?q=Markup+(business)</a>))</p>
+<p>(<a href="http://www.google.com/search?q=Markup+(business)">www.google.com/search?q=Markup+(business)</a>)</p>
+<p>(<a href="http://www.google.com/search?q=Markup+(business)">www.google.com/search?q=Markup+(business)</a></p>
+
+--------------------- #7 (Autolinks extension)
+www.google.com/search?q=(business))+ok
+--
+<p><a href="http://www.google.com/search?q=(business))+ok">www.google.com/search?q=(business))+ok</a></p>
+
+--------------------- #8 (Autolinks extension)
+www.google.com/search?q=commonmark&hl=en
+
+www.google.com/search?q=commonmark&hl;
+--
+<p><a href="http://www.google.com/search?q=commonmark&amp;hl=en">www.google.com/search?q=commonmark&amp;hl=en</a></p>
+<p><a href="http://www.google.com/search?q=commonmark">www.google.com/search?q=commonmark</a>&amp;hl;</p>
+
+--------------------- #9 (Autolinks extension)
+www.commonmark.org/he<lp
+--
+<p><a href="http://www.commonmark.org/he">www.commonmark.org/he</a>&lt;lp</p>
+
+--------------------- #10 (Autolinks extension)
+http://commonmark.org
+
+(Visit https://encrypted.google.com/search?q=Markup+(business))
+--
+<p><a href="http://commonmark.org">http://commonmark.org</a></p>
+<p>(Visit <a href="https://encrypted.google.com/search?q=Markup+(business)">https://encrypted.google.com/search?q=Markup+(business)</a>)</p>
+
+--------------------- #11 (Autolinks extension)
+foo@bar.baz
+--
+<p><a href="mailto:foo@bar.baz">foo@bar.baz</a></p>
+
+--------------------- #12 (Autolinks extension)
+hello@mail+xyz.example isn't valid, but hello+xyz@mail.example is.
+--
+<p>hello@mail+xyz.example isn't valid, but <a href="mailto:hello+xyz@mail.example">hello+xyz@mail.example</a> is.</p>
+
+--------------------- #13 (Autolinks extension)
+a.b-c_d@a.b
+
+a.b-c_d@a.b.
+
+a.b-c_d@a.b-
+
+a.b-c_d@a.b_
+--
+<p><a href="mailto:a.b-c_d@a.b">a.b-c_d@a.b</a></p>
+<p><a href="mailto:a.b-c_d@a.b">a.b-c_d@a.b</a>.</p>
+<p>a.b-c_d@a.b-</p>
+<p>a.b-c_d@a.b_</p>
