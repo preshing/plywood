@@ -501,8 +501,9 @@ void generateTableOfContentsHtml(Stream& out, const json::Node& items) {
             headerFile =
                 String::format(" <span class=\"toc-header\">&lt;{:&}&gt;</span>", item.get("header-file").text());
         }
-        out.format("<a href=\"/docs/{}\"><li class=\"selectable\"><span{}>{:&}</span>{}</li></a>",
-                   item.get("path").text(), spanClass, item.get("title").text(), headerFile);
+        String url = convertDocsPathToURL(item.get("path").text());
+        out.format("<a href=\"{}\"><li class=\"selectable\"><span{}>{:&}</span>{}</li></a>", url, spanClass,
+                   item.get("title").text(), headerFile);
         if (children.isValid()) {
             out.write("<ul class=\"nested active\">");
             generateTableOfContentsHtml(out, children);
@@ -513,14 +514,11 @@ void generateTableOfContentsHtml(Stream& out, const json::Node& items) {
 
 // Converts one contents.json entry into the generated documentation page HTML.
 void convertPage(const json::Node& item, const json::Node* prevPage, const json::Node* nextPage) {
-    String relName = item.get("path").text();
-    String markdownPath = joinPath(docsFolder, relName);
-    if (Filesystem::isDir(markdownPath)) {
-        relName = joinPath(relName, "index");
-        markdownPath = joinPath(markdownPath, "index.md");
-    } else {
-        markdownPath += ".md";
-    }
+    // Resolve the repo-root-relative source path while preserving its old generated-file location.
+    StringView docsPath = item.get("path").text();
+    PLY_ASSERT(docsPath.startsWith("/docs/") && docsPath.endsWith(".md"));
+    String markdownPath = joinPath(PLYWOOD_ROOT_DIR, docsPath.substr(1));
+    String relName = docsPath.substr(6).shortenedBy(3);
     String markdown = Filesystem::loadTextAutodetect(markdownPath);
     ViewStream in{markdown};
     MemStream mem;
@@ -531,16 +529,18 @@ void convertPage(const json::Node& item, const json::Node* prevPage, const json:
     // Generate prev/next navigation
     String prevLink, nextLink;
     if (prevPage) {
+        String url = convertDocsPathToURL(prevPage->get("path").text());
         prevLink =
-            String::format("<a class=\"nav-card nav-prev\" href=\"/docs/{}\"><span class=\"nav-meta\">Previous</span>"
+            String::format("<a class=\"nav-card nav-prev\" href=\"{}\"><span class=\"nav-meta\">Previous</span>"
                            "<span class=\"nav-title\">{:&}</span></a>",
-                           prevPage->get("path").text(), prevPage->get("title").text());
+                           url, prevPage->get("title").text());
     }
     if (nextPage) {
+        String url = convertDocsPathToURL(nextPage->get("path").text());
         nextLink =
-            String::format("<a class=\"nav-card nav-next\" href=\"/docs/{}\"><span class=\"nav-meta\">Next</span>"
+            String::format("<a class=\"nav-card nav-next\" href=\"{}\"><span class=\"nav-meta\">Next</span>"
                            "<span class=\"nav-title\">{:&}</span></a>",
-                           nextPage->get("path").text(), nextPage->get("title").text());
+                           url, nextPage->get("title").text());
     }
     String navHtml = String::format("<div class=\"page-nav\">{}{}</div>", prevLink, nextLink);
 
