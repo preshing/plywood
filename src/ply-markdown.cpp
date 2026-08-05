@@ -21,6 +21,9 @@ struct Parser {
         String title;
     };
 
+    // Optional syntax extensions selected when the parser was created.
+    ParseOptions options;
+
     // The current stack of nested Markdown blocks based on the content of previous lines.
     // Consists of ListItems and BlockQuotes.
     Array<Block*> activeBlocks;
@@ -1216,17 +1219,18 @@ struct Delimiter {
         RawText,
         Stars,
         Underscores,
+        Tildes,
         OpenLink,
         OpenImage,
         InlineElem,
     };
 
     Type type = RawText;
-    bool canOpen = false;  // Stars & Underscores only
-    bool canClose = false; // Stars & Underscores only
+    bool canOpen = false;       // Stars, Underscores & Tildes only
+    bool canClose = false;      // Stars, Underscores & Tildes only
     bool active = true;         // OpenLink only
     u32 sourcePos = 0;          // OpenLink & OpenImage only
-    u32 originalLength = 0;     // Stars & Underscores only
+    u32 originalLength = 0;     // Stars, Underscores & Tildes only
     String textStorage;
     StringView text;
     Owned<Span> span; // InlineElem only
@@ -1252,8 +1256,8 @@ struct Delimiter {
 
         Delimiter result{type, rawLine.substr(start, numBytes)};
         result.originalLength = numBytes;
-        result.canOpen = leftFlanking && (type == Stars || !rightFlanking || precededByPunc);
-        result.canClose = rightFlanking && (type == Stars || !leftFlanking || followedByPunc);
+        result.canOpen = leftFlanking && (type != Underscores || !rightFlanking || precededByPunc);
+        result.canClose = rightFlanking && (type != Underscores || !leftFlanking || followedByPunc);
         return result;
     }
 };
@@ -1823,11 +1827,12 @@ Array<Owned<Span>> convertToInlineElems(ArrayView<Delimiter> delimiters) {
     return spans;
 }
 
-// Resolves '*' and '_' delimiter runs into italic/bold spans in-place, then returns inline elems from bottomPos.
-Array<Owned<Span>> processEmphasis(Array<Delimiter>& delimiters, u32 bottomPos) {
+// Resolves emphasis and strikethrough delimiter runs in-place, then returns inline elems from bottomPos.
+Array<Owned<Span>> processInlineDelimiters(Array<Delimiter>& delimiters, u32 bottomPos) {
     for (u32 pos = bottomPos; pos < delimiters.numItems(); pos++) {
         Delimiter::Type closerType = delimiters[pos].type;
-        if ((closerType != Delimiter::Stars && closerType != Delimiter::Underscores) ||
+        if ((closerType != Delimiter::Stars && closerType != Delimiter::Underscores &&
+             closerType != Delimiter::Tildes) ||
             !delimiters[pos].canClose)
             continue;
 
@@ -1840,9 +1845,9 @@ Array<Owned<Span>> processEmphasis(Array<Delimiter>& delimiters, u32 bottomPos) 
                 if (opener.type != closerType || !opener.canOpen)
                     continue;
 
-                // Ambidextrous runs cannot match when the sum is a multiple of three unless both are multiples.
+                // Ambidextrous emphasis runs cannot match when their sum is a multiple of three unless both are.
                 Delimiter& closer = delimiters[pos];
-                bool oddMatch = (opener.canClose || closer.canOpen) &&
+                bool oddMatch = closerType != Delimiter::Tildes && (opener.canClose || closer.canOpen) &&
                                 (opener.originalLength + closer.originalLength) % 3 == 0 &&
                                 (opener.originalLength % 3 != 0 || closer.originalLength % 3 != 0);
                 if (!oddMatch) {
@@ -1855,8 +1860,13 @@ Array<Owned<Span>> processEmphasis(Array<Delimiter>& delimiters, u32 bottomPos) 
 
             // Consume one or two markers while preserving unused markers on their original sides of the span.
             u32 opener = numericCast<u32>(openerPos);
-            u32 numMarkers = delimiters[opener].text.numBytes() >= 2 && delimiters[pos].text.numBytes() >= 2 ? 2 : 1;
-            Owned<Span> span = numMarkers == 2 ? makeSpan<Span::Bold>() : makeSpan<Span::Italic>();
+            bool isStrikethrough = closerType == Delimiter::Tildes;
+            u32 numMarkers = 2;
+            if (!isStrikethrough &&
+                (delimiters[opener].text.numBytes() < 2 || delimiters[pos].text.numBytes() < 2))
+                numMarkers = 1;
+            Owned<Span> span = isStrikethrough ? makeSpan<Span::Strikethrough>() :
+                               numMarkers == 2 ? makeSpan<Span::Bold>() : makeSpan<Span::Italic>();
             span->asContainer()->childSpans = convertToInlineElems(delimiters.subview(opener + 1, pos - opener - 1));
             delimiters[opener].text = delimiters[opener].text.shortenedBy(numMarkers);
             delimiters[pos].text = delimiters[pos].text.shortenedBy(numMarkers);
@@ -1965,6 +1975,17 @@ Array<Owned<Span>> expandInlineSpans(const Parser* parser, StringView rawText) {
             }
             delimiters.append(Delimiter::makeRun(Delimiter::Underscores, rawText, i - runLength, runLength));
             flushedIndex = i;
+        } else if (c == '~' && parser->options.strikethrough) {
+            // Only an exact pair of tildes forms a GFM strikethrough delimiter.
+            flushText();
+            u32 runLength = 1;
+            for (i++; i < rawText.numBytes() && rawText[i] == '~'; i++) {
+                runLength++;
+            }
+            if (runLength == 2) {
+                delimiters.append(Delimiter::makeRun(Delimiter::Tildes, rawText, i - runLength, runLength));
+                flushedIndex = i;
+            }
         } else if (c == '\\') {
             flushText();
             i++;
@@ -2066,7 +2087,7 @@ Array<Owned<Span>> expandInlineSpans(const Parser* parser, StringView rawText) {
                 *destination = std::move(linkDest.dest);
                 *title = std::move(linkDest.title);
             }
-            linkSpan->asContainer()->childSpans = processEmphasis(delimiters, openLink + 1);
+            linkSpan->asContainer()->childSpans = processInlineDelimiters(delimiters, openLink + 1);
             delimiters.resize(openLink);
             if (!isImage) {
                 for (Delimiter& delimiter : delimiters) {
@@ -2083,7 +2104,7 @@ Array<Owned<Span>> expandInlineSpans(const Parser* parser, StringView rawText) {
     }
 
     flushText();
-    return processEmphasis(delimiters, 0);
+    return processInlineDelimiters(delimiters, 0);
 }
 
 // Finalizes parser->leafBlock by moving raw text into spans, then clears leaf parsing state.
@@ -2227,9 +2248,21 @@ void repairDuplicatedBlocks(Parser* dstParser, Parser* srcParser, Block* dstBloc
     }
 }
 
-// Creates a parser with an initialized root container block.
-Owned<Parser> createParser() {
+// Returns parsing options with every GitHub Flavored Markdown extension enabled.
+ParseOptions ParseOptions::githubFlavored() {
+    ParseOptions options;
+    options.tables = true;
+    options.taskListItems = true;
+    options.strikethrough = true;
+    options.extendedAutolinks = true;
+    options.tagFilter = true;
+    return options;
+}
+
+// Creates a parser with an initialized root container block and the selected syntax extensions.
+Owned<Parser> createParser(const ParseOptions& options) {
     Owned<Parser> parser = Heap::create<Parser>();
+    parser->options = options;
     parser->rootBlock.var.switchTo<Block::BlockQuote>();
     return parser;
 }
@@ -2239,6 +2272,7 @@ Parser* duplicate(Parser* parser) {
     Parser* result = Heap::create<Parser>();
 
     // Duplicate the owned tree and scalar parsing state.
+    result->options = parser->options;
     result->rootBlock = parser->rootBlock;
     result->linkReferences = parser->linkReferences;
     result->numBlankLinesInIndentedCodeBlock = parser->numBlankLinesInIndentedCodeBlock;
@@ -2357,9 +2391,9 @@ void destroy(Parser* parser) {
 }
 
 // Convenience helper that parses an entire Markdown string into a list of top-level blocks.
-Array<Owned<Block>> parseWholeDocument(StringView markdown) {
+Array<Owned<Block>> parseWholeDocument(StringView markdown, const ParseOptions& options) {
     Array<Owned<Block>> blocks;
-    Owned<Parser> parser = createParser();
+    Owned<Parser> parser = createParser(options);
     String cleaned = collectLinkReferences(markdown, parser);
     ViewStream in{cleaned};
 
@@ -2376,10 +2410,10 @@ Array<Owned<Block>> parseWholeDocument(StringView markdown) {
 }
 
 // Convenience helper that parses Markdown source and returns rendered HTML.
-String convertToHtml(StringView src) {
+String convertToHtml(StringView src, const ParseOptions& parseOptions) {
     MemStream out;
     markdown::HTMLOptions options;
-    Owned<Parser> parser = createParser();
+    Owned<Parser> parser = createParser(parseOptions);
     String cleaned = collectLinkReferences(src, parser);
     ViewStream in{cleaned};
 
@@ -2438,6 +2472,8 @@ void dumpSpan(Stream* outs, const Span* span, u32 level) {
         outs->write("italic");
     } else if (span->var.is<Span::Bold>()) {
         outs->write("bold");
+    } else if (span->var.is<Span::Strikethrough>()) {
+        outs->write("strikethrough");
     } else {
         PLY_ASSERT(0);
         outs->write("???");
@@ -2575,6 +2611,12 @@ void convertSpanToHtml(Stream* outs, const Span* span, const HTMLOptions& option
             convertSpanToHtml(outs, child, options);
         }
         outs->write("</strong>");
+    } else if (auto* strikethrough = span->var.as<Span::Strikethrough>()) {
+        outs->write("<del>");
+        for (const Span* child : strikethrough->childSpans) {
+            convertSpanToHtml(outs, child, options);
+        }
+        outs->write("</del>");
     } else {
         PLY_ASSERT(0);
     }

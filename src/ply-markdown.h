@@ -22,7 +22,7 @@ namespace markdown {
 //
 
 //------------------------------------------------------
-// A Span can be a Link, Image, Italic, Bold, Text, Code, RawHTML, SoftBreak or HardBreak.
+// A Span can be a Link, Image, Italic, Bold, Strikethrough, Text, Code, RawHTML, SoftBreak or HardBreak.
 //------------------------------------------------------
 struct Span {
     // Container spans can contain child spans.
@@ -41,6 +41,7 @@ struct Span {
     };
     struct Italic : Container {};
     struct Bold : Container {};
+    struct Strikethrough : Container {};
 
     // Leaf span types.
     struct Text {
@@ -55,7 +56,7 @@ struct Span {
     struct SoftBreak {};
     struct HardBreak {};
 
-    Variant<Link, Image, Italic, Bold, Text, Code, RawHTML, SoftBreak, HardBreak> var;
+    Variant<Link, Image, Italic, Bold, Strikethrough, Text, Code, RawHTML, SoftBreak, HardBreak> var;
 
     // Convenience functions:
     Container* asContainer() {
@@ -66,6 +67,8 @@ struct Span {
         if (auto* p = var.as<Italic>())
             return p;
         if (auto* p = var.as<Bold>())
+            return p;
+        if (auto* p = var.as<Strikethrough>())
             return p;
         return nullptr;
     }
@@ -157,10 +160,23 @@ struct Block {
 //  ██     ▀█▄▄██ ██      ▄▄▄█▀ ▀█▄▄▄  ██
 //
 
+//------------------------------------------------------
+// Controls optional Markdown syntax extensions independently.
+//------------------------------------------------------
+struct ParseOptions {
+    bool tables = false;
+    bool taskListItems = false;
+    bool strikethrough = false;
+    bool extendedAutolinks = false;
+    bool tagFilter = false;
+
+    static ParseOptions githubFlavored();
+};
+
 struct Parser;
 
 // Creation and destruction
-Owned<Parser> createParser();
+Owned<Parser> createParser(const ParseOptions& options = {});
 
 // Creates an independent deep copy that is automatically used when copying an Owned<Parser>.
 Parser* duplicate(Parser* parser);
@@ -169,14 +185,14 @@ void destroy(Parser* parser);
 // Parsing
 Owned<Block> parseLine(Parser* parser, StringView line);
 Owned<Block> flush(Parser* parser);
-Array<Owned<Block>> parseWholeDocument(StringView markdown);
+Array<Owned<Block>> parseWholeDocument(StringView markdown, const ParseOptions& options = {});
 
 // Convert to HTML
 struct HTMLOptions {
     bool childAnchors = false;
     Functor<String(StringView)> filterLinks;
 };
-String convertToHtml(StringView src);
+String convertToHtml(StringView src, const ParseOptions& options = {});
 void convertToHtml(Stream* outs, const Block* block, const HTMLOptions& options);
 
 // Debugging

@@ -1,0 +1,12 @@
+--------------------- #1 (Strikethrough extension)
+~~Hi~~ Hello, world!
+--
+<p><del>Hi</del> Hello, world!</p>
+
+--------------------- #2 (Strikethrough extension)
+This ~~has a
+
+new paragraph~~.
+--
+<p>This ~~has a</p>
+<p>new paragraph~~.</p>

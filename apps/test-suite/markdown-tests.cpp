@@ -9,10 +9,9 @@
 
 using namespace ply;
 
-// Runs the Markdown conversion tests and returns true if every case passes.
-bool runMarkdownTests() {
-    // Open the markdown test suite.
-    String path = joinPath(TEST_SUITE_PATH, "markdown-tests.txt");
+// Runs one Markdown fixture file with the selected parsing options.
+static bool runMarkdownTestFile(StringView fileName, StringView suiteName, const markdown::ParseOptions& options) {
+    String path = joinPath(TEST_SUITE_PATH, fileName);
     Stream in = Filesystem::openTextForReadAutodetect(path);
     String separatorLine = readLine(in);
     u32 numTests = 0;
@@ -55,7 +54,7 @@ bool runMarkdownTests() {
         }
 
         // Convert markdown, update counters from an exact string match, and print case output.
-        String converted = markdown::convertToHtml(markdownSrc.moveToString());
+        String converted = markdown::convertToHtml(markdownSrc.moveToString(), options);
         String expected = expectedHtml.moveToString();
         numTests++;
         if (converted == expected) {
@@ -70,6 +69,13 @@ bool runMarkdownTests() {
     }
 
     in.close();
-    getStdOut().format("{}/{} markdown tests passed\n", numPassed, numTests);
+    getStdOut().format("{}/{} {} tests passed\n", numPassed, numTests, suiteName);
     return numPassed == numTests;
+}
+
+// Runs the CommonMark and GitHub Flavored Markdown conversion fixtures.
+bool runMarkdownTests() {
+    bool commonMarkPassed = runMarkdownTestFile("markdown-tests.txt", "CommonMark", {});
+    bool gfmPassed = runMarkdownTestFile("gfm-tests.txt", "GFM", markdown::ParseOptions::githubFlavored());
+    return commonMarkPassed && gfmPassed;
 }
