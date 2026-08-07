@@ -55,31 +55,6 @@ html {
 ------------------------------------------------*/
 
 @font-face {
-    font-family: 'source_serif_4';
-    src: url('SourceSerif4-Regular.ttf.woff2') format('woff2');
-    font-weight: normal;
-    font-style: normal;
-}
-@font-face {
-    font-family: 'source_serif_4';
-    src: url('SourceSerif4-Bold.ttf.woff2') format('woff2');
-    font-weight: bold;
-    font-style: normal;
-}
-@font-face {
-    font-family: 'source_serif_4';
-    src: url('SourceSerif4-It.ttf.woff2') format('woff2');
-    font-weight: normal;
-    font-style: italic;
-}
-@font-face {
-    font-family: 'source_serif_4';
-    src: url('SourceSerif4-BoldIt.ttf.woff2') format('woff2');
-    font-weight: bold;
-    font-style: italic;
-}
-
-@font-face {
     font-family: 'source_sans_3';
     src: url('SourceSans3-Regular.ttf.woff2') format('woff2');
     font-weight: normal;
@@ -104,6 +79,18 @@ html {
     src: url('jetbrainsmono-bold-webfont.woff2') format('woff2');
     font-weight: bold;
     font-style: normal;
+}
+@font-face {
+    font-family: 'Inter';
+    src: url('InterVariable.woff2') format('woff2');
+    font-weight: 100 900;
+    font-style: normal;
+}
+@font-face {
+    font-family: 'Inter';
+    src: url('InterVariable-Italic.woff2') format('woff2');
+    font-weight: 100 900;
+    font-style: italic;
 }
 
 /*------------------------------------------------
@@ -284,39 +271,42 @@ html {
 }
 
 .content {
-    font-family: "source_serif_4", "Helvetica Neue", Arial, sans-serif;
+    font-family: "Inter", sans-serif;
+    font-weight: 350;
     color: var(--text-primary);
-    font-size: 17px;
-    line-height: 1.32;
+    font-size: 15px;
+    line-height: 1.4667;
     user-select: text;
 }
 .content h1 {
-    font-family: "robotobold", "Helvetica Neue", Arial, sans-serif;
+    font-family: "robotobold", sans-serif;
     font-size: 42px;
     margin-bottom: 20px;
     overflow: visible;
 }
 .content h2 {
-    font-family: "robotobold", "Helvetica Neue", Arial, sans-serif;
+    font-family: "robotobold", sans-serif;
     font-size: 31px;
     margin-top: 50px;
     margin-bottom: 28px;    
     border-bottom: 1px solid var(--border-secondary);
 }
 .content h1 code {
-    font-family: "jetbrains_mono", Courier, monospace, sans-serif;
+    font-size: 35px;
     line-height: 1;
 }
 .content h2 code, .content h3 code {
-    font-family: "jetbrains_mono", Courier, monospace, sans-serif;
     font-weight: bold;
     line-height: 1;
 }
 .content h2 code {
     font-size: 30px;
 }
+.content h3 code {
+    font-size: 20px;
+}
 .content h3 {
-    font-family: "robotobold", "Helvetica Neue", Arial, sans-serif;
+    font-family: "robotobold", sans-serif;
     font-size: 24px;
     margin-top: 40px;
     margin-bottom: 19px;    
@@ -325,21 +315,20 @@ html {
     margin-bottom: 20px;
 }
 .content code {
-    font-family: "jetbrains_mono", Courier, monospace, sans-serif;
-    font-size: 83%;
+    font-family: "jetbrains_mono", monospace;
+    font-size: 14px;
 }
 .content p code, .content ul code {
     color: var(--text-code-inline);
 }
 .content pre {
-    font-family: "jetbrains_mono", Courier, monospace, sans-serif;
+    font-family: "jetbrains_mono", monospace;
     padding: 6px 16px;
     margin-bottom: 1.5em;
     color: var(--text-code);
     background-color: var(--bg-code-block);
     overflow-x: auto;
     scrollbar-color: var(--scrollbar-thumb) transparent;
-    font-size: 95%;
     line-height: 1.1;
 }
 .content pre::-webkit-scrollbar-thumb {
@@ -361,14 +350,10 @@ html {
 }
 .content .caption {
     font-size: 14px;
-    font-family: "source_sans_3", "Helvetica Neue", Arial, sans-serif;
+    font-family: "source_sans_3", sans-serif;
     color: var(--text-muted);
     margin-left: 13px;
 }
-.content .caption code {
-    font-size: 12px;
-}
-
 /*------------------------------------------------
    API definitions
 ------------------------------------------------*/
@@ -470,7 +455,7 @@ html {
 
 .directory .toc-heading {
     margin: 16px 0px 8px 22px;
-    font-family: "robotobold", "Helvetica Neue", Arial, sans-serif;
+    font-family: "robotobold", sans-serif;
     font-size: 16px;
     color: var(--text-toc-heading);
 }

@@ -17,7 +17,7 @@
     z-index: 2;
     background: var(--bg-banner);
     color: var(--text-banner);
-    font-family: "robotobold", "Helvetica Neue", Arial, sans-serif;
+    font-family: "robotobold", sans-serif;
     box-shadow: 0px 2px 3px rgba(0, 0, 0, var(--shadow-opacity));
 }
 
@@ -170,7 +170,7 @@
     -ms-overflow-style: -ms-autohiding-scrollbar;
     font-size: 100%;
     transform-origin: top right;
-    font-family: "source_sans_3", "Helvetica Neue", Arial, sans-serif;
+    font-family: "source_sans_3", sans-serif;
 }
 
 /* Fade desktop sidebar scrollbar in/out with hover */
@@ -216,7 +216,7 @@
 }
 
 .docs-sidebar-home-label {
-    font-family: "robotobold", "Helvetica Neue", Arial, sans-serif;
+    font-family: "robotobold", sans-serif;
     font-size: 22px;
     position: absolute;
     left: 60px;
@@ -388,7 +388,7 @@
 
 .page-nav .nav-meta {
     display: block;
-    font-family: "source_sans_3", "Helvetica Neue", Arial, sans-serif;
+    font-family: "source_sans_3", sans-serif;
     font-size: 14px;
     font-weight: normal;
     letter-spacing: 0;
@@ -398,7 +398,7 @@
 
 .page-nav .nav-title {
     display: block;
-    font-family: "source_sans_3", "Helvetica Neue", Arial, sans-serif;
+    font-family: "source_sans_3", sans-serif;
     font-size: 16px;
     color: var(--text-primary);
     overflow: hidden;

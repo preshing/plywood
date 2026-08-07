@@ -8,7 +8,7 @@
     height: 88px;
     background: var(--bg-banner);
     background: linear-gradient(180deg, #0c4872, #326d97);
-    font-family: "robotobold", "Helvetica Neue", Arial, sans-serif;
+    font-family: "robotobold", sans-serif;
 }
 
 .front-banner .inner {
@@ -67,7 +67,7 @@
 }
 
 .front-contents .tagline {
-    font-family: "robotobold", "Helvetica Neue", Arial, sans-serif;
+    font-family: "robotobold", sans-serif;
     font-size: 28px;
     line-height: 1.2;
     margin-bottom: 32px;
@@ -114,7 +114,7 @@
 }
 
 .front-contents .modules-included {
-    font-family: "robotobold", "Helvetica Neue", Arial, sans-serif;
+    font-family: "robotobold", sans-serif;
     font-size: 22px;
     margin-bottom: 4px;
 }
@@ -129,7 +129,7 @@
 }
 
 .front-contents .button {
-    font-family: "robotobold", "Helvetica Neue", Arial, sans-serif;
+    font-family: "robotobold", sans-serif;
     font-size: 15px;
     background-color: var(--button-background);
     padding: 2px 20px;
@@ -177,7 +177,7 @@
         overflow: hidden;
         font-size: 85%;
         transform-origin: top right;
-        font-family: "source_sans_3", "Helvetica Neue", Arial, sans-serif;
+        font-family: "source_sans_3", sans-serif;
         background: var(--bg-popup);
         border: 1px solid var(--border-popup);
         box-shadow: -3px 3px 6px rgba(0, 0, 0, var(--shadow-popup-opacity));
