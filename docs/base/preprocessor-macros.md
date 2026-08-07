@@ -3,39 +3,6 @@ Preprocessor Macros (`ply-base.h`)
 
 Plywood defines the following preprocessor macros.
 
-{apiSummary}
--- Assertions
-PLY_ASSERT(cond)
-PLY_STATIC_ASSERT(cond)
--- Compiler-Specific Wrappers
-PLY_NO_INLINE
-PLY_FORCE_INLINE
-PLY_DEBUG_BREAK()
-PLY_FORCE_CRASH()
-PLY_COMPILER_BARRIER()
-PLY_NO_DISCARD
--- General-Purpose Macros
-PLY_STRINGIFY(arg)
-PLY_CAT(a, b)
-PLY_UNIQUE_VARIABLE(prefix)
-PLY_PTR_OFFSET(ptr, ofs)
-PLY_OFFSET_OF(type, member)
-PLY_STATIC_ARRAY_SIZE(arr)
-PLY_UNUSED(x)
-PLY_CALL_MEMBER(obj, pmf)
-PLY_PUN_GUARD()
--- Platform Identification
-PLY_WINDOWS
-PLY_LINUX
-PLY_ANDROID
-PLY_APPLE
-PLY_MACOS
-PLY_IOS
-PLY_POSIX
-PLY_MINGW
-PLY_PTR_SIZE
-{/apiSummary}
-
 ## Assertions
 
 PLY_ASSERT(cond)

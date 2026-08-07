@@ -9,16 +9,6 @@ Before using any networking functions, you must call `Network::initialize()`. Wh
 
 Represents an IP address (either IPv4 or IPv6).
 
-{apiSummary class=IPAddress}
-u32 netOrdered[4]
-IPVersion version() const
-bool isNull() const
-static constexpr IPAddress localHost(IPVersion ipVersion)
-static constexpr IPAddress from_ipv4(u32 netOrdered)
-String toString() const
-static IPAddress fromString()
-{/apiSummary}
-
 {context class=IPAddress}
 
 `u32 netOrdered[4]`
@@ -46,15 +36,6 @@ static IPAddress fromString()
 
 The `Network` class provides static methods for network initialization and connection management.
 
-{apiSummary class=Network}
-static void initialize(IPVersion ipVersion)
-static void shutdown()
-static TCPListener bindTcp(u16 port)
-static Owned<TCPConnection> connectTcp(const IPAddress& address, u16 port)
-static IPAddress resolveHostName(StringView hostName, IPVersion ipVersion)
-static IPResult lastResult()
-{/apiSummary}
-
 {context class=Network}
 
 `static void initialize(IPVersion ipVersion)`
@@ -78,19 +59,6 @@ static IPResult lastResult()
 ## `TCPConnection`
 
 Represents an established TCP connection to a remote host.
-
-{apiSummary class=TCPConnection}
-PipeWinsock inPipe
-PipeWinsock outPipe
----
-TCPConnection()
-~TCPConnection()
-const IPAddress& remoteAddress() const
-u16 remotePort() const
-SOCKET getHandle() const
-Stream createInStream()
-Stream createOutStream()
-{/apiSummary}
 
 {context class=TCPConnection}
 
@@ -120,17 +88,6 @@ Stream createOutStream()
 ## `TCPListener`
 
 A `TCPListener` listens for incoming TCP connections on a specific port.
-
-{apiSummary class=TCPListener}
-TCPListener(SOCKET listenSocket = INVALID_SOCKET)
-TCPListener(TCPListener&& other)
-~TCPListener()
-TCPListener& operator=(TCPListener&& other)
-bool isValid()
-void endComm()
-void close()
-Owned<TCPConnection> accept()
-{/apiSummary}
 
 {context class=TCPListener}
 
@@ -201,13 +158,6 @@ the returned `Owned<HTTPClient>` go out of scope).
 
 `HTTPClientArgs` describes a request to send.
 
-{apiSummary class=HTTPClientArgs}
-String url
-Map<String, String> headers
-String body
-bool useBundledCaCert = false
-{/apiSummary}
-
 {context class=HTTPClientArgs}
 
 `String url`
@@ -224,16 +174,6 @@ bool useBundledCaCert = false
 > verification is disabled, which is only appropriate for trusted localhost endpoints.
 
 ### Client functions
-
-{apiSummary}
-Owned<HTTPClient> createHTTPClient()
-void destroy(HTTPClient* httpClient)
-void sendHTTPRequest(HTTPClient* httpClient, HTTPClientArgs&& args)
-void cancelHTTPRequest(HTTPClient* httpClient)
-bool isHTTPRequestInProgress(const HTTPClient* httpClient)
-bool waitForHTTPResponse(HTTPClient* httpClient, const Functor<void(StringView, bool)>& callback, u32 timeOutMillis = 1000)
-void wakeUpHTTPClient(HTTPClient* httpClient)
-{/apiSummary}
 
 `Owned<HTTPClient> createHTTPClient()`
 > Creates a new `HTTPClient`.
@@ -309,19 +249,6 @@ int main() {
 
 `HTTPRequest` contains the parsed HTTP request passed to the request handler.
 
-{apiSummary class=HTTPRequest}
-IPAddress clientAddr
-u16 clientPort
-String method
-String uri
-String httpVersion
-Map<String, String> headers
-String body
-void sendFullResponse(HTTPResponse&& response, StringView body = {})
-Stream beginStreamingResponse(HTTPResponse&& response)
-void sendGenericResponse(HTTPResponse::Code responseCode)
-{/apiSummary}
-
 {context class=HTTPRequest}
 
 `IPAddress clientAddr`
@@ -360,11 +287,6 @@ void sendGenericResponse(HTTPResponse::Code responseCode)
 `HTTPResponse` carries the response code and headers passed to `HTTPRequest::sendFullResponse()` or
 `HTTPRequest::beginStreamingResponse()`.
 
-{apiSummary class=HTTPResponse}
-Code code
-Map<String, String> headers
-{/apiSummary}
-
 {context class=HTTPResponse}
 
 `Code code`
@@ -385,10 +307,6 @@ not write the body bytes to the socket.
 
 ## `runHTTPServer`
 
-{apiSummary}
-void runHTTPServer(u16 port, const Functor<void(HTTPRequest& request)>& reqHandler)
-{/apiSummary}
-
 `runHTTPServer()` binds a TCP listener to `port`, accepts connections, and starts one thread per accepted TCP
 connection. Each connection thread calls the request handler once for each parsed HTTP request on that connection.
 
@@ -396,10 +314,6 @@ The function runs until the listener fails or is closed. If binding fails, it wr
 returns.
 
 ## `serveEchoPage`
-
-{apiSummary}
-void serveEchoPage(HTTPRequest& request)
-{/apiSummary}
 
 `serveEchoPage()` is a built-in request handler for testing. It writes an HTML page that includes the remote address
 and parsed request header.

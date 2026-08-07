@@ -3,15 +3,6 @@
 
 The `Random` class generates pseudorandom integers and floating-point values.
 
-{apiSummary class=Random title="Random member functions"}
-Random()
-Random(u64 seed)
---
-u32 generateU32()
-u64 generateU64()
-double generateDouble()
-{/apiSummary}
-
 This class uses the well-known [xoroshiro128**](http://xorshift.di.unimi.it/) algorithm by Sebastiano Vigna and David Blackman internally. To use it, construct a `Random` object (optionally passing an explicit seed), then call any of its member functions as many times as needed.
 
 This class isn't thread-safe. Its member functions must not be called concurrently from separate threads.

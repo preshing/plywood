@@ -19,35 +19,6 @@ These classes aren't thread-safe. Functions that read from the same array can be
 
 The following member functions are implemented for all array classes:
 
-{apiSummary class="Array"}
--- Accessing Items
-    Item& operator[](u32 index) &
-    Item&& operator[](u32 index) &&
-    const Item& operator[](u32 index) const&
-    Item& back(s32 offset = -1) &
-    Item&& back(s32 offset = -1) &&
-    const Item& back(s32 offset = -1) const&
-    Item* items()
-    const Item* items() const
-    u32 numItems() const
-    bool isEmpty() const
-    explicit operator bool() const
-    ArrayView<Item> subview(u32 start)
-    ArrayView<const Item> subview(u32 start) const
-    ArrayView<Item> subview(u32 start, u32 numItems)
-    ArrayView<const Item> subview(u32 start, u32 numItems) const
-    Item* begin()
-    const Item* begin() const
-    Item* end()
-    const Item* end() const
--- Casting to Other Types
-    ArrayView<Item> view()
-    ArrayView<const Item> view() const
-    operator ArrayView<const Item>() const
-    StringView stringView() const
-    MutStringView mutStringView()
-{/apiSummary}
-
 ### Accessing Items
 
 {context class=Array}
@@ -158,32 +129,6 @@ An `Array` instance is a dynamically resizable array that owns all its items, si
 
 In addition to the [common array methods](#common) listed in the previous section, `Array` provides the following member functions:
 
-{apiSummary class="Array"}
--- Additional Constructors
-    template <typename T> Array(T&& otherArray)
-    Array(std::initializer_list<Item> initList)
-    static Array<Item> adopt(Item* items, u32 numItems)
--- Additional Assignment Operators
-    template <typename T> Array<Item>& operator=(T&& otherArray)
-    Array<Item>& operator=(std::initializer_list initList)
--- Modifying Array Contents
-    void resize(u32 numItems)
-    void clear()
-    Item& append(const Item& item)
-    Item& append(Item&& item)
-    template <typename... Args> Item& append(Args&&... args)
-    Array<Item>& operator+=(Array<Item>&& otherArray)
-    template <typename T> Array<Item>& operator+=(T&& otherArray)
-    Array<Item>& operator+=(std::initializer_list initList)
-    Item& insert(u32 pos, u32 count = 1)
-    void erase(u32 pos, u32 count = 1)
-    void eraseQuick(u32 pos, u32 count = 1)
-    void pop(u32 count = 1)
-    void reserve(u32 numItems)
-    void compact()
-    Item* release()
-{/apiSummary}
-
 Be careful not to resize the array while holding a pointer or reference to an item.
 
 It automatically allocates memory to hold the elements from the heap.When an `Array` object is destroyed, all of its items are destructed and the memory containing them is freed. the , 
@@ -293,13 +238,6 @@ Supports default, move and copy construction and move and copy assignment. Imple
 
 By convention, Plywood usually passes `ArrayView` objects to functions by value instead of by reference, since copying an `ArrayView` doesn't copy the underlying items.
 
-{apiSummary class=ArrayView}
--- Additional Constructors
-ArrayView(Item* items, u32 numItems)
-ArrayView(Item (&s)[N])
-ArrayView(std::initializer_list<Item> init)
-{/apiSummary}
-
 It's implicitly convertible to `ArrayView<const Item>`.
 
 ### Additional Constructors
@@ -324,12 +262,6 @@ A `FixedArray` is a fixed-size array that owns its contents.
 No additional heap allocations are performed. All the array items are stored directly in the `FixedArray` object. It's equivalent to a C-style array, but with runtime bounds checking.
 
 The default constructor default-constructs all items.
-
-{apiSummary class=FixedArray}
--- Additional Constructors
-FixedArray(std::initializer_list<Item> args)
-FixedArray(Args&&... args)
-{/apiSummary}
 
 ### Additional Constructors
 

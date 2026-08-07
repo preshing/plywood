@@ -5,21 +5,6 @@ A `Variant` can hold a value of one of several predefined types at runtime. It's
 
     template <typename... Types> class Variant;
 
-{apiSummary class=Variant}
--- Additional Constructors
-template <typename T> Variant(T&& value)
--- Additional Assignment Operators
-template <typename T> Variant& operator=(T&& value)
--- Item access
-u32 getSubtypeIndex() const
-bool isEmpty() const
-template <typename T> bool is() const
-template <typename T> T* as()
-template <typename T> const T* as() const
--- Modification
-template <typename T, typename... Args> T& switchTo(Args&&... args)
-{/apiSummary}
-
 {context class=Variant}
 
 `template <typename T> Variant(T&& value)`

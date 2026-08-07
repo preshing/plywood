@@ -30,21 +30,6 @@ sanitization policy to the rendered output.
 `flush()` after the last line. A completed top-level `Block` is returned when one becomes available; otherwise these
 functions return `nullptr`.
 
-{apiSummary}
--- Creation and Destruction
-Owned<Parser> createParser(const ParseOptions& options = {})
-Parser* duplicate(Parser* parser)
-void destroy(Parser* parser)
--- Streaming Parsing
-Owned<Block> parseLine(Parser* parser, StringView line)
-Owned<Block> flush(Parser* parser)
--- Whole-Document Parsing
-Array<Owned<Block>> parseWholeDocument(StringView markdown, const ParseOptions& options = {})
--- Converting to HTML
-String convertToHtml(StringView src, const ParseOptions& options = {})
-void convertToHtml(Stream* outs, const Block* block, const HTMLOptions& options)
-{/apiSummary}
-
 ### Creation and streaming
 
 `Owned<Parser> createParser(const ParseOptions& options = {})`

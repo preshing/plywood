@@ -27,35 +27,6 @@ These are equivalent to `ptrdiff_t`/`size_t` from the C standard library. They'r
 
 Plywood defines the following primitive numeric functions.
 
-{apiSummary}
--- Limits
-template <typename Type> Type getMinValue()
-template <typename Type> Type getMaxValue()
--- Adjusting Values
-template <typename Type> Type abs(Type value)
-template <typename Type> Type min(Type value1, Type value2)
-template <typename Type> Type max(Type value1, Type value2)
-template <typename Type> Type clamp(Type value, Type lo, Type hi)
--- Byte Ordering
-u16 reverseBytes(u16 value)
-u32 reverseBytes(u32 value)
-u64 reverseBytes(u64 value)
-template <typename Type> Type convertLittleEndian(Type value)
-template <typename Type> Type convertBigEndian(Type value)
--- Power-of-2 Alignment
-u32 isPowerOf2(u32 value)
-u64 isPowerOf2(u64 value)
-u32 alignToPowerOf2(u32 value, u32 alignment)
-u64 alignToPowerOf2(u64 value, u64 alignment)
-bool isAlignedToPowerOf2(u32 value, u32 alignment)
-bool isAlignedToPowerOf2(u64 value, u64 alignment)
-u32 roundUpToNearestPowerOf2(u32 value)
-u64 roundUpToNearestPowerOf2(u64 value)
--- Numeric Casts With Bounds Checking
-template <typename DstType, typename SrcType> bool isRepresentable(SrcType value)
-template <typename DstType, typename SrcType> DstType numericCast(SrcType value)
-{/apiSummary}
-
 ### Limits
 
 `template <typename Type> Type getMinValue()`

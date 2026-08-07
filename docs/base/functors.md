@@ -5,14 +5,6 @@ Functors (`ply-base.h`)
 
 It's movable and copyable if the callable is copyable.
 
-{apiSummary class=Functor}
--- Additional Constructors
-template <typename T> Functor(const T& callable)
--- Invocation
-explicit operator bool() const
-Return operator()(CallArgs&&... args) const
-{/apiSummary}
-
 {context class=Functor}
 
 `template <typename T> Functor(const T& callable)`

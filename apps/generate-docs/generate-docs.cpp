@@ -82,72 +82,6 @@ void printDeclAsApiTitle(Stream& out, const Parser* parser, const Declaration& d
     out.write("</code>");
 }
 
-// Renders a declaration as a highlighted two-column API summary table row.
-void printDeclAsHtml(Stream& out, const Parser* parser, const Declaration& decl) {
-    Array<TokenSpan> spans = parser->syntaxHighlight(decl);
-    StringView mainRowHeader = "<tr class=\"entry\"><td class=\"prefix\"><code>";
-
-    // Find first declarator.
-    const Declaration* mainDeclaration = &decl;
-    Token firstMainToken;
-    if (auto* tmpl = mainDeclaration->var.as<Declaration::Template>()) {
-        mainDeclaration = tmpl->childDecl;
-        firstMainToken = mainDeclaration->getFirstToken();
-        out.write("<tr><td colspan=\"2\" class=\"template\"><code>");
-    } else {
-        out.write(mainRowHeader);
-    }
-
-    const cpp::QualifiedID* firstDeclaratorQid = nullptr;
-    if (auto* entity = mainDeclaration->var.as<Declaration::Entity>()) {
-        if (!entity->initDeclarators.isEmpty()) {
-            if (!entity->initDeclarators[0].qid.isEmpty()) {
-                firstDeclaratorQid = &entity->initDeclarators[0].qid;
-            }
-        }
-    }
-
-    // Output token spans.
-    TokenSpan::Color lastColor = TokenSpan::None;
-    bool gotFirstDeclaratorQid = false;
-    for (const TokenSpan& span : spans) {
-        if (firstMainToken.isValid() && (span.token == firstMainToken)) {
-            out.write("</code></td></tr>\n");
-            out.write(mainRowHeader);
-        }
-        if (!gotFirstDeclaratorQid && firstDeclaratorQid && (firstDeclaratorQid == span.qid)) {
-            if (lastColor != TokenSpan::None) {
-                out.write("</span>");
-                lastColor = TokenSpan::None;
-            }
-            out.write("</code></td><td class=\"suffix\"><code>");
-            gotFirstDeclaratorQid = true;
-        }
-        if (lastColor != span.color) {
-            if (lastColor != TokenSpan::None) {
-                out.write("</span>");
-            }
-            if (span.color == TokenSpan::Type) {
-                out.write("<span class=\"type\">");
-            } else if (span.color == TokenSpan::Symbol) {
-                out.write("<span class=\"symbol\">");
-            } else if (span.color == TokenSpan::Variable) {
-                out.write("<span class=\"var\">");
-            }
-            lastColor = span.color;
-        }
-        if (span.isSpace) {
-            out.write(gotFirstDeclaratorQid ? " " : "&nbsp;");
-        } else {
-            printXmlEscapedString(out, span.token.text);
-        }
-    }
-    if (lastColor != TokenSpan::None) {
-        out.write("</span>");
-    }
-    out.write("</code></td></tr>\n");
-}
-
 // Converts a source documentation link to the corresponding generated site URL.
 String convertDocsPathToURL(StringView destination) {
     if (!destination.startsWith("/docs/"))
@@ -186,54 +120,6 @@ String convertDocsMarkdownToHtml(StringView source) {
         markdown::convertToHtml(&out, block, options);
     }
     return out.moveToString();
-}
-
-// Parses an {apiSummary} section and emits the corresponding HTML table.
-void parseApiSummary(Stream& out, const Map<StringView, String>& args, ViewStream& in) {
-    // Write optional caption.
-    if (const String* caption = args.find("caption")) {
-        String html = convertDocsMarkdownToHtml(*caption);
-        out.format("<div class=\"caption\">{}</div>\n", html.substr(3, html.numBytes() - 8));
-    }
-
-    // Get class name.
-    StringView className;
-    if (const String* c = args.find("class")) {
-        className = *c;
-    }
-
-    Array<String> lines;
-    u32 numHeadings = 0;
-    while (StringView line = readLine(in)) {
-        StringView s = line.trim();
-        if (s == "{/apiSummary}")
-            break;
-        if (s.startsWith("--") && s.substr(2).trim()) {
-            numHeadings++;
-        }
-        lines.append(line);
-    }
-
-    if (numHeadings <= 1) {
-        out.write("<table class=\"api single-group\">\n");
-    } else {
-        out.write("<table class=\"api\">\n");
-    }
-
-    for (const String& line : lines) {
-        StringView s = line.trim();
-        if (s.startsWith("--")) {
-            StringView caption = s.substr(2).trim();
-            if (caption) {
-                out.format("<tr class=\"heading\"><td colspan=\"2\" class=\"heading\">{:&}</td></tr>\n", caption);
-            }
-            continue;
-        }
-        Owned<Parser> parser = Parser::create();
-        Declaration decl = parser->parseDeclaration(s, className);
-        printDeclAsHtml(out, parser, decl);
-    }
-    out.write("</table>\n");
 }
 
 // Parses a {table} section and emits a simple two-dimensional HTML table.
@@ -434,9 +320,7 @@ void parseMarkdown(Stream& out, ViewStream& in) {
             PLY_ASSERT(lineIn.match(" *'}"));
 
             // Handle section type.
-            if (cmd == "apiSummary") {
-                parseApiSummary(out, args, in);
-            } else if (cmd == "context") {
+            if (cmd == "context") {
                 if (const String* c = args.find("class")) {
                     blockProcessor.setApiClassContext(*c);
                 } else {

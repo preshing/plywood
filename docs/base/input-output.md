@@ -7,16 +7,6 @@ Plywood provides a composable I/O system built around `Stream` and `Pipe` classe
 
 These functions provide access to the standard input, output, and error streams.
 
-{apiSummary}
-Stream getStdIn(ConsoleMode mode = TEXT)
-Stream getStdOut(ConsoleMode mode = TEXT)
-Stream getStdErr(ConsoleMode mode = TEXT)
----
-Pipe* getStdInPipe()
-Pipe* getStdOutPipe()
-Pipe* getStdErrPipe()
-{/apiSummary}
-
 `Stream getStdIn(ConsoleMode mode = TEXT)`
 > Returns a stream for reading from standard input. Pass `BINARY` for binary mode.
 
@@ -34,33 +24,6 @@ Pipe* getStdErrPipe()
 ## `Stream`
 
 A `Stream` wraps a `Pipe` and provides buffered I/O operations. Streams handle the details of buffering data for efficient reads and writes.
-
-{apiSummary class=Stream}
-Stream()
-Stream(Pipe* pipe, bool isPipeOwner)
-Stream(Stream&& other)
-~Stream()
-Stream& operator=(Stream&& other)
-bool isOpen()
-explicit operator bool()
-void close()
-bool makeReadable(u32 minBytes = 1)
-bool makeWritable(u32 minBytes = 1)
-bool hasRemainingBytes() const
-u32 numRemainingBytes() const
-StringView viewRemainingBytes() const
-MutStringView viewRemainingBytesMut()
-void flush(bool toDevice = false)
-char peekByte()
-char readByte()
-u32 read(MutStringView dst)
-u32 skip(u32 numBytes)
-bool write(char c)
-u32 write(StringView bytes)
-void format(StringView fmt, const Args&... args)
-u64 getSeekPos()
-void seekTo(u64 seekPos)
-{/apiSummary}
 
 {context class=Stream}
 
@@ -150,16 +113,6 @@ A `ViewStream` reads from a fixed memory buffer (a `StringView`). This is useful
 
 `Pipe` is the abstract base class for all I/O providers. Concrete implementations include file pipes, socket pipes, and memory pipes. You rarely need to work with pipes directly—use `Stream` instead.
 
-{apiSummary class=Pipe}
-virtual ~Pipe()
-virtual u32 read(MutStringView buf)
-virtual bool write(StringView buf)
-virtual void flush(bool toDevice = false)
-virtual u64 getFileSize()
-virtual void seekTo(s64 offset)
-u32 getFlags() const
-{/apiSummary}
-
 {context class=Pipe}
 
 `virtual ~Pipe()`
@@ -188,21 +141,6 @@ Plywood provides utility functions for reading and writing text data.
 ## Reading Text
 
 These functions parse common text patterns from input streams.
-
-{apiSummary}
-String readLine(Stream& in)
-StringView readLine(ViewStream& viewIn)
-String readWhitespace(Stream& in)
-StringView readWhitespace(ViewStream& in)
-void skipWhitespace(Stream& in)
-String readIdentifier(Stream& in, u32 flags = 0)
-StringView readIdentifier(ViewStream& viewIn, u32 flags = 0)
-u64 readU64FromText(Stream& in, u32 radix = 10)
-s64 readS64FromText(Stream& in, u32 radix = 10)
-double readDoubleFromText(Stream& in, u32 radix = 10)
-String readQuotedString(Stream& in, QuotedStringType type = QuotedStringType::C, bool strict = true,
-                        Functor<void(QuotedStringError)> errorCallback = {})
-{/apiSummary}
 
 `String readLine(Stream& in)`
 `StringView readLine(ViewStream& viewIn)`
@@ -234,17 +172,6 @@ String readQuotedString(Stream& in, QuotedStringType type = QuotedStringType::C,
 ## Writing Text
 
 Most of these functions are used internally by `String::format`, but you can call them directly as well.
-
-{apiSummary}
-struct NumberFormat
-void printNumber(Stream& out, s32 value, const NumberFormat& format = {})
-void printNumber(Stream& out, u32 value, const NumberFormat& format = {})
-void printNumber(Stream& out, s64 value, const NumberFormat& format = {})
-void printNumber(Stream& out, u64 value, const NumberFormat& format = {})
-void printNumber(Stream& out, double value, const NumberFormat& format = {})
-void printEscapedString(Stream& out, StringView str)
-void printXmlEscapedString(Stream& out, StringView str)
-{/apiSummary}
 
 `void printNumber(Stream& out, s32 value, const NumberFormat& format = {})`
 `void printNumber(Stream& out, u32 value, const NumberFormat& format = {})`
@@ -286,13 +213,6 @@ void printXmlEscapedString(Stream& out, StringView str)
 
 These functions convert between Unicode codepoints and various encoded representations (UTF-8, UTF-16, etc.).
 
-{apiSummary}
-u32 encodeUnicode(FixedArray<char, 4>& buf, UnicodeType unicodeType, u32 codepoint, ExtendedTextParams* extParams)
-DecodeResult decodeUnicode(StringView str, UnicodeType unicodeType, ExtendedTextParams* extParams = nullptr)
-bool encodeUnicode(Stream& out, UnicodeType unicodeType, u32 codepoint, ExtendedTextParams* extParams = nullptr)
-DecodeResult decodeUnicode(Stream& in, UnicodeType unicodeType, ExtendedTextParams* extParams = nullptr)
-{/apiSummary}
-
 `u32 encodeUnicode(FixedArray<char, 4>& buf, UnicodeType unicodeType, u32 codepoint, ExtendedTextParams* extParams)`
 > Encodes a Unicode codepoint into the specified encoding. Returns the number of bytes written to `buf`.
 
@@ -308,12 +228,6 @@ DecodeResult decodeUnicode(Stream& in, UnicodeType unicodeType, ExtendedTextPara
 ## Convenience Functions
 
 Character classification functions for common character types.
-
-{apiSummary}
-bool isWhite(char c)
-bool isAlpha(char c)
-bool isDigit(char c)
-{/apiSummary}
 
 `bool isWhite(char c)`
 > Returns `true` if `c` is a whitespace character (space, tab, newline, etc.).

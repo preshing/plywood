@@ -3,13 +3,6 @@
 
 Plywood provides generic algorithms that work with any array-like container. These are template functions that operate on `Array`, `ArrayView`, `FixedArray`, and other compatible types.
 
-{apiSummary}
-s32 find(const AnyArray& arr, const Key& key)
-s32 reverseFind(const AnyArray& arr, const Key& key)
-void sort(AnyArray& arr)
-u32 binarySearch(const AnyArray& arr, const Key& key, FindType findType)
-{/apiSummary}
-
 `s32 find(const AnyArray& arr, const Key& key)`
 > Performs a linear search from the beginning of the array. Returns the index of the first matching item, or `-1` if not found.
 

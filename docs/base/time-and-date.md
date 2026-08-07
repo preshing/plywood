@@ -10,14 +10,6 @@ Plywood provides two families of functions for working with time and dates.
 
 A [Unix timestamp](https://en.wikipedia.org/wiki/Unix_time) is an amount of elapsed time since **January 1, 1970 at 00:00 UTC**. Plywood uses Unix timestamps even in non-Unix environments such as Windows. These timestamps can be converted to `DateTime` objects that identify the calendar date and time of day.
 
-{apiSummary}
-s64 getUnixTimestamp()
-DateTime convertToDateTime(s64 unixTimestamp)
-DateTime convertToDateTime(s64 unixTimestamp, s16 timeZoneOffsetInMinutes)
-s64 convertToUnixTimestamp(const DateTime& dateTime)
-void printDateTime(Stream& out, StringView format, const DateTime& dateTime)
-{/apiSummary}
-
 `s64 getUnixTimestamp()`
 > Returns the current system time as a Unix timestamp in microseconds.
 
@@ -85,11 +77,6 @@ The time is 7:00 PM (UTC-05:00).
 ## High-Resolution Timer
 
 The high resolution timer gives precise CPU timing measurements with minimum runtime overhead, letting you accurately measure the elapsed time between two points in code. These functions are typically thin wrappers over equivalent functions in the underlying platform SDK.
-
-{apiSummary}
-u64 getCpuTicks()
-float getCpuTicksPerSecond()
-{/apiSummary}
 
 `u64 getCpuTicks()`
 > Returns a high-resolution CPU timestamp.

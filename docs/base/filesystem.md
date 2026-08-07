@@ -7,36 +7,6 @@ Plywood provides a portable filesystem API that works consistently across Window
 
 The `Filesystem` class contains static methods for file and directory operations.
 
-{apiSummary class=Filesystem}
-    static FSResult lastResult()
-    static Array<DirectoryEntry> listDir(StringView path)
-    static FSResult makeDir(StringView path)
-    static Path_t pathFormat()
-    static String getWorkingDirectory()
-    static FSResult setWorkingDirectory(StringView path)
-    static ExistsResult exists(StringView path)
-    static Owned<Pipe> openPipeForRead(StringView path)
-    static Owned<Pipe> openPipeForWrite(StringView path)
-    static FSResult moveFile(StringView srcPath, StringView dstPath)
-    static FSResult deleteFile(StringView path)
-    static FSResult removeDirTree(StringView dirPath)
-    static DirectoryEntry getFileInfo(StringView path)
-    static FSResult copyFile(StringView srcPath, StringView dstPath)
-    static bool isDir(StringView path)
-    static DirectoryWalker walk(StringView top)
-    static FSResult makeDirs(StringView path)
-    static Stream openBinaryForRead(StringView path)
-    static Stream openBinaryForWrite(StringView path)
-    static Stream openTextForRead(StringView path, const TextFormat& format = get_default_utf8_format())
-    static Stream openTextForReadAutodetect(StringView path, TextFormat* outFormat = nullptr)
-    static Stream openTextForWrite(StringView path, const TextFormat& format = get_default_utf8_format())
-    static String loadBinary(StringView path)
-    static String loadText(StringView path, const TextFormat& format)
-    static String loadTextAutodetect(StringView path, TextFormat* outFormat = nullptr)
-    static FSResult saveBinary(StringView path, StringView contents)
-    static FSResult saveText(StringView path, StringView strContents, const TextFormat& format = get_default_utf8_format())
-{/apiSummary}
-
 {context class=Filesystem}
 
 `static FSResult lastResult()`
@@ -128,22 +98,6 @@ The `Filesystem` class contains static methods for file and directory operations
 
 These functions help you parse and construct file paths in a platform-independent way.
 
-{apiSummary class=Path}
-char getPathSeparator()
-bool isPathSeparator(char c)
-StringView getDriveLetter(StringView path)
-bool isAbsolutePath(StringView path)
-bool isRelativePath(StringView path)
-String makeAbsolutePath(StringView path)
-String makeRelativePath(StringView ancestor, StringView descendant)
-SplitPath splitPath(StringView path)
-SplitExtension splitFileExtension(StringView path)
-Array<StringView> splitPathFull(StringView path)
-String joinPath(StringViews&&... pathComponentArgs)
-bool matchGlobPattern(StringView str, StringView pattern)
-bool matchGitIgnorePattern(StringView relativePath, bool isDir, StringView pattern)
-{/apiSummary}
-
 {context class=Path}
 
 `char getPathSeparator()`
@@ -200,13 +154,6 @@ bool ignored = matchGitIgnorePattern("build/output.o", false, "build/");
 {/example}
 
 ## `DirectoryWatcher`
-
-{apiSummary class=DirectoryWatcher}
-DirectoryWatcher()
-DirectoryWatcher(StringView root, Functor<void(StringView path, bool mustRecurse)>&& callback)
-void start(StringView root, Functor<void(StringView path, bool mustRecurse)>&& callback)
-void stop()
-{/apiSummary}
 
 `DirectoryWatcher` monitors a directory tree for file and directory changes, invoking a callback whenever modifications are detected. This is useful for applications that need to react to file changes in real-time, such as live-reload servers or file synchronization tools.
 

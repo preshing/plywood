@@ -3,11 +3,6 @@
 
 Multithreading is the co-ordination of multiple threads of execution within a single process. Access atomic operations, thread-local variables, mutexes, condition variables, semaphores and read-write locks.
 
-{apiSummary}
-TID getCurrentThreadId()
-void sleepMillis(u32 millis)
-{/apiSummary}
-
 `TID getCurrentThreadId()`
 > Returns the operating system's thread ID for the current thread. See also `getCurrentProcessId`.
 
@@ -17,13 +12,6 @@ void sleepMillis(u32 millis)
 ## `Thread`
 
 A `Thread` represents a separate thread of execution.
-
-{apiSummary class=Thread}
-bool isValid()
-void run<Callable>(Callable& callable)
-void detach()
-void join()
-{/apiSummary}
 
 {context class=Thread}
 
@@ -53,20 +41,6 @@ enum MemoryOrder {
     AcqRel
 };
 ```
-
-{apiSummary class=Atomic}
-Atomic(T value = 0)
-Atomic(const Atomic<T>& other)
-void operator=(const Atomic<T>& other)
-T load(MemoryOrder order) const
-void store(T value, MemoryOrder order)
-T compareExchange(T expected, T desired, MemoryOrder order)
-T exchange(T desired, MemoryOrder order)
-T fetchAdd(T operand, MemoryOrder order)
-T fetchSub(T operand, MemoryOrder order)
-T fetchAnd(T operand, MemoryOrder order)
-T fetchOr(T operand, MemoryOrder order)
-{/apiSummary}
 
 {context class=Atomic}
 
@@ -107,14 +81,6 @@ T fetchOr(T operand, MemoryOrder order)
 
 `ThreadLocal` provides per-thread storage. Each thread sees its own independent value.
 
-{apiSummary class=ThreadLocal}
-ThreadLocal()
-ThreadLocal(const ThreadLocal&) = delete;
-U load() const
-void store(T value)
-Scope setInScope(T value)
-{/apiSummary}
-
 {context class=ThreadLocal}
 
 `ThreadLocal()`
@@ -135,12 +101,6 @@ Scope setInScope(T value)
 ## `Mutex`
 
 A `Mutex` provides mutual exclusion to protect shared data. Use `LockGuard` for RAII-style locking.
-
-{apiSummary class=Mutex}
-void lock()
-bool tryLock()
-void unlock()
-{/apiSummary}
 
 {context class=Mutex}
 
@@ -163,12 +123,6 @@ void unlock()
 
 A `ConditionVariable` allows threads to wait for a condition to become true. Always use with a mutex to protect the condition.
 
-{apiSummary class=ConditionVariable}
-void wait(LockGuard<Mutex>& lockGuard)
-void timedWait(LockGuard<Mutex>& lockGuard, u32 waitMillis)
-void wakeAll()
-{/apiSummary}
-
 {context class=ConditionVariable}
 
 `void wait(LockGuard<Mutex>& lockGuard)`
@@ -183,13 +137,6 @@ void wakeAll()
 ## `ReadWriteLock`
 
 A `ReadWriteLock` allows multiple readers or a single writer. This is efficient when reads are much more common than writes.
-
-{apiSummary class=ReadWriteLock}
-void lockExclusive()
-void unlockExclusive()
-void lockShared()
-void unlockShared()
-{/apiSummary}
 
 {context class=ReadWriteLock}
 
@@ -208,11 +155,6 @@ void unlockShared()
 ## `Semaphore`
 
 A `Semaphore` is a signaling mechanism that maintains a count. Threads can wait for the count to be positive and decrement it, or signal to increment the count.
-
-{apiSummary class=Semaphore}
-void wait()
-void signal(u32 count = 1)
-{/apiSummary}
 
 {context class=Semaphore}
 

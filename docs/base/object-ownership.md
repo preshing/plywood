@@ -7,22 +7,6 @@ Object Ownership (`ply-base.h`)
 
 `Owned` is movable but not copyable.
 
-{apiSummary class=Owned}
--- Additional Constructors
-Owned(Item* ptr)
-template <typename Derived> Owned(Owned<Derived>&& other)
--- Additional Assignment Operators
-Owned& operator=(Item* ptr)
-template <typename Derived> Owned& operator=(Owned<Derived>&& other)
--- Item access
-Item* get() const
-operator Item*() const
-Item* operator->() const
--- Modification
-void clear()
-Item* release()
-{/apiSummary}
-
 {context class=Owned}
 
 `Owned(Item* ptr)`
@@ -58,25 +42,6 @@ Item* release()
 ## `Reference`
 
 `Reference` is a reference-counting smart pointer. Multiple `Reference` objects can share ownership of the same object.
-
-{apiSummary class=Reference}
--- Constructors
-Reference()
-Reference(Item* ptr)
-Reference(const Reference& ref)
-Reference(Reference&& ref)
--- Assignment
-Reference& operator=(Item* ptr)
-Reference& operator=(const Reference& ref)
-Reference& operator=(Reference&& ref)
--- Item access
-Item* operator->() const
-operator Item*() const
-explicit operator bool() const
--- Modification
-void clear()
-Item* release()
-{/apiSummary}
 
 The object is automatically destroyed when the last `Reference` to it is destroyed.
 
@@ -123,12 +88,6 @@ It's thread-safe when the target `Item` type derives from `RefCounted`.
 ## `RefCounted`
 
 `RefCounted` is a base class that provides reference counting functionality. Derive your class from `RefCounted` to use it with `Reference` smart pointers.
-
-{apiSummary class=RefCounted}
-void incRefCount()
-void decRefCount()
-s32 getRefCount() const
-{/apiSummary}
 
 {context class=RefCounted}
 

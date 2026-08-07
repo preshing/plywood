@@ -55,21 +55,6 @@ A `Set` is a collection of items that supports fast lookup using a key type that
 
 `Set` objects are movable, copyable and construct to an empty collection by default. They provide the following member functions:
 
-{apiSummary class=Set}
--- Additional Constructors
-Set(std::initializer_list<Item> items)
--- Accessing Items
-const Item* find(const Key& key) const
-ArrayView<Item> items()
-ArrayView<const Item> items() const
--- Modifying Set Contents
-void clear()
-InsertResult insert(const Key& key)
-InsertResult insertItem(Item&& item)
-bool erase(const Key& key)
-bool eraseQuick(const Key& key)
-{/apiSummary}
-
 Hashable item types can be used directly as the key type.
 
     Set<u32> set = {4, 5, 6};
@@ -152,20 +137,6 @@ A `Map` is a collection of key-value pairs whose types are determined by templat
     template <typename Key, typename Value> class Map;
 
 `Map` objects are movable, copyable and construct to an empty collection by default. They provide the following member functions:
-
-{apiSummary class=Map}
--- Additional Constructors
-Map(std::initializer_list<Item> items)
--- Accessing Items
-const Value* find(const KeyView& key) const
-ArrayView<Item> items()
-ArrayView<const Item> items() const
--- Modifying Map Contents
-void clear()
-InsertResult insert(const KeyView& key)
-bool erase(const KeyView& key)
-bool eraseQuick(const KeyView& key)
-{/apiSummary}
 
 `Key` can either be a hashable type or a type that maps to a hashable type using `getLookupKey`, such as `String`. `KeyView` is a type alias for the return type of `getLookupKey`.
 

@@ -21,47 +21,6 @@ These classes aren't thread-safe. Functions that read from the same string can b
 
 The following member functions are implemented in both `String` and `StringView`:
 
-{apiSummary title="`String` and `StringView` member functions"}
--- Accessing String Bytes
-char* bytes()
-const char* bytes() const
-u32 numBytes() const
-char& operator[](u32 index)
-const char& operator[](u32 index) const
-char& back(s32 ofs = -1)
-const char& back(s32 ofs = -1) const
-char* begin()
-const char* begin() const
-char* end()
-const char* end() const
--- Examining String Contents
-bool isEmpty() const
-explicit operator bool() const
-bool startsWith(StringView arg) const
-bool endsWith(StringView arg) const
-s32 find(StringView substr, u32 startPos = 0) const
-s32 find(const MatchFunc& matchFunc, u32 startPos = 0) const
-s32 reverseFind(StringView substr, u32 startPos) const
-s32 reverseFind(const MatchFunc& matchFunc, u32 startPos) const
--- Creating Subviews
-StringView substr(u32 start) const
-StringView substr(u32 start, u32 numBytes) const
-StringView left(u32 numBytes) const
-StringView shortenedBy(u32 numBytes) const
-StringView right(u32 numBytes) const
-StringView trim(bool (*matchFunc)(char) = isWhite, bool left = true, bool right = true) const
-StringView trimLeft(bool (*matchFunc)(char) = isWhite) const
-StringView trimRight(bool (*matchFunc)(char) = isWhite) const
--- Creating New Strings
-String upper() const
-String lower() const
-Array<StringView> split(StringView separator) const;
-String join(ArrayView<const StringView> comps) const;
-String operator+(StringView other);
--- Pattern Matching
-template <typename... Args> bool match(StringView pattern, const Args&&... args)
-{/apiSummary}
-
 ### Accessing String Bytes
 
 {context class=String}
@@ -169,25 +128,6 @@ template <typename... Args> bool match(StringView pattern, const Args&&... args)
 The `String` class owns a block of memory allocated from the [Plywood heap](/docs/base/memory-management.md#heap). The memory is freed when the `String` object is destroyed.
 
 `String` objects are movable, copyable and construct to an empty string by default. In addition to the [common string functions](#common) listed in the previous section, they provide the following member functions:
-
-{apiSummary class=String}
--- Type Conversions
-String(StringView other)
-String(const char* s)
-operator StringView() const
-MutStringView mutStringView() const
--- Modifying String Contents
-void clear()
-String& operator+=(StringView other)
-void resize(u32 numBytes)
-char* release()
--- Creating New Strings
-static String allocate(u32 numBytes)
-static String adopt(char* bytes, u32 numBytes)
--- Formatting
-static String format(StringView fmt, const Args&... args)
-static String fromDateTime(const DateTime& dateTime);
-{/apiSummary}
 
 ### Type Conversions
 

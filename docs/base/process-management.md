@@ -1,11 +1,6 @@
 ﻿Processes (`ply-base.h`)
 ========================
 
-{apiSummary}
-PID getCurrentProcessId()
-String getCurrentExecutablePath()
-{/apiSummary}
-
 `PID getCurrentProcessId()`
 > Returns the operating system's process ID for the current process. See also `getCurrentThreadId`.
 
@@ -15,12 +10,6 @@ String getCurrentExecutablePath()
 ## `Subprocess`
 
 The `Subprocess` class represents a child process. You can spawn processes, redirect their I/O, and wait for them to complete.
-
-{apiSummary class=Subprocess}
-s32 join()
-static Owned<Subprocess> exec(StringView exePath, ArrayView<const StringView> args, StringView initialDir, const Output& output, const Input& input = Input::open())
-static Owned<Subprocess> execArgStr(StringView exePath, StringView argStr, StringView initialDir, const Output& output, const Input& input = Input::open())
-{/apiSummary}
 
 {context class=Subprocess}
 

@@ -9,21 +9,6 @@ The **heap** sits directly above that, dividing memory into variable-sized block
 
 Plywood contains its own heap, which lets you allocate and free variable-sized blocks of memory.
 
-{apiSummary class=Heap}
--- Low-level allocation
-static void* alloc(uptr numBytes)
-static void* realloc(void* ptr, uptr numBytes)
-static void* free(void* ptr)
-static void* allocAligned(uptr numBytes, u32 alignment)
--- Creating and destroying objects
-static T* create<T>(Args&&... args)
-static void destroy(T* obj)
--- Monitoring the heap
-static void setOutOfMemoryHandler(Functor<void()> handler)
-static Heap::Stats getStats()
-static void validate()
-{/apiSummary}
-
 The Plywood heap is separate from the C Standard Library's heap. Both heaps can coexist in the same program, but
 memory allocated from a specific heap must always be freed using the same heap.
 
@@ -100,23 +85,6 @@ void destroy(Foo* foo) {
 ## `VirtualMemory`
 
 The `VirtualMemory` class is a platform-independent wrapper for mapping virtual memory to physical memory.
-
-{apiSummary class=VirtualMemory title="VirtualMemory member functions"}
--- System Information
-static Properties getProperties()
-static SystemStats getSystemStats()
--- Managing Pages
-static void* reserveRegion(uptr numBytes)
-static void unreserveRegion(void* addr, uptr numReservedBytes, uptr numCommittedBytes)
-static void commitPages(void* addr, uptr numBytes)
-static void decommitPages(void* addr, uptr numBytes)
--- Allocating Large Blocks
-static void* allocRegion(uptr numBytes)
-static void freeRegion(void* addr, uptr numBytes)
--- Usage Stats
-static Atomic<uptr> totalReservedBytes
-static Atomic<uptr> totalCommittedBytes
-{/apiSummary}
 
 In C++ applications, memory is represented as a 32-bit or 64-bit address space known as virtual memory, which is divided into fixed-sized pages. Most pages are initially unusable and will cause an access violation or segmentation fault if accessed. To make pages usable, they must be mapped to physical memory by the underlying operating system.
 
