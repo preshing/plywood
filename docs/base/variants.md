@@ -1,4 +1,5 @@
-{title text="Variants" include="ply-base.h" namespace="ply"}
+Variants (`ply-base.h`)
+=======================
 
 A `Variant` can hold a value of one of several predefined types at runtime. It's similar to a [tagged union](https://en.wikipedia.org/wiki/Tagged_union).
 

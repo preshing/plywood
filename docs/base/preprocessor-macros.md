@@ -1,4 +1,5 @@
-{title text="Preprocessor Macros" include="ply-base.h" namespace="ply"}
+Preprocessor Macros (`ply-base.h`)
+==================================
 
 Plywood defines the following preprocessor macros.
 

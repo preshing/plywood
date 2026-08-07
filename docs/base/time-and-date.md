@@ -1,4 +1,5 @@
-﻿{title text="Time and Date" include="ply-base.h" namespace="ply"}
+﻿Time and Date (`ply-base.h`)
+============================
 
 Plywood provides two families of functions for working with time and dates.
 

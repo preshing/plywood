@@ -1,5 +1,5 @@
-﻿# `ply-network.h`
-# Networking
+﻿`ply-network.h`: Networking
+===========================
 
 Plywood provides a portable networking API for TCP/IP communication. The API supports both IPv4 and IPv6 addresses.
 

@@ -1,4 +1,5 @@
-﻿{title text="Strings" include="ply-base.h" namespace="ply"}
+﻿Strings (`ply-base.h`)
+======================
 
 Plywood strings are general-purpose blocks of memory allocated from [the heap](/docs/base/memory-management.md#heap). They're often used to manipulate text, but they can store binary data as well. There are three main classes for working with strings:
 

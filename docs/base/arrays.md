@@ -1,4 +1,5 @@
-﻿{title text="Arrays" include="ply-base.h" namespace="ply"}
+﻿Arrays (`ply-base.h`)
+=====================
 
 Arrays are sequences of items of the same type stored contiguously in memory. Plywood provides three class templates for working with arrays:
 

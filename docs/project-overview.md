@@ -1,4 +1,5 @@
-# Project Overview
+Project Overview
+================
 
 Plywood is organized into 9 main components:
 

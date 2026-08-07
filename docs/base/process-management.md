@@ -1,4 +1,5 @@
-﻿{title text="Processes" include="ply-base.h" namespace="ply"}
+﻿Processes (`ply-base.h`)
+========================
 
 {apiSummary}
 PID getCurrentProcessId()

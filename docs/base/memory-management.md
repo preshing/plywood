@@ -1,4 +1,5 @@
-﻿{title text="Memory" include="ply-base.h" namespace="ply"}
+﻿Memory Management (`ply-base.h`)
+================================
 
 At the lowest level, there's **virtual memory**, which can be mapped to physical memory using the underlying operating system.
 

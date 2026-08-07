@@ -1,4 +1,5 @@
-{title text="Functors" include="ply-base.h" namespace="ply"}
+Functors (`ply-base.h`)
+=======================
 
 `Functor` is a class template that stores arbitrary callback functions taking both explicit and hidden arguments. Often used to store [lambda expressions](https://en.cppreference.com/w/cpp/language/lambda.html).
 

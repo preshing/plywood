@@ -1,4 +1,5 @@
-{title text="Numeric Functions and Types" include="ply-base.h" namespace="ply"}
+Numeric Functions and Types (`ply-base.h`)
+==========================================
 
 Plywood defines the following explicily-sized integer types, similar to `<stdint.h>` from the C standard library. These types are used internally throughout Plywood.
 

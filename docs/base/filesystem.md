@@ -1,4 +1,5 @@
-﻿{title text="The Filesystem" include="ply-base.h" namespace="ply"}
+﻿The Filesystem (`ply-base.h`)
+=============================
 
 Plywood provides a portable filesystem API that works consistently across Windows and POSIX platforms. All paths arguments are treated as UTF-8 strings.
 

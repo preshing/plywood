@@ -1,4 +1,5 @@
-﻿# Sample Applications
+﻿Sample Applications
+===================
 
 [TBD]
 

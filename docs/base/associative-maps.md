@@ -1,4 +1,5 @@
-{title text="Associative Maps" include="ply-base.h" namespace="ply"}
+Associative Maps (`ply-base.h`)
+===============================
 
 Hash maps are collections of items that support fast key lookup. Plywood provides two class templates for hash maps:
 

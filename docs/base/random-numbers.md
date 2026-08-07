@@ -1,4 +1,5 @@
-﻿{title text="Random Numbers" include="ply-base.h" namespace="ply"}
+﻿Random Numbers (`ply-base.h`)
+=============================
 
 The `Random` class generates pseudorandom integers and floating-point values.
 

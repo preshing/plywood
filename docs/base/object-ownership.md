@@ -1,4 +1,5 @@
-{title text="Object Ownership" include="ply-base.h" namespace="ply"}
+Object Ownership (`ply-base.h`)
+===============================
 
 ## `Owned`
 

@@ -1,4 +1,5 @@
-﻿{title text="Generic Algorithms" include="ply-base.h" namespace="ply"}
+﻿Generic Algorithms (ply-base.h)
+===============================
 
 Plywood provides generic algorithms that work with any array-like container. These are template functions that operate on `Array`, `ArrayView`, `FixedArray`, and other compatible types.
 

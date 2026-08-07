@@ -1,4 +1,5 @@
-{title text="2D and 3D Math" include="ply-math.h" namespace="ply"}
+`ply-math.h`: 2D and 3D Math
+============================
 
 The math library provides small POD-style types for vectors, rectangles, matrices, colors and rotations.
 Most types expose public fields, support inline arithmetic operators and perform runtime bounds checks in

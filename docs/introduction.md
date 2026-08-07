@@ -1,4 +1,5 @@
-# Introduction
+Introduction
+============
 
 Plywood is a portable C++ runtime library that can be used as an alternative to the C and C++ Standard Libraries. It aims to deliver everything you need from a runtime library in a small code size while offering a programmer-friendly API.
 
