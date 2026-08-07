@@ -56,60 +56,52 @@ html {
 
 @font-face {
     font-family: 'source_serif_4';
-    src: url('SourceSerif4-Regular.ttf.woff2') format('woff2'),
-         url('SourceSerif4-Regular.ttf.woff') format('woff');
+    src: url('SourceSerif4-Regular.ttf.woff2') format('woff2');
     font-weight: normal;
     font-style: normal;
 }
 @font-face {
     font-family: 'source_serif_4';
-    src: url('SourceSerif4-Bold.ttf.woff2') format('woff2'),
-         url('SourceSerif4-Bold.ttf.woff') format('woff');
+    src: url('SourceSerif4-Bold.ttf.woff2') format('woff2');
     font-weight: bold;
     font-style: normal;
 }
 @font-face {
     font-family: 'source_serif_4';
-    src: url('SourceSerif4-It.ttf.woff2') format('woff2'),
-         url('SourceSerif4-It.ttf.woff') format('woff');
+    src: url('SourceSerif4-It.ttf.woff2') format('woff2');
     font-weight: normal;
     font-style: italic;
 }
 @font-face {
     font-family: 'source_serif_4';
-    src: url('SourceSerif4-BoldIt.ttf.woff2') format('woff2'),
-         url('SourceSerif4-BoldIt.ttf.woff') format('woff');
+    src: url('SourceSerif4-BoldIt.ttf.woff2') format('woff2');
     font-weight: bold;
     font-style: italic;
 }
 
 @font-face {
     font-family: 'source_sans_3';
-    src: url('SourceSans3-Regular.ttf.woff2') format('woff2'),
-         url('SourceSans3-Regular.ttf.woff2') format('woff');
+    src: url('SourceSans3-Regular.ttf.woff2') format('woff2');
     font-weight: normal;
     font-style: normal;
 }
 
 @font-face {
     font-family: 'robotobold';
-    src: url('roboto-bold-webfont.woff2') format('woff2'),
-         url('roboto-bold-webfont.woff') format('woff');
+    src: url('roboto-bold-webfont.woff2') format('woff2');
     font-weight: normal;
     font-style: normal;
 }
 
 @font-face {
     font-family: 'jetbrains_mono';
-    src: url('jetbrainsmono-medium-webfont.woff2') format('woff2'),
-         url('jetbrainsmono-medium-webfont.woff') format('woff');
+    src: url('jetbrainsmono-medium-webfont.woff2') format('woff2');
     font-weight: normal;
     font-style: normal;
 }
 @font-face {
     font-family: 'jetbrains_mono';
-    src: url('jetbrainsmono-bold-webfont.woff2') format('woff2'),
-         url('jetbrainsmono-bold-webfont.woff') format('woff');
+    src: url('jetbrainsmono-bold-webfont.woff2') format('woff2');
     font-weight: bold;
     font-style: normal;
 }
