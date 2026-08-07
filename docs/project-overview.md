@@ -2,7 +2,7 @@
 
 Plywood is organized into 9 main components:
 
-- [Base API](/docs/base/index.md): Provides access to clocks, filesystems, processes, threads, virtual memory and basic data containers.
+- [Base API](/docs/base/index.md): Clocks, filesystems, processes, threads, virtual memory and basic data containers.
 - [2D and 3D Math](/docs/math.md): Suitable for games and UI layouts.
 - [Reflection](/docs/reflect.md): Generic processing of data stored in Plywood containers.
 - [Networking](/docs/networking.md): Client and server-side TCP and HTTP.
