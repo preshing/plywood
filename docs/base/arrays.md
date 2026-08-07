@@ -140,11 +140,11 @@ It's movable and copyable. Be careful to avoid unwanted copies.
 
 Internally, it's represented as:
 
-{table}
-`Item*`|`items`
-`u32`|`numItems`
-`u32`|`population`
-{/table}
+| | |
+| --- | --- |
+| `Item*` | `items` |
+| `u32` | `numItems` |
+| `u32` | `population` |
 
 The items are allocated from [the Plywood heap](/docs/base/memory-management.md#heap). There are some gotchas to watch out for. The allocattion strategy is simple. It allocates memory by powers of 2 but you can trim it by calling `compact()`.
 

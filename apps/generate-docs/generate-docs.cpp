@@ -107,38 +107,6 @@ String convertDocsPathToURL(StringView destination) {
     return path + suffix;
 }
 
-// Converts Markdown to HTML while adapting documentation links for the generated site.
-String convertDocsMarkdownToHtml(StringView source) {
-    Array<Owned<markdown::Block>> blocks =
-        markdown::parseWholeDocument(source, markdown::ParseOptions::githubFlavored());
-    markdown::HTMLOptions options;
-    options.filterLinks = convertDocsPathToURL;
-    MemStream out;
-
-    // Render every top-level block in document order.
-    for (markdown::Block* block : blocks) {
-        markdown::convertToHtml(&out, block, options);
-    }
-    return out.moveToString();
-}
-
-// Parses a {table} section and emits a simple two-dimensional HTML table.
-void parseTable(Stream& out, const Map<StringView, String>& args, ViewStream& in) {
-    out.write("<table class=\"grid\">\n");
-    while (StringView line = readLine(in)) {
-        StringView s = line.trim();
-        if (s == "{/table}")
-            break;
-        out.write("<tr>");
-        for (StringView column : s.split("|")) {
-            String html = convertDocsMarkdownToHtml(column);
-            out.format("<td>{}</td>", html.substr(3, html.numBytes() - 8));
-        }
-        out.write("</tr>\n");
-    }
-    out.write("</table>\n");
-}
-
 // Parses an {example} section and emits it as a captioned code block.
 void parseExample(Stream& out, ViewStream& in) {
     out.format("<div class=\"caption\">Example</div>\n");
@@ -326,8 +294,6 @@ void parseMarkdown(Stream& out, ViewStream& in) {
                 } else {
                     blockProcessor.setApiClassContext({});
                 }
-            } else if (cmd == "table") {
-                parseTable(out, args, in);
             } else if (cmd == "example") {
                 parseExample(out, in);
             } else if (cmd == "output") {

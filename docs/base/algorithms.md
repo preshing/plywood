@@ -15,10 +15,10 @@ Plywood provides generic algorithms that work with any array-like container. The
 `u32 binarySearch(const AnyArray& arr, const Key& key, FindType findType)`
 > Performs a binary search on a sorted array. Returns the index of a matching item based on the `findType` parameter. The array must already be sorted.
 
-{table caption="`FindType` values"}
-`FindGreaterThan` | Returns the first item strictly greater than `key`
-`FindGreaterThanOrEqual` | Returns the first item greater than or equal to `key`
-{/table}
+| | |
+| --- | --- |
+| `FindGreaterThan` | Returns the first item strictly greater than `key` |
+| `FindGreaterThanOrEqual` | Returns the first item greater than or equal to `key` |
 
 {example}
 Array<int> numbers = {5, 2, 8, 1, 9};

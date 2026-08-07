@@ -9,13 +9,13 @@ module are defined in the `ply::markdown` namespace.
 CommonMark parsing is the default. `ParseOptions` independently enables the supported GitHub Flavored Markdown
 (GFM) extensions:
 
-{table caption="`ParseOptions` members"}
-`bool`|`tables`|Enables GFM pipe tables
-`bool`|`taskListItems`|Recognizes task markers at the start of list items
-`bool`|`strikethrough`|Enables text delimited by pairs of tildes
-`bool`|`extendedAutolinks`|Recognizes GFM URL and email autolinks without angle brackets
-`bool`|`tagFilter`|Escapes the opening characters of the raw HTML tags disallowed by GFM
-{/table}
+| | | |
+| --- | --- | --- |
+| `bool` | `tables` | Enables GFM pipe tables |
+| `bool` | `taskListItems` | Recognizes task markers at the start of list items |
+| `bool` | `strikethrough` | Enables text delimited by pairs of tildes |
+| `bool` | `extendedAutolinks` | Recognizes GFM URL and email autolinks without angle brackets |
+| `bool` | `tagFilter` | Escapes the opening characters of the raw HTML tags disallowed by GFM |
 
 Every field defaults to `false`. `ParseOptions::githubFlavored()` returns an options object with all five fields set
 to `true`.
@@ -62,10 +62,10 @@ functions return `nullptr`.
 > Renders an already-parsed block and its descendants to a stream. Use this overload to inspect or modify the AST, or
 > to render blocks incrementally. `HTMLOptions` controls rendering rather than Markdown syntax.
 
-{table caption="`HTMLOptions` members"}
-`bool`|`childAnchors`|Writes a child anchor span for a heading with an `id`, instead of putting the `id` on the heading
-`Functor<String(StringView)>`|`filterLinks`|Transforms each link or image destination before XML escaping and output
-{/table}
+| | | |
+| --- | --- | --- |
+| `bool` | `childAnchors` | Writes a child anchor span for a heading with an `id`, instead of putting the `id` on the heading |
+| `Functor<String(StringView)>` | `filterLinks` | Transforms each link or image destination before XML escaping and output |
 
 ## Block tree
 
@@ -76,23 +76,23 @@ Container types derive from `Block::Inner` and own `childBlocks`. Text-bearing l
 and own parsed `spans`. `asInner()` and `asLeaf()` return the corresponding base pointer when applicable, or `nullptr`.
 Use `block.var.is<Type>()` and `block.var.as<Type>()` to test and access a concrete type.
 
-{table caption="Container block types"}
-`Block::List`|Ordered or unordered list; stores `punctuator`, `startNumber`, and loose-list state
-`Block::ListItem`|List item; stores indentation and optional GFM task state in `isTask` and `isChecked`
-`Block::BlockQuote`|Block quote containing child blocks
-`Block::Table`|GFM table; contains rows and one `TableAlignment` value per column
-`Block::TableRow`|Header or body row containing `TableCell` blocks
-{/table}
+| | |
+| --- | --- |
+| `Block::List` | Ordered or unordered list; stores `punctuator`, `startNumber`, and loose-list state |
+| `Block::ListItem` | List item; stores indentation and optional GFM task state in `isTask` and `isChecked` |
+| `Block::BlockQuote` | Block quote containing child blocks |
+| `Block::Table` | GFM table; contains rows and one `TableAlignment` value per column |
+| `Block::TableRow` | Header or body row containing `TableCell` blocks |
 
-{table caption="Leaf and standalone block types"}
-`Block::Heading`|Heading spans plus `level` and optional HTML `id`
-`Block::Paragraph`|Paragraph spans
-`Block::TableCell`|GFM table-cell spans
-`Block::IndentedCodeBlock`|Indented code stored as text spans
-`Block::FencedCodeBlock`|Fenced code plus `fenceMarker`, `infoString`, and `relativeIndent`
-`Block::HTMLBlock`|Raw HTML text and the `tagFilter` rendering choice captured during parsing
-`Block::ThematicBreak`|A thematic break
-{/table}
+| | |
+| --- | --- |
+| `Block::Heading` | Heading spans plus `level` and optional HTML `id` |
+| `Block::Paragraph` | Paragraph spans |
+| `Block::TableCell` | GFM table-cell spans |
+| `Block::IndentedCodeBlock` | Indented code stored as text spans |
+| `Block::FencedCodeBlock` | Fenced code plus `fenceMarker`, `infoString`, and `relativeIndent` |
+| `Block::HTMLBlock` | Raw HTML text and the `tagFilter` rendering choice captured during parsing |
+| `Block::ThematicBreak` | A thematic break |
 
 `TableAlignment` has the values `None`, `Left`, `Center`, and `Right`. The delimiter row of a GFM table determines the
 alignment recorded for each column.
@@ -103,21 +103,21 @@ Text-bearing blocks contain a sequence of `Span` objects. As with blocks, the co
 can be accessed with `span.var.is<Type>()` or `span.var.as<Type>()`. Container span types derive from `Span::Container`
 and own `childSpans`; `asContainer()` returns that base or `nullptr`.
 
-{table caption="Container span types"}
-`Span::Link`|Parsed label spans plus `destination` and optional `title`
-`Span::Image`|Parsed alt-text spans plus `destination` and optional `title`
-`Span::Italic`|Emphasized child spans
-`Span::Bold`|Strongly emphasized child spans
-`Span::Strikethrough`|GFM strikethrough child spans
-{/table}
+| | |
+| --- | --- |
+| `Span::Link` | Parsed label spans plus `destination` and optional `title` |
+| `Span::Image` | Parsed alt-text spans plus `destination` and optional `title` |
+| `Span::Italic` | Emphasized child spans |
+| `Span::Bold` | Strongly emphasized child spans |
+| `Span::Strikethrough` | GFM strikethrough child spans |
 
-{table caption="Leaf span types"}
-`Span::Text`|Plain text
-`Span::Code`|Inline code
-`Span::RawHTML`|Raw HTML text and the `tagFilter` rendering choice captured during parsing
-`Span::SoftBreak`|A soft line break
-`Span::HardBreak`|A hard line break
-{/table}
+| | |
+| --- | --- |
+| `Span::Text` | Plain text |
+| `Span::Code` | Inline code |
+| `Span::RawHTML` | Raw HTML text and the `tagFilter` rendering choice captured during parsing |
+| `Span::SoftBreak` | A soft line break |
+| `Span::HardBreak` | A hard line break |
 
 ## GitHub Flavored Markdown AST
 

@@ -95,27 +95,27 @@ In C++ applications, memory is represented as a 32-bit or 64-bit address space k
 `static VirtualMemory::Properties getProperties()`
 > Returns information about the system's virtual memory page size and allocation alignment. `VirtualMemory::Properties` has these members:
 >
-> {table caption="`VirtualMemory::Properties` members"}
-> `uptr`|regionAlignment|`reserveRegion` and `allocRegion` sizes must be a multiple of this
-> `uptr`|pageSize|`commitPages` sizes must be a multiple of this
-> {/table}
+> | | | |
+> | --- | --- | --- |
+> | `uptr` | regionAlignment | `reserveRegion` and `allocRegion` sizes must be a multiple of this |
+> | `uptr` | pageSize | `commitPages` sizes must be a multiple of this |
 
 `static VirtualMemory::SystemStats getSystemStats()`
 > Returns statistics about the current process's virtual memory usage. `VirtualMemory::SystemStats` has platform-specific members:
 >
 > On Windows:
 >
-> {table caption="`VirtualMemory::SystemStats` members (Windows)"}
-> `uptr`|privateUsage
-> `uptr`|workingSetSize
-> {/table}
+> | | |
+> | --- | --- |
+> | `uptr` | privateUsage |
+> | `uptr` | workingSetSize |
 >
 > On other platforms:
 >
-> {table caption="`VirtualMemory::SystemStats` members (POSIX)"}
-> `uptr`|virtualSize
-> `uptr`|residentSize
-> {/table}
+> | | |
+> | --- | --- |
+> | `uptr` | virtualSize |
+> | `uptr` | residentSize |
 
 ### Managing Pages
 

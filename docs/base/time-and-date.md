@@ -17,17 +17,17 @@ A [Unix timestamp](https://en.wikipedia.org/wiki/Unix_time) is an amount of elap
 `DateTime convertToDateTime(s64 unixTimestamp, s16 timeZoneOffsetInMinutes)`
 > Converts a Unix timestamp to a `DateTime` object with the following member variables:
 >
-> {table caption="`DateTime` members"}
-> `s32`|`year`
-> `u8`|`month`|1..12
-> `u8`|`day`|1..31
-> `u8`|`weekday`|Sunday = 0, Saturday = 6
-> `u8`|`hour`|0..23
-> `u8`|`minute`|0..59
-> `u8`|`second`|0..59
-> `s16`|`timeZoneOffsetInMinutes`|eg. EST = -300
-> `u32`|`microsecond`|0..999999
-> {/table}
+> | | | |
+> | --- | --- | --- |
+> | `s32` | `year` | |
+> | `u8` | `month` | 1..12 |
+> | `u8` | `day` | 1..31 |
+> | `u8` | `weekday` | Sunday = 0, Saturday = 6 |
+> | `u8` | `hour` | 0..23 |
+> | `u8` | `minute` | 0..59 |
+> | `u8` | `second` | 0..59 |
+> | `s16` | `timeZoneOffsetInMinutes` | eg. EST = -300 |
+> | `u32` | `microsecond` | 0..999999 |
 >
 > The same Unix timestamp can produce different `DateTime` objects depending on the time zone used during conversion. The time zone of each `DateTime` object is indicated by the `timeZoneOffsetInMinutes` member and expressed relative to [Coordinated Universal Time (UTC)](https://en.wikipedia.org/wiki/CoordinatedUniversalTime). For example, a `timeZoneOffsetInMinutes` of `-300` corresponds to [Eastern Standard Time (EST)](https://en.wikipedia.org/wiki/EasternTimeZone), which is 5 hours behind UTC.
 >
@@ -39,27 +39,27 @@ A [Unix timestamp](https://en.wikipedia.org/wiki/Unix_time) is an amount of elap
 `void printDateTime(Stream& out, StringView format, const DateTime& dateTime)`
 > Prints the contents of a `DateTime` object as human-readable text. Month and weekday names are output in English only. The `format` string accepts the following conversion specifiers:
 
-{table caption="Conversion specifiers"}
-`%a`|abbreviated weekday
-`%A`|full weekday
-`%b`|abbreviated month name
-`%B`|full month name
-`%d`|day of the month with leading zero
-`%e`|day of the month
-`%H`|hour with leading zero (24-hour clock)
-`%k`|hour (24-hour clock)
-`%l`|hour (12-hour clock)
-`%m`|month with leading zero
-`%M`|minute with leading zero
-`%p`|AM or PM
-`%P`|am or pm
-`%S`|second with leading zero
-`%y`|two-digit year
-`%Y`|year
-`%L`|millisecond with leading zeros
-`%R`|microsecond with leading zeros
-`%Z`|signed time zone offset
-{/table}
+| | |
+| --- | --- |
+| `%a` | abbreviated weekday |
+| `%A` | full weekday |
+| `%b` | abbreviated month name |
+| `%B` | full month name |
+| `%d` | day of the month with leading zero |
+| `%e` | day of the month |
+| `%H` | hour with leading zero (24-hour clock) |
+| `%k` | hour (24-hour clock) |
+| `%l` | hour (12-hour clock) |
+| `%m` | month with leading zero |
+| `%M` | minute with leading zero |
+| `%p` | AM or PM |
+| `%P` | am or pm |
+| `%S` | second with leading zero |
+| `%y` | two-digit year |
+| `%Y` | year |
+| `%L` | millisecond with leading zeros |
+| `%R` | microsecond with leading zeros |
+| `%Z` | signed time zone offset |
 
     s64 sysTime = getUnixTimestamp();
     DateTime dateTime = convertToDateTime(sysTime);

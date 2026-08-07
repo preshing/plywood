@@ -12,20 +12,20 @@ These collections aren't thread-safe. Functions that read from the same collecti
 
 In the `Set` and `Map` class templates, [hashing](https://en.wikipedia.org/wiki/Hash_function) is used to speed up key lookups. Any hashable type can be used as a lookup key. In Plywood, the following types are hashable by default:
 
-{table caption="Built-in hashable types"}
-`s8`
-`s16`
-`s32`
-`s64`
-`u8`
-`u16`
-`u32`
-`u64`
-`float`
-`double`
-`T*`
-`StringView`
-{/table}
+| |
+| --- |
+| `s8` |
+| `s16` |
+| `s32` |
+| `s64` |
+| `u8` |
+| `u16` |
+| `u32` |
+| `u64` |
+| `float` |
+| `double` |
+| `T*` |
+| `StringView` |
 
 * When hashing a pointer, only the address is used, not the contents of the pointed-to object. [TBD: Change this.]
 * You can hash a `String` by implicitly converting it to a `StringView`.
@@ -142,10 +142,10 @@ A `Map` is a collection of key-value pairs whose types are determined by templat
 
 `Item` is a member type that represents a key-value pair. It has the following members:
 
-{table caption="Map<Key, Value>::Item members"}
-`Key` | `key`
-`Value` | `value`
-{/table}
+| | |
+| --- | --- |
+| `Key` | `key` |
+| `Value` | `value` |
 
 The items in a `Map` are kept in insertion order unless `eraseQuick` is called.
 
