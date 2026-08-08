@@ -5,17 +5,17 @@
       └──┴┴┴┘
 ========================================================*/
 
-#include <ply-base.h>
+#include <ply-system.h>
 
 using namespace ply;
 
 struct RegisterTest {
     enum Group {
-        Base,
+        System,
         UnicodeLoading,
     };
 
-    RegisterTest(StringView name, void (*func)(), Group group = Base);
+    RegisterTest(StringView name, void (*func)(), Group group = System);
 };
 
 #define TEST_CASE_IN_GROUP(name, group) \
@@ -26,10 +26,10 @@ struct RegisterTest {
                          __LINE__){name, PLY_CAT(PLY_CAT(test_, TEST_CASE_PREFIX), __LINE__), group}; \
     void PLY_CAT(PLY_CAT(test_, TEST_CASE_PREFIX), __LINE__)()
 
-#define TEST_CASE(name) TEST_CASE_IN_GROUP(name, RegisterTest::Base)
+#define TEST_CASE(name) TEST_CASE_IN_GROUP(name, RegisterTest::System)
 #define UNICODE_LOADING_TEST_CASE(name) TEST_CASE_IN_GROUP(name, RegisterTest::UnicodeLoading)
 
 bool check(bool);
 
-bool runBaseTests();
+bool runSystemTests();
 bool runUnicodeLoadingTests();

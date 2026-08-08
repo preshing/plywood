@@ -1,7 +1,7 @@
-﻿`ply-base.h`: Base API
-======================
+﻿`ply-system.h`: Operating System
+================================
 
-`ply-base.h` is where Plywood's central [application programming interface (API)](https://en.wikipedia.org/wiki/API) is defined. This file provides cross-platform access to timers, filesystems, processes, threads, virtual memory and basic data containers. All other header files in Plywood depend on this one.
+`ply-system.h` is where Plywood's central [application programming interface (API)](https://en.wikipedia.org/wiki/API) is defined. This file provides cross-platform access to timers, filesystems, processes, threads, virtual memory and basic data containers. All other header files in Plywood depend on this one.
 
 [diagram: plywood-include-graph]
 
@@ -11,10 +11,10 @@ You can customize Plywood by defining the following preprocessor macros in your 
 
 | | |
 | --- | --- |
-| `PLY_CONFIG_FILE` | The path to a file that will be automatically included by [`<ply-base.h>`](/docs/common). Additional configuration options can be put here. |
-| `PLY_WITH_ASSERTS` | Enables [assertions](/docs/base/preprocessor-macros.md#assertions). Default is 1 in debug builds, 0 otherwise. |
-| `PLY_WITH_DIRECTORY_WATCHER` | Enables the [`DirectoryWatcher`](/docs/base/filesystem.md#directory-watcher). Default is 0. |
-| `PLY_OVERRIDE_NEW` | Overrides the C++ `new` and `delete` operators to allocate from the [Plywood heap](/docs/base/memory-management.md#heap). Default is 1. |
+| `PLY_CONFIG_FILE` | The path to a file that will be automatically included by [`<ply-system.h>`](/docs/common). Additional configuration options can be put here. |
+| `PLY_WITH_ASSERTS` | Enables [assertions](/docs/system/preprocessor-macros.md#assertions). Default is 1 in debug builds, 0 otherwise. |
+| `PLY_WITH_DIRECTORY_WATCHER` | Enables the [`DirectoryWatcher`](/docs/system/filesystem.md#directory-watcher). Default is 0. |
+| `PLY_OVERRIDE_NEW` | Overrides the C++ `new` and `delete` operators to allocate from the [Plywood heap](/docs/system/memory-management.md#heap). Default is 1. |
 | `PLY_USE_NEW_ALLOCATOR` | Selects the heap backend. `1` uses Plywood's bespoke allocator, `0` uses legacy dlmalloc. Default is 1. |
 
 ### About the Container Types

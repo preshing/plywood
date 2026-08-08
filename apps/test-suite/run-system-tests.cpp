@@ -5,7 +5,7 @@
       └──┴┴┴┘
 ========================================================*/
 
-#include "run-base-tests.h"
+#include "run-system-tests.h"
 
 struct Case {
     StringView name;
@@ -35,7 +35,7 @@ bool check(bool cond) {
     return cond;
 }
 
-// Runs the selected group of registered base tests.
+// Runs the selected group of registered tests.
 static bool runTestGroup(RegisterTest::Group group) {
     u32 numPassed = 0;
     const auto& testCases = getTestCases();
@@ -78,9 +78,9 @@ static bool runTestGroup(RegisterTest::Group group) {
     return numPassed == numTests;
 }
 
-// Runs the base test suite, excluding the file-loading tests.
-bool runBaseTests() {
-    return runTestGroup(RegisterTest::Base);
+// Runs the system test suite, excluding the file-loading tests.
+bool runSystemTests() {
+    return runTestGroup(RegisterTest::System);
 }
 
 // Runs the Unicode text-file loading test suite.

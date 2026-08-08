@@ -1,4 +1,4 @@
-Numeric Functions and Types (`ply-base.h`)
+Numeric Functions and Types (`ply-system.h`)
 ==========================================
 
 Plywood defines the following explicily-sized integer types, similar to `<stdint.h>` from the C standard library. These types are used internally throughout Plywood.
@@ -111,7 +111,7 @@ Plywood defines the following primitive numeric functions.
 > ```
 
 `template <typename DstType, typename SrcType> DstType numericCast(SrcType value)`
-> Casts `value` from one numeric type to another under the assumption that the value can be represented by the destination type. Will [assert](/docs/base/preprocessor-macros.md#assert) at runtime if the value can't be represented.
+> Casts `value` from one numeric type to another under the assumption that the value can be represented by the destination type. Will [assert](/docs/system/preprocessor-macros.md#assert) at runtime if the value can't be represented.
 > ```
 > s32 value = foo();
 > if (value >= 0) {

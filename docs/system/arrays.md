@@ -1,4 +1,4 @@
-﻿Arrays (`ply-base.h`)
+﻿Arrays (`ply-system.h`)
 =====================
 
 Arrays are sequences of items of the same type stored contiguously in memory. Plywood provides three class templates for working with arrays:
@@ -7,7 +7,7 @@ Arrays are sequences of items of the same type stored contiguously in memory. Pl
 - `ArrayView<Item>` is a non-owning view into another array.
 - `FixedArray<Item, NumItems>` is a fixed-size array that owns its contents.
 
-All classes perform runtime bounds checking when [assertions](/docs/base/preprocessor-macros.md#assertions) are enabled.
+All classes perform runtime bounds checking when [assertions](/docs/system/preprocessor-macros.md#assertions) are enabled.
 
 These classes all use 32-bit integers for indexing, which means they can store a maximum of roughly 4 billion items.
 
@@ -146,7 +146,7 @@ Internally, it's represented as:
 | `u32` | `numItems` |
 | `u32` | `population` |
 
-The items are allocated from [the Plywood heap](/docs/base/memory-management.md#heap). There are some gotchas to watch out for. The allocattion strategy is simple. It allocates memory by powers of 2 but you can trim it by calling `compact()`.
+The items are allocated from [the Plywood heap](/docs/system/memory-management.md#heap). There are some gotchas to watch out for. The allocattion strategy is simple. It allocates memory by powers of 2 but you can trim it by calling `compact()`.
 
 You don't need to define the type before declaring an Array member variable. But you do need it if instantiating a variable.
 
@@ -178,7 +178,7 @@ The `Array` class template supports default and move constructors as well as mov
 > ```
 
 `static Array<Item> adopt(Item* items, u32 numItems)`
-> Explicitly create an `Array` object from the provided arguments. No memory is allocated and no constructors are called; the returned array simply adopts the provided `items`, which must be allocated from [the Plywood heap](/docs/base/memory-management.md#heap). This memory will be freed when the `Array` is destructed.
+> Explicitly create an `Array` object from the provided arguments. No memory is allocated and no constructors are called; the returned array simply adopts the provided `items`, which must be allocated from [the Plywood heap](/docs/system/memory-management.md#heap). This memory will be freed when the `Array` is destructed.
 
 ### Additional Assignment Operators
 

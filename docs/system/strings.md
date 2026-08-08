@@ -1,7 +1,7 @@
-﻿Strings (`ply-base.h`)
+﻿Strings (`ply-system.h`)
 ======================
 
-Plywood strings are general-purpose blocks of memory allocated from [the heap](/docs/base/memory-management.md#heap). They're often used to manipulate text, but they can store binary data as well. There are three main classes for working with strings:
+Plywood strings are general-purpose blocks of memory allocated from [the heap](/docs/system/memory-management.md#heap). They're often used to manipulate text, but they can store binary data as well. There are three main classes for working with strings:
 
 * `String` owns a block of memory and frees it when the destructor is called.
 * `StringView` is a read-only view into a block of memory.
@@ -27,7 +27,7 @@ The following member functions are implemented in both `String` and `StringView`
 
 `char& operator[](u32 index)`
 `const char& operator[](u32 index) const`
-> Subscript operator with runtime bounds checking. Can be used to read individual bytes or modify indvidual bytes (for `String` only). If `index` is out of range, an [assert](/docs/base/preprocessor-macros.md#assert) will be triggered.
+> Subscript operator with runtime bounds checking. Can be used to read individual bytes or modify indvidual bytes (for `String` only). If `index` is out of range, an [assert](/docs/system/preprocessor-macros.md#assert) will be triggered.
 > ```
 > String str = "Hello, world!";
 > char c = str[4];  // 'o'
@@ -125,7 +125,7 @@ The following member functions are implemented in both `String` and `StringView`
 
 ## `String`
 
-The `String` class owns a block of memory allocated from the [Plywood heap](/docs/base/memory-management.md#heap). The memory is freed when the `String` object is destroyed.
+The `String` class owns a block of memory allocated from the [Plywood heap](/docs/system/memory-management.md#heap). The memory is freed when the `String` object is destroyed.
 
 `String` objects are movable, copyable and construct to an empty string by default. In addition to the [common string functions](#common) listed in the previous section, they provide the following member functions:
 
@@ -193,7 +193,7 @@ The `String` class owns a block of memory allocated from the [Plywood heap](/doc
 > - Fill and align: `<`, `>` or `^`, optionally preceded by a one-byte fill character, for example `{:*>8}`.
 
 `static String fromDateTime(const DateTime& dateTime);`
-> Creates a string representation of a `DateTime` object using a format string. See the [Time and Date](/docs/base/time-and-date.md) chapter for format specifiers.
+> Creates a string representation of a `DateTime` object using a format string. See the [Time and Date](/docs/system/time-and-date.md) chapter for format specifiers.
 
 ## `StringView`
 

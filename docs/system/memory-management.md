@@ -1,4 +1,4 @@
-﻿Memory Management (`ply-base.h`)
+﻿Memory Management (`ply-system.h`)
 ================================
 
 At the lowest level, there's **virtual memory**, which can be mapped to physical memory using the underlying operating system.
@@ -17,7 +17,7 @@ Heap backend selection is controlled by `PLY_USE_NEW_ALLOCATOR`:
 - `PLY_USE_NEW_ALLOCATOR=1` (default): Uses Plywood's bespoke allocator in `ply::HeapImpl`.
 - `PLY_USE_NEW_ALLOCATOR=0`: Uses the legacy [dlmalloc](https://gee.cs.oswego.edu/dl/html/malloc.html) backend.
 
-For internal implementation details of the bespoke allocator, see [Heap Design](/docs/base/heap-design).
+For internal implementation details of the bespoke allocator, see [Heap Design](/docs/system/heap-design).
 
 `Heap` is thread-safe. All member functions can be called concurrently from separate threads.
 

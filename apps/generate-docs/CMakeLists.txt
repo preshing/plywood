@@ -13,7 +13,7 @@ project(generate-docs)
 include(../../share/common.cmake)
 
 # Add plywood
-add_plywood(ply-markdown.* ply-tokenizer.* ply-cpp.* ply-json.* ply-math.* ply-base.*)
+add_plywood(ply-markdown.* ply-tokenizer.* ply-cpp.* ply-json.* ply-math.* ply-system.*)
 if(WIN32)
     target_compile_definitions(plywood PUBLIC PLY_WITH_DIRECTORY_WATCHER=1)
 elseif(APPLE)

@@ -1,23 +1,23 @@
 [
     {"title": "Introduction", "path": "/docs/introduction.md"},
     {"title": "Project Overview", "path": "/docs/project-overview.md"},
-    {"title": "Base API", "header-file": "ply-base.h", "path": "/docs/base/index.md", "children": [
-        {"title": "Preprocessor Macros", "path": "/docs/base/preprocessor-macros.md"},
-        {"title": "Numeric Functions and Types", "path": "/docs/base/numeric.md"},
-        {"title": "Time and Date", "path": "/docs/base/time-and-date.md"},
-        {"title": "Random Numbers", "path": "/docs/base/random-numbers.md"},
-        {"title": "Memory Management", "path": "/docs/base/memory-management.md"},
-        {"title": "Strings", "path": "/docs/base/strings.md"},
-        {"title": "Arrays", "path": "/docs/base/arrays.md"},
-        {"title": "Associative Maps", "path": "/docs/base/associative-maps.md"},
-        {"title": "Object Ownership", "path": "/docs/base/object-ownership.md"},
-        {"title": "Functors", "path": "/docs/base/functors.md"},
-        {"title": "Variants", "path": "/docs/base/variants.md"},
-        {"title": "Generic Algorithms", "path": "/docs/base/algorithms.md"},
-        {"title": "Input/Output", "path": "/docs/base/input-output.md"},
-        {"title": "The Filesystem", "path": "/docs/base/filesystem.md"},
-        {"title": "Multithreading", "path": "/docs/base/multithreading.md"},
-        {"title": "Process Management", "path": "/docs/base/process-management.md"}
+    {"title": "Operating System", "header-file": "ply-system.h", "path": "/docs/system/index.md", "children": [
+        {"title": "Preprocessor Macros", "path": "/docs/system/preprocessor-macros.md"},
+        {"title": "Numeric Functions and Types", "path": "/docs/system/numeric.md"},
+        {"title": "Time and Date", "path": "/docs/system/time-and-date.md"},
+        {"title": "Random Numbers", "path": "/docs/system/random-numbers.md"},
+        {"title": "Memory Management", "path": "/docs/system/memory-management.md"},
+        {"title": "Strings", "path": "/docs/system/strings.md"},
+        {"title": "Arrays", "path": "/docs/system/arrays.md"},
+        {"title": "Associative Maps", "path": "/docs/system/associative-maps.md"},
+        {"title": "Object Ownership", "path": "/docs/system/object-ownership.md"},
+        {"title": "Functors", "path": "/docs/system/functors.md"},
+        {"title": "Variants", "path": "/docs/system/variants.md"},
+        {"title": "Generic Algorithms", "path": "/docs/system/algorithms.md"},
+        {"title": "Input/Output", "path": "/docs/system/input-output.md"},
+        {"title": "The Filesystem", "path": "/docs/system/filesystem.md"},
+        {"title": "Multithreading", "path": "/docs/system/multithreading.md"},
+        {"title": "Process Management", "path": "/docs/system/process-management.md"}
     ]},
     {"title": "2D and 3D Math", "header-file": "ply-math.h", "path": "/docs/math.md"},
     {"title": "Reflection", "header-file": "ply-reflect.h", "path": "/docs/reflect.md"},
@@ -26,9 +26,9 @@
         {"title": "JSON Support", "header-file": "ply-json.h", "path": "/docs/text/json-support.md"},
         {"title": "Markdown Parser", "header-file": "ply-markdown.h", "path": "/docs/text/markdown-parser.md"},
         {"title": "C++ Parser", "header-file": "ply-cpp.h", "path": "/docs/text/cpp-parser.md"},
-        {"title": "Generic Tokenizer", "header-file": "ply-tokenizer.h", "path": "/docs/text/tokenizer.md"}
+        {"title": "Tokenizer", "header-file": "ply-tokenizer.h", "path": "/docs/text/tokenizer.md"}
     ]},
-    {"title": "Agent API", "header-file": "ply-agent.h", "path": "/docs/agent.md"},
+    {"title": "Agent Harness", "header-file": "ply-agent.h", "path": "/docs/agent-harness.md"},
     {"title": "Sample Applications", "path": "/docs/sample-apps/index.md", "children": [
         {"title": "Agent", "header-file": "agent", "path": "/docs/sample-apps/agent.md"},
         {"title": "Banner Comment", "header-file": "banner-comment", "path": "/docs/sample-apps/banner-comment.md"},

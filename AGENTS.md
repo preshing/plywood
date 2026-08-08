@@ -9,7 +9,7 @@ Additional components for 2D/3D math, networking and text parsing are also inclu
 **Directory Structure**:
 - `src/` - Contains pairs of `.h`/`.cpp` files organized by feature category.
   Projects can compile and link with only the features they need.
-    - `ply-base.h/cpp` - Core: OS access, data structures, string formatting, Unicode conversion, threading, memory
+    - `ply-system.h/cpp` - Core: OS access, data structures, string formatting, Unicode conversion, threading, memory
     - `ply-math.h/cpp` - Vectors, matrices, quaternions for graphics and layout
     - `ply-network.h/cpp` - TCP/IP networking (IPv4/IPv6)
     - `ply-json.h/cpp` - JSON parser/serializer
@@ -17,7 +17,7 @@ Additional components for 2D/3D math, networking and text parsing are also inclu
     - `ply-markdown.h/cpp` - Markdown parser with HTML output
     - `ply-cpp.h/cpp` - Experimental C++ parser
 - `apps/` - Sample applications. Each subdirectory contains a `CMakeLists.txt` file to build the app.
-    - `test-suite` - Combined base, Unicode loading, Markdown, C++ parser and heap fragmentation test suites
+    - `test-suite` - Combined system, Unicode loading, Markdown, C++ parser and heap fragmentation test suites
     - `banner-comment` - Converts its argument to a banner-style comment using Unicode block characters
     - `generate-docs` - Converts the documentation to HTML files written to `docs/build/`
     - `serve-docs` - Runs an HTTP server to serve the generated documentation on port 8080
@@ -48,7 +48,7 @@ On Windows, CMake will generate a multi-configuration Visual Studio solution by 
 Your assistance in updating existing code to become more compliant would be appreciated.
 Feel free to improve any existing code that you end up touching!)
 
-- Minimize use of the C/C++ Standard Library; prefer using the Plywood base API instead.
+- Minimize use of the C/C++ Standard Library; prefer using the Plywood system API instead.
 - C++14 feature limit.
 - Follow the same coding style as existing code in the `src` folder.
     - Types use PascalCase; functions and variables use camelCase.
@@ -72,9 +72,9 @@ Feel free to improve any existing code that you end up touching!)
 - Avoid adding too many small helper functions. Prefer to use direct C++ expressions when the meaning of those expression is clear from the surrounding comments.
 - When the body of an `if` statement consists of exactly one `continue`, `return`, or `break` statement, omit curly braces.
 
-## Overview of `ply-base.h`
+## Overview of `ply-system.h`
 
-The `src/ply-base.h` defines the public API of Plywood's base library in a single ~4500-line C++ header file.
+The `src/ply-system.h` defines the public API of Plywood's system library in a single ~4500-line C++ header file.
 All C++ code in the Plywood project should use this API while avoiding the Standard C/C++ Library API.
 
 **Macros** (partial list): 

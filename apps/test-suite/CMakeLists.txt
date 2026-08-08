@@ -15,7 +15,7 @@ include(../../share/common.cmake)
 # Resolve the optional suite directives. Any nonzero directive creates an allowlist;
 # otherwise, zero directives create a denylist and unspecified suites stay enabled.
 set(TEST_DIRECTIVES
-    WITH_BASE_TESTS
+    WITH_SYSTEM_TESTS
     WITH_UNICODE_LOADING_TESTS
     WITH_MARKDOWN_TESTS
     WITH_CPP_TESTS
@@ -58,7 +58,7 @@ if(NUM_ENABLED_TEST_SUITES EQUAL 0)
 endif()
 
 # Add only the Plywood components required by the enabled suites and command-line parser.
-set(PLYWOOD_COMPONENTS ply-base.* ply-json.* ply-math.* ply-reflect.* ply-tokenizer.*)
+set(PLYWOOD_COMPONENTS ply-system.* ply-json.* ply-math.* ply-reflect.* ply-tokenizer.*)
 if(WITH_MARKDOWN_TESTS_ENABLED)
     list(APPEND PLYWOOD_COMPONENTS ply-markdown.*)
 endif()
@@ -76,8 +76,8 @@ endif()
 
 # Add only the test-suite sources supported by this configuration.
 set(TEST_SUITE_SOURCE_PATTERNS main.cpp)
-if(WITH_BASE_TESTS_ENABLED OR WITH_UNICODE_LOADING_TESTS_ENABLED)
-    list(APPEND TEST_SUITE_SOURCE_PATTERNS base-tests.cpp run-base-tests.cpp run-base-tests.h)
+if(WITH_SYSTEM_TESTS_ENABLED OR WITH_UNICODE_LOADING_TESTS_ENABLED)
+    list(APPEND TEST_SUITE_SOURCE_PATTERNS system-tests.cpp run-system-tests.cpp run-system-tests.h)
 endif()
 if(WITH_MARKDOWN_TESTS_ENABLED)
     list(APPEND TEST_SUITE_SOURCE_PATTERNS markdown-tests.cpp)
@@ -99,7 +99,7 @@ target_link_libraries(test-suite PRIVATE plywood)
 target_compile_definitions(test-suite PRIVATE
     TEST_SUITE_PATH="${CMAKE_CURRENT_LIST_DIR}"
     BUILD_DIR="${CMAKE_BINARY_DIR}"
-    WITH_BASE_TESTS=${WITH_BASE_TESTS_ENABLED}
+    WITH_SYSTEM_TESTS=${WITH_SYSTEM_TESTS_ENABLED}
     WITH_UNICODE_LOADING_TESTS=${WITH_UNICODE_LOADING_TESTS_ENABLED}
     WITH_MARKDOWN_TESTS=${WITH_MARKDOWN_TESTS_ENABLED}
     WITH_CPP_TESTS=${WITH_CPP_TESTS_ENABLED}

@@ -73,11 +73,11 @@
     margin-bottom: 32px;
 }
 
-.front-contents .include-base {
+.front-contents .include-system {
     margin-bottom: 8px;
 }
 
-.front-contents .include-base code {
+.front-contents .include-system code {
     display: inline-block;
     background-color: var(--bg-code-block);
     font-size: 19px;
@@ -85,11 +85,11 @@
     color: var(--text-code);
 }
 
-.front-contents .base-summary {
+.front-contents .system-summary {
     margin-bottom: 10px;
 }
 
-.front-contents .base-features {
+.front-contents .system-features {
     display: flex;
     width: fit-content;
     gap: 26px;
@@ -98,7 +98,7 @@
     font-size: 14px;
 }
 
-.front-contents .base-features ul {
+.front-contents .system-features ul {
     margin-left: 18px;
     margin-bottom: 0px;
     line-height: 1.25;

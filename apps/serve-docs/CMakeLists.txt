@@ -13,7 +13,7 @@ project(serve-docs)
 include(../../share/common.cmake)
 
 # Add plywood
-add_plywood(ply-base.* ply-network.*)
+add_plywood(ply-system.* ply-network.*)
 target_compile_definitions(plywood PUBLIC PLY_WITH_HTTP_SERVER=1)
 
 # Add serve-docs

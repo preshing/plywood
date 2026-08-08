@@ -7,8 +7,8 @@
 
 #include <ply-reflect.h>
 
-#if WITH_BASE_TESTS || WITH_UNICODE_LOADING_TESTS
-#include "run-base-tests.h"
+#if WITH_SYSTEM_TESTS || WITH_UNICODE_LOADING_TESTS
+#include "run-system-tests.h"
 #endif
 
 using namespace ply;
@@ -28,7 +28,7 @@ bool runFragmentationTest();
 
 // Stores the options recognized by CommandLineParser.
 struct CommandLineOptions {
-    bool runBase = false;
+    bool runSystem = false;
     bool runUnicode = false;
     bool runMarkdown = false;
     bool runCpp = false;
@@ -41,7 +41,7 @@ struct CommandLineOptions {
 
 // Identifies a test suite and distinguishes normal C++ tests from golden-file generation.
 enum class TestSuite {
-    Base,
+    System,
     Unicode,
     Markdown,
     Cpp,
@@ -55,8 +55,8 @@ static void printUsage(StringView executablePath) {
     Stream err = getStdErr();
     err.format("Usage: {} <options>\n", executablePath);
     err.write("Options may be combined and run in command-line order:\n");
-#if WITH_BASE_TESTS
-    err.write("  -base       Run the base test suite\n");
+#if WITH_SYSTEM_TESTS
+    err.write("  -system     Run the system test suite\n");
 #endif
 #if WITH_UNICODE_LOADING_TESTS
     err.write("  -unicode    Run the Unicode file loading test suite\n");
@@ -80,7 +80,7 @@ static void printUsage(StringView executablePath) {
 // Returns the logical suite index used to reject duplicate selections.
 static u32 getLogicalSuiteIndex(TestSuite suite) {
     switch (suite) {
-        case TestSuite::Base:
+        case TestSuite::System:
             return 0;
         case TestSuite::Unicode:
             return 1;
@@ -101,10 +101,10 @@ static u32 getLogicalSuiteIndex(TestSuite suite) {
 // Runs one selected suite and returns its pass/fail result.
 static bool runTestSuite(TestSuite suite) {
     switch (suite) {
-#if WITH_BASE_TESTS
-        case TestSuite::Base:
-            getStdOut().write("\nBase tests\n");
-            return runBaseTests();
+#if WITH_SYSTEM_TESTS
+        case TestSuite::System:
+            getStdOut().write("\nSystem tests\n");
+            return runSystemTests();
 #endif
 #if WITH_UNICODE_LOADING_TESTS
         case TestSuite::Unicode:
@@ -150,8 +150,8 @@ int main(int argc, const char* argv[]) {
     // Let CommandLineParser validate the complete set of compiled-in options.
     CommandLineOptions options;
     CommandLineParser parser({
-#if WITH_BASE_TESTS
-        {"-base", PLY_LOOKUP_MEMBER(CommandLineOptions, runBase), "Run the base tests"},
+#if WITH_SYSTEM_TESTS
+        {"-system", PLY_LOOKUP_MEMBER(CommandLineOptions, runSystem), "Run the system tests"},
 #endif
 #if WITH_UNICODE_LOADING_TESTS
         {"-unicode", PLY_LOOKUP_MEMBER(CommandLineOptions, runUnicode), "Run Unicode file loading tests"},
@@ -184,8 +184,8 @@ int main(int argc, const char* argv[]) {
             printUsage(argv[0]);
             return 1;
         }
-#if WITH_BASE_TESTS
-        suites.append(TestSuite::Base);
+#if WITH_SYSTEM_TESTS
+        suites.append(TestSuite::System);
 #endif
 #if WITH_UNICODE_LOADING_TESTS
         suites.append(TestSuite::Unicode);
@@ -207,8 +207,8 @@ int main(int argc, const char* argv[]) {
         for (int i = 1; i < argc; i++) {
             StringView arg = argv[i];
             TestSuite suite;
-            if (arg == "-base") {
-                suite = TestSuite::Base;
+            if (arg == "-system") {
+                suite = TestSuite::System;
             } else if (arg == "-unicode") {
                 suite = TestSuite::Unicode;
             } else if (arg == "-markdown") {
@@ -252,7 +252,7 @@ int main(int argc, const char* argv[]) {
 }
 
 PLY_STRUCT_BEGIN(CommandLineOptions)
-PLY_STRUCT_MEMBER(runBase)
+PLY_STRUCT_MEMBER(runSystem)
 PLY_STRUCT_MEMBER(runUnicode)
 PLY_STRUCT_MEMBER(runMarkdown)
 PLY_STRUCT_MEMBER(runCpp)

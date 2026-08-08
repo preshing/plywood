@@ -13,7 +13,7 @@ project(banner-comment)
 include(../../share/common.cmake)
 
 # Add plywood
-add_plywood(ply-base.*)
+add_plywood(ply-system.*)
 
 # Add banner-comment
 add_source_files(BANNER_COMMENT_SOURCES "${CMAKE_CURRENT_LIST_DIR}" banner-comment.cpp)

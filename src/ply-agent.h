@@ -4,7 +4,7 @@
     ╱   ╱╲     https://plywood.dev/
    ╱___╱╭╮╲   
     └──┴┴┴┘    # Agent Harness
-               See documentation at: docs/agent.md
+               See documentation at: docs/agent-harness.md
 
 ========================================================*/
 
