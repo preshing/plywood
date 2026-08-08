@@ -1,7 +1,7 @@
 ﻿`ply-base.h`: Base API
 ======================
 
-`ply-base.h` contains the base [application programming interface (API)](https://en.wikipedia.org/wiki/API) of the Plywood C++ runtime library. It provides access to clocks, filesystems, processes, threads, virtual memory and basic data containers. All other header files in the library include this one.
+`ply-base.h` is where Plywood's central [application programming interface (API)](https://en.wikipedia.org/wiki/API) is defined. This file provides cross-platform access to timers, filesystems, processes, threads, virtual memory and basic data containers. All other header files in Plywood depend on this one.
 
 [diagram: plywood-include-graph]
 
