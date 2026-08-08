@@ -322,20 +322,16 @@ void flattenPages(Array<const json::Node*>& pages, const json::Node& items) {
 void generateTableOfContentsHtml(Stream& out, const json::Node& items) {
     for (const json::Node& item : items.arrayView()) {
         const json::Node& children = item.get("children");
-        StringView spanClass;
-        if (children.isValid()) {
-            spanClass = " class=\"caret caret-down\"";
-        }
         String headerFile;
         if (item.get("header-file").isValid()) {
             headerFile =
                 String::format(" <span class=\"toc-header\">&lt;{:&}&gt;</span>", item.get("header-file").text());
         }
         String url = convertDocsPathToURL(item.get("path").text());
-        out.format("<a href=\"{}\"><li class=\"selectable\"><span{}>{:&}</span>{}</li></a>", url, spanClass,
+        out.format("<a href=\"{}\"><li class=\"selectable\"><span>{:&}</span>{}</li></a>", url,
                    item.get("title").text(), headerFile);
         if (children.isValid()) {
-            out.write("<ul class=\"nested active\">");
+            out.write("<ul>");
             generateTableOfContentsHtml(out, children);
             out.write("</ul>");
         }

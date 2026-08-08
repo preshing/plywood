@@ -1,7 +1,5 @@
 // doc-viewer.js - Documentation-specific interactive features
-// Features:
-//   1. Collapsible sidebar table of contents
-//   2. AJAX page loading with caching and history management
+// Feature: AJAX page loading with caching and history management
 // Note: Common features (theme toggle, hamburger menu) are in common.js
 
 var directory = null;
@@ -12,14 +10,6 @@ var pageCache = [];
 var currentRequest = null;
 var currentLoadingTimer = null;
 var spinnerShown = false;
-
-// Cleanup handler after CSS height transition ends
-function onEndTransition(evt) {
-    this.removeEventListener('transitionend', onEndTransition);
-    this.style.removeProperty('display');
-    this.style.removeProperty('transition');
-    this.style.removeProperty('height');
-}
 
 //------------------------------------
 // AJAX Page Loading
@@ -132,11 +122,6 @@ function navigateTo(dstPath, forward, pageYOffset) {
     }, 750);
 }
 
-// Check if a point is inside a rectangle
-function rectContains(rect, x, y) {
-    return rect.left <= x && x < rect.right && rect.top <= y && y < rect.bottom;
-}
-
 // Highlight the current page in the sidebar
 function updateSelectedItem(path) {
     if (!directory) return;
@@ -178,45 +163,7 @@ function replaceLinks(root) {
         var a = links[i];
         var href = a.getAttribute('href');
         if (href && href.substr(0, 6) === '/docs/') {
-            a.onclick = function(evt) {
-                // Check if this link contains a caret (collapsible TOC entry)
-                var caretSpan = this.querySelector('span.caret');
-                if (caretSpan) {
-                    // Check if click was on the caret arrow area
-                    var spanRect = caretSpan.getBoundingClientRect();
-                    var inflate = 8;
-                    // The caret ::before is positioned at left: -19px, and is about 11px wide
-                    var caretRect = {
-                        left: spanRect.left - 19 - inflate,
-                        top: spanRect.top - inflate,
-                        right: spanRect.left - 8 + inflate,
-                        bottom: spanRect.bottom + inflate
-                    };
-                    if (rectContains(caretRect, evt.clientX, evt.clientY)) {
-                        // Click was on caret - toggle expand/collapse only
-                        var childList = this.nextElementSibling;
-                        if (childList && childList.tagName === 'UL') {
-                            if (caretSpan.classList.contains('caret-down')) {
-                                // Collapse
-                                caretSpan.classList.remove('caret-down');
-                                childList.classList.remove('active');
-                            } else {
-                                // Expand
-                                caretSpan.classList.add('caret-down');
-                                childList.classList.add('active');
-                            }
-                        }
-                        return false; // Don't navigate
-                    }
-                }
-                // Click was on text - expand if not already expanded, then navigate
-                var childList = this.nextElementSibling;
-                if (childList && childList.tagName === 'UL') {
-                    if (!caretSpan.classList.contains('caret-down')) {
-                        caretSpan.classList.add('caret-down');
-                        childList.classList.add('active');
-                    }
-                }
+            a.onclick = function() {
                 savePageState();
                 navigateTo(this.getAttribute('href'), true, 0);
                 cancelPopupMenu();
