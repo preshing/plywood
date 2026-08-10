@@ -4,7 +4,7 @@
 Plywood provides two families of functions for working with time and dates.
 
 * **Unix timestamps** are used to obtain the current system time and convert it to a human-readable format.
-* The **high-resolution timer** is used to measure the elapsed time between two points in code. Useful for profiling and animation.
+* The **performance timer** is used to measure the elapsed time between two points in code. Useful for profiling and animation.
 
 ## Unix Timestamps
 
@@ -74,22 +74,19 @@ The date is Monday, December 1, 2025.
 The time is 7:00 PM (UTC-05:00).
 {/output}
 
-## High-Resolution Timer
+## Performance Timer
 
-The high resolution timer gives precise CPU timing measurements with minimum runtime overhead, letting you accurately measure the elapsed time between two points in code. These functions are typically thin wrappers over equivalent functions in the underlying platform SDK.
+The performance timer takes precise CPU timing measurements using the CPU's internal clock. Timestamps are measured in CPU ticks, a system-specific unit of time.
 
 `u64 getCpuTicks()`
-> Returns a high-resolution CPU timestamp.
+> Returns the current timestamp, measured in CPU ticks.
 
 `float getCpuTicksPerSecond()`
-> Returns the high-resolution timer frequency. To measure a time interval in seconds, subtract two timestamps and divide the result by this value.
+> Returns the number of CPU ticks per second on the current system. To measure a time interval in seconds, subtract two timestamps and divide the result by this value.
 
-    u64 startTick = getCpuTicks();
+    u64 startTimeStamp = getCpuTicks();
     doSomeWork();
-    u64 endTick = getCpuTicks();
-    float duration = (endTick - startTick) / getCpuTicksPerSecond();
+    u64 endTimeStamp = getCpuTicks();
+    float duration = (endTimeStamp - startTimeStamp) / getCpuTicksPerSecond();
     getStdOut().write("{} seconds elapsed.\n", duration);
-
-{output}
-1.234 seconds elapsed.
-{/output}
+    // Output: 1.234 seconds elapsed.

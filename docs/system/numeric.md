@@ -3,7 +3,7 @@ Numeric Functions and Types (`ply-system.h`)
 
 Plywood defines the following explicily-sized integer types, similar to `<stdint.h>` from the C standard library. These types are used internally throughout Plywood.
 
-### Fixed-Sized Integers
+### Numeric Types
 
 | | |
 | --- | --- |
@@ -16,8 +16,6 @@ Plywood defines the following explicily-sized integer types, similar to `<stdint
 | `u32` | Unsigned 32-bit integer |
 | `u64` | Unsigned 64-bit integer |
 
-### Pointer-Sized Integers
-
 These are equivalent to `ptrdiff_t`/`size_t` from the C standard library. They're defined as `s64`/`u64` in 64-bit environments and `s32`/`u32` in 32-bit environments such as WebAssembly.
 
 | | |
@@ -27,7 +25,7 @@ These are equivalent to `ptrdiff_t`/`size_t` from the C standard library. They'r
 
 Plywood defines the following primitive numeric functions.
 
-### Limits
+### Numeric Limits
 
 `template <typename Type> Type getMinValue()`
 `template <typename Type> Type getMaxValue()`
@@ -37,7 +35,7 @@ Plywood defines the following primitive numeric functions.
 > float value = getMinValue<float>();  // returns -3.402823466e+38f
 > ```
 
-### Adjusting Values
+### Primitive Functions
 
 `template <typename Type> Type abs(Type value)`
 > Returns the absolute value of any integer or floating-point value.
@@ -83,7 +81,7 @@ Plywood defines the following primitive numeric functions.
 >
 > These days, nearly every platform is little-endian, so these functions aren't often needed. The main use for these functions today is to work with [networking APIs](/docs/networking.md), where certain arguments are expected in big-endian order.
 
-### Power-of-2 Alignment
+### Alignment
 
 `u32 isPowerOf2(u32 value)`
 `u64 isPowerOf2(u64 value)`
@@ -101,7 +99,7 @@ Plywood defines the following primitive numeric functions.
 `u64 roundUpToNearestPowerOf2(u64 value)`
 > Rounds `value` up to the nearest power of 2.
 
-### Numeric Casts With Bounds Checking
+### Numeric Casts
 
 `template <typename DstType, typename SrcType> bool isRepresentable(SrcType value)`
 > Returns `true` if `value` can be represented by the destination type `DstType`; `false` otherwise.

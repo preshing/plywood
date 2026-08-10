@@ -17,6 +17,15 @@ String docsFolder = joinPath(PLYWOOD_ROOT_DIR, "docs");
 String outFolder = joinPath(PLYWOOD_ROOT_DIR, "docs/build");
 json::Node contents;
 u32 publishKey = 0; // Prevent browsers from caching old stylesheets
+
+// Describes one article heading included in its expanded sidebar entry.
+struct PageHeading {
+    u32 level = 0;
+    String id;
+    String titleHtml;
+};
+
+// Tracks generated output so unchanged files can be preserved and obsolete files removed.
 struct GenerationStats {
     Set<String> generatedPaths;
     u32 numUpdated = 0;
@@ -181,11 +190,97 @@ void printApiDeclarationsAsTitle(Stream& out, StringView className, const Array<
     }
 }
 
+// Writes the plain-text contribution of one inline span for use in navigation labels and fragment IDs.
+void writeHeadingText(Stream& out, const markdown::Span* span) {
+    if (auto* text = span->var.as<markdown::Span::Text>()) {
+        out.write(text->text);
+    } else if (auto* code = span->var.as<markdown::Span::Code>()) {
+        out.write(code->text);
+    } else if (span->var.is<markdown::Span::SoftBreak>() || span->var.is<markdown::Span::HardBreak>()) {
+        out.write(' ');
+    } else if (const markdown::Span::Container* container = span->asContainer()) {
+        for (const markdown::Span* child : container->childSpans) {
+            writeHeadingText(out, child);
+        }
+    }
+}
+
+// Creates a unique, readable fragment ID from a heading title.
+String makeHeadingID(StringView title, const Array<PageHeading>& existingHeadings) {
+    String lowerTitle = title.lower();
+    MemStream out;
+    bool needSeparator = false;
+    for (u32 i = 0; i < title.numBytes(); i++) {
+        char c = title[i];
+        if (!isAlpha(c) && !isDigit(c)) {
+            needSeparator = out.getSeekPos() > 0;
+            continue;
+        }
+
+        // Split camel-case words while keeping initialisms such as HTTP together.
+        bool isUpper = isAlpha(c) && (c != lowerTitle[i]);
+        bool previousIsLower = (i > 0) && isAlpha(title[i - 1]) && (title[i - 1] == lowerTitle[i - 1]);
+        bool previousIsUpper = (i > 0) && isAlpha(title[i - 1]) && (title[i - 1] != lowerTitle[i - 1]);
+        bool nextIsLower = (i + 1 < title.numBytes()) && isAlpha(title[i + 1]) &&
+                           (title[i + 1] == lowerTitle[i + 1]);
+        bool startsWord = isUpper && (previousIsLower || (previousIsUpper && nextIsLower));
+        if ((needSeparator || startsWord) && (out.getSeekPos() > 0)) {
+            out.write('-');
+        }
+        needSeparator = false;
+        out.write(lowerTitle[i]);
+    }
+    String baseID = out.moveToString();
+    if (!baseID) {
+        baseID = "section";
+    }
+
+    // Add a numeric suffix when a page repeats the same heading title.
+    String id = baseID;
+    for (u32 suffix = 1;; suffix++) {
+        bool found = false;
+        for (const PageHeading& heading : existingHeadings) {
+            if (heading.id == id) {
+                found = true;
+                break;
+            }
+        }
+        if (!found)
+            return id;
+        id = String::format("{}-{}", baseID, suffix);
+    }
+}
+
+// Assigns fragment IDs to level 2-3 headings and records them for the sidebar table of contents.
+void collectPageHeadings(markdown::Block* block, Array<PageHeading>& headings) {
+    if (auto* heading = block->var.as<markdown::Block::Heading>()) {
+        if ((heading->level == 2) || (heading->level == 3)) {
+            MemStream titleOut;
+            for (const markdown::Span* span : heading->spans) {
+                writeHeadingText(titleOut, span);
+            }
+            String title = titleOut.moveToString().trim();
+            heading->id = makeHeadingID(title, headings);
+            MemStream htmlOut;
+            markdown::HTMLOptions options;
+            for (const markdown::Span* span : heading->spans) {
+                markdown::convertSpanToHtml(&htmlOut, span, options);
+            }
+            headings.append({heading->level, heading->id, htmlOut.moveToString()});
+        }
+    }
+    if (markdown::Block::Inner* inner = block->asInner()) {
+        for (markdown::Block* child : inner->childBlocks) {
+            collectPageHeadings(child, headings);
+        }
+    }
+}
+
 // Buffers parsed markdown blocks and emits special API description structures when detected.
 class MarkdownBlockProcessor {
 public:
     // Creates a block processor that writes converted output to the supplied stream.
-    MarkdownBlockProcessor(Stream& out) : out{out} {
+    MarkdownBlockProcessor(Stream& out, Array<PageHeading>& headings) : out{out}, headings{headings} {
         this->options.filterLinks = convertDocsPathToURL;
     }
 
@@ -211,6 +306,7 @@ public:
 
 private:
     Stream& out;
+    Array<PageHeading>& headings;
     markdown::HTMLOptions options;
     Owned<markdown::Parser> parser = markdown::createParser(markdown::ParseOptions::githubFlavored());
     Array<Owned<markdown::Block>> pendingBlocks;
@@ -251,6 +347,11 @@ private:
 
     // Emits all pending blocks, converting matching paragraph+blockquote runs to api_defs HTML.
     void emitPendingBlocks() {
+        // Collect navigation entries before special API-description blocks consume the pending range.
+        for (markdown::Block* block : this->pendingBlocks) {
+            collectPageHeadings(block, this->headings);
+        }
+
         u32 index = 0;
         while (index < this->pendingBlocks.numItems()) {
             if ((index + 1 < this->pendingBlocks.numItems()) &&
@@ -267,8 +368,8 @@ private:
 };
 
 // Parses an entire documentation markdown file with custom section directives.
-void parseMarkdown(Stream& out, ViewStream& in) {
-    MarkdownBlockProcessor blockProcessor{out};
+void parseMarkdown(Stream& out, ViewStream& in, Array<PageHeading>& headings) {
+    MarkdownBlockProcessor blockProcessor{out, headings};
     while (StringView line = readLine(in)) {
         ViewStream lineIn{line};
         StringView cmd;
@@ -319,27 +420,53 @@ void flattenPages(Array<const json::Node*>& pages, const json::Node& items) {
 }
 
 // Renders nested table-of-contents entries as HTML list markup.
-void generateTableOfContentsHtml(Stream& out, const json::Node& items) {
+void generateTableOfContentsHtml(Stream& out, const json::Node& items,
+                                 const Map<const json::Node*, Array<PageHeading>>& pageHeadings, u32 depth = 0) {
     for (const json::Node& item : items.arrayView()) {
         const json::Node& children = item.get("children");
+        const Array<PageHeading>* headings = pageHeadings.find(&item);
+        PLY_ASSERT(headings);
         String headerFile;
         if (item.get("header-file").isValid()) {
             headerFile =
                 String::format(" <span class=\"toc-header\">&lt;{:&}&gt;</span>", item.get("header-file").text());
         }
         String url = convertDocsPathToURL(item.get("path").text());
-        out.format("<a href=\"{}\"><li class=\"selectable\"><span>{:&}</span>{}</li></a>", url,
-                   item.get("title").text(), headerFile);
-        if (children.isValid()) {
-            out.write("<ul>");
-            generateTableOfContentsHtml(out, children);
+        out.format("<li class=\"toc-entry toc-depth-{}\"><div class=\"toc-page\">"
+                   "<a class=\"toc-page-link\" href=\"{}\"><span>{:&}</span>{}</a>",
+                   min(depth, 5u), url, item.get("title").text(), headerFile);
+        if (*headings) {
+            bool hasLevel2 = false;
+            for (const PageHeading& heading : *headings) {
+                if (heading.level == 2) {
+                    hasLevel2 = true;
+                    break;
+                }
+            }
+
+            // Show H2 headings when present; otherwise promote the page's H3 headings to the same TOC level.
+            out.write("<ul class=\"toc-sections\">");
+            for (const PageHeading& heading : *headings) {
+                if (hasLevel2 && (heading.level == 3))
+                    continue;
+                out.format("<li class=\"toc-section\"><a href=\"{}#{:&}\">{}</a></li>", url, heading.id,
+                           heading.titleHtml);
+            }
             out.write("</ul>");
         }
+        out.write("</div>");
+        if (children.isValid()) {
+            out.write("<ul class=\"toc-children\">");
+            generateTableOfContentsHtml(out, children, pageHeadings, depth + 1);
+            out.write("</ul>");
+        }
+        out.write("</li>");
     }
 }
 
 // Converts one contents.json entry into the generated documentation page HTML.
-void convertPage(const json::Node& item, const json::Node* prevPage, const json::Node* nextPage) {
+void convertPage(const json::Node& item, const json::Node* prevPage, const json::Node* nextPage,
+                 Array<PageHeading>& headings) {
     // Resolve the repo-root-relative source path while preserving its old generated-file location.
     StringView docsPath = item.get("path").text();
     PLY_ASSERT(docsPath.startsWith("/docs/") && docsPath.endsWith(".md"));
@@ -348,7 +475,7 @@ void convertPage(const json::Node& item, const json::Node* prevPage, const json:
     String markdown = Filesystem::loadTextAutodetect(markdownPath);
     ViewStream in{markdown};
     MemStream mem;
-    parseMarkdown(mem, in);
+    parseMarkdown(mem, in, headings);
     String articleContent = mem.moveToString();
     String pageTitle = item.get("title").text();
 
@@ -415,20 +542,25 @@ void generateWholeSite() {
     appendPublishKeyToAsset(templateText, "/static/doc-viewer.js");
     writeFileIfChanged(joinPath(outFolder, "content/docs-template.html"), templateText);
 
-    // Parse contents.json and generate table of contents HTML.
+    // Parse contents.json and flatten its pages into navigation order.
     contents = parseJson(joinPath(docsFolder, "contents.json"));
-    MemStream tocStream;
-    generateTableOfContentsHtml(tocStream, contents);
-    writeFileIfChanged(joinPath(outFolder, "content/toc.html"), tocStream.moveToString());
-
-    // Traverse contents.json and generate pages in content/docs/.
     Array<const json::Node*> pages;
     flattenPages(pages, contents);
+
+    // Generate pages while collecting their level 2-3 headings for the sidebar.
+    Map<const json::Node*, Array<PageHeading>> pageHeadings;
     for (u32 i = 0; i < pages.numItems(); i++) {
         const json::Node* prevPage = (i > 0) ? pages[i - 1] : nullptr;
         const json::Node* nextPage = (i + 1 < pages.numItems()) ? pages[i + 1] : nullptr;
-        convertPage(*pages[i], prevPage, nextPage);
+        auto insertResult = pageHeadings.insert(pages[i]);
+        PLY_ASSERT(!insertResult.wasFound);
+        convertPage(*pages[i], prevPage, nextPage, *insertResult.value);
     }
+
+    // Generate the table of contents after all per-page heading metadata is available.
+    MemStream tocStream;
+    generateTableOfContentsHtml(tocStream, contents, pageHeadings);
+    writeFileIfChanged(joinPath(outFolder, "content/toc.html"), tocStream.moveToString());
 
     // Delete files left behind by pages or assets that are no longer generated.
     if (Filesystem::isDir(outFolder)) {

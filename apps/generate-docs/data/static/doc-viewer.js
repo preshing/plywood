@@ -126,8 +126,8 @@ function navigateTo(dstPath, forward, pageYOffset) {
 function updateSelectedItem(path) {
     if (!directory) return;
 
-    // Remove existing selection
-    var selected = directory.querySelector('li.selected');
+    // Collapse the previously selected page and its section links.
+    var selected = directory.querySelector('.toc-page.selected');
     if (selected) {
         selected.classList.remove('selected');
     }
@@ -141,15 +141,14 @@ function updateSelectedItem(path) {
         path = path.substr(0, path.length - 1);
     }
 
-    // Find matching link in sidebar and select its TOC <li>.
-    // Some non-TOC links (for example, mobile nav "DOCS") can share the same href.
-    var links = directory.getElementsByTagName('a');
+    // Find the matching page link and expand its enclosing TOC group.
+    var links = directory.getElementsByClassName('toc-page-link');
     for (var i = 0; i < links.length; i++) {
         var href = links[i].getAttribute('href');
         if (href === path) {
-            var li = links[i].querySelector('li');
-            if (li) {
-                li.classList.add('selected');
+            var page = links[i].parentNode;
+            if (page && page.classList.contains('toc-page')) {
+                page.classList.add('selected');
                 break;
             }
         }
@@ -162,7 +161,8 @@ function replaceLinks(root) {
     for (var i = 0; i < links.length; i++) {
         var a = links[i];
         var href = a.getAttribute('href');
-        if (href && href.substr(0, 6) === '/docs/') {
+        if (href && ((href === '/docs') || (href.substr(0, 6) === '/docs/') ||
+                     (href.substr(0, 6) === '/docs#'))) {
             a.onclick = function() {
                 savePageState();
                 navigateTo(this.getAttribute('href'), true, 0);

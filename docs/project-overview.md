@@ -13,7 +13,7 @@ Plywood is organized into 9 main components:
 - [C++ Parser](/docs/text/cpp-parser.md): Parse C++ source code and generate syntax trees.
 - [Agent Harness](/docs/agent-harness.md): Spawn LLM agents with local tool access using remote inference providers.
 
-## Directory Structure
+## Directory Layout
 
     plywood/
     ├── apps/

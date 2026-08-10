@@ -219,6 +219,11 @@ struct HTMLOptions {
     Functor<String(StringView)> filterLinks;
 };
 String convertToHtml(StringView src, const ParseOptions& options = {});
+
+// Converts one parsed inline span subtree to HTML.
+void convertSpanToHtml(Stream* outs, const Span* span, const HTMLOptions& options);
+
+// Converts one parsed block subtree to HTML.
 void convertToHtml(Stream* outs, const Block* block, const HTMLOptions& options);
 
 // Debugging

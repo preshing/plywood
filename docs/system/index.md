@@ -17,8 +17,6 @@ You can customize Plywood by defining the following preprocessor macros in your 
 | `PLY_OVERRIDE_NEW` | Overrides the C++ `new` and `delete` operators to allocate from the [Plywood heap](/docs/system/memory-management.md#heap). Default is 1. |
 | `PLY_USE_NEW_ALLOCATOR` | Selects the heap backend. `1` uses Plywood's bespoke allocator, `0` uses legacy dlmalloc. Default is 1. |
 
-### About the Container Types
-
 The C++ language gives you primitive types, pointers and structs. Plywood containers extend that with resizable arrays, associative maps, variants and owned objects, letting you create and manipulate complex data structures using few lines of code.
 
 These containers are flexible, but not the most memory-efficient. In particular, `Map`, `Array` and `Variant` come with plenty of bookkeeping overhead and unused bytes. That said, they're usually more memory-efficient than equivalent Python or JavaScript data structures.
