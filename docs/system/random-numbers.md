@@ -1,5 +1,5 @@
 ﻿Random Numbers (`ply-system.h`)
-=============================
+=========================================
 
 The `Random` class generates pseudorandom integers and floating-point values.
 

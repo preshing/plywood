@@ -1,7 +1,7 @@
 ﻿Strings (`ply-system.h`)
-======================
+========================
 
-Plywood strings are general-purpose blocks of memory allocated from [the heap](/docs/system/memory-management.md#heap). They're often used to manipulate text, but they can store binary data as well. There are three main classes for working with strings:
+Plywood strings are general-purpose blocks of memory allocated from [the heap](/docs/system/memory/heap.md). They're often used to manipulate text, but they can store binary data as well. There are three main classes for working with strings:
 
 * `String` owns a block of memory and frees it when the destructor is called.
 * `StringView` is a read-only view into a block of memory.
@@ -19,7 +19,7 @@ puts((str + '\0').bytes());
 
 These classes aren't thread-safe. Functions that read from the same string can be called concurrently from separate threads, but functions that modify the same string must not be called concurrently.
 
-## Common String Methods
+## Common Methods
 
 The following member functions are implemented in both `String` and `StringView`:
 
@@ -127,7 +127,7 @@ The following member functions are implemented in both `String` and `StringView`
 
 ## `String`
 
-The `String` class owns a block of memory allocated from the [Plywood heap](/docs/system/memory-management.md#heap). The memory is freed when the `String` object is destroyed.
+The `String` class owns a block of memory allocated from the [Plywood heap](/docs/system/memory/heap.md). The memory is freed when the `String` object is destroyed.
 
 `String` objects are movable, copyable and construct to an empty string by default. In addition to the [common string functions](#common) listed in the previous section, they provide the following member functions:
 

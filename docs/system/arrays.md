@@ -1,5 +1,5 @@
 ﻿Arrays (`ply-system.h`)
-=====================
+=======================
 
 Arrays are sequences of items of the same type stored contiguously in memory. Plywood provides three class templates for working with arrays:
 
@@ -15,7 +15,7 @@ When a reference to an array is `const`, all of its items effectively become `co
 
 These classes aren't thread-safe. Functions that read from the same array can be called concurrently from separate threads, but functions that modify the same array must not be called concurrently.
 
-## Common Array Methods
+## Common Methods
 
 The following member functions are implemented for all array classes:
 
@@ -149,7 +149,7 @@ Internally, it's represented as:
 | `u32` | `numItems` |
 | `u32` | `population` |
 
-The items are allocated from [the Plywood heap](/docs/system/memory-management.md#heap). There are some gotchas to watch out for. The allocattion strategy is simple. It allocates memory by powers of 2 but you can trim it by calling `compact()`.
+The items are allocated from [the Plywood heap](/docs/system/memory/heap.md). There are some gotchas to watch out for. The allocattion strategy is simple. It allocates memory by powers of 2 but you can trim it by calling `compact()`.
 
 You don't need to define the type before declaring an Array member variable. But you do need it if instantiating a variable.
 
@@ -183,7 +183,7 @@ The `Array` class template supports default and move constructors as well as mov
 > ```
 
 `static Array<Item> adopt(Item* items, u32 numItems)`
-> Explicitly create an `Array` object from the provided arguments. No memory is allocated and no constructors are called; the returned array simply adopts the provided `items`, which must be allocated from [the Plywood heap](/docs/system/memory-management.md#heap). This memory will be freed when the `Array` is destructed.
+> Explicitly create an `Array` object from the provided arguments. No memory is allocated and no constructors are called; the returned array simply adopts the provided `items`, which must be allocated from [the Plywood heap](/docs/system/memory/heap.md). This memory will be freed when the `Array` is destructed.
 
 ### Additional Assignment Operators
 

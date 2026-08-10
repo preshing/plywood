@@ -404,26 +404,28 @@ html {
 }
 .directory .toc-depth-1 {
     --toc-page-indent: 40px;
+    --toc-section-indent: 58px;
+    --toc-section-line-left: 44px;
 }
 .directory .toc-depth-2 {
     --toc-page-indent: 58px;
+    --toc-section-indent: 76px;
+    --toc-section-line-left: 62px;
 }
 .directory .toc-depth-3 {
     --toc-page-indent: 76px;
+    --toc-section-indent: 92px;
+    --toc-section-line-left: 78px;
 }
 .directory .toc-depth-4 {
     --toc-page-indent: 92px;
+    --toc-section-indent: 112px;
+    --toc-section-line-left: 98px;
 }
 .directory .toc-depth-5 {
     --toc-page-indent: 112px;
-}
-.directory .toc-depth-1,
-.directory .toc-depth-2,
-.directory .toc-depth-3,
-.directory .toc-depth-4,
-.directory .toc-depth-5 {
-    --toc-section-indent: 58px;
-    --toc-section-line-left: 44px;
+    --toc-section-indent: 130px;
+    --toc-section-line-left: 116px;
 }
 .directory .toc-entry > .toc-page > .toc-page-link {
     padding-left: var(--toc-page-indent);

@@ -389,6 +389,41 @@ void flattenPages(Array<const json::Node*>& pages, const json::Node& items) {
     }
 }
 
+// Validates source paths before generation can modify the last successful output.
+bool validatePages(ArrayView<const json::Node*> pages) {
+    Set<String> paths;
+    bool isValid = true;
+
+    // Check the path syntax, uniqueness and corresponding Markdown source for every page.
+    for (const json::Node* item : pages) {
+        const json::Node& pathNode = item->get("path");
+        if (!pathNode.isText()) {
+            getStdErr().format("Documentation page '{:&}' has no text path.\n", item->get("title").text());
+            isValid = false;
+            continue;
+        }
+
+        StringView docsPath = pathNode.text();
+        if (!docsPath.startsWith("/docs/") || !docsPath.endsWith(".md")) {
+            getStdErr().format("Invalid documentation path: {}\n", docsPath);
+            isValid = false;
+            continue;
+        }
+
+        if (paths.insert(String{docsPath}).wasFound) {
+            getStdErr().format("Duplicate documentation path: {}\n", docsPath);
+            isValid = false;
+        }
+
+        String markdownPath = joinPath(PLYWOOD_ROOT_DIR, docsPath.substr(1));
+        if (FileSystem::exists(markdownPath) != ER_FILE) {
+            getStdErr().format("Documentation source does not exist: {}\n", docsPath);
+            isValid = false;
+        }
+    }
+    return isValid;
+}
+
 // Renders nested table-of-contents entries as HTML list markup.
 void generateTableOfContentsHtml(Stream& out, const json::Node& items,
                                  const Map<const json::Node*, Array<PageHeading>>& pageHeadings, u32 depth = 0) {
@@ -479,8 +514,17 @@ json::Node parseJson(StringView path) {
     return json::Parser{}.parse(path, src).root;
 }
 
-// Regenerates the complete documentation site into docs/build.
-void generateWholeSite() {
+// Regenerates the complete documentation site into docs/build if all source pages are valid.
+bool generateWholeSite() {
+    // Parse and validate the page list before modifying any generated output.
+    contents = parseJson(joinPath(docsFolder, "contents.json"));
+    Array<const json::Node*> pages;
+    flattenPages(pages, contents);
+    if (!validatePages(pages))
+        return false;
+
+    // Reset per-pass state after validation succeeds.
+    stats = {};
     publishKey = Random{}.generateU32(); // Prevent browsers from caching old stylesheets
 
     // Copy front page to content/index.html.
@@ -511,11 +555,6 @@ void generateWholeSite() {
     appendPublishKeyToAsset(templateText, "/static/common.js");
     appendPublishKeyToAsset(templateText, "/static/doc-viewer.js");
     writeFileIfChanged(joinPath(outFolder, "content/docs-template.html"), templateText);
-
-    // Parse contents.json and flatten its pages into navigation order.
-    contents = parseJson(joinPath(docsFolder, "contents.json"));
-    Array<const json::Node*> pages;
-    flattenPages(pages, contents);
 
     // Generate pages while collecting their level 2-3 headings for the sidebar.
     Map<const json::Node*, Array<PageHeading>> pageHeadings;
@@ -564,6 +603,7 @@ void generateWholeSite() {
                    stats.numOrphansRemoved == 1 ? "" : "s");
     }
     out.write(".\n");
+    return true;
 }
 
 // Entry point that runs a full generation pass and optional file system watch loop.
@@ -581,7 +621,8 @@ int main(int argc, const char* argv[]) {
         }
     }
 
-    generateWholeSite();
+    if (!generateWholeSite())
+        return 1;
 
     if (watchMode) {
 #if PLY_WITH_DIRECTORY_WATCHER

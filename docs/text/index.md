@@ -1,4 +1,0 @@
-﻿Text-Based Formats
-==================
-
-[TBD]
