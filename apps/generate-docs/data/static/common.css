@@ -289,16 +289,16 @@ html {
     font-family: "robotobold", sans-serif;
     font-size: 31px;
     color: var(--text-heading);
-    margin-top: 50px;
-    margin-bottom: 28px;    
+    margin-top: 32px;
+    margin-bottom: 20px;    
     border-bottom: 1px solid var(--border-secondary);
 }
 .content h3 {
     font-family: "robotobold", sans-serif;
     font-size: 24px;
     color: var(--text-heading);
-    margin-top: 40px;
-    margin-bottom: 19px;    
+    margin-top: 30px;
+    margin-bottom: 11px;    
 }
 .content h1 code {
     font-size: 35px;
@@ -332,7 +332,7 @@ html {
     background-color: var(--bg-code-block);
     overflow-x: auto;
     scrollbar-color: var(--scrollbar-thumb) transparent;
-    line-height: 1.1;
+    line-height: 1.2;
 }
 .content pre::-webkit-scrollbar-thumb {
     background: var(--scrollbar-thumb);
@@ -365,13 +365,11 @@ html {
     color: var(--text-muted);
 }
 .content dl.api_defs dt {
-    margin-bottom: 4px;
-    margin-top: 24px;
-    line-height: 1.2;
+    margin-bottom: 2px;
+    line-height: 1.3333;
 }
 .content dl.api_defs dd {
     margin-left: 32px;
-    margin-bottom: 32px;
 }
 
 /*------------------------------------------------
