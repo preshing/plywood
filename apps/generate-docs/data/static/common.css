@@ -113,7 +113,7 @@ html {
     --text-heading: #567bb0;
     --text-wip: #d73030;
     --text-muted: #909090;
-    --text-code: #7d7d7d;
+    --text-code: #909090;
     --text-code-inline: #909090;
 
     --link-color: #269eff;
@@ -326,7 +326,7 @@ html {
 }
 .content pre {
     font-family: "jetbrains_mono", monospace;
-    padding: 6px 8px 4px;
+    padding: 8px 10px;
     margin-bottom: 1.5em;
     color: var(--text-code);
     background-color: var(--bg-code-block);
