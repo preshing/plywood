@@ -59,8 +59,8 @@ void readToolHandler(ToolContext* toolCtx, Transcript::Message* toolCall, const 
     }
 
     // Open file.
-    Stream in = Filesystem::openTextForReadAutodetect(fp.absPath);
-    if (Filesystem::lastResult() != FS_OK) {
+    Stream in = FileSystem::openTextForReadAutodetect(fp.absPath);
+    if (FileSystem::lastResult() != FS_OK) {
         toolCtx->appendResponse(toolCall, String::format("Error: Could not read file '{}'.", path));
         return;
     }
@@ -155,7 +155,7 @@ void writeToolHandler(ToolContext* toolCtx, Transcript::Message* toolCall, const
 
     // Save file.
     StringView content = contentArg.text();
-    FSResult fsResult = Filesystem::saveText(fp.absPath, content);
+    FSResult fsResult = FileSystem::saveText(fp.absPath, content);
     if (fsResult == FS_OK) {
         toolCtx->appendResponse(toolCall,
                                 String::format("Successfully wrote {} bytes to '{}'.", content.numBytes(), path));
@@ -206,8 +206,8 @@ void listDirToolHandler(ToolContext* toolCtx, Transcript::Message* toolCall, con
     }
 
     // List directory.
-    Array<DirectoryEntry> entries = Filesystem::listDir(fp.absPath);
-    if (Filesystem::lastResult() != FS_OK) {
+    Array<DirectoryEntry> entries = FileSystem::listDir(fp.absPath);
+    if (FileSystem::lastResult() != FS_OK) {
         toolCtx->appendResponse(toolCall, String::format("Error: Could not list '{}'.", path));
         return;
     }
@@ -319,7 +319,7 @@ GitIgnoreContents loadGitIgnoreForDirectory(StringView absDirPath) {
     PLY_ASSERT(isAbsolutePath(absDirPath));
 
     String gitIgnorePath = joinPath(absDirPath, ".gitignore");
-    String text = Filesystem::loadTextAutodetect(gitIgnorePath);
+    String text = FileSystem::loadTextAutodetect(gitIgnorePath);
     if (!text)
         return {};
 
@@ -366,7 +366,7 @@ Array<GitIgnoreContents> loadAllAncestorGitIgnoreFiles(StringView absDirPath) {
         // Walk up to the parent directory.
         SplitPath sp = splitPath(currentDir);
         if (sp.directory.isEmpty() || sp.directory == currentDir)
-            break; // Reached the filesystem root.
+            break; // Reached the file system root.
         currentDir = sp.directory;
 
         GitIgnoreContents contents = loadGitIgnoreForDirectory(currentDir);
@@ -424,7 +424,7 @@ void findInFiles(FindInFiles& findInfo, StringView absPath, bool isDir) {
         }
 
         // Iterate over all directory entries.
-        for (const DirectoryEntry& entry : Filesystem::listDir(absPath)) {
+        for (const DirectoryEntry& entry : FileSystem::listDir(absPath)) {
             findInFiles(findInfo, joinPath(absPath, entry.name), entry.isDir);
         }
 
@@ -436,7 +436,7 @@ void findInFiles(FindInFiles& findInfo, StringView absPath, bool isDir) {
             return;
 
         // Check file contents.
-        String content = Filesystem::loadTextAutodetect(absPath);
+        String content = FileSystem::loadTextAutodetect(absPath);
         ViewStream stream{StringView{content}};
         u32 lineNum = 0;
         String relPath = makeRelativePath(findInfo.root, absPath);
@@ -480,7 +480,7 @@ void findInFilesToolHandler(ToolContext* toolCtx, Transcript::Message* toolCall,
     }
 
     // Check that the search path exists.
-    if (Filesystem::exists(fp.absPath) == ER_NOT_FOUND) {
+    if (FileSystem::exists(fp.absPath) == ER_NOT_FOUND) {
         toolCtx->appendResponse(toolCall, String::format("Error: Path '{}' does not exist.", path));
         return;
     }
@@ -494,7 +494,7 @@ void findInFilesToolHandler(ToolContext* toolCtx, Transcript::Message* toolCall,
     findInfo.text = textArg.text();
     findInfo.root = fp.absPath;
 
-    findInFiles(findInfo, fp.absPath, Filesystem::isDir(fp.absPath));
+    findInFiles(findInfo, fp.absPath, FileSystem::isDir(fp.absPath));
 }
 
 void addFindInFilesTool(ToolSet* toolSet) {
@@ -554,8 +554,8 @@ void editToolHandler(ToolContext* toolCtx, Transcript::Message* toolCall, const 
     }
 
     // Load file contents.
-    String text = Filesystem::loadTextAutodetect(fp.absPath);
-    if (Filesystem::lastResult() != FS_OK) {
+    String text = FileSystem::loadTextAutodetect(fp.absPath);
+    if (FileSystem::lastResult() != FS_OK) {
         toolCtx->appendResponse(toolCall, String::format("Error: Could not read file '{}'.", path));
         return;
     }
@@ -623,7 +623,7 @@ void editToolHandler(ToolContext* toolCtx, Transcript::Message* toolCall, const 
     }
 
     // Save file.
-    FSResult fsResult = Filesystem::saveText(fp.absPath, mutableText);
+    FSResult fsResult = FileSystem::saveText(fp.absPath, mutableText);
     if (fsResult == FS_OK) {
         toolCtx->appendResponse(
             toolCall,

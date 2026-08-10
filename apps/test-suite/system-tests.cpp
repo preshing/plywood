@@ -1745,19 +1745,19 @@ ExtractedFormat extractFormatFromName(StringView name) {
 UNICODE_LOADING_TEST_CASE("Autodetect file encodings") {
     String testsFolder = joinPath(TEST_SUITE_PATH, "unicode-test-files");
     u32 entryCount = 0;
-    for (const DirectoryEntry& entry : Filesystem::listDir(testsFolder)) {
+    for (const DirectoryEntry& entry : FileSystem::listDir(testsFolder)) {
         if (!entry.isDir && entry.name.endsWith(".txt")) {
             ExtractedFormat expectedFormat = extractFormatFromName(entry.name.shortenedBy(4));
             check(expectedFormat.isValid);
 
             TextFormat detectedFormat;
-            String contents = Filesystem::loadTextAutodetect(joinPath(testsFolder, entry.name), &detectedFormat);
+            String contents = FileSystem::loadTextAutodetect(joinPath(testsFolder, entry.name), &detectedFormat);
             check(detectedFormat.unicodeType == expectedFormat.format.unicodeType);
             check(detectedFormat.newLine == expectedFormat.format.newLine);
             check(detectedFormat.bom == expectedFormat.format.bom);
 
             auto compareTo =
-                Filesystem::loadBinary(joinPath(testsFolder, entry.name.split(".")[0] + ".utf8.lf.nobom.txt"));
+                FileSystem::loadBinary(joinPath(testsFolder, entry.name.split(".")[0] + ".utf8.lf.nobom.txt"));
             check(contents == compareTo);
             entryCount++;
         }
@@ -2099,8 +2099,8 @@ TEST_CASE("DirectoryWatcher") {
 
     // Set up temp directory.
     String tempDir = joinPath(BUILD_DIR, "temp-dir-watcher");
-    Filesystem::removeDirTree(tempDir); // Clean up from any previous run
-    Filesystem::makeDir(tempDir);
+    FileSystem::removeDirTree(tempDir); // Clean up from any previous run
+    FileSystem::makeDir(tempDir);
 
     // Start the watcher.
     DirectoryWatcher watcher;
@@ -2109,26 +2109,26 @@ TEST_CASE("DirectoryWatcher") {
     });
 
     // Create a file in the temp directory.
-    Filesystem::saveText(joinPath(tempDir, "first_file.txt"), "Hello, world!\n");
+    FileSystem::saveText(joinPath(tempDir, "first_file.txt"), "Hello, world!\n");
     check(waitForEvent({"first_file.txt", false}));
 
     // Create a subdirectory.
-    Filesystem::makeDir(joinPath(tempDir, "subdir"));
+    FileSystem::makeDir(joinPath(tempDir, "subdir"));
     check(waitForEvent({"subdir", true}));
 
     // Modify the first file.
-    Filesystem::saveText(joinPath(tempDir, "first_file.txt"), "Modified content!\n");
+    FileSystem::saveText(joinPath(tempDir, "first_file.txt"), "Modified content!\n");
     check(waitForEvent({"first_file.txt", false}));
 
     // Create a file in the subdirectory.
-    Filesystem::saveText(joinPath(tempDir, "subdir", "second_file.txt"), "Another file\n");
+    FileSystem::saveText(joinPath(tempDir, "subdir", "second_file.txt"), "Another file\n");
     check(waitForEvent({joinPath("subdir", "second_file.txt"), false}));
 
     // Delete the first file.
-    Filesystem::deleteFile(joinPath(tempDir, "first_file.txt"));
+    FileSystem::deleteFile(joinPath(tempDir, "first_file.txt"));
     check(waitForEvent({"first_file.txt", false}));
 
     watcher.stop();
-    Filesystem::removeDirTree(tempDir);
+    FileSystem::removeDirTree(tempDir);
 }
 #endif

@@ -12,7 +12,7 @@ using namespace ply::cpp;
 
 // Generates the complete output for the C++ parser golden tests.
 static String generateParserTestOutput(StringView testSuitePath) {
-    Stream in = Filesystem::openTextForReadAutodetect(testSuitePath);
+    Stream in = FileSystem::openTextForReadAutodetect(testSuitePath);
     MemStream out;
     for (;;) {
         String line;
@@ -55,7 +55,7 @@ static String generateParserTestOutput(StringView testSuitePath) {
 
 // Generates the complete output for the C++ preprocessor golden tests.
 static String generatePreprocessorTestOutput(StringView testSuitePath) {
-    Stream in = Filesystem::openTextForReadAutodetect(testSuitePath);
+    Stream in = FileSystem::openTextForReadAutodetect(testSuitePath);
     MemStream out;
     for (;;) {
         String line;
@@ -103,12 +103,12 @@ static bool processCppTestFile(StringView path, bool write, String (*generateOut
     String generated = generateOutput(path);
     Stream out = getStdOut();
     if (write) {
-        Filesystem::saveText(path, generated);
+        FileSystem::saveText(path, generated);
         out.format("Rewrote {}\n", path);
         return true;
     }
 
-    String expected = Filesystem::loadTextAutodetect(path);
+    String expected = FileSystem::loadTextAutodetect(path);
     if (generated != expected) {
         out.format("***FAIL*** {} differs from generated output\n", path);
         return false;

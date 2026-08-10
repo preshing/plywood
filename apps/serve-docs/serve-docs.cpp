@@ -41,7 +41,7 @@ void servePlywoodDocumentation(HTTPServerRequest& request) {
     if (parts.numItems() > 0) {
         if (parts[0] == "static") {
             String localPath = joinPath(docsFolder, StringView{'/'}.join(parts));
-            if (!Filesystem::exists(localPath)) {
+            if (!FileSystem::exists(localPath)) {
                 request.sendGenericResponse(HTTPServerResponse::NotFound);
                 return;
             }
@@ -64,17 +64,17 @@ void servePlywoodDocumentation(HTTPServerRequest& request) {
                 PLY_ASSERT(0);
             }
             if (isTextFile) {
-                request.sendFullResponse(std::move(response), Filesystem::loadText(localPath));
+                request.sendFullResponse(std::move(response), FileSystem::loadText(localPath));
             } else {
-                request.sendFullResponse(std::move(response), Filesystem::loadBinary(localPath));
+                request.sendFullResponse(std::move(response), FileSystem::loadBinary(localPath));
             }
             return;
         }
         if (parts[0].isEmpty()) {
             HTTPServerResponse response{HTTPServerResponse::OK};
             *response.headers.insert("content-type").value = "text/html";
-            String templ = Filesystem::loadText(joinPath(docsFolder, "content/index.html"));
-            String toc = Filesystem::loadText(joinPath(docsFolder, "content/toc.html"));
+            String templ = FileSystem::loadText(joinPath(docsFolder, "content/index.html"));
+            String toc = FileSystem::loadText(joinPath(docsFolder, "content/toc.html"));
             String fullHtml = templ.replace("{%toc%}", toc);
             request.sendFullResponse(std::move(response), fullHtml);
             return;
@@ -86,13 +86,13 @@ void servePlywoodDocumentation(HTTPServerRequest& request) {
                 localPath = localPath.left(localPath.numBytes() - 5); // Remove ".ajax"
             }
 
-            if (Filesystem::isDir(localPath)) {
+            if (FileSystem::isDir(localPath)) {
                 localPath = joinPath(localPath, "index.html");
             } else {
                 localPath += ".html";
             }
 
-            if (!Filesystem::exists(localPath)) {
+            if (!FileSystem::exists(localPath)) {
                 request.sendGenericResponse(HTTPServerResponse::NotFound);
                 return;
             }
@@ -102,12 +102,12 @@ void servePlywoodDocumentation(HTTPServerRequest& request) {
 
             if (isAjaxRequest) {
                 // Serve AJAX content directly
-                request.sendFullResponse(std::move(response), Filesystem::loadText(localPath));
+                request.sendFullResponse(std::move(response), FileSystem::loadText(localPath));
             } else {
                 // Assemble full page from template + TOC + AJAX content
-                String templ = Filesystem::loadText(joinPath(docsFolder, "content/docs-template.html"));
-                String toc = Filesystem::loadText(joinPath(docsFolder, "content/toc.html"));
-                String ajaxContent = Filesystem::loadText(localPath);
+                String templ = FileSystem::loadText(joinPath(docsFolder, "content/docs-template.html"));
+                String toc = FileSystem::loadText(joinPath(docsFolder, "content/toc.html"));
+                String ajaxContent = FileSystem::loadText(localPath);
 
                 // Parse title from first line of AJAX content
                 s32 newlinePos = ajaxContent.find('\n');

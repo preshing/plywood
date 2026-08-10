@@ -15,7 +15,7 @@
         {"title": "Variants", "path": "/docs/system/variants.md"},
         {"title": "Generic Algorithms", "path": "/docs/system/algorithms.md"},
         {"title": "Input/Output", "path": "/docs/system/input-output.md"},
-        {"title": "The Filesystem", "path": "/docs/system/filesystem.md"},
+        {"title": "File System", "path": "/docs/system/file-system.md"},
         {"title": "Multithreading", "path": "/docs/system/multithreading.md"},
         {"title": "Process Management", "path": "/docs/system/process-management.md"}
     ]},

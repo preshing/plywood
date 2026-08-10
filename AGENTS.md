@@ -170,6 +170,6 @@ All C++ code in the Plywood project should use this API while avoiding the Stand
 - Reading text: `readLine readWhitespace skipWhitespace readIdentifier readU64FromText readS64FromText readDoubleFromText readQuotedString`
 - Writing text: `printNumber printEscapedString printXmlEscapedString`
 - Unicode conversion: `encodeUnicode decodeUnicode`
-- `Filesystem` - Filesystem operations, opening files, text format detection
+- `FileSystem` - File system operations, opening files, text format detection
 - Path manipulation: `getPathSeparator getDriveLetter isAbsolutePath isRelativePath makeAbsolutePath makeRelativePath splitPath splitFileExtension splitPathFull joinPath`
 - `DirectoryWatcher` - Watches a directory for changes

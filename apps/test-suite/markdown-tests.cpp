@@ -12,7 +12,7 @@ using namespace ply;
 // Runs one Markdown fixture file with the selected parsing options.
 static bool runMarkdownTestFile(StringView fileName, StringView suiteName, const markdown::ParseOptions& options) {
     String path = joinPath(TEST_SUITE_PATH, fileName);
-    Stream in = Filesystem::openTextForReadAutodetect(path);
+    Stream in = FileSystem::openTextForReadAutodetect(path);
     String separatorLine = readLine(in);
     u32 numTests = 0;
     u32 numPassed = 0;

@@ -514,7 +514,7 @@ VirtualMemory::SystemStats VirtualMemory::getSystemStats() {
         usageStats.residentSize = taskInfoData.resident_size;
     }
 #else
-    Stream in = Filesystem::openBinaryForRead("/proc/self/statm");
+    Stream in = FileSystem::openBinaryForRead("/proc/self/statm");
     if (in) {
         u64 vmPages = readU64FromText(in);
         skipWhitespace(in);
@@ -5260,7 +5260,7 @@ bool isAbsolutePath(PathFormat fmt, StringView path) {
 String makeAbsolutePath(PathFormat fmt, StringView path) {
     if (isAbsolutePath(fmt, path))
         return path;
-    return joinPath(fmt, Filesystem::getWorkingDirectory(), path);
+    return joinPath(fmt, FileSystem::getWorkingDirectory(), path);
 }
 
 SplitPath splitPath(PathFormat fmt, StringView path) {
@@ -5775,13 +5775,13 @@ WString win32_path_arg(StringView path, bool allowExtended = true) {
     return WString::moveFromString(out.moveToString());
 }
 
-ThreadLocal<FSResult> Filesystem::lastResult_;
+ThreadLocal<FSResult> FileSystem::lastResult_;
 
 void DirectoryWalker::visit(StringView dirPath) {
     this->triple.dirPath = dirPath;
     this->triple.dirNames.clear();
     this->triple.files.clear();
-    for (DirectoryEntry& entry : Filesystem::listDir(dirPath)) {
+    for (DirectoryEntry& entry : FileSystem::listDir(dirPath)) {
         if (entry.isDir) {
             this->triple.dirNames.append(std::move(entry.name));
         } else {
@@ -5814,15 +5814,15 @@ void DirectoryWalker::Iterator::operator++() {
     PLY_ASSERT(this->walker->triple.dirPath.isEmpty());
 }
 
-FSResult Filesystem::copyFile(StringView srcPath, StringView dstPath) {
-    Owned<Pipe> in = Filesystem::openPipeForRead(srcPath);
-    if (Filesystem::lastResult() != FS_OK)
-        return Filesystem::lastResult();
+FSResult FileSystem::copyFile(StringView srcPath, StringView dstPath) {
+    Owned<Pipe> in = FileSystem::openPipeForRead(srcPath);
+    if (FileSystem::lastResult() != FS_OK)
+        return FileSystem::lastResult();
     PLY_ASSERT(in);
 
-    Stream out = Filesystem::openBinaryForWrite(dstPath);
-    if (Filesystem::lastResult() != FS_OK)
-        return Filesystem::lastResult();
+    Stream out = FileSystem::openBinaryForWrite(dstPath);
+    if (FileSystem::lastResult() != FS_OK)
+        return FileSystem::lastResult();
     PLY_ASSERT(out.isOpen());
 
     for (;;) {
@@ -5837,21 +5837,21 @@ FSResult Filesystem::copyFile(StringView srcPath, StringView dstPath) {
     return FS_OK;
 }
 
-DirectoryWalker Filesystem::walk(StringView top) {
+DirectoryWalker FileSystem::walk(StringView top) {
     DirectoryWalker walker;
     walker.visit(top);
     return walker;
 }
 
-FSResult Filesystem::makeDirs(StringView path) {
+FSResult FileSystem::makeDirs(StringView path) {
     if (path == getDriveLetter(path)) {
-        return Filesystem::setLastResult(FS_OK);
+        return FileSystem::setLastResult(FS_OK);
     }
-    ExistsResult er = Filesystem::exists(path);
+    ExistsResult er = FileSystem::exists(path);
     if (er == ER_DIRECTORY) {
-        return Filesystem::setLastResult(FS_ALREADY_EXISTS);
+        return FileSystem::setLastResult(FS_ALREADY_EXISTS);
     } else if (er == ER_FILE) {
-        return Filesystem::setLastResult(FS_ACCESS_DENIED);
+        return FileSystem::setLastResult(FS_ACCESS_DENIED);
     } else {
         SplitPath split = splitPath(path);
         if (!split.directory.isEmpty() && !split.filename.isEmpty()) {
@@ -5859,26 +5859,26 @@ FSResult Filesystem::makeDirs(StringView path) {
             if (r != FS_OK && r != FS_ALREADY_EXISTS)
                 return r;
         }
-        return Filesystem::makeDir(path);
+        return FileSystem::makeDir(path);
     }
 }
 
-Stream Filesystem::openBinaryForRead(StringView path) {
-    return {Filesystem::openPipeForRead(path).release(), true};
+Stream FileSystem::openBinaryForRead(StringView path) {
+    return {FileSystem::openPipeForRead(path).release(), true};
 }
 
-Stream Filesystem::openBinaryForWrite(StringView path) {
-    return {Filesystem::openPipeForWrite(path).release(), true};
+Stream FileSystem::openBinaryForWrite(StringView path) {
+    return {FileSystem::openPipeForWrite(path).release(), true};
 }
 
-Stream Filesystem::openTextForRead(StringView path, const TextFormat& textFormat) {
-    if (Stream in = Filesystem::openBinaryForRead(path))
+Stream FileSystem::openTextForRead(StringView path, const TextFormat& textFormat) {
+    if (Stream in = FileSystem::openBinaryForRead(path))
         return {createImporter(std::move(in), textFormat).release(), true};
     return {};
 }
 
-Stream Filesystem::openTextForReadAutodetect(StringView path, TextFormat* outFormat) {
-    if (Stream in = Filesystem::openBinaryForRead(path)) {
+Stream FileSystem::openTextForReadAutodetect(StringView path, TextFormat* outFormat) {
+    if (Stream in = FileSystem::openBinaryForRead(path)) {
         TextFormat textFormat = autodetectTextFormat(in);
         if (outFormat) {
             *outFormat = textFormat;
@@ -5888,9 +5888,9 @@ Stream Filesystem::openTextForReadAutodetect(StringView path, TextFormat* outFor
     return {};
 }
 
-String Filesystem::loadBinary(StringView path) {
+String FileSystem::loadBinary(StringView path) {
     String result;
-    Owned<Pipe> inPipe = Filesystem::openPipeForRead(path);
+    Owned<Pipe> inPipe = FileSystem::openPipeForRead(path);
     if (inPipe) {
         u64 fileSize = inPipe->getFileSize();
         // Files >= 4GB cannot be loaded this way:
@@ -5912,16 +5912,16 @@ String readAllRemainingBytes(Pipe* inPipe) {
     return mem.moveToString();
 }
 
-String Filesystem::loadText(StringView path, const TextFormat& textFormat) {
-    if (Stream in = Filesystem::openBinaryForRead(path)) {
+String FileSystem::loadText(StringView path, const TextFormat& textFormat) {
+    if (Stream in = FileSystem::openBinaryForRead(path)) {
         Owned<Pipe> importer = createImporter(std::move(in), textFormat);
         return readAllRemainingBytes(importer);
     }
     return {};
 }
 
-String Filesystem::loadTextAutodetect(StringView path, TextFormat* outFormat) {
-    if (Stream in = Filesystem::openBinaryForRead(path)) {
+String FileSystem::loadTextAutodetect(StringView path, TextFormat* outFormat) {
+    if (Stream in = FileSystem::openBinaryForRead(path)) {
         TextFormat textFormat = autodetectTextFormat(in);
         if (outFormat) {
             *outFormat = textFormat;
@@ -5933,16 +5933,16 @@ String Filesystem::loadTextAutodetect(StringView path, TextFormat* outFormat) {
     return {};
 }
 
-Stream Filesystem::openTextForWrite(StringView path, const TextFormat& textFormat) {
-    if (Stream out = Filesystem::openBinaryForWrite(path))
+Stream FileSystem::openTextForWrite(StringView path, const TextFormat& textFormat) {
+    if (Stream out = FileSystem::openBinaryForWrite(path))
         return {createExporter(std::move(out), textFormat).release(), true};
     return {};
 }
 
-FSResult Filesystem::saveBinary(StringView path, StringView view) {
+FSResult FileSystem::saveBinary(StringView path, StringView view) {
     // FIXME: Write to temporary file first, then rename atomically
-    Owned<Pipe> outPipe = Filesystem::openPipeForWrite(path);
-    FSResult result = Filesystem::lastResult();
+    Owned<Pipe> outPipe = FileSystem::openPipeForWrite(path);
+    FSResult result = FileSystem::lastResult();
     if (result != FS_OK) {
         return result;
     }
@@ -5950,12 +5950,12 @@ FSResult Filesystem::saveBinary(StringView path, StringView view) {
     return result;
 }
 
-FSResult Filesystem::saveText(StringView path, StringView strContents, const TextFormat& enc) {
+FSResult FileSystem::saveText(StringView path, StringView strContents, const TextFormat& enc) {
     Owned<OutPipeNewLineFilter> exporter = createExporter(MemStream{}, enc);
     exporter->write(strContents);
     exporter->flush(false);
     String rawData = static_cast<MemStream*>(&exporter->out)->moveToString();
-    return Filesystem::saveBinary(path, rawData);
+    return FileSystem::saveBinary(path, rawData);
 }
 
 #if defined(PLY_WINDOWS)
@@ -5966,7 +5966,7 @@ FSResult Filesystem::saveText(StringView path, StringView strContents, const Tex
 
 #define PLY_FSWIN32_ALLOW_UNKNOWN_ERRORS 0
 
-ReadWriteLock Filesystem::workingDirLock;
+ReadWriteLock FileSystem::workingDirLock;
 
 inline double windowsToPosixTime(const FILETIME& fileTime) {
     return (u64(fileTime.dwHighDateTime) << 32 | fileTime.dwLowDateTime) / 10000000.0 - 11644473600.0;
@@ -5981,7 +5981,7 @@ void dirEntryFromData(DirectoryEntry* entry, WIN32_FIND_DATAW findData) {
     entry->modificationTime = windowsToPosixTime(findData.ftLastWriteTime);
 }
 
-Array<DirectoryEntry> Filesystem::listDir(StringView path) {
+Array<DirectoryEntry> FileSystem::listDir(StringView path) {
     Array<DirectoryEntry> result;
     HANDLE hfind = INVALID_HANDLE_VALUE;
     WIN32_FIND_DATAW findData;
@@ -5994,16 +5994,16 @@ Array<DirectoryEntry> Filesystem::listDir(StringView path) {
             case ERROR_FILE_NOT_FOUND:
             case ERROR_PATH_NOT_FOUND:
             case ERROR_INVALID_NAME: {
-                Filesystem::setLastResult(FS_NOT_FOUND);
+                FileSystem::setLastResult(FS_NOT_FOUND);
                 return result;
             }
             case ERROR_ACCESS_DENIED: {
-                Filesystem::setLastResult(FS_ACCESS_DENIED);
+                FileSystem::setLastResult(FS_ACCESS_DENIED);
                 return result;
             }
             default: {
                 PLY_ASSERT(PLY_FSWIN32_ALLOW_UNKNOWN_ERRORS);
-                Filesystem::setLastResult(FS_UNKNOWN);
+                FileSystem::setLastResult(FS_UNKNOWN);
                 return result;
             }
         }
@@ -6021,16 +6021,16 @@ Array<DirectoryEntry> Filesystem::listDir(StringView path) {
             DWORD err = GetLastError();
             switch (err) {
                 case ERROR_NO_MORE_FILES: {
-                    Filesystem::setLastResult(FS_OK);
+                    FileSystem::setLastResult(FS_OK);
                     return result;
                 }
                 case ERROR_FILE_INVALID: {
-                    Filesystem::setLastResult(FS_NOT_FOUND);
+                    FileSystem::setLastResult(FS_NOT_FOUND);
                     return result;
                 }
                 default: {
                     PLY_ASSERT(PLY_FSWIN32_ALLOW_UNKNOWN_ERRORS);
-                    Filesystem::setLastResult(FS_UNKNOWN);
+                    FileSystem::setLastResult(FS_UNKNOWN);
                     return result;
                 }
             }
@@ -6038,53 +6038,53 @@ Array<DirectoryEntry> Filesystem::listDir(StringView path) {
     }
 }
 
-FSResult Filesystem::makeDir(StringView path) {
+FSResult FileSystem::makeDir(StringView path) {
     BOOL rc = CreateDirectoryW(win32_path_arg(path), NULL);
     if (rc) {
-        return Filesystem::setLastResult(FS_OK);
+        return FileSystem::setLastResult(FS_OK);
     } else {
         DWORD err = GetLastError();
         switch (err) {
             case ERROR_ALREADY_EXISTS:
-                return Filesystem::setLastResult(FS_ALREADY_EXISTS);
+                return FileSystem::setLastResult(FS_ALREADY_EXISTS);
             case ERROR_ACCESS_DENIED:
-                return Filesystem::setLastResult(FS_ACCESS_DENIED);
+                return FileSystem::setLastResult(FS_ACCESS_DENIED);
             case ERROR_INVALID_NAME:
-                return Filesystem::setLastResult(FS_NOT_FOUND);
+                return FileSystem::setLastResult(FS_NOT_FOUND);
             default: {
                 PLY_ASSERT(PLY_FSWIN32_ALLOW_UNKNOWN_ERRORS);
-                return Filesystem::setLastResult(FS_UNKNOWN);
+                return FileSystem::setLastResult(FS_UNKNOWN);
             }
         }
     }
 }
 
-FSResult Filesystem::setWorkingDirectory(StringView path) {
+FSResult FileSystem::setWorkingDirectory(StringView path) {
     BOOL rc;
     {
         // This ReadWriteLock is used to mitigate data race issues with
         // SetCurrentDirectoryW:
         // https://docs.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-setcurrentdirectory
-        Filesystem::workingDirLock.lockExclusive();
+        FileSystem::workingDirLock.lockExclusive();
         rc = SetCurrentDirectoryW(win32_path_arg(path));
-        Filesystem::workingDirLock.unlockExclusive();
+        FileSystem::workingDirLock.unlockExclusive();
     }
     if (rc) {
-        return Filesystem::setLastResult(FS_OK);
+        return FileSystem::setLastResult(FS_OK);
     } else {
         DWORD err = GetLastError();
         switch (err) {
             case ERROR_PATH_NOT_FOUND:
-                return Filesystem::setLastResult(FS_NOT_FOUND);
+                return FileSystem::setLastResult(FS_NOT_FOUND);
             default: {
                 PLY_ASSERT(PLY_FSWIN32_ALLOW_UNKNOWN_ERRORS);
-                return Filesystem::setLastResult(FS_UNKNOWN);
+                return FileSystem::setLastResult(FS_UNKNOWN);
             }
         }
     }
 }
 
-String Filesystem::getWorkingDirectory() {
+String FileSystem::getWorkingDirectory() {
     u32 numUnitsWithNullTerm = MAX_PATH + 1;
     for (;;) {
         WString win32_path = WString::allocate(numUnitsWithNullTerm);
@@ -6093,13 +6093,13 @@ String Filesystem::getWorkingDirectory() {
             // This ReadWriteLock is used to mitigate data race issues with
             // SetCurrentDirectoryW:
             // https://docs.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-setcurrentdirectory
-            Filesystem::workingDirLock.lockShared();
+            FileSystem::workingDirLock.lockShared();
             rc = GetCurrentDirectoryW(numUnitsWithNullTerm, (LPWSTR) win32_path.units);
-            Filesystem::workingDirLock.unlockShared();
+            FileSystem::workingDirLock.unlockShared();
         }
         if (rc == 0) {
             PLY_ASSERT(PLY_FSWIN32_ALLOW_UNKNOWN_ERRORS);
-            Filesystem::setLastResult(FS_UNKNOWN);
+            FileSystem::setLastResult(FS_UNKNOWN);
             return {};
         }
         PLY_ASSERT(rc != numUnitsWithNullTerm);
@@ -6114,7 +6114,7 @@ String Filesystem::getWorkingDirectory() {
                 truncated_win32_path.units += 4;
                 truncated_win32_path.numUnits -= 4;
             }
-            Filesystem::setLastResult(FS_OK);
+            FileSystem::setLastResult(FS_OK);
             return fromWstring(truncated_win32_path);
         }
         // GetCurrentDirectoryW: If the buffer that is pointed to by lpBuffer is not
@@ -6124,7 +6124,7 @@ String Filesystem::getWorkingDirectory() {
     }
 }
 
-ExistsResult Filesystem::exists(StringView path) {
+ExistsResult FileSystem::exists(StringView path) {
     // FIXME: Do something sensible when passed "C:" and other drive letters
     DWORD attribs = GetFileAttributesW(win32_path_arg(path));
     if (attribs == INVALID_FILE_ATTRIBUTES) {
@@ -6149,111 +6149,111 @@ ExistsResult Filesystem::exists(StringView path) {
     }
 }
 
-HANDLE Filesystem::openHandleForRead(StringView path) {
+HANDLE FileSystem::openHandleForRead(StringView path) {
     // Should this use FILE_SHARE_DELETE or FILE_SHARE_WRITE?
     HANDLE handle = CreateFileW(win32_path_arg(path), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING,
                                 FILE_ATTRIBUTE_NORMAL, NULL);
     if (handle != INVALID_HANDLE_VALUE) {
-        Filesystem::setLastResult(FS_OK);
+        FileSystem::setLastResult(FS_OK);
     } else {
         DWORD error = GetLastError();
         switch (error) {
             case ERROR_FILE_NOT_FOUND:
             case ERROR_PATH_NOT_FOUND:
             case ERROR_INVALID_NAME:
-                Filesystem::setLastResult(FS_NOT_FOUND);
+                FileSystem::setLastResult(FS_NOT_FOUND);
                 break;
 
             case ERROR_SHARING_VIOLATION:
-                Filesystem::setLastResult(FS_LOCKED);
+                FileSystem::setLastResult(FS_LOCKED);
                 break;
 
             case ERROR_ACCESS_DENIED:
-                Filesystem::setLastResult(FS_ACCESS_DENIED);
+                FileSystem::setLastResult(FS_ACCESS_DENIED);
                 break;
 
             default:
                 PLY_ASSERT(PLY_FSWIN32_ALLOW_UNKNOWN_ERRORS);
-                Filesystem::setLastResult(FS_UNKNOWN);
+                FileSystem::setLastResult(FS_UNKNOWN);
                 break;
         }
     }
     return handle;
 }
 
-Owned<Pipe> Filesystem::openPipeForRead(StringView path) {
+Owned<Pipe> FileSystem::openPipeForRead(StringView path) {
     HANDLE handle = openHandleForRead(path);
     if (handle == INVALID_HANDLE_VALUE)
         return nullptr;
     return Heap::create<PipeHandle>(handle, Pipe::HAS_READ_PERMISSION | Pipe::CAN_SEEK);
 }
 
-HANDLE Filesystem::openHandleForWrite(StringView path) {
+HANDLE FileSystem::openHandleForWrite(StringView path) {
     // FIXME: Needs graceful handling of ERROR_SHARING_VIOLATION
     // Should this use FILE_SHARE_DELETE | FILE_SHARE_READ | FILE_SHARE_WRITE?
     HANDLE handle =
         CreateFileW(win32_path_arg(path), GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
     if (handle != INVALID_HANDLE_VALUE) {
-        Filesystem::setLastResult(FS_OK);
+        FileSystem::setLastResult(FS_OK);
     } else {
         DWORD error = GetLastError();
         switch (error) {
             case ERROR_FILE_NOT_FOUND:
             case ERROR_PATH_NOT_FOUND:
             case ERROR_INVALID_NAME:
-                Filesystem::setLastResult(FS_NOT_FOUND);
+                FileSystem::setLastResult(FS_NOT_FOUND);
                 break;
 
             case ERROR_SHARING_VIOLATION:
-                Filesystem::setLastResult(FS_LOCKED);
+                FileSystem::setLastResult(FS_LOCKED);
                 break;
 
             case ERROR_ACCESS_DENIED:
-                Filesystem::setLastResult(FS_ACCESS_DENIED);
+                FileSystem::setLastResult(FS_ACCESS_DENIED);
                 break;
 
             default:
                 PLY_ASSERT(PLY_FSWIN32_ALLOW_UNKNOWN_ERRORS);
-                Filesystem::setLastResult(FS_UNKNOWN);
+                FileSystem::setLastResult(FS_UNKNOWN);
                 break;
         }
     }
     return handle;
 }
 
-Owned<Pipe> Filesystem::openPipeForWrite(StringView path) {
+Owned<Pipe> FileSystem::openPipeForWrite(StringView path) {
     HANDLE handle = openHandleForWrite(path);
     if (handle == INVALID_HANDLE_VALUE)
         return nullptr;
     return Heap::create<PipeHandle>(handle, Pipe::HAS_WRITE_PERMISSION | Pipe::CAN_SEEK);
 }
 
-FSResult Filesystem::moveFile(StringView srcPath, StringView dstPath) {
+FSResult FileSystem::moveFile(StringView srcPath, StringView dstPath) {
     BOOL rc = MoveFileExW(win32_path_arg(srcPath), win32_path_arg(dstPath), MOVEFILE_REPLACE_EXISTING);
     if (rc) {
-        return Filesystem::setLastResult(FS_OK);
+        return FileSystem::setLastResult(FS_OK);
     } else {
         DWORD error = GetLastError();
         PLY_ASSERT(PLY_FSWIN32_ALLOW_UNKNOWN_ERRORS);
-        return Filesystem::setLastResult(FS_UNKNOWN);
+        return FileSystem::setLastResult(FS_UNKNOWN);
     }
 }
 
-FSResult Filesystem::deleteFile(StringView path) {
+FSResult FileSystem::deleteFile(StringView path) {
     BOOL rc = DeleteFileW(win32_path_arg(path));
     if (rc) {
-        return Filesystem::setLastResult(FS_OK);
+        return FileSystem::setLastResult(FS_OK);
     } else {
         DWORD err = GetLastError();
         PLY_ASSERT(PLY_FSWIN32_ALLOW_UNKNOWN_ERRORS);
-        return Filesystem::setLastResult(FS_UNKNOWN);
+        return FileSystem::setLastResult(FS_UNKNOWN);
     }
 }
 
-FSResult Filesystem::removeDirTree(StringView dirPath) {
+FSResult FileSystem::removeDirTree(StringView dirPath) {
     String absPath = dirPath;
     if (!isAbsolutePath(WindowsPath, dirPath)) {
-        absPath = joinPath(WindowsPath, Filesystem::getWorkingDirectory(), dirPath);
+        absPath = joinPath(WindowsPath, FileSystem::getWorkingDirectory(), dirPath);
     }
     OutPipeConvertUnicode out{MemStream{}, UTF16_LE};
     out.write(absPath);
@@ -6274,7 +6274,7 @@ FSResult Filesystem::removeDirTree(StringView dirPath) {
     return (rc == 0) ? FS_OK : FS_ACCESS_DENIED;
 }
 
-DirectoryEntry Filesystem::getFileInfo(HANDLE handle) {
+DirectoryEntry FileSystem::getFileInfo(HANDLE handle) {
     DirectoryEntry entry;
     FILETIME creationTime = {0, 0};
     FILETIME lastAccessTime = {0, 0};
@@ -6299,19 +6299,19 @@ DirectoryEntry Filesystem::getFileInfo(HANDLE handle) {
     }
 
     entry.result = FS_OK;
-    Filesystem::setLastResult(FS_OK);
+    FileSystem::setLastResult(FS_OK);
     return entry;
 }
 
-DirectoryEntry Filesystem::getFileInfo(StringView path) {
-    HANDLE handle = Filesystem::openHandleForRead(path);
+DirectoryEntry FileSystem::getFileInfo(StringView path) {
+    HANDLE handle = FileSystem::openHandleForRead(path);
     if (handle == INVALID_HANDLE_VALUE) {
         DirectoryEntry entry;
-        entry.result = Filesystem::lastResult();
+        entry.result = FileSystem::lastResult();
         return entry;
     }
 
-    DirectoryEntry entry = Filesystem::getFileInfo(handle);
+    DirectoryEntry entry = FileSystem::getFileInfo(handle);
     CloseHandle(handle);
     return entry;
 }
@@ -6324,23 +6324,23 @@ DirectoryEntry Filesystem::getFileInfo(StringView path) {
 
 #define PLY_FSPOSIX_ALLOW_UNKNOWN_ERRORS 0
 
-Array<DirectoryEntry> Filesystem::listDir(StringView path) {
+Array<DirectoryEntry> FileSystem::listDir(StringView path) {
     Array<DirectoryEntry> result;
 
     DIR* dir = opendir((path + '\0').bytes());
     if (!dir) {
         switch (errno) {
             case ENOENT: {
-                Filesystem::setLastResult(FS_NOT_FOUND);
+                FileSystem::setLastResult(FS_NOT_FOUND);
                 return result;
             }
             case EACCES: {
-                Filesystem::setLastResult(FS_ACCESS_DENIED);
+                FileSystem::setLastResult(FS_ACCESS_DENIED);
                 return result;
             }
             default: {
                 PLY_ASSERT(PLY_FSPOSIX_ALLOW_UNKNOWN_ERRORS);
-                Filesystem::setLastResult(FS_UNKNOWN);
+                FileSystem::setLastResult(FS_UNKNOWN);
                 return result;
             }
         }
@@ -6351,10 +6351,10 @@ Array<DirectoryEntry> Filesystem::listDir(StringView path) {
         struct dirent* rde = readdir(dir);
         if (!rde) {
             if (errno == 0) {
-                Filesystem::setLastResult(FS_OK);
+                FileSystem::setLastResult(FS_OK);
             } else {
                 PLY_ASSERT(PLY_FSPOSIX_ALLOW_UNKNOWN_ERRORS);
-                Filesystem::setLastResult(FS_UNKNOWN);
+                FileSystem::setLastResult(FS_UNKNOWN);
             }
             break;
         }
@@ -6381,7 +6381,7 @@ Array<DirectoryEntry> Filesystem::listDir(StringView path) {
             if (errno == ENOENT)
                 continue;
             PLY_ASSERT(PLY_FSPOSIX_ALLOW_UNKNOWN_ERRORS);
-            Filesystem::setLastResult(FS_UNKNOWN);
+            FileSystem::setLastResult(FS_UNKNOWN);
             break;
         }
 
@@ -6399,41 +6399,41 @@ Array<DirectoryEntry> Filesystem::listDir(StringView path) {
     return result;
 }
 
-FSResult Filesystem::makeDir(StringView path) {
+FSResult FileSystem::makeDir(StringView path) {
     int rc = mkdir((path + '\0').bytes(), mode_t(0755));
     if (rc == 0) {
-        return Filesystem::setLastResult(FS_OK);
+        return FileSystem::setLastResult(FS_OK);
     } else {
         switch (errno) {
             case EEXIST:
             case EISDIR: {
-                return Filesystem::setLastResult(FS_ALREADY_EXISTS);
+                return FileSystem::setLastResult(FS_ALREADY_EXISTS);
             }
             default: {
                 PLY_ASSERT(PLY_FSPOSIX_ALLOW_UNKNOWN_ERRORS);
-                return Filesystem::setLastResult(FS_UNKNOWN);
+                return FileSystem::setLastResult(FS_UNKNOWN);
             }
         }
     }
 }
 
-FSResult Filesystem::setWorkingDirectory(StringView path) {
+FSResult FileSystem::setWorkingDirectory(StringView path) {
     int rc = chdir((path + '\0').bytes());
     if (rc == 0) {
-        return Filesystem::setLastResult(FS_OK);
+        return FileSystem::setLastResult(FS_OK);
     } else {
         switch (errno) {
             case ENOENT:
-                return Filesystem::setLastResult(FS_NOT_FOUND);
+                return FileSystem::setLastResult(FS_NOT_FOUND);
             default: {
                 PLY_ASSERT(PLY_FSPOSIX_ALLOW_UNKNOWN_ERRORS);
-                return Filesystem::setLastResult(FS_UNKNOWN);
+                return FileSystem::setLastResult(FS_UNKNOWN);
             }
         }
     }
 }
 
-String Filesystem::getWorkingDirectory() {
+String FileSystem::getWorkingDirectory() {
     u32 numUnitsWithNullTerm = PATH_MAX + 1;
     String path = String::allocate(numUnitsWithNullTerm);
     for (;;) {
@@ -6442,7 +6442,7 @@ String Filesystem::getWorkingDirectory() {
             s32 len = path.find('\0');
             PLY_ASSERT(len >= 0);
             path.resize(len);
-            Filesystem::setLastResult(FS_OK);
+            FileSystem::setLastResult(FS_OK);
             return path;
         } else {
             switch (errno) {
@@ -6453,7 +6453,7 @@ String Filesystem::getWorkingDirectory() {
                 }
                 default: {
                     PLY_ASSERT(PLY_FSPOSIX_ALLOW_UNKNOWN_ERRORS);
-                    Filesystem::setLastResult(FS_UNKNOWN);
+                    FileSystem::setLastResult(FS_UNKNOWN);
                     return {};
                 }
             }
@@ -6461,7 +6461,7 @@ String Filesystem::getWorkingDirectory() {
     }
 }
 
-ExistsResult Filesystem::exists(StringView path) {
+ExistsResult FileSystem::exists(StringView path) {
     struct stat buf;
     int rc = stat((path + '\0').bytes(), &buf);
     if (rc == 0)
@@ -6472,89 +6472,89 @@ ExistsResult Filesystem::exists(StringView path) {
     return ER_NOT_FOUND;
 }
 
-int Filesystem::openFdForRead(StringView path) {
+int FileSystem::openFdForRead(StringView path) {
     int fd = open((path + '\0').bytes(), O_RDONLY | O_CLOEXEC);
     if (fd != -1) {
-        Filesystem::setLastResult(FS_OK);
+        FileSystem::setLastResult(FS_OK);
     } else {
         switch (errno) {
             case ENOENT:
-                Filesystem::setLastResult(FS_NOT_FOUND);
+                FileSystem::setLastResult(FS_NOT_FOUND);
                 break;
 
             case EACCES:
-                Filesystem::setLastResult(FS_ACCESS_DENIED);
+                FileSystem::setLastResult(FS_ACCESS_DENIED);
                 break;
 
             default:
                 PLY_ASSERT(PLY_FSPOSIX_ALLOW_UNKNOWN_ERRORS);
-                Filesystem::setLastResult(FS_UNKNOWN);
+                FileSystem::setLastResult(FS_UNKNOWN);
                 break;
         }
     }
     return fd;
 }
 
-Owned<Pipe> Filesystem::openPipeForRead(StringView path) {
+Owned<Pipe> FileSystem::openPipeForRead(StringView path) {
     int fd = openFdForRead(path);
     if (fd == -1)
         return nullptr;
     return Heap::create<Pipe_FD>(fd, Pipe::HAS_READ_PERMISSION | Pipe::CAN_SEEK);
 }
 
-int Filesystem::openFdForWrite(StringView path) {
+int FileSystem::openFdForWrite(StringView path) {
     int fd = open((path + '\0').bytes(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, mode_t(0644));
     if (fd != -1) {
-        Filesystem::setLastResult(FS_OK);
+        FileSystem::setLastResult(FS_OK);
     } else {
         switch (errno) {
             case ENOENT:
-                Filesystem::setLastResult(FS_NOT_FOUND);
+                FileSystem::setLastResult(FS_NOT_FOUND);
                 break;
 
             case EACCES:
-                Filesystem::setLastResult(FS_ACCESS_DENIED);
+                FileSystem::setLastResult(FS_ACCESS_DENIED);
                 break;
 
             default:
                 PLY_ASSERT(PLY_FSPOSIX_ALLOW_UNKNOWN_ERRORS);
-                Filesystem::setLastResult(FS_UNKNOWN);
+                FileSystem::setLastResult(FS_UNKNOWN);
                 break;
         }
     }
     return fd;
 }
 
-Owned<Pipe> Filesystem::openPipeForWrite(StringView path) {
+Owned<Pipe> FileSystem::openPipeForWrite(StringView path) {
     int fd = openFdForWrite(path);
     if (fd == -1)
         return nullptr;
     return Heap::create<Pipe_FD>(fd, Pipe::HAS_WRITE_PERMISSION | Pipe::CAN_SEEK);
 }
 
-FSResult Filesystem::moveFile(StringView srcPath, StringView dstPath) {
+FSResult FileSystem::moveFile(StringView srcPath, StringView dstPath) {
     int rc = rename((srcPath + '\0').bytes(), (dstPath + '\0').bytes());
     if (rc != 0) {
         PLY_ASSERT(PLY_FSPOSIX_ALLOW_UNKNOWN_ERRORS);
-        return Filesystem::setLastResult(FS_UNKNOWN);
+        return FileSystem::setLastResult(FS_UNKNOWN);
     }
-    return Filesystem::setLastResult(FS_OK);
+    return FileSystem::setLastResult(FS_OK);
 }
 
-FSResult Filesystem::deleteFile(StringView path) {
+FSResult FileSystem::deleteFile(StringView path) {
     int rc = unlink((path + '\0').bytes());
     if (rc != 0) {
         PLY_ASSERT(PLY_FSPOSIX_ALLOW_UNKNOWN_ERRORS);
-        return Filesystem::setLastResult(FS_UNKNOWN);
+        return FileSystem::setLastResult(FS_UNKNOWN);
     }
-    return Filesystem::setLastResult(FS_OK);
+    return FileSystem::setLastResult(FS_OK);
 }
 
-FSResult Filesystem::removeDirTree(StringView dirPath) {
-    for (const DirectoryEntry& entry : Filesystem::listDir(dirPath)) {
+FSResult FileSystem::removeDirTree(StringView dirPath) {
+    for (const DirectoryEntry& entry : FileSystem::listDir(dirPath)) {
         String joined = joinPath(POSIXPath, dirPath, entry.name);
         if (entry.isDir) {
-            FSResult fsResult = Filesystem::removeDirTree(joined);
+            FSResult fsResult = FileSystem::removeDirTree(joined);
             if (fsResult != FS_OK) {
                 return fsResult;
             }
@@ -6562,36 +6562,36 @@ FSResult Filesystem::removeDirTree(StringView dirPath) {
             int rc = unlink((joined + '\0').bytes());
             if (rc != 0) {
                 PLY_ASSERT(PLY_FSPOSIX_ALLOW_UNKNOWN_ERRORS);
-                return Filesystem::setLastResult(FS_UNKNOWN);
+                return FileSystem::setLastResult(FS_UNKNOWN);
             }
         }
     }
     int rc = rmdir((dirPath + '\0').bytes());
     if (rc != 0) {
         PLY_ASSERT(PLY_FSPOSIX_ALLOW_UNKNOWN_ERRORS);
-        return Filesystem::setLastResult(FS_UNKNOWN);
+        return FileSystem::setLastResult(FS_UNKNOWN);
     }
-    return Filesystem::setLastResult(FS_OK);
+    return FileSystem::setLastResult(FS_OK);
 }
 
-DirectoryEntry Filesystem::getFileInfo(StringView path) {
+DirectoryEntry FileSystem::getFileInfo(StringView path) {
     DirectoryEntry entry;
     struct stat buf;
     int rc = stat((path + '\0').bytes(), &buf);
     if (rc != 0) {
         switch (errno) {
             case ENOENT: {
-                entry.result = Filesystem::setLastResult(FS_NOT_FOUND);
+                entry.result = FileSystem::setLastResult(FS_NOT_FOUND);
                 break;
             }
             default: {
                 PLY_ASSERT(PLY_FSPOSIX_ALLOW_UNKNOWN_ERRORS);
-                Filesystem::setLastResult(FS_UNKNOWN);
+                FileSystem::setLastResult(FS_UNKNOWN);
                 break;
             }
         }
     } else {
-        entry.result = Filesystem::setLastResult(FS_OK);
+        entry.result = FileSystem::setLastResult(FS_OK);
         entry.fileSize = buf.st_size;
         entry.creationTime = buf.st_ctime;
         entry.accessTime = buf.st_atime;

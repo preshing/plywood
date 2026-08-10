@@ -3,7 +3,7 @@ Project Overview
 
 Plywood is organized into 9 main components:
 
-- [Operating System](/docs/system/index.md): Timers, filesystems, processes, threads, virtual memory and basic data containers.
+- [Operating System](/docs/system/index.md): Timers, file systems, processes, threads, virtual memory and basic data containers.
 - [2D and 3D Math](/docs/math.md): Suitable for games and UI layouts.
 - [Reflection](/docs/reflect.md): Generic processing of data stored in Plywood containers.
 - [Networking](/docs/networking.md): Client and server-side TCP and HTTP.

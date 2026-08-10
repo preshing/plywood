@@ -816,7 +816,7 @@ void performInferenceRequest(Agent::Impl* impl) {
         String timestampStr = String::fromDateTime("%Y-%m-%d_%H-%M-%S", dateTime);
         String sanitizedUrl = sanitizeUrlForFilename(impl->settings.endPoint.url);
         String logFilename = String::format("llm-log_{}_{}.txt", timestampStr, sanitizedUrl);
-        impl->httpLogFile = Filesystem::openBinaryForWrite(logFilename);
+        impl->httpLogFile = FileSystem::openBinaryForWrite(logFilename);
     }
     PLY_ON_SCOPE_EXIT({ impl->httpLogFile.close(); });
 

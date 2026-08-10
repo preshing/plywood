@@ -261,11 +261,11 @@ StringView getTextAtOffset(const Preprocessor* pp, u32 inputOffset, u32 numBytes
 void includeFile(ParserImpl* parser, StringView filename, u32 inputOffset) {
     for (StringView includePath : parser->includePaths) {
         String fullPath = joinPath(includePath, filename);
-        if (Filesystem::exists(fullPath) == ER_FILE) {
+        if (FileSystem::exists(fullPath) == ER_FILE) {
             u32 fileIndex = parser->pp.files.numItems();
             Preprocessor::File& file = parser->pp.files.append();
             file.absPath = fullPath;
-            file.contentsStorage = Filesystem::loadTextAutodetect(fullPath);
+            file.contentsStorage = FileSystem::loadTextAutodetect(fullPath);
             file.contents = file.contentsStorage;
             file.tokenLocMap = TokenLocationMap::createFromString(file.contents);
 

@@ -901,7 +901,7 @@ static bool loadSettingsWithIncludes(StringView settingsPath, Array<String>& inc
     PLY_ON_SCOPE_EXIT({ includedPaths.pop(); });
 
     // Load this settings file.
-    String jsonText = Filesystem::loadText(settingsPath);
+    String jsonText = FileSystem::loadText(settingsPath);
     if (!jsonText) {
         getStdErr().format("Could not load configuration file: {}\n", settingsPath);
         return false;
@@ -1097,7 +1097,7 @@ static bool loadSettingsWithIncludes(StringView settingsPath, Array<String>& inc
 static bool loadSettings() {
     // Set defaults.
     agentSettings.endPoint.getAPIKey = []() -> String { return {}; };
-    agentSettings.toolSet.workingDirectory = Filesystem::getWorkingDirectory();
+    agentSettings.toolSet.workingDirectory = FileSystem::getWorkingDirectory();
 
     // Find settings file.
     String settingsPath;
@@ -1105,11 +1105,11 @@ static bool loadSettings() {
         // Use the settings file specified on the command line, if any.
         settingsPath = makeAbsolutePath(options.settingsPath);
     } else {
-        // Otherwise, search the working directory and each of its ancestors up to the filesystem root.
-        String searchDir = Filesystem::getWorkingDirectory();
+        // Otherwise, search the working directory and each of its ancestors up to the file system root.
+        String searchDir = FileSystem::getWorkingDirectory();
         while (true) {
             settingsPath = joinPath(searchDir, "agent.json");
-            if (Filesystem::exists(settingsPath) == ER_FILE)
+            if (FileSystem::exists(settingsPath) == ER_FILE)
                 break;
 
             String parentDir = splitPath(searchDir).directory;

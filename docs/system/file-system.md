@@ -1,16 +1,16 @@
-﻿The Filesystem (`ply-system.h`)
-=============================
+﻿File System (`ply-system.h`)
+============================
 
-Plywood provides a portable filesystem API that works consistently across Windows and POSIX platforms. All paths arguments are treated as UTF-8 strings.
+Plywood provides a portable file system API that works consistently across Windows and POSIX platforms. All paths arguments are treated as UTF-8 strings.
 
-## `Filesystem`
+## `FileSystem`
 
-The `Filesystem` class contains static methods for file and directory operations.
+The `FileSystem` class contains static methods for file and directory operations.
 
-{context class=Filesystem}
+{context class=FileSystem}
 
 `static FSResult lastResult()`
-> Returns the result code from the most recent filesystem operation.
+> Returns the result code from the most recent file system operation.
 
 `static Array<DirectoryEntry> listDir(StringView path)`
 > Returns an array of directory entries for the given path. Each entry contains the name, size, and type of a file or subdirectory.

@@ -4531,11 +4531,11 @@ struct TextFormat {
 TextFormat get_default_utf8_format();
 TextFormat autodetectTextFormat(Stream& in);
 
-//  ▄▄▄▄▄ ▄▄ ▄▄▄                               ▄▄
-//  ██    ▄▄  ██   ▄▄▄▄   ▄▄▄▄  ▄▄  ▄▄  ▄▄▄▄  ▄██▄▄  ▄▄▄▄  ▄▄▄▄▄▄▄
-//  ██▀▀  ██  ██  ██▄▄██ ▀█▄▄▄  ██  ██ ▀█▄▄▄   ██   ██▄▄██ ██ ██ ██
-//  ██    ██ ▄██▄ ▀█▄▄▄   ▄▄▄█▀ ▀█▄▄██  ▄▄▄█▀  ▀█▄▄ ▀█▄▄▄  ██ ██ ██
-//                               ▄▄▄█▀
+//  ▄▄▄▄▄ ▄▄ ▄▄▄              ▄▄▄▄                 ▄▄
+//  ██    ▄▄  ██   ▄▄▄▄      ██  ▀▀ ▄▄  ▄▄  ▄▄▄▄  ▄██▄▄  ▄▄▄▄  ▄▄▄▄▄▄▄
+//  ██▀▀  ██  ██  ██▄▄██      ▀▀▀█▄ ██  ██ ▀█▄▄▄   ██   ██▄▄██ ██ ██ ██
+//  ██    ██ ▄██▄ ▀█▄▄▄      ▀█▄▄█▀ ▀█▄▄██  ▄▄▄█▀  ▀█▄▄ ▀█▄▄▄  ██ ██ ██
+//                                   ▄▄▄█▀
 
 enum PathFormat {
     WindowsPath,
@@ -4586,7 +4586,7 @@ private:
         u32 dirIndex;
     };
 
-    friend struct Filesystem;
+    friend struct FileSystem;
     WalkTriple triple;
     Array<StackItem> stack;
 
@@ -4615,7 +4615,7 @@ public:
     }
 };
 
-struct Filesystem {
+struct FileSystem {
     static ThreadLocal<FSResult> lastResult_;
 
     static FSResult setLastResult(FSResult result) {
@@ -4662,7 +4662,7 @@ struct Filesystem {
 
     static FSResult copyFile(StringView srcPath, StringView dstPath);
     static bool isDir(StringView path) {
-        return Filesystem::exists(path) == ER_DIRECTORY;
+        return FileSystem::exists(path) == ER_DIRECTORY;
     }
     static DirectoryWalker walk(StringView top);
     static FSResult makeDirs(StringView path);
@@ -4725,39 +4725,39 @@ bool matchGitIgnorePattern(StringView relativePath, bool isDir, StringView patte
 
 // Native path manipulation functions:
 constexpr char getPathSeparator() {
-    return getPathSeparator(Filesystem::pathFormat());
+    return getPathSeparator(FileSystem::pathFormat());
 }
 constexpr bool isPathSeparator(char c) {
-    return isPathSeparator(Filesystem::pathFormat(), c);
+    return isPathSeparator(FileSystem::pathFormat(), c);
 }
 inline StringView getDriveLetter(StringView path) {
-    return getDriveLetter(Filesystem::pathFormat(), path);
+    return getDriveLetter(FileSystem::pathFormat(), path);
 }
 inline bool isAbsolutePath(StringView path) {
-    return isAbsolutePath(Filesystem::pathFormat(), path);
+    return isAbsolutePath(FileSystem::pathFormat(), path);
 }
 inline bool isRelativePath(StringView path) {
-    return !isAbsolutePath(Filesystem::pathFormat(), path);
+    return !isAbsolutePath(FileSystem::pathFormat(), path);
 }
 inline String makeAbsolutePath(StringView path) {
-    return makeAbsolutePath(Filesystem::pathFormat(), path);
+    return makeAbsolutePath(FileSystem::pathFormat(), path);
 }
 inline String makeRelativePath(StringView ancestor, StringView descendant) {
-    return makeRelativePath(Filesystem::pathFormat(), ancestor, descendant);
+    return makeRelativePath(FileSystem::pathFormat(), ancestor, descendant);
 }
 inline SplitPath splitPath(StringView path) {
-    return splitPath(Filesystem::pathFormat(), path);
+    return splitPath(FileSystem::pathFormat(), path);
 }
 inline SplitExtension splitFileExtension(StringView path) {
-    return splitFileExtension(Filesystem::pathFormat(), path);
+    return splitFileExtension(FileSystem::pathFormat(), path);
 }
 inline Array<StringView> splitPathFull(StringView path) {
-    return splitPathFull(Filesystem::pathFormat(), path);
+    return splitPathFull(FileSystem::pathFormat(), path);
 }
 template <typename... StringViews>
 String joinPath(StringViews&&... pathComponentArgs) {
     FixedArray<StringView, sizeof...(StringViews)> components{std::forward<StringViews>(pathComponentArgs)...};
-    return joinPathFromArray(Filesystem::pathFormat(), components);
+    return joinPathFromArray(FileSystem::pathFormat(), components);
 }
 
 //  ▄▄▄▄▄  ▄▄                      ▄▄                        ▄▄    ▄▄         ▄▄         ▄▄

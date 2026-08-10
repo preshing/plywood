@@ -39,14 +39,14 @@ void writeFileIfChanged(StringView path, StringView contents) {
     stats.generatedPaths.insert(path);
 
     // Retain an existing file when its bytes already match the generated contents.
-    if ((Filesystem::exists(path) == ER_FILE) && (Filesystem::loadBinary(path) == contents)) {
+    if ((FileSystem::exists(path) == ER_FILE) && (FileSystem::loadBinary(path) == contents)) {
         stats.numUnchanged++;
         return;
     }
 
     // Create the parent directory and write the new contents.
-    Filesystem::makeDirs(splitPath(path).directory);
-    FSResult result = Filesystem::saveBinary(path, contents);
+    FileSystem::makeDirs(splitPath(path).directory);
+    FSResult result = FileSystem::saveBinary(path, contents);
     PLY_ASSERT(result == FS_OK);
     PLY_UNUSED(result);
     stats.numUpdated++;
@@ -472,7 +472,7 @@ void convertPage(const json::Node& item, const json::Node* prevPage, const json:
     PLY_ASSERT(docsPath.startsWith("/docs/") && docsPath.endsWith(".md"));
     String markdownPath = joinPath(PLYWOOD_ROOT_DIR, docsPath.substr(1));
     String relName = docsPath.substr(6).shortenedBy(3);
-    String markdown = Filesystem::loadTextAutodetect(markdownPath);
+    String markdown = FileSystem::loadTextAutodetect(markdownPath);
     ViewStream in{markdown};
     MemStream mem;
     parseMarkdown(mem, in, headings);
@@ -505,7 +505,7 @@ void convertPage(const json::Node& item, const json::Node* prevPage, const json:
 
 // Loads and parses a JSON file from disk.
 json::Node parseJson(StringView path) {
-    String src = Filesystem::loadTextAutodetect(path);
+    String src = FileSystem::loadTextAutodetect(path);
     return json::Parser{}.parse(path, src).root;
 }
 
@@ -514,28 +514,28 @@ void generateWholeSite() {
     publishKey = Random{}.generateU32(); // Prevent browsers from caching old stylesheets
 
     // Copy front page to content/index.html.
-    String frontPage = Filesystem::loadText(joinPath(sourceFolder, "index.html"));
+    String frontPage = FileSystem::loadText(joinPath(sourceFolder, "index.html"));
     appendPublishKeyToAsset(frontPage, "/static/common.css");
     appendPublishKeyToAsset(frontPage, "/static/front.css");
     appendPublishKeyToAsset(frontPage, "/static/common.js");
     writeFileIfChanged(joinPath(outFolder, "content/index.html"), frontPage);
 
     // Copy static files to static/.
-    for (const DirectoryEntry& entry : Filesystem::listDir(joinPath(sourceFolder, "static"))) {
+    for (const DirectoryEntry& entry : FileSystem::listDir(joinPath(sourceFolder, "static"))) {
         if (entry.isFile()) {
             String srcPath = joinPath(sourceFolder, "static", entry.name);
             String dstPath = joinPath(outFolder, "static", entry.name);
             if (entry.name.endsWith(".css") || entry.name.endsWith(".js") || entry.name.endsWith(".html")) {
-                String text = Filesystem::loadTextAutodetect(srcPath);
+                String text = FileSystem::loadTextAutodetect(srcPath);
                 writeFileIfChanged(dstPath, text);
             } else {
-                writeFileIfChanged(dstPath, Filesystem::loadBinary(srcPath));
+                writeFileIfChanged(dstPath, FileSystem::loadBinary(srcPath));
             }
         }
     }
 
     // Copy docs template to content/.
-    String templateText = Filesystem::loadTextAutodetect(joinPath(sourceFolder, "docs-template.html"));
+    String templateText = FileSystem::loadTextAutodetect(joinPath(sourceFolder, "docs-template.html"));
     appendPublishKeyToAsset(templateText, "/static/common.css");
     appendPublishKeyToAsset(templateText, "/static/docs.css");
     appendPublishKeyToAsset(templateText, "/static/common.js");
@@ -563,12 +563,12 @@ void generateWholeSite() {
     writeFileIfChanged(joinPath(outFolder, "content/toc.html"), tocStream.moveToString());
 
     // Delete files left behind by pages or assets that are no longer generated.
-    if (Filesystem::isDir(outFolder)) {
-        for (const WalkTriple& triple : Filesystem::walk(outFolder)) {
+    if (FileSystem::isDir(outFolder)) {
+        for (const WalkTriple& triple : FileSystem::walk(outFolder)) {
             for (const DirectoryEntry& entry : triple.files) {
                 String path = joinPath(triple.dirPath, entry.name);
                 if (!stats.generatedPaths.find(path)) {
-                    FSResult result = Filesystem::deleteFile(path);
+                    FSResult result = FileSystem::deleteFile(path);
                     PLY_ASSERT(result == FS_OK);
                     PLY_UNUSED(result);
                     stats.numOrphansRemoved++;
@@ -596,7 +596,7 @@ void generateWholeSite() {
     out.write(".\n");
 }
 
-// Entry point that runs a full generation pass and optional filesystem watch loop.
+// Entry point that runs a full generation pass and optional file system watch loop.
 int main(int argc, const char* argv[]) {
 #if defined(PLY_WINDOWS)
     SetConsoleOutputCP(CP_UTF8);
