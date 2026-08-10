@@ -1,5 +1,5 @@
 ﻿Time and Date (`ply-system.h`)
-============================
+==============================
 
 Plywood provides two families of functions for working with time and dates.
 
@@ -61,18 +61,19 @@ A [Unix timestamp](https://en.wikipedia.org/wiki/Unix_time) is an amount of elap
 | `%R` | microsecond with leading zeros |
 | `%Z` | signed time zone offset |
 
-    s64 sysTime = getUnixTimestamp();
-    DateTime dateTime = convertToDateTime(sysTime);
-    Stream out = getStdOut();
-    printDateTime(out, "[%Y-%m-%d %H:%M:%S.%L]\n", dateTime);
-    out.format("The date is {}.\n", String::fromDateTime("%A, %B %e, %Y", dateTime));
-    out.format("The time is {}.\n", String::fromDateTime("%l:%M %p (UTC%Z)", dateTime));
+```
+s64 sysTime = getUnixTimestamp();
+DateTime dateTime = convertToDateTime(sysTime);
+Stream out = getStdOut();
+printDateTime(out, "[%Y-%m-%d %H:%M:%S.%L]\n", dateTime);
+out.format("The date is {}.\n", String::fromDateTime("%A, %B %e, %Y", dateTime));
+out.format("The time is {}.\n", String::fromDateTime("%l:%M %p (UTC%Z)", dateTime));
 
-{output}
-[2025-12-01 19:00:01.234]
-The date is Monday, December 1, 2025.
-The time is 7:00 PM (UTC-05:00).
-{/output}
+// Output:
+// [2025-12-01 19:00:01.234]
+// The date is Monday, December 1, 2025.
+// The time is 7:00 PM (UTC-05:00).
+```
 
 ## Performance Timer
 
@@ -84,9 +85,11 @@ The performance timer takes precise CPU timing measurements using the CPU's inte
 `float getCpuTicksPerSecond()`
 > Returns the number of CPU ticks per second on the current system. To measure a time interval in seconds, subtract two timestamps and divide the result by this value.
 
-    u64 startTimeStamp = getCpuTicks();
-    doSomeWork();
-    u64 endTimeStamp = getCpuTicks();
-    float duration = (endTimeStamp - startTimeStamp) / getCpuTicksPerSecond();
-    getStdOut().write("{} seconds elapsed.\n", duration);
-    // Output: 1.234 seconds elapsed.
+```
+u64 startTimeStamp = getCpuTicks();
+doSomeWork();
+u64 endTimeStamp = getCpuTicks();
+float duration = (endTimeStamp - startTimeStamp) / getCpuTicksPerSecond();
+getStdOut().write("{} seconds elapsed.\n", duration);
+// Output: 1.234 seconds elapsed.
+```

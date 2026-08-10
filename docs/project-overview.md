@@ -15,13 +15,15 @@ Plywood is organized into 9 main components:
 
 ## Directory Layout
 
-    plywood/
-    ├── apps/
-    ├── bin/
-    ├── docs/
-    │   └── ...
-    ├── share/
-    └── src/
-        └── ...
+```
+plywood/
+├── apps/
+├── bin/
+├── docs/
+│   └── ...
+├── share/
+└── src/
+    └── ...
+```
 
 [`ply-system.h`](/docs/system/index.md) is an all-in-one header file where operating system features and common functions and data structures are exposed.

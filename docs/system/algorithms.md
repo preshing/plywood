@@ -20,10 +20,10 @@ Plywood provides generic algorithms that work with any array-like container. The
 | `FindGreaterThan` | Returns the first item strictly greater than `key` |
 | `FindGreaterThanOrEqual` | Returns the first item greater than or equal to `key` |
 
-{example}
+```
 Array<int> numbers = {5, 2, 8, 1, 9};
 sort(numbers);  // numbers is now {1, 2, 5, 8, 9}
 
 s32 idx = find(numbers, 5);  // idx is 2
 u32 pos = binarySearch(numbers, 6, FindGreaterThan);  // pos is 3 (points to 8)
-{/example}
+```

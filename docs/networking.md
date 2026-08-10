@@ -112,7 +112,7 @@ A `TCPListener` listens for incoming TCP connections on a specific port.
 `Owned<TCPConnection> accept()`
 > Blocks until a client connects, then returns the new connection. Returns null if the listener was closed.
 
-{example}
+```
 // Simple echo server
 Network::initialize(IPVersion::V4);
 TCPListener listener = Network::bindTcp(8080);
@@ -120,10 +120,10 @@ TCPListener listener = Network::bindTcp(8080);
 while (true) {
     Owned<TCPConnection> conn = listener.accept();
     if (!conn) break;
-    
+
     Stream in = conn->createInStream();
     Stream out = conn->createOutStream();
-    
+
     String line = readLine(in);
     out.write(line);
     out.write("\n");
@@ -131,7 +131,7 @@ while (true) {
 }
 
 Network::shutdown();
-{/example}
+```
 
 ## `HTTPClient`
 
@@ -201,7 +201,7 @@ the returned `Owned<HTTPClient>` go out of scope).
 > Can be called from any thread. If `waitForHTTPResponse()` is currently blocked in another thread, it returns
 > immediately; otherwise the next `waitForHTTPResponse()` call returns immediately.
 
-{example}
+```
 #include <ply-network.h>
 
 using namespace ply;
@@ -222,11 +222,11 @@ void fetchPage() {
         // Response data is delivered to `callback` inside waitForHTTPResponse().
     }
 }
-{/example}
+```
 
 ## HTTP Server
 
-{example}
+```
 #include <ply-network.h>
 
 using namespace ply;
@@ -243,7 +243,7 @@ int main() {
     Network::shutdown();
     return 0;
 }
-{/example}
+```
 
 ## `HTTPRequest`
 

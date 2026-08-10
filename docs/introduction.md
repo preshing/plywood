@@ -11,9 +11,13 @@ Plywood requires no dependencies other than your target platform's native SDK. I
 
 Clone the repository from [GitHub](https://github.com/preshing/plywood).
 
-    $ git clone https://github.com/preshing/plywood.git
-    $ cd plywood
+```
+$ git clone https://github.com/preshing/plywood.git
+$ cd plywood
+```
 
 If [CMake](https://cmake.org/) is installed, the following command will create a build system for the test suite, build it, then run all available tests. On Windows, use `share\build-app.bat` instead.
 
-    $ share/build-app.sh test-suite -run -all
+```
+$ share/build-app.sh test-suite -run -all
+```

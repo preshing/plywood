@@ -81,17 +81,18 @@ The following member functions are implemented for all array classes:
 `Item* end()`
 `const Item* end() const`
 > Lets you use arrays in [range-based for loops](https://en.cppreference.com/w/cpp/language/range-for.html).
-
-    Array<u32> array = {4, 5, 6};
-    for (u32 item : array) {
-        getStdOut().format("{}\n", item);
-    }
-
-{output}
-4
-5
-6
-{/output}
+>
+> ```
+> Array<u32> array = {4, 5, 6};
+> for (u32 item : array) {
+>     getStdOut().format("{}\n", item);
+> }
+>
+> // Output:
+> // 4
+> // 5
+> // 6
+> ```
 
 ### Casting to Other Types
 
@@ -124,8 +125,10 @@ The following member functions are implemented for all array classes:
 ## `Array`
 
 An `Array` instance is a dynamically resizable array that owns all its items, similar to `std::vector` from the C++ Standard Library.
-    
-    template <typename Item> class Array;
+
+```
+template <typename Item> class Array;
+```
 
 In addition to the [common array methods](#common) listed in the previous section, `Array` provides the following member functions:
 
@@ -150,15 +153,17 @@ The items are allocated from [the Plywood heap](/docs/system/memory-management.m
 
 You don't need to define the type before declaring an Array member variable. But you do need it if instantiating a variable.
 
-    struct Foo;  // Forward declaration
+```
+struct Foo;  // Forward declaration
 
-    struct Bar {        
-        Array<Foo> array;  // OK to declare member variable before defining Foo        
-    };
+struct Bar {
+    Array<Foo> array;  // OK to declare member variable before defining Foo
+};
 
-    void test() {
-        Array<Foo> array;  // error: Foo should be defined at this point
-    }
+void test() {
+    Array<Foo> array;  // error: Foo should be defined at this point
+}
+```
 
 ### Additional Constructors
 
@@ -257,7 +262,9 @@ It's implicitly convertible to `ArrayView<const Item>`.
 
 A `FixedArray` is a fixed-size array that owns its contents.
 
-    template <typename Item, u32 Size> class FixedArray;
+```
+template <typename Item, u32 Size> class FixedArray;
+```
 
 No additional heap allocations are performed. All the array items are stored directly in the `FixedArray` object. It's equivalent to a C-style array, but with runtime bounds checking.
 

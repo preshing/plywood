@@ -11,9 +11,11 @@ These classes all use 32-bit integers for indexing, which means they can referea
 
 Plywood strings aren't null-terminated unless you add an explicit null byte to the end. This is sometimes necessary when passing strings to legacy functions that expect a null terminator.
 
-    String str = "Hello, world!";
-    // The legacy function 'puts' expects a null terminator:
-    puts((str + '\0').bytes());
+```
+String str = "Hello, world!";
+// The legacy function 'puts' expects a null terminator:
+puts((str + '\0').bytes());
+```
 
 These classes aren't thread-safe. Functions that read from the same string can be called concurrently from separate threads, but functions that modify the same string must not be called concurrently.
 

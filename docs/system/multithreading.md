@@ -115,9 +115,11 @@ A `Mutex` provides mutual exclusion to protect shared data. Use `LockGuard` for 
 
 `LockGuard<MutexType>` is a RAII wrapper that locks a mutex in its constructor and unlocks it in its destructor:
 
-    LockGuard<Mutex> guard{myMutex};  // mutex is locked
-    // ... critical section ...
-    // mutex is unlocked when guard goes out of scope
+```
+LockGuard<Mutex> guard{myMutex};  // mutex is locked
+// ... critical section ...
+// mutex is unlocked when guard goes out of scope
+```
 
 ## `ConditionVariable`
 

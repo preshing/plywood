@@ -24,17 +24,18 @@ This class isn't thread-safe. Its member functions must not be called concurrent
 `double generateDouble()`
 > Returns a uniformly-distributed floating-point number that is greater than or equal to 0.0 and less than 1.0.
 
-    // Generate some 4-digit random numbers
-    Random r;
-    Stream out = getStdOut();
-    for (u32 i = 0; i < 5; i++) {
-        out.format("{}\n", r.generateU32() % 9000 + 1000);
-    }
+```
+// Generate some 4-digit random numbers.
+Random r;
+Stream out = getStdOut();
+for (u32 i = 0; i < 5; i++) {
+    out.format("{}\n", r.generateU32() % 9000 + 1000);
+}
 
-{output}
-2910
-7364
-5994
-8732
-1678
-{/output}
+// Output:
+// 2910
+// 7364
+// 5994
+// 8732
+// 1678
+```

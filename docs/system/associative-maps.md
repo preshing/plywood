@@ -34,16 +34,18 @@ In the `Set` and `Map` class templates, [hashing](https://en.wikipedia.org/wiki/
 
 To make additional types hashable, overload the `addToHash` function for the desired type, as demonstrated below.
 
-    struct CustomType {
-        u32 x;
-        String str;
-    };
+```
+struct CustomType {
+    u32 x;
+    String str;
+};
 
-    // User-defined addToHash overload.
-    void addToHash(HashBuilder& builder, const CustomType& item) {
-        addToHash(builder, item.x);
-        addToHash(builder, item.str);
-    }
+// User-defined addToHash overload.
+void addToHash(HashBuilder& builder, const CustomType& item) {
+    addToHash(builder, item.x);
+    addToHash(builder, item.str);
+}
+```
 
 `addToHash` is called internally by `Set` and `Map`. It's called using [argument-dependent lookup](https://en.cppreference.com/w/cpp/language/adl.html), so you can define it in the same namespace as the type itself.
 
@@ -51,45 +53,53 @@ To make additional types hashable, overload the `addToHash` function for the des
 
 A `Set` is a collection of items that supports fast lookup using a key type that's automatically determined from the item type. The key type must be hashable.
 
-    template <typename Item> class Set;
+```
+template <typename Item> class Set;
+```
 
 `Set` objects are movable, copyable and construct to an empty collection by default. They provide the following member functions:
 
 Hashable item types can be used directly as the key type.
 
-    Set<u32> set = {4, 5, 6};
-    PLY_ASSERT(set.find(4));  // OK
+```
+Set<u32> set = {4, 5, 6};
+PLY_ASSERT(set.find(4));  // OK
+```
 
 Otherwise, the item type must implement a `getLookupKey` member function. The return type of `getLookupKey` determines the key type.
 
-    struct CustomItem {
-        String key;
-        u32 value;
+```
+struct CustomItem {
+    String key;
+    u32 value;
 
-        StringView getLookupKey() const {
-            return this->key;
-        }
-    };
+    StringView getLookupKey() const {
+        return this->key;
+    }
+};
 
-    Set<CustomItem> set = {
-        {"apple", 1},
-        {"banana", 2},
-        {"cherry", 3},
-    };
-    PLY_ASSERT(set.find("banana"));  // OK
+Set<CustomItem> set = {
+    {"apple", 1},
+    {"banana", 2},
+    {"cherry", 3},
+};
+PLY_ASSERT(set.find("banana"));  // OK
+```
 
 The items in a `Set` are maintained in insertion order unless `eraseQuick` is called.
 
-    Set<u32> set = {4, 5, 6, 7};
-    ArrayView<u32> items = set.items();  // Returns {4, 5, 6, 7}
+```
+Set<u32> set = {4, 5, 6, 7};
+ArrayView<u32> items = set.items();  // Returns {4, 5, 6, 7}
 
-    // erase maintains insertion order.
-    set.erase(5);
-    items = set.items();  // Returns {4, 6, 7}
+// erase maintains insertion order.
+set.erase(5);
+items = set.items();  // Returns {4, 6, 7}
 
-    // eraseQuick can change the order of remaining items.
-    set.eraseQuick(4);
-    items = set.items();  // Returns {7, 6}
+// eraseQuick can change the order of remaining items.
+set.eraseQuick(4);
+items = set.items();  // Returns {7, 6}
+```
 
 ### Additional Constructors
 
@@ -134,7 +144,9 @@ The items in a `Set` are maintained in insertion order unless `eraseQuick` is ca
 
 A `Map` is a collection of key-value pairs whose types are determined by template arguments.
 
-    template <typename Key, typename Value> class Map;
+```
+template <typename Key, typename Value> class Map;
+```
 
 `Map` objects are movable, copyable and construct to an empty collection by default. They provide the following member functions:
 
@@ -149,20 +161,22 @@ A `Map` is a collection of key-value pairs whose types are determined by templat
 
 The items in a `Map` are kept in insertion order unless `eraseQuick` is called.
 
-    Map<u32, String> map = {
-        {4, "apple"},
-        {5, "banana"},
-        {6, "cherry"},
-        {7, "date"},
-    };
+```
+Map<u32, String> map = {
+    {4, "apple"},
+    {5, "banana"},
+    {6, "cherry"},
+    {7, "date"},
+};
 
-    // erase maintains insertion order.
-    map.erase(5);
-    auto items = map.items();  // Returns {{4, "apple"}, {6, "cherry"}, {7, "date"}}
+// erase maintains insertion order.
+map.erase(5);
+auto items = map.items();  // Returns {{4, "apple"}, {6, "cherry"}, {7, "date"}}
 
-    // eraseQuick can change the order of remaining items.
-    map.eraseQuick(4);
-    items = map.items();  // Returns {{7, "date"}, {6, "cherry"}}
+// eraseQuick can change the order of remaining items.
+map.eraseQuick(4);
+items = map.items();  // Returns {{7, "date"}, {6, "cherry"}}
+```
 
 ### Additional Constructors
 

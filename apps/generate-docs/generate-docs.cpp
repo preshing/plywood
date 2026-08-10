@@ -116,32 +116,6 @@ String convertDocsPathToURL(StringView destination) {
     return path + suffix;
 }
 
-// Parses an {example} section and emits it as a captioned code block.
-void parseExample(Stream& out, ViewStream& in) {
-    out.format("<div class=\"caption\">Example</div>\n");
-    out.write("<pre><code>");
-    while (StringView line = readLine(in)) {
-        StringView s = line.trim();
-        if (s == "{/example}")
-            break;
-        printXmlEscapedString(out, line);
-    }
-    out.write("</code></pre>\n");
-}
-
-// Parses an {output} section and emits it as a captioned code block.
-void parseOutput(Stream& out, ViewStream& in) {
-    out.format("<div class=\"caption\">Output</div>\n");
-    out.write("<pre><code>");
-    while (StringView line = readLine(in)) {
-        StringView s = line.trim();
-        if (s == "{/output}")
-            break;
-        printXmlEscapedString(out, line);
-    }
-    out.write("</code></pre>\n");
-}
-
 // Returns true when a paragraph is made of code spans separated only by soft breaks.
 bool parseApiDeclarationParagraph(const markdown::Block* block, Array<String>* declarations = nullptr) {
     auto* para = block->var.as<markdown::Block::Paragraph>();
@@ -395,10 +369,6 @@ void parseMarkdown(Stream& out, ViewStream& in, Array<PageHeading>& headings) {
                 } else {
                     blockProcessor.setApiClassContext({});
                 }
-            } else if (cmd == "example") {
-                parseExample(out, in);
-            } else if (cmd == "output") {
-                parseOutput(out, in);
             } else {
                 PLY_ASSERT(0); // Unrecognized section type
             }

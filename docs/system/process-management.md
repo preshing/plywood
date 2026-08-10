@@ -30,7 +30,7 @@ The `Output` and `Input` parameters control I/O redirection:
 - `Input::open()` — Uses the parent process's stdin
 - `Input::pipe(Stream&)` — Redirects from a pipe you can write to
 
-{example}
+```
 // Run a command and capture its output
 Stream outputStream;
 Owned<Subprocess> proc = Subprocess::exec(
@@ -40,4 +40,4 @@ Owned<Subprocess> proc = Subprocess::exec(
 );
 String output = outputStream.readRemaining();
 s32 exitCode = proc->join();
-{/example}
+```

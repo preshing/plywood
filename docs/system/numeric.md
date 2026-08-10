@@ -3,7 +3,7 @@ Numeric Functions and Types (`ply-system.h`)
 
 Plywood defines the following explicily-sized integer types, similar to `<stdint.h>` from the C standard library. These types are used internally throughout Plywood.
 
-### Numeric Types
+### Integer Types
 
 | | |
 | --- | --- |

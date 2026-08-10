@@ -49,7 +49,7 @@ You can create and destroy C++ objects in the Plywood heap directly using `Heap:
 `template <typename Type> static void destroy(Type* obj)`
 > Invokes the destructor of an object and frees its memory back to the heap.
 
-{example}
+```
 Owned<Foo> createFoo() {
     return Heap::create<Foo>();
 }
@@ -57,7 +57,7 @@ Owned<Foo> createFoo() {
 void destroy(Foo* foo) {
     Heap::destroy(foo);
 }
-{/example}
+```
 
 ### Monitoring the Heap
 

@@ -3,7 +3,9 @@ Variants (`ply-system.h`)
 
 A `Variant` can hold a value of one of several predefined types at runtime. It's similar to a [tagged union](https://en.wikipedia.org/wiki/Tagged_union).
 
-    template <typename... Types> class Variant;
+```
+template <typename... Types> class Variant;
+```
 
 {context class=Variant}
 
@@ -29,11 +31,11 @@ A `Variant` can hold a value of one of several predefined types at runtime. It's
 `template <typename T, typename... Args> T& switchTo(Args&&... args)`
 > Destroys the current value (if any), constructs a new value of type `T` using the provided arguments, and returns a reference to it.
 
-{example}
+```
 Variant<int, String, float> value;
 value = 42;
 if (value.is<int>()) {
     int* p = value.as<int>();  // p points to the int
 }
 value.switchTo<String>("hello");
-{/example}
+```
