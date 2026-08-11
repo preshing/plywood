@@ -175,7 +175,7 @@ bool tryConvertParagraphToTable(Parser* parser, StringView delimiterLine, u32 re
 void appendTableBodyRow(Parser* parser, StringView line);
 
 // Forward declaration for fenced-code info strings parsed before inline parsing helpers.
-String normalizeFenceInfoString(StringView src);
+String normalizeFenceInfoString(StringView src, const ParseOptions& options);
 
 // Helper function to extract a line from a code block without leading indentation.
 String extractCodeLine(StringView line, u32 startColumn, u32 optionalSpace = 0) {
@@ -232,7 +232,8 @@ bool parseFenceLineStart(StringView remainingLine, FenceLine* outFence) {
 }
 
 // Parses an opening fenced code line and fills marker/info metadata for the fenced block.
-bool parseOpeningFence(StringView remainingLine, u32 relativeIndent, Block::FencedCodeBlock& outFenced) {
+bool parseOpeningFence(StringView remainingLine, u32 relativeIndent, Block::FencedCodeBlock& outFenced,
+                       const ParseOptions& options) {
     if (relativeIndent > 3)
         return false;
 
@@ -251,7 +252,7 @@ bool parseOpeningFence(StringView remainingLine, u32 relativeIndent, Block::Fenc
     }
 
     outFenced.fenceMarker = remainingLine.left(fence.markerCount);
-    outFenced.infoString = normalizeFenceInfoString(info);
+    outFenced.infoString = normalizeFenceInfoString(info, options);
     outFenced.relativeIndent = relativeIndent;
     return true;
 }
@@ -831,12 +832,12 @@ void parseNewMarkers(LineParser& lp) {
             break;
         if (ctReader.viewRemaining().trim().isEmpty())
             break;
-        if (isThematicBreak(ctReader.viewRemaining(), lp.relativeIndent()))
+        if (parser->options.thematicBreaks && isThematicBreak(ctReader.viewRemaining(), lp.relativeIndent()))
             break;
 
         ColumnTrackingReader savedPos = ctReader;
 
-        if (ctReader.point == '>') {
+        if (ctReader.point == '>' && parser->options.blockQuotes) {
             // Begin a new blockquote
             finalizeLeafBlock(parser);
             Block* parent = parser->activeBlocks ? parser->activeBlocks.back() : &parser->rootBlock;
@@ -850,13 +851,14 @@ void parseNewMarkers(LineParser& lp) {
                 ctReader.advance();
                 lp.outerColumn++;
             }
-        } else if (ctReader.point == '*' || ctReader.point == '-' || ctReader.point == '+') {
+        } else if (parser->options.unorderedLists &&
+                   (ctReader.point == '*' || ctReader.point == '-' || ctReader.point == '+')) {
             char punctuator = numericCast<char>(ctReader.point);
             ctReader.advance();
             // It's an unordered list item.
             if (!tryStartListItem(parser, lp, punctuator, -1))
                 goto notMarker;
-        } else if (ctReader.point >= '0' && ctReader.point <= '9') {
+        } else if (parser->options.orderedLists && ctReader.point >= '0' && ctReader.point <= '9') {
             // Read number.
             ViewStream in(ctReader.viewRemaining());
             u64 num = readU64FromText(in);
@@ -923,7 +925,7 @@ void parseParagraphText(LineParser& lp) {
         }
         parser->checkListContinuations = false;
     }
-    if (!hasPara && lp.relativeIndent() >= 4) {
+    if (parser->options.indentedCodeBlocks && !hasPara && lp.relativeIndent() >= 4) {
         // Potentially begin or append to code block
         if (remainingText && !parser->leafBlock) {
             Block* parent = parser->activeBlocks ? parser->activeBlocks.back() : &parser->rootBlock;
@@ -944,7 +946,8 @@ void parseParagraphText(LineParser& lp) {
     } else {
         if (remainingText) {
             HTMLBlockStart newHTML;
-            if (parseHTMLBlockStart(lp.ctReader.viewRemaining(), lp.relativeIndent(), hasPara, &newHTML)) {
+            if (parser->options.htmlBlocks &&
+                parseHTMLBlockStart(lp.ctReader.viewRemaining(), lp.relativeIndent(), hasPara, &newHTML)) {
                 if (hasPara)
                     finalizeLeafBlock(parser);
                 Block* parent = parser->activeBlocks ? parser->activeBlocks.back() : &parser->rootBlock;
@@ -959,7 +962,8 @@ void parseParagraphText(LineParser& lp) {
             }
 
             Block::FencedCodeBlock newFenced;
-            if (parseOpeningFence(lp.ctReader.viewRemaining(), lp.relativeIndent(), newFenced)) {
+            if (parser->options.fencedCodeBlocks &&
+                parseOpeningFence(lp.ctReader.viewRemaining(), lp.relativeIndent(), newFenced, parser->options)) {
                 if (hasPara) {
                     finalizeLeafBlock(parser);
                 }
@@ -974,7 +978,7 @@ void parseParagraphText(LineParser& lp) {
             }
 
             u32 setextLevel = 0;
-            if (hasPara && !lp.isLazyContinuation &&
+            if (parser->options.setextHeadings && hasPara && !lp.isLazyContinuation &&
                 isSetextUnderline(lp.ctReader.viewRemaining(), lp.relativeIndent(), &setextLevel)) {
                 // Convert current paragraph block to a Setext heading.
                 PLY_ASSERT(parser->leafBlock->var.is<Block::Paragraph>());
@@ -985,7 +989,8 @@ void parseParagraphText(LineParser& lp) {
                 return;
             }
 
-            if (isThematicBreak(lp.ctReader.viewRemaining(), lp.relativeIndent())) {
+            if (parser->options.thematicBreaks &&
+                isThematicBreak(lp.ctReader.viewRemaining(), lp.relativeIndent())) {
                 // Thematic breaks terminate an open paragraph and become a standalone block.
                 if (hasPara) {
                     finalizeLeafBlock(parser);
@@ -995,7 +1000,7 @@ void parseParagraphText(LineParser& lp) {
                 return;
             }
 
-            if (remainingText.startsWith('#') && (lp.relativeIndent() <= 3)) {
+            if (parser->options.atxHeadings && remainingText.startsWith('#') && (lp.relativeIndent() <= 3)) {
                 // Attempt to parse a heading
                 ViewStream in{remainingText};
                 u32 poundCount = 0;
@@ -1440,19 +1445,20 @@ String decodeCharacterReferences(StringView src) {
 }
 
 // Decodes backslash escapes and character references in a fenced-code info string.
-String normalizeFenceInfoString(StringView src) {
+String normalizeFenceInfoString(StringView src, const ParseOptions& options) {
     MemStream out;
     for (u32 i = 0; i < src.numBytes(); i++) {
-        if (src[i] == '\\' && i + 1 < src.numBytes() && isAscPunc(src[i + 1]))
+        if (options.backslashEscapes && src[i] == '\\' && i + 1 < src.numBytes() && isAscPunc(src[i + 1]))
             i++;
         out.write(src[i]);
     }
-    return decodeCharacterReferences(out.moveToString());
+    String normalized = out.moveToString();
+    return options.characterReferences ? decodeCharacterReferences(normalized) : normalized;
 }
 
 // Percent-encodes bytes that aren't permitted literally in an HTML link destination.
-String normalizeLinkDestination(StringView src) {
-    String decoded = decodeCharacterReferences(src);
+String normalizeLinkDestination(StringView src, bool decodeReferences) {
+    String decoded = decodeReferences ? decodeCharacterReferences(src) : String{src};
     static const char Hex[] = "0123456789ABCDEF";
     MemStream out;
     for (u8 c : decoded) {
@@ -1469,7 +1475,8 @@ String normalizeLinkDestination(StringView src) {
 }
 
 // Consumes a GFM extended URL or email autolink beginning at start.
-bool consumeExtendedAutolink(StringView rawText, u32 start, u32* end, String* destination) {
+bool consumeExtendedAutolink(StringView rawText, u32 start, u32* end, String* destination,
+                             bool decodeReferences) {
     PLY_ASSERT(start < rawText.numBytes());
 
     // Extended autolinks only begin at a line boundary or after one of GFM's permitted delimiters.
@@ -1578,7 +1585,8 @@ bool consumeExtendedAutolink(StringView rawText, u32 start, u32* end, String* de
             break;
         }
         StringView label = rawText.substr(start, linkEnd - start);
-        *destination = normalizeLinkDestination(addHttpScheme ? "http://" + label : String{label});
+        *destination = normalizeLinkDestination(addHttpScheme ? "http://" + label : String{label},
+                                                decodeReferences);
         *end = linkEnd;
         return true;
     }
@@ -1617,7 +1625,7 @@ bool consumeExtendedAutolink(StringView rawText, u32 start, u32* end, String* de
         rawText[emailEnd - 1] == '-' || rawText[emailEnd - 1] == '_')
         return false;
     StringView label = rawText.substr(start, emailEnd - start);
-    *destination = normalizeLinkDestination("mailto:" + label);
+    *destination = normalizeLinkDestination("mailto:" + label, decodeReferences);
     *end = emailEnd;
     return true;
 }
@@ -1700,16 +1708,17 @@ bool consumeAutolink(StringView rawText, u32 start, u32* end, bool* isEmail) {
 }
 
 // Parses an autolink or raw HTML at start as one atomic inline, with autolinks taking precedence.
-Owned<Span> parseAtomicAngleSpan(StringView rawText, u32 start, u32* end, bool tagFilter) {
+Owned<Span> parseAtomicAngleSpan(StringView rawText, u32 start, u32* end, const ParseOptions& options) {
     PLY_ASSERT(start < rawText.numBytes() && rawText[start] == '<');
 
     // Consume the entire autolink so later inline parsing can't interpret backticks in its label.
     bool isEmail = false;
-    if (consumeAutolink(rawText, start, end, &isEmail)) {
+    if (options.autolinks && consumeAutolink(rawText, start, end, &isEmail)) {
         StringView label = rawText.substr(start + 1, *end - start - 2);
         Owned<Span> linkSpan = makeSpan<Span::Link>();
         String destination = isEmail ? "mailto:" + label : String{label};
-        linkSpan->var.as<Span::Link>()->destination = normalizeLinkDestination(destination);
+        linkSpan->var.as<Span::Link>()->destination =
+            normalizeLinkDestination(destination, options.characterReferences);
         Owned<Span> textSpan = makeSpan<Span::Text>();
         textSpan->var.as<Span::Text>()->text = label;
         linkSpan->var.as<Span::Link>()->childSpans.append(std::move(textSpan));
@@ -1717,26 +1726,27 @@ Owned<Span> parseAtomicAngleSpan(StringView rawText, u32 start, u32* end, bool t
     }
 
     // Raw HTML has the same atomicity: Markdown delimiters within the construct remain literal.
-    if (consumeInlineHTML(rawText, start, end)) {
+    if (options.inlineHTML && consumeInlineHTML(rawText, start, end)) {
         Owned<Span> htmlSpan = makeSpan<Span::RawHTML>();
         htmlSpan->var.as<Span::RawHTML>()->text = rawText.substr(start, *end - start);
-        htmlSpan->var.as<Span::RawHTML>()->tagFilter = tagFilter;
+        htmlSpan->var.as<Span::RawHTML>()->tagFilter = options.tagFilter;
         return htmlSpan;
     }
     return nullptr;
 }
 
 // Reads backslash escapes until the specified closing title delimiter.
-bool parseLinkTitle(StringView rawText, u32* pos, char closing, String* title) {
+bool parseLinkTitle(StringView rawText, u32* pos, char closing, String* title, const ParseOptions& options) {
     MemStream out;
     for (u32 i = *pos; i < rawText.numBytes(); i++) {
         char c = rawText[i];
         if (c == closing) {
             *pos = i + 1;
-            *title = decodeCharacterReferences(out.moveToString());
+            String rawTitle = out.moveToString();
+            *title = options.characterReferences ? decodeCharacterReferences(rawTitle) : rawTitle;
             return true;
         }
-        if (c == '\\' && i + 1 < rawText.numBytes() && isAscPunc(rawText[i + 1])) {
+        if (options.backslashEscapes && c == '\\' && i + 1 < rawText.numBytes() && isAscPunc(rawText[i + 1])) {
             c = rawText[++i];
         }
         out.write(c);
@@ -1745,7 +1755,7 @@ bool parseLinkTitle(StringView rawText, u32* pos, char closing, String* title) {
 }
 
 // Parses a link destination from rawText starting after '(' and advances pos past ')' on success.
-LinkDestination parseLinkDestination(StringView rawText, u32* pos) {
+LinkDestination parseLinkDestination(StringView rawText, u32* pos, const ParseOptions& options) {
     u32 i = *pos;
 
     // Skip initial whitespace, then parse either an angle-bracketed or bare destination.
@@ -1764,7 +1774,8 @@ LinkDestination parseLinkDestination(StringView rawText, u32* pos) {
                 i++;
                 break;
             }
-            if (c == '\\' && i + 1 < rawText.numBytes() && isAscPunc(rawText[i + 1])) {
+            if (options.backslashEscapes && c == '\\' && i + 1 < rawText.numBytes() &&
+                isAscPunc(rawText[i + 1])) {
                 c = rawText[++i];
             }
             mout.write(c);
@@ -1777,7 +1788,8 @@ LinkDestination parseLinkDestination(StringView rawText, u32* pos) {
             char c = rawText[i];
             if (c == '\n' || isWhite(c))
                 break;
-            if (c == '\\' && i + 1 < rawText.numBytes() && isAscPunc(rawText[i + 1])) {
+            if (options.backslashEscapes && c == '\\' && i + 1 < rawText.numBytes() &&
+                isAscPunc(rawText[i + 1])) {
                 mout.write(rawText[++i]);
             } else if (c == '(') {
                 mout.write(c);
@@ -1796,7 +1808,7 @@ LinkDestination parseLinkDestination(StringView rawText, u32* pos) {
             return {};
     }
 
-    String destination = normalizeLinkDestination(mout.moveToString());
+    String destination = normalizeLinkDestination(mout.moveToString(), options.characterReferences);
 
     // A title is allowed only when separated from the destination by whitespace.
     bool hadWhitespace = false;
@@ -1808,7 +1820,7 @@ LinkDestination parseLinkDestination(StringView rawText, u32* pos) {
     if (hadWhitespace && i < rawText.numBytes() && (rawText[i] == '"' || rawText[i] == '\'' || rawText[i] == '(')) {
         char opening = rawText[i++];
         char closing = opening == '(' ? ')' : opening;
-        if (!parseLinkTitle(rawText, &i, closing, &title))
+        if (!parseLinkTitle(rawText, &i, closing, &title, options))
             return {};
         while (i < rawText.numBytes() && isWhite(rawText[i])) {
             i++;
@@ -1829,11 +1841,12 @@ u32 getNextMarkdownLine(StringView src, u32 lineStart) {
 }
 
 // Strips indentation and one block quote marker to locate reference-definition text on a physical line.
-u32 getReferenceContentStart(StringView src, u32 lineStart, u32 lineEnd, bool* isBlockQuote) {
+u32 getReferenceContentStart(StringView src, u32 lineStart, u32 lineEnd, bool allowBlockQuote,
+                             bool* isBlockQuote) {
     u32 pos = lineStart;
     while (pos < lineEnd && pos - lineStart < 3 && src[pos] == ' ')
         pos++;
-    *isBlockQuote = pos < lineEnd && src[pos] == '>';
+    *isBlockQuote = allowBlockQuote && pos < lineEnd && src[pos] == '>';
     if (*isBlockQuote) {
         pos++;
         if (pos < lineEnd && (src[pos] == ' ' || src[pos] == '\t'))
@@ -1854,7 +1867,7 @@ String collectLinkReferences(StringView src, Parser* parser) {
         u32 nextLine = getNextMarkdownLine(src, lineStart);
         u32 lineEnd = nextLine - (nextLine > lineStart && src[nextLine - 1] == '\n');
         bool isBlockQuote = false;
-        u32 start = getReferenceContentStart(src, lineStart, lineEnd, &isBlockQuote);
+        u32 start = getReferenceContentStart(src, lineStart, lineEnd, parser->options.blockQuotes, &isBlockQuote);
 
         // Track fenced code blocks so apparent definitions inside them remain literal code.
         u32 markerPos = start;
@@ -1866,7 +1879,8 @@ String collectLinkReferences(StringView src, Parser* parser) {
             markerEnd++;
         }
         u32 markerLength = markerEnd - markerPos;
-        if (markerLength >= 3 && (!inFence || (src[markerPos] == fenceChar && markerLength >= fenceLength))) {
+        if (parser->options.fencedCodeBlocks && markerLength >= 3 &&
+            (!inFence || (src[markerPos] == fenceChar && markerLength >= fenceLength))) {
             inFence = !inFence;
             fenceChar = src[markerPos];
             fenceLength = markerLength;
@@ -1917,7 +1931,7 @@ String collectLinkReferences(StringView src, Parser* parser) {
                     if (candidate.trim()) {
                         String wrapped = StringView{"("} + candidate + ')';
                         u32 targetPos = 1;
-                        LinkDestination destination = parseLinkDestination(wrapped, &targetPos);
+                        LinkDestination destination = parseLinkDestination(wrapped, &targetPos, parser->options);
                         if (destination.success) {
                             bestDestination = std::move(destination);
                             bestEnd = candidateLineEnd;
@@ -1932,6 +1946,7 @@ String collectLinkReferences(StringView src, Parser* parser) {
                     u32 continuationLineEnd = continuationEnd - (src[continuationEnd - 1] == '\n');
                     bool continuationQuote = false;
                     u32 continuationStart = getReferenceContentStart(src, candidateLineEnd, continuationLineEnd,
+                                                                      parser->options.blockQuotes,
                                                                       &continuationQuote);
                     StringView continuation = src.substr(continuationStart,
                                                          continuationLineEnd - continuationStart).trim();
@@ -1961,7 +1976,7 @@ String collectLinkReferences(StringView src, Parser* parser) {
             cleaned.write(src.substr(lineStart, nextLine - lineStart));
             if (src.substr(start, lineEnd - start).trim().isEmpty()) {
                 hasParagraph = false;
-            } else if (src[start] == '#' && start + 1 < lineEnd &&
+            } else if (parser->options.atxHeadings && src[start] == '#' && start + 1 < lineEnd &&
                        (src[start + 1] == ' ' || src[start + 1] == '\t')) {
                 hasParagraph = false;
             } else if (!inFence) {
@@ -1990,7 +2005,8 @@ Array<Owned<Span>> convertToInlineElems(ArrayView<Delimiter> delimiters) {
 }
 
 // Resolves emphasis and strikethrough delimiter runs in-place, then returns inline elems from bottomPos.
-Array<Owned<Span>> processInlineDelimiters(Array<Delimiter>& delimiters, u32 bottomPos) {
+Array<Owned<Span>> processInlineDelimiters(Array<Delimiter>& delimiters, u32 bottomPos,
+                                           const ParseOptions& options) {
     for (u32 pos = bottomPos; pos < delimiters.numItems(); pos++) {
         Delimiter::Type closerType = delimiters[pos].type;
         if ((closerType != Delimiter::Stars && closerType != Delimiter::Underscores &&
@@ -2023,10 +2039,17 @@ Array<Owned<Span>> processInlineDelimiters(Array<Delimiter>& delimiters, u32 bot
             // Consume one or two markers while preserving unused markers on their original sides of the span.
             u32 opener = numericCast<u32>(openerPos);
             bool isStrikethrough = closerType == Delimiter::Tildes;
-            u32 numMarkers = 2;
-            if (!isStrikethrough &&
-                (delimiters[opener].text.numBytes() < 2 || delimiters[pos].text.numBytes() < 2))
+            u32 numMarkers = 0;
+            if (isStrikethrough) {
+                numMarkers = 2;
+            } else if (options.strongEmphasis && delimiters[opener].text.numBytes() >= 2 &&
+                       delimiters[pos].text.numBytes() >= 2) {
+                numMarkers = 2;
+            } else if (options.emphasis) {
                 numMarkers = 1;
+            } else {
+                break;
+            }
             Owned<Span> span = isStrikethrough ? makeSpan<Span::Strikethrough>() :
                                numMarkers == 2 ? makeSpan<Span::Bold>() : makeSpan<Span::Italic>();
             span->asContainer()->childSpans = convertToInlineElems(delimiters.subview(opener + 1, pos - opener - 1));
@@ -2048,7 +2071,8 @@ Array<Owned<Span>> processInlineDelimiters(Array<Delimiter>& delimiters, u32 bot
 // Parses inline Markdown spans within rawText and returns the expanded span sequence.
 Array<Owned<Span>> expandInlineSpans(const Parser* parser, StringView rawText) {
     // A line ending is required to turn trailing spaces into a hard break; final trailing spaces are discarded.
-    rawText = rawText.trimRight([](char c) { return c == ' '; });
+    if (parser->options.hardLineBreaks)
+        rawText = rawText.trimRight([](char c) { return c == ' '; });
     Array<Delimiter> delimiters;
     u32 i = 0;
     u32 flushedIndex = 0;
@@ -2068,7 +2092,8 @@ Array<Owned<Span>> expandInlineSpans(const Parser* parser, StringView rawText) {
             }) >= 0;
             u32 linkEnd = 0;
             String destination;
-            if (!inBracket && consumeExtendedAutolink(rawText, i, &linkEnd, &destination)) {
+            if (!inBracket && consumeExtendedAutolink(rawText, i, &linkEnd, &destination,
+                                                      parser->options.characterReferences)) {
                 flushText();
                 Owned<Span> linkSpan = makeSpan<Span::Link>();
                 linkSpan->var.as<Span::Link>()->destination = std::move(destination);
@@ -2087,21 +2112,25 @@ Array<Owned<Span>> expandInlineSpans(const Parser* parser, StringView rawText) {
             while (i > flushedIndex && rawText[i - 1] == ' ') {
                 i--;
             }
-            bool hardBreakFromSpaces = (savedPos - i >= 2);
+            bool hardBreakFromSpaces = parser->options.hardLineBreaks && (savedPos - i >= 2);
+            if (!parser->options.hardLineBreaks)
+                i = savedPos;
             flushText();
             i = savedPos + 1;
             flushedIndex = i;
             if (i < rawText.numBytes()) {
                 if (hardBreakFromSpaces) {
                     delimiters.append(makeSpan<Span::HardBreak>());
-                } else {
+                } else if (parser->options.softLineBreaks) {
                     delimiters.append(makeSpan<Span::SoftBreak>());
+                } else {
+                    delimiters.append({Delimiter::RawText, StringView{"\n"}});
                 }
             }
             continue;
         }
 
-        if (c == '`') {
+        if (c == '`' && parser->options.codeSpans) {
             flushText();
             u32 tickCount = 1;
             for (i++; i < rawText.numBytes() && rawText[i] == '`'; i++) {
@@ -2122,7 +2151,7 @@ Array<Owned<Span>> expandInlineSpans(const Parser* parser, StringView rawText) {
         } else if (c == '<') {
             // Angle constructs are consumed before scanning any backticks they contain.
             u32 angleEnd = 0;
-            if (Owned<Span> angleSpan = parseAtomicAngleSpan(rawText, i, &angleEnd, parser->options.tagFilter)) {
+            if (Owned<Span> angleSpan = parseAtomicAngleSpan(rawText, i, &angleEnd, parser->options)) {
                 flushText();
                 delimiters.append(std::move(angleSpan));
                 i = angleEnd;
@@ -2130,7 +2159,7 @@ Array<Owned<Span>> expandInlineSpans(const Parser* parser, StringView rawText) {
                 continue;
             }
             i++;
-        } else if (c == '&') {
+        } else if (c == '&' && parser->options.characterReferences) {
             // Decoded punctuation is text, not Markdown syntax, so keep each reference in an atomic delimiter.
             MemStream decoded;
             u32 numBytes = 0;
@@ -2142,22 +2171,28 @@ Array<Owned<Span>> expandInlineSpans(const Parser* parser, StringView rawText) {
             } else {
                 i++;
             }
-        } else if (c == '*') {
+        } else if (c == '*' && (parser->options.emphasis || parser->options.strongEmphasis)) {
             flushText();
             u32 runLength = 1;
             for (i++; i < rawText.numBytes() && rawText[i] == '*'; i++) {
                 runLength++;
             }
-            delimiters.append(Delimiter::makeRun(Delimiter::Stars, rawText, i - runLength, runLength));
-            flushedIndex = i;
-        } else if (c == '_') {
+            if ((runLength == 1 && parser->options.emphasis) ||
+                (runLength >= 2 && parser->options.strongEmphasis)) {
+                delimiters.append(Delimiter::makeRun(Delimiter::Stars, rawText, i - runLength, runLength));
+                flushedIndex = i;
+            }
+        } else if (c == '_' && (parser->options.emphasis || parser->options.strongEmphasis)) {
             flushText();
             u32 runLength = 1;
             for (i++; i < rawText.numBytes() && rawText[i] == '_'; i++) {
                 runLength++;
             }
-            delimiters.append(Delimiter::makeRun(Delimiter::Underscores, rawText, i - runLength, runLength));
-            flushedIndex = i;
+            if ((runLength == 1 && parser->options.emphasis) ||
+                (runLength >= 2 && parser->options.strongEmphasis)) {
+                delimiters.append(Delimiter::makeRun(Delimiter::Underscores, rawText, i - runLength, runLength));
+                flushedIndex = i;
+            }
         } else if (c == '~' && parser->options.strikethrough) {
             // Only an exact pair of tildes forms a GFM strikethrough delimiter.
             flushText();
@@ -2169,17 +2204,17 @@ Array<Owned<Span>> expandInlineSpans(const Parser* parser, StringView rawText) {
                 delimiters.append(Delimiter::makeRun(Delimiter::Tildes, rawText, i - runLength, runLength));
                 flushedIndex = i;
             }
-        } else if (c == '\\') {
+        } else if (c == '\\' && (parser->options.backslashEscapes || parser->options.hardLineBreaks)) {
             flushText();
             i++;
             if (i >= rawText.numBytes()) {
                 delimiters.append({Delimiter::RawText, StringView{"\\"}});
                 flushedIndex = i;
-            } else if (rawText[i] == '\n') {
+            } else if (rawText[i] == '\n' && parser->options.hardLineBreaks) {
                 delimiters.append(makeSpan<Span::HardBreak>());
                 i++;
                 flushedIndex = i;
-            } else if (isAscPunc(rawText[i])) {
+            } else if (parser->options.backslashEscapes && isAscPunc(rawText[i])) {
                 delimiters.append({Delimiter::RawText, rawText.substr(i, 1)});
                 i++;
                 flushedIndex = i;
@@ -2188,12 +2223,16 @@ Array<Owned<Span>> expandInlineSpans(const Parser* parser, StringView rawText) {
                 flushedIndex = i;
             }
         } else if (c == '!' && i + 1 < rawText.numBytes() && rawText[i + 1] == '[') {
+            if (!parser->options.inlineImages && !parser->options.referenceImages) {
+                i += 2;
+                continue;
+            }
             flushText();
             delimiters.append({Delimiter::OpenImage, rawText.substr(i, 2)});
             delimiters.back().sourcePos = i + 1;
             i += 2;
             flushedIndex = i;
-        } else if (c == '[') {
+        } else if (c == '[' && (parser->options.inlineLinks || parser->options.referenceLinks)) {
             flushText();
             delimiters.append({Delimiter::OpenLink, rawText.substr(i, 1)});
             delimiters.back().sourcePos = i;
@@ -2218,15 +2257,21 @@ Array<Owned<Span>> expandInlineSpans(const Parser* parser, StringView rawText) {
             // Inline destinations take precedence over all reference-link forms.
             LinkDestination linkDest;
             u32 suffixEnd = i;
-            bool hasInlineSuffix = i < rawText.numBytes() && rawText[i] == '(';
+            bool isImage = delimiters[openLink].type == Delimiter::OpenImage;
+            bool allowInline = isImage ? parser->options.inlineImages : parser->options.inlineLinks;
+            bool allowReference = isImage ? parser->options.referenceImages : parser->options.referenceLinks;
+            bool hasInlineMarker = i < rawText.numBytes() && rawText[i] == '(';
+            bool hasInlineSuffix = allowInline && hasInlineMarker;
+            bool preventReferenceFallback = hasInlineMarker && !allowInline;
             if (hasInlineSuffix) {
                 suffixEnd++;
-                linkDest = parseLinkDestination(rawText, &suffixEnd);
+                linkDest = parseLinkDestination(rawText, &suffixEnd, parser->options);
             }
 
             // If the inline suffix is invalid, try full, collapsed, then shortcut references.
             const Parser::LinkReference* reference = nullptr;
-            bool hasReferenceSuffix = !linkDest.success && i < rawText.numBytes() && rawText[i] == '[';
+            bool hasReferenceSuffix = allowReference && !preventReferenceFallback && !linkDest.success &&
+                                      i < rawText.numBytes() && rawText[i] == '[';
             if (hasReferenceSuffix) {
                 u32 labelEnd = i + 1;
                 while (labelEnd < rawText.numBytes() && rawText[labelEnd] != ']' && rawText[labelEnd] != '\n') {
@@ -2242,7 +2287,7 @@ Array<Owned<Span>> expandInlineSpans(const Parser* parser, StringView rawText) {
                     if (reference)
                         suffixEnd = labelEnd + 1;
                 }
-            } else if (!linkDest.success) {
+            } else if (allowReference && !preventReferenceFallback && !linkDest.success) {
                 StringView linkLabel = rawText.substr(delimiters[openLink].sourcePos + 1,
                                                       i - delimiters[openLink].sourcePos - 2);
                 reference = findLinkReference(parser, linkLabel);
@@ -2257,7 +2302,6 @@ Array<Owned<Span>> expandInlineSpans(const Parser* parser, StringView rawText) {
             }
 
             // Build the resolved link or image, retaining parsed label spans for rendering.
-            bool isImage = delimiters[openLink].type == Delimiter::OpenImage;
             Owned<Span> linkSpan = isImage ? makeSpan<Span::Image>() : makeSpan<Span::Link>();
             String* destination = isImage ? &linkSpan->var.as<Span::Image>()->destination :
                                             &linkSpan->var.as<Span::Link>()->destination;
@@ -2270,7 +2314,8 @@ Array<Owned<Span>> expandInlineSpans(const Parser* parser, StringView rawText) {
                 *destination = std::move(linkDest.dest);
                 *title = std::move(linkDest.title);
             }
-            linkSpan->asContainer()->childSpans = processInlineDelimiters(delimiters, openLink + 1);
+            linkSpan->asContainer()->childSpans = processInlineDelimiters(delimiters, openLink + 1,
+                                                                          parser->options);
             delimiters.resize(openLink);
             if (!isImage) {
                 for (Delimiter& delimiter : delimiters) {
@@ -2287,7 +2332,7 @@ Array<Owned<Span>> expandInlineSpans(const Parser* parser, StringView rawText) {
     }
 
     flushText();
-    return processInlineDelimiters(delimiters, 0);
+    return processInlineDelimiters(delimiters, 0, parser->options);
 }
 
 //--------------------------------------------------------------------
@@ -2491,15 +2536,16 @@ void finalizeLeafBlock(Parser* parser) {
 
 // Returns true if the remaining line starts a container marker that must end the open paragraph.
 bool listMarkerInterruptsParagraph(LineParser& lp) {
+    const ParseOptions& options = lp.parser->options;
     ColumnTrackingReader reader = lp.ctReader;
     if (lp.relativeIndent() > 3)
         return false;
 
     // Parse an unordered marker or an ordered marker with at most nine digits.
     u64 startNumber = 0;
-    if (reader.point == '*' || reader.point == '-' || reader.point == '+') {
+    if (options.unorderedLists && (reader.point == '*' || reader.point == '-' || reader.point == '+')) {
         reader.advance();
-    } else if (reader.point >= '0' && reader.point <= '9') {
+    } else if (options.orderedLists && reader.point >= '0' && reader.point <= '9') {
         u32 numDigits = 0;
         while (reader.point >= '0' && reader.point <= '9' && numDigits < 10) {
             startNumber = startNumber * 10 + reader.point - '0';
@@ -2510,7 +2556,7 @@ bool listMarkerInterruptsParagraph(LineParser& lp) {
             return false;
         reader.advance();
     } else {
-        return reader.point == '>';
+        return options.blockQuotes && reader.point == '>';
     }
 
     if (!(reader.point == ' ' || reader.point == '\t' || reader.point == '\n' || reader.atEnd()))
@@ -2541,15 +2587,16 @@ void closeBlocksIfNotLazyContinuation(LineParser& lp) {
     if (canLazyContinueParagraph) {
         Block::FencedCodeBlock maybeFence;
         HTMLBlockStart maybeHTML;
-        if (canLazyContinueParagraph &&
-            parseOpeningFence(lp.ctReader.viewRemaining(), lp.relativeIndent(), maybeFence)) {
+        if (parser->options.fencedCodeBlocks && canLazyContinueParagraph &&
+            parseOpeningFence(lp.ctReader.viewRemaining(), lp.relativeIndent(), maybeFence, parser->options)) {
             canLazyContinueParagraph = false;
         }
-        if (canLazyContinueParagraph &&
+        if (parser->options.htmlBlocks && canLazyContinueParagraph &&
             parseHTMLBlockStart(lp.ctReader.viewRemaining(), lp.relativeIndent(), true, &maybeHTML)) {
             canLazyContinueParagraph = false;
         }
-        if (canLazyContinueParagraph && isThematicBreak(lp.ctReader.viewRemaining(), lp.relativeIndent())) {
+        if (parser->options.thematicBreaks && canLazyContinueParagraph &&
+            isThematicBreak(lp.ctReader.viewRemaining(), lp.relativeIndent())) {
             canLazyContinueParagraph = false;
         }
         if (canLazyContinueParagraph && listMarkerInterruptsParagraph(lp)) {
@@ -2568,23 +2615,25 @@ void closeBlocksIfNotLazyContinuation(LineParser& lp) {
 
 // Returns true when a nonblank line starts a block that terminates a table before being parsed normally.
 bool lineStartsBlockAfterTable(LineParser& lp) {
+    const ParseOptions& options = lp.parser->options;
     StringView remaining = lp.ctReader.viewRemaining();
-    if (lp.relativeIndent() >= 4 || isThematicBreak(remaining, lp.relativeIndent()))
+    if ((options.indentedCodeBlocks && lp.relativeIndent() >= 4) ||
+        (options.thematicBreaks && isThematicBreak(remaining, lp.relativeIndent())))
         return true;
 
     Block::FencedCodeBlock maybeFence;
     HTMLBlockStart maybeHTML;
-    if (parseOpeningFence(remaining, lp.relativeIndent(), maybeFence) ||
-        parseHTMLBlockStart(remaining, lp.relativeIndent(), false, &maybeHTML)) {
+    if ((options.fencedCodeBlocks && parseOpeningFence(remaining, lp.relativeIndent(), maybeFence, options)) ||
+        (options.htmlBlocks && parseHTMLBlockStart(remaining, lp.relativeIndent(), false, &maybeHTML))) {
         return true;
     }
     if (lp.relativeIndent() > 3)
         return false;
 
     ColumnTrackingReader reader = lp.ctReader;
-    if (reader.point == '>')
+    if (options.blockQuotes && reader.point == '>')
         return true;
-    if (reader.point == '#') {
+    if (options.atxHeadings && reader.point == '#') {
         u32 count = 0;
         while (reader.point == '#') {
             count++;
@@ -2595,9 +2644,9 @@ bool lineStartsBlockAfterTable(LineParser& lp) {
     }
 
     // Any syntactically valid list marker starts a new block after a table.
-    if (reader.point == '*' || reader.point == '-' || reader.point == '+') {
+    if (options.unorderedLists && (reader.point == '*' || reader.point == '-' || reader.point == '+')) {
         reader.advance();
-    } else if (reader.point >= '0' && reader.point <= '9') {
+    } else if (options.orderedLists && reader.point >= '0' && reader.point <= '9') {
         u32 numDigits = 0;
         while (reader.point >= '0' && reader.point <= '9' && numDigits < 10) {
             reader.advance();
@@ -2647,6 +2696,40 @@ void repairDuplicatedBlocks(Parser* dstParser, Parser* srcParser, Block* dstBloc
         repairDuplicatedBlocks(dstParser, srcParser, dstInner->childBlocks[i], srcInner->childBlocks[i],
                                       dstBlock);
     }
+}
+
+// Returns parsing options with recognition of every Markdown construct disabled.
+ParseOptions ParseOptions::none() {
+    ParseOptions options;
+    options.backslashEscapes = false;
+    options.characterReferences = false;
+    options.codeSpans = false;
+    options.emphasis = false;
+    options.strongEmphasis = false;
+    options.inlineLinks = false;
+    options.referenceLinks = false;
+    options.inlineImages = false;
+    options.referenceImages = false;
+    options.autolinks = false;
+    options.inlineHTML = false;
+    options.softLineBreaks = false;
+    options.hardLineBreaks = false;
+    options.blockQuotes = false;
+    options.orderedLists = false;
+    options.unorderedLists = false;
+    options.indentedCodeBlocks = false;
+    options.fencedCodeBlocks = false;
+    options.htmlBlocks = false;
+    options.atxHeadings = false;
+    options.setextHeadings = false;
+    options.thematicBreaks = false;
+    options.linkReferenceDefinitions = false;
+    options.tables = false;
+    options.taskListItems = false;
+    options.strikethrough = false;
+    options.extendedAutolinks = false;
+    options.tagFilter = false;
+    return options;
 }
 
 // Returns parsing options with every GitHub Flavored Markdown extension enabled.
@@ -2813,11 +2896,17 @@ void destroy(Parser* parser) {
     Heap::destroy(parser);
 }
 
+// Parses raw paragraph content directly into inline spans without recognizing block constructs.
+Array<Owned<Span>> parseInlineElements(StringView markdown, const ParseOptions& options) {
+    Owned<Parser> parser = createParser(options);
+    return expandInlineSpans(parser, markdown);
+}
+
 // Convenience helper that parses an entire Markdown string into a list of top-level blocks.
 Array<Owned<Block>> parseWholeDocument(StringView markdown, const ParseOptions& options) {
     Array<Owned<Block>> blocks;
     Owned<Parser> parser = createParser(options);
-    String cleaned = collectLinkReferences(markdown, parser);
+    String cleaned = options.linkReferenceDefinitions ? collectLinkReferences(markdown, parser) : String{markdown};
     ViewStream in{cleaned};
 
     while (StringView line = readLine(in)) {
@@ -2837,7 +2926,7 @@ String convertToHtml(StringView src, const ParseOptions& parseOptions) {
     MemStream out;
     markdown::HTMLOptions options;
     Owned<Parser> parser = createParser(parseOptions);
-    String cleaned = collectLinkReferences(src, parser);
+    String cleaned = parseOptions.linkReferenceDefinitions ? collectLinkReferences(src, parser) : String{src};
     ViewStream in{cleaned};
 
     while (StringView line = readLine(in)) {

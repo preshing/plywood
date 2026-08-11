@@ -128,10 +128,151 @@ static bool runMarkdownOptionIsolationTests() {
     return allPassed;
 }
 
+// Verifies that every CommonMark recognizer can be disabled without changing the default parsing mode.
+static bool runMarkdownRecognitionOptionTests() {
+    // Describes one source form and its output with the corresponding recognizer enabled and disabled.
+    struct OptionTest {
+        StringView name;
+        bool markdown::ParseOptions::*flag;
+        StringView source;
+        StringView enabledHtml;
+        StringView disabledHtml;
+    };
+
+    OptionTest tests[] = {
+        {"backslashEscapes", &markdown::ParseOptions::backslashEscapes, "\\#\n", "<p>#</p>\n",
+         "<p>\\#</p>\n"},
+        {"characterReferences", &markdown::ParseOptions::characterReferences, "&#42;x&#42;\n", "<p>*x*</p>\n",
+         "<p>&amp;#42;x&amp;#42;</p>\n"},
+        {"codeSpans", &markdown::ParseOptions::codeSpans, "`x`\n", "<p><code>x</code></p>\n",
+         "<p>`x`</p>\n"},
+        {"emphasis", &markdown::ParseOptions::emphasis, "*x*\n", "<p><em>x</em></p>\n", "<p>*x*</p>\n"},
+        {"strongEmphasis", &markdown::ParseOptions::strongEmphasis, "**x**\n", "<p><strong>x</strong></p>\n",
+         "<p>**x**</p>\n"},
+        {"inlineLinks", &markdown::ParseOptions::inlineLinks, "[x](/url)\n", "<p><a href=\"/url\">x</a></p>\n",
+         "<p>[x](/url)</p>\n"},
+        {"referenceLinks", &markdown::ParseOptions::referenceLinks, "[x]: /url\n\n[x]\n",
+         "<p><a href=\"/url\">x</a></p>\n", "<p>[x]</p>\n"},
+        {"inlineImages", &markdown::ParseOptions::inlineImages, "![x](/image)\n",
+         "<p><img src=\"/image\" alt=\"x\" /></p>\n", "<p>![x](/image)</p>\n"},
+        {"referenceImages", &markdown::ParseOptions::referenceImages, "[x]: /image\n\n![x]\n",
+         "<p><img src=\"/image\" alt=\"x\" /></p>\n", "<p>![x]</p>\n"},
+        {"autolinks", &markdown::ParseOptions::autolinks, "<https://example.com>\n",
+         "<p><a href=\"https://example.com\">https://example.com</a></p>\n",
+         "<p>&lt;https://example.com&gt;</p>\n"},
+        {"inlineHTML", &markdown::ParseOptions::inlineHTML, "a <i>x</i>\n", "<p>a <i>x</i></p>\n",
+         "<p>a &lt;i&gt;x&lt;/i&gt;</p>\n"},
+        {"softLineBreaks", &markdown::ParseOptions::softLineBreaks, "a\nb\n", "<p>a\nb</p>\n",
+         "<p>a\nb</p>\n"},
+        {"hardLineBreaks", &markdown::ParseOptions::hardLineBreaks, "a  \nb\n", "<p>a<br />\nb</p>\n",
+         "<p>a  \nb</p>\n"},
+        {"blockQuotes", &markdown::ParseOptions::blockQuotes, "> quote\n",
+         "<blockquote>\n<p>quote</p>\n</blockquote>\n", "<p>&gt; quote</p>\n"},
+        {"orderedLists", &markdown::ParseOptions::orderedLists, "1. one\n", "<ol>\n<li>one</li>\n</ol>\n",
+         "<p>1. one</p>\n"},
+        {"unorderedLists", &markdown::ParseOptions::unorderedLists, "- one\n", "<ul>\n<li>one</li>\n</ul>\n",
+         "<p>- one</p>\n"},
+        {"indentedCodeBlocks", &markdown::ParseOptions::indentedCodeBlocks, "    code\n",
+         "<pre><code>code\n</code></pre>\n", "<p>code</p>\n"},
+        {"fencedCodeBlocks", &markdown::ParseOptions::fencedCodeBlocks, "~~~\ncode\n~~~\n",
+         "<pre><code>code\n</code></pre>\n", "<p>~~~\ncode\n~~~</p>\n"},
+        {"htmlBlocks", &markdown::ParseOptions::htmlBlocks, "<div>\nraw\n</div>\n", "<div>\nraw\n</div>\n",
+         "<p><div>\nraw\n</div></p>\n"},
+        {"atxHeadings", &markdown::ParseOptions::atxHeadings, "# title\n", "<h1>title</h1>\n",
+         "<p># title</p>\n"},
+        {"setextHeadings", &markdown::ParseOptions::setextHeadings, "title\n===\n", "<h1>title</h1>\n",
+         "<p>title\n===</p>\n"},
+        {"thematicBreaks", &markdown::ParseOptions::thematicBreaks, "***\n", "<hr />\n", "<p>***</p>\n"},
+        {"linkReferenceDefinitions", &markdown::ParseOptions::linkReferenceDefinitions,
+         "[a]: /url\n\n[a]\n", "<p><a href=\"/url\">a</a></p>\n", "<p>[a]: /url</p>\n<p>[a]</p>\n"},
+    };
+
+    // Verify default recognition and the result of disabling each option independently.
+    bool allPassed = true;
+    for (const OptionTest& test : tests) {
+        String enabled = markdown::convertToHtml(test.source);
+        markdown::ParseOptions options;
+        options.*test.flag = false;
+        String disabled = markdown::convertToHtml(test.source, options);
+        if (enabled != test.enabledHtml || disabled != test.disabledHtml) {
+            getStdOut().format("Markdown recognition option failure: {}\nExpected enabled:\n{}Actual enabled:\n{}"
+                               "Expected disabled:\n{}Actual disabled:\n{}",
+                               test.name, test.enabledHtml, enabled, test.disabledHtml, disabled);
+            allPassed = false;
+        }
+    }
+
+    // Soft breaks are observable in the span tree even though text newlines render identically in HTML.
+    Array<Owned<markdown::Span>> softBreakSpans = markdown::parseInlineElements("a\nb");
+    markdown::ParseOptions noSoftBreaks;
+    noSoftBreaks.softLineBreaks = false;
+    Array<Owned<markdown::Span>> plainNewlineSpans = markdown::parseInlineElements("a\nb", noSoftBreaks);
+    bool softBreakPassed = softBreakSpans.numItems() == 3 &&
+                           softBreakSpans[1]->var.is<markdown::Span::SoftBreak>() &&
+                           plainNewlineSpans.numItems() == 1 && plainNewlineSpans[0]->var.is<markdown::Span::Text>() &&
+                           plainNewlineSpans[0]->var.as<markdown::Span::Text>()->text == "a\nb";
+    if (!softBreakPassed) {
+        getStdOut().write("Markdown recognition option failure: softLineBreaks\n");
+        allPassed = false;
+    }
+
+    getStdOut().format("Markdown recognition option checks {}\n", allPassed ? "passed" : "failed");
+    return allPassed;
+}
+
+// Verifies the all-disabled preset and the block-free inline parsing entry point.
+static bool runMarkdownInlineParsingTests() {
+    // Check rendered output with every optional construct disabled.
+    bool allPassed = true;
+    markdown::ParseOptions none = markdown::ParseOptions::none();
+    String noneHtml = markdown::convertToHtml("# *x* &amp;\n", none);
+    if (noneHtml != "<p># *x* &amp;amp;</p>\n") {
+        getStdOut().format("ParseOptions::none failure\nExpected:\n<p># *x* &amp;amp;</p>\nActual:\n{}", noneHtml);
+        allPassed = false;
+    }
+
+    // Check that the same preset produces only fallback block and span types.
+    Array<Owned<markdown::Block>> noneBlocks = markdown::parseWholeDocument("# *x* &amp;\n", none);
+    bool noneTreePassed = noneBlocks.numItems() == 1 && noneBlocks[0]->var.is<markdown::Block::Paragraph>() &&
+                          noneBlocks[0]->asLeaf()->spans.numItems() == 1 &&
+                          noneBlocks[0]->asLeaf()->spans[0]->var.is<markdown::Span::Text>();
+    if (!noneTreePassed) {
+        getStdOut().write("ParseOptions::none tree failure\n");
+        allPassed = false;
+    }
+
+    // Parse block-looking input directly as inline content while retaining enabled span recognition.
+    Array<Owned<markdown::Span>> spans = markdown::parseInlineElements("# item\n- list\n`code`");
+    bool inlinePassed = spans.numItems() == 5 && spans[0]->var.is<markdown::Span::Text>() &&
+                        spans[1]->var.is<markdown::Span::SoftBreak>() &&
+                        spans[2]->var.is<markdown::Span::Text>() &&
+                        spans[3]->var.is<markdown::Span::SoftBreak>() && spans[4]->var.is<markdown::Span::Code>();
+    if (!inlinePassed) {
+        getStdOut().write("parseInlineElements block-isolation failure\n");
+        allPassed = false;
+    }
+
+    // An explicitly disabled inline form must not fall back to an enabled shortcut-reference form.
+    markdown::ParseOptions noInlineLinks;
+    noInlineLinks.inlineLinks = false;
+    String disabledInlineLink = markdown::convertToHtml("[x](/inline)\n\n[x]: /reference\n", noInlineLinks);
+    if (disabledInlineLink != "<p>[x](/inline)</p>\n") {
+        getStdOut().format("Disabled inline-link fallback failure\nActual:\n{}", disabledInlineLink);
+        allPassed = false;
+    }
+
+    getStdOut().format("Markdown inline parsing checks {}\n", allPassed ? "passed" : "failed");
+    return allPassed;
+}
+
 // Runs the CommonMark and GitHub Flavored Markdown conversion fixtures.
 bool runMarkdownTests() {
-    bool commonMarkPassed = runMarkdownTestFile("markdown-tests.txt", "CommonMark", {});
-    bool gfmPassed = runMarkdownTestFile("gfm-tests.txt", "GFM", markdown::ParseOptions::githubFlavored());
-    bool optionIsolationPassed = runMarkdownOptionIsolationTests();
-    return commonMarkPassed && gfmPassed && optionIsolationPassed;
+    // Stop at the first failing child suite while preserving its failure result.
+    bool success = true;
+    success = success && runMarkdownTestFile("markdown-tests.txt", "CommonMark", {});
+    success = success && runMarkdownTestFile("gfm-tests.txt", "GFM", markdown::ParseOptions::githubFlavored());
+    success = success && runMarkdownOptionIsolationTests();
+    success = success && runMarkdownRecognitionOptionTests();
+    success = success && runMarkdownInlineParsingTests();
+    return success;
 }

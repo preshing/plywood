@@ -187,15 +187,44 @@ struct Block {
 //
 
 //------------------------------------------------------
-// Controls optional Markdown syntax extensions independently.
+// Controls recognition of Markdown syntax constructs independently.
 //------------------------------------------------------
 struct ParseOptions {
+    // CommonMark inline elements.
+    bool backslashEscapes = true;
+    bool characterReferences = true;
+    bool codeSpans = true;
+    bool emphasis = true;
+    bool strongEmphasis = true;
+    bool inlineLinks = true;
+    bool referenceLinks = true;
+    bool inlineImages = true;
+    bool referenceImages = true;
+    bool autolinks = true;
+    bool inlineHTML = true;
+    bool softLineBreaks = true;
+    bool hardLineBreaks = true;
+
+    // CommonMark block elements.
+    bool blockQuotes = true;
+    bool orderedLists = true;
+    bool unorderedLists = true;
+    bool indentedCodeBlocks = true;
+    bool fencedCodeBlocks = true;
+    bool htmlBlocks = true;
+    bool atxHeadings = true;
+    bool setextHeadings = true;
+    bool thematicBreaks = true;
+    bool linkReferenceDefinitions = true;
+
+    // GitHub Flavored Markdown extensions.
     bool tables = false;
     bool taskListItems = false;
     bool strikethrough = false;
     bool extendedAutolinks = false;
     bool tagFilter = false;
 
+    static ParseOptions none();
     static ParseOptions githubFlavored();
 };
 
@@ -211,6 +240,7 @@ void destroy(Parser* parser);
 // Parsing
 Owned<Block> parseLine(Parser* parser, StringView line);
 Owned<Block> flush(Parser* parser);
+Array<Owned<Span>> parseInlineElements(StringView markdown, const ParseOptions& options = {});
 Array<Owned<Block>> parseWholeDocument(StringView markdown, const ParseOptions& options = {});
 
 // Convert to HTML

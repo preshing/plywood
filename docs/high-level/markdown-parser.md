@@ -6,8 +6,45 @@ module are defined in the `ply::markdown` namespace.
 
 ## Parsing options
 
-CommonMark parsing is the default. `ParseOptions` independently enables the supported GitHub Flavored Markdown
-(GFM) extensions:
+`ParseOptions` independently controls recognition of each supported Markdown construct. CommonMark constructs are
+enabled by default. Inline elements appear first, matching the declaration order:
+
+| | | |
+| --- | --- | --- |
+| `bool` | `backslashEscapes` | Recognizes backslash escapes before ASCII punctuation |
+| `bool` | `characterReferences` | Decodes named and numeric character references |
+| `bool` | `codeSpans` | Recognizes inline code delimited by backticks |
+| `bool` | `emphasis` | Recognizes emphasis delimiters |
+| `bool` | `strongEmphasis` | Recognizes strong-emphasis delimiters |
+| `bool` | `inlineLinks` | Recognizes links with inline destinations |
+| `bool` | `referenceLinks` | Resolves full, collapsed and shortcut reference links |
+| `bool` | `inlineImages` | Recognizes images with inline destinations |
+| `bool` | `referenceImages` | Resolves full, collapsed and shortcut reference images |
+| `bool` | `autolinks` | Recognizes URI and email autolinks enclosed in angle brackets |
+| `bool` | `inlineHTML` | Recognizes CommonMark inline HTML |
+| `bool` | `softLineBreaks` | Produces soft-break spans at ordinary line boundaries |
+| `bool` | `hardLineBreaks` | Recognizes hard breaks created by spaces or a backslash |
+
+Block elements follow:
+
+| | | |
+| --- | --- | --- |
+| `bool` | `blockQuotes` | Recognizes block quote markers |
+| `bool` | `orderedLists` | Recognizes ordered list markers |
+| `bool` | `unorderedLists` | Recognizes unordered list markers |
+| `bool` | `indentedCodeBlocks` | Recognizes code blocks created by indentation |
+| `bool` | `fencedCodeBlocks` | Recognizes backtick- and tilde-fenced code blocks |
+| `bool` | `htmlBlocks` | Recognizes CommonMark HTML blocks |
+| `bool` | `atxHeadings` | Recognizes headings beginning with `#` markers |
+| `bool` | `setextHeadings` | Recognizes headings followed by `=` or `-` underlines |
+| `bool` | `thematicBreaks` | Recognizes thematic breaks |
+| `bool` | `linkReferenceDefinitions` | Collects and removes link reference definitions |
+
+Paragraphs and plain text are always available as fallbacks. When a construct is disabled, its markers remain text
+and do not open, close or interrupt blocks. Alternate delimiters for one construct share a flag; for example,
+`fencedCodeBlocks` controls both backtick and tilde fences.
+
+GitHub Flavored Markdown (GFM) extensions are disabled by default:
 
 | | | |
 | --- | --- | --- |
@@ -17,8 +54,9 @@ CommonMark parsing is the default. `ParseOptions` independently enables the supp
 | `bool` | `extendedAutolinks` | Recognizes GFM URL and email autolinks without angle brackets |
 | `bool` | `tagFilter` | Escapes the opening characters of the raw HTML tags disallowed by GFM |
 
-Every field defaults to `false`. `ParseOptions::githubFlavored()` returns an options object with all five fields set
-to `true`.
+`ParseOptions::none()` returns an options object with recognition of all CommonMark and GFM constructs disabled.
+`ParseOptions::githubFlavored()` returns the default CommonMark configuration with all five GFM fields set to
+`true`.
 
 The tag filter implements GFM's tag-filter extension when raw HTML is rendered. It only filters the named GFM tags;
 it is not a general-purpose HTML sanitizer. Applications that accept untrusted input must apply an appropriate HTML
@@ -47,6 +85,10 @@ functions return `nullptr`.
 
 `Owned<Block> flush(Parser* parser)`
 > Finishes the current top-level block and returns it. Call it once all lines have been supplied.
+
+`Array<Owned<Span>> parseInlineElements(StringView markdown, const ParseOptions& options = {})`
+> Parses text directly as paragraph-style inline content without recognizing block constructs. Link reference
+> definitions are not collected by this entry point, so reference links require document parsing.
 
 ### Whole-document parsing and HTML
 
