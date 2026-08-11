@@ -197,6 +197,7 @@
     position: relative;
     width: 288px;
     height: 44px;
+    user-select: none;
     margin: 12px 10px 8px;
     border-radius: 10px;
     background: var(--bg-banner);
@@ -363,7 +364,6 @@
 .page-nav {
     margin-top: 36px;
     margin-bottom: 12px;
-    user-select: none;
     display: flex;
     gap: 22px;
 }

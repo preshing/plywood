@@ -431,15 +431,20 @@ void generateTableOfContentsHtml(Stream& out, const json::Node& items,
         const json::Node& children = item.get("children");
         const Array<PageHeading>* headings = pageHeadings.find(&item);
         PLY_ASSERT(headings);
-        String headerFile;
-        if (item.get("header-file").isValid()) {
-            headerFile =
-                String::format(" <span class=\"toc-header\">&lt;{:&}&gt;</span>", item.get("header-file").text());
+        StringView title = item.get("title").text();
+        String filePrefix;
+        if (item.get("file").isValid()) {
+            StringView separatorHtml = title ? "<span class=\"toc-separator\">: </span>" : "";
+            filePrefix = String::format("<code>{:&}</code>{}", item.get("file").text(), separatorHtml);
+        }
+        String titleHtml;
+        if (title) {
+            titleHtml = String::format("<span class=\"toc-title\">{:&}</span>", title);
         }
         String url = convertDocsPathToURL(item.get("path").text());
-        out.format("<li class=\"toc-entry toc-depth-{}\"><div class=\"toc-page\">"
-                   "<a class=\"toc-page-link\" href=\"{}\"><span>{:&}</span>{}</a>",
-                   min(depth, 5u), url, item.get("title").text(), headerFile);
+        out.format("<li class=\"toc-entry toc-page toc-depth-{}\">"
+                   "<a class=\"toc-page-link\" href=\"{}\">{}{}</a>",
+                   min(depth, 5u), url, filePrefix, titleHtml);
         if (*headings) {
             bool hasLevel2 = false;
             for (const PageHeading& heading : *headings) {
@@ -459,9 +464,8 @@ void generateTableOfContentsHtml(Stream& out, const json::Node& items,
             }
             out.write("</ul>");
         }
-        out.write("</div>");
         if (children.isValid()) {
-            out.write("<ul class=\"toc-children\">");
+            out.write("<ul>");
             generateTableOfContentsHtml(out, children, pageHeadings, depth + 1);
             out.write("</ul>");
         }

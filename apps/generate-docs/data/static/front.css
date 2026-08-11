@@ -6,6 +6,7 @@
     position: relative;
     width: 100%;
     height: 88px;
+    user-select: none;
     background: var(--bg-banner);
     background: linear-gradient(180deg, #0c4872, #326d97);
     font-family: "robotobold", sans-serif;

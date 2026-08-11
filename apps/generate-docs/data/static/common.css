@@ -45,7 +45,6 @@ em {
     font-style: italic;
 }
 html {
-    user-select: none;
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
 }
@@ -395,7 +394,7 @@ html {
 }
 .directory .toc-page-link,
 .directory .toc-section > a {
-    display: block;
+    display: inline-block;
 }
 .directory .toc-entry {
     --toc-page-indent: 22px;
@@ -427,12 +426,12 @@ html {
     --toc-section-indent: 130px;
     --toc-section-line-left: 116px;
 }
-.directory .toc-entry > .toc-page > .toc-page-link {
-    padding-left: var(--toc-page-indent);
+.directory .toc-entry > .toc-page-link {
+    margin-left: var(--toc-page-indent);
 }
 .directory .toc-section > a {
     color: var(--text-toc-subheading);
-    padding-left: var(--toc-section-indent);
+    margin-left: var(--toc-section-indent);
 }
 .directory .toc-sections {
     display: none;
@@ -451,35 +450,40 @@ html {
     top: 1px;
     width: 3px;
 }
-.directory .toc-page.selected > .toc-page-link {
+.directory .toc-page.selected > .toc-page-link,
+.directory .toc-page.selected > .toc-page-link > code,
+.directory .toc-page.selected > .toc-page-link > .toc-separator {
     color: var(--text-primary);
 }
-.directory .toc-page.selected > .toc-page-link > span:first-child {
+.directory .toc-page.selected > .toc-page-link > .toc-title {
     font-weight: bold;
 }
-.directory .toc-page-link:hover {
-    background: var(--bg-sidebar-hover);
-    border-radius: 6px;
-}
-.directory .toc-page.selected > .toc-page-link:hover {
-    background: transparent;
+.directory .toc-page:not(.selected) > .toc-page-link:hover,
+.directory .toc-page:not(.selected) > .toc-page-link:hover > code,
+.directory .toc-page:not(.selected) > .toc-page-link:hover > .toc-separator {
+    color: var(--link-color);
 }
 .directory .toc-section > a:hover {
-    color: var(--text-heading);
+    color: var(--link-color);
+}
+.directory .toc-page-link code,
+.directory .toc-section code {
+    font-family: "jetbrains_mono", monospace;
+    font-size: 13px;
 }
 .directory .toc-section code {
     color: inherit;
-    font-family: "jetbrains_mono", monospace;
-    font-size: 13px;
+}
+.directory .toc-page-link code {
+    color: var(--text-heading);
+    font-weight: bold;
+}
+.directory .toc-separator {
+    color: var(--text-secondary);
 }
 .directory a {
     color: inherit;
 }
-.directory .toc-header {
-    margin-left: 5px;
-    color: var(--text-muted);
-}
-
 .directory .toc-heading {
     margin: 16px 0px 8px 22px;
     font-family: "robotobold", sans-serif;
