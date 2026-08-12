@@ -374,7 +374,7 @@
     display: block;
     box-sizing: border-box;
     position: relative;
-    border: 1px solid var(--border-secondary);
+    border: 1px solid var(--border-nav-link);
     border-radius: 10px;
     background: transparent;
     color: var(--text-secondary);
@@ -406,7 +406,17 @@
     white-space: nowrap;
 }
 
+.page-nav .nav-title code {
+    font-size: 13px;
+    font-weight: bold;
+    color: var(--text-heading);
+}
+
 .page-nav .nav-card:hover .nav-title {
+    color: var(--link-color);
+}
+
+.page-nav .nav-card:hover .nav-title code {
     color: var(--link-color);
 }
 

@@ -126,6 +126,7 @@ html {
     --border-secondary: #a5bee0;
     --border-sidebar: #999999;
     --border-toc-subheading: #c8c8c8;
+    --border-nav-link: #d6d6d6;
     --border-popup: #cccccc;
     --border-content: #aaaaaa;
     --border-table: #e4e4e4;
@@ -168,6 +169,7 @@ html {
     --border-secondary: #546a88;
     --border-sidebar: #707070;
     --border-toc-subheading: #3c3c3c;
+    --border-nav-link: #383838;
     --border-popup: #404040;
     --border-content: #404040;
     --border-table: #333333;
