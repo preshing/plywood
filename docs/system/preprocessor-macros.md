@@ -1,11 +1,11 @@
 Preprocessor Macros (`ply-system.h`)
 ==================================
 
-`ply-system.h` makes the following preprocessor macros available for the rest of the program to use.
+When `<ply-system.h>` is included, it makes the following preprocessor macros available for the rest of the program to use.
 
 ## Platform Detection
 
-The header file automatically detects the target platform and enables one or more of the following preprocessor macros. Each macro is defined as `1` if it describes the target platform; otherwise it's left undefined. Provided for convenience when building platform-specific features in your own code.
+The header file automatically detects the target platform and enables one or more of the following preprocessor macros. These are provided for convenience when building platform-specific features in user code.
 
 | | |
 | --- | --- |

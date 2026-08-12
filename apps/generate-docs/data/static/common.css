@@ -47,6 +47,7 @@ em {
 html {
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
+    user-select: none;
 }
 
 /*------------------------------------------------
@@ -104,13 +105,14 @@ html {
     --bg-sidebar-hover: #c8d1d7;
     --bg-code-block: #f4f4f4;
     --bg-highlight: #ffffd0;
+    --bg-nav-link-hover: #f4faff;
     
     --text-banner: #ffffff;
     --text-primary: #181818;
     --text-secondary: #404040;
     --text-toc-subheading: #707070;
     --text-heading: #567bb0;
-    --text-title-subheading: #89a3c8;
+    --text-title-subheading: #a9c3e8;
     --text-wip: #d73030;
     --text-muted: #909090;
     --text-code: #909090;
@@ -127,9 +129,10 @@ html {
     --border-sidebar: #999999;
     --border-toc-subheading: #c8c8c8;
     --border-nav-link: #d6d6d6;
+    --border-nav-link-hover: #a1c5e2;
     --border-popup: #cccccc;
     --border-content: #aaaaaa;
-    --border-table: #e4e4e4;
+    --border-table: #e8e8e8;
     --shadow-opacity: 0.05;
     --shadow-popup-opacity: 0.05;
     
@@ -143,17 +146,18 @@ html {
 [data-theme="dark"] {
     --bg-page: #1a1a1a;
     --bg-banner: #2a4a67;
-    --bg-sidebar: #282828;
+    --bg-sidebar: #242424;
     --bg-popup: #181818;
     --bg-sidebar-hover: #2b3945;
     --bg-code-block: #0f0f0f;
     --bg-highlight: #3a3a20;
+    --bg-nav-link-hover: #1d2124;
     
     --text-primary: #e4e4e4;
     --text-secondary: #b0b0b0;
     --text-toc-subheading: #808080;
     --text-heading: #9ab6d6;
-    --text-title-subheading: #74879e;
+    --text-title-subheading: #4e6b8e;
     --text-wip: #ff7777;
     --text-muted: #808080;
     --text-code: #a8a8a8;
@@ -170,6 +174,7 @@ html {
     --border-sidebar: #707070;
     --border-toc-subheading: #3c3c3c;
     --border-nav-link: #383838;
+    --border-nav-link-hover: #435b6b;
     --border-popup: #404040;
     --border-content: #404040;
     --border-table: #333333;
@@ -285,15 +290,15 @@ html {
     font-family: "robotobold", sans-serif;
     font-size: 42px;
     color: var(--text-heading);
-    margin-bottom: 20px;
+    margin-bottom: 16px;
     overflow: visible;
 }
 .content h2 {
     font-family: "robotobold", sans-serif;
     font-size: 31px;
     color: var(--text-heading);
-    margin-top: 32px;
-    margin-bottom: 20px;    
+    margin-top: 22px;
+    margin-bottom: 16px;
     border-bottom: 1px solid var(--border-secondary);
 }
 .content h3 {
@@ -301,7 +306,7 @@ html {
     font-size: 24px;
     color: var(--text-heading);
     margin-top: 30px;
-    margin-bottom: 11px;    
+    margin-bottom: 11px;
 }
 .content h1 code {
     font-size: 39px;
@@ -317,7 +322,8 @@ html {
     font-size: 24px;
     color: var(--text-title-subheading);
     line-height: 1.5;
-    margin-top: -11px;
+    margin-top: -9px;
+    padding-bottom: 8px;
 }
 .content h2 code, .content h3 code, .content h1 .title-subheading code {
     font-weight: bold;
@@ -327,10 +333,10 @@ html {
     font-size: 30px;
 }
 .content h3 code, .content h1 .title-subheading code {
-    font-size: 22px;
+    font-size: 21px;
 }
 .content p {
-    margin-bottom: 20px;
+    margin-bottom: 18px;
 }
 .content code {
     font-family: "jetbrains_mono", monospace;
@@ -341,7 +347,7 @@ html {
 }
 .content pre {
     font-family: "jetbrains_mono", monospace;
-    padding: 8px 10px;
+    padding: 5px 7px;
     margin-bottom: 1.5em;
     color: var(--text-code);
     background-color: var(--bg-code-block);
@@ -397,7 +403,7 @@ html {
 }
 .content table td {
     border: 2px solid var(--border-table);
-    padding: 1px 8px;
+    padding: 0 7px;
 }
 
 /*------------------------------------------------
@@ -409,53 +415,67 @@ html {
 }
 .directory .toc-page-link,
 .directory .toc-section > a {
-    display: inline-block;
+    box-sizing: border-box;
+    display: block;
+    width: 100%;
 }
 .directory .toc-entry {
-    --toc-page-indent: 22px;
-    --toc-section-indent: 40px;
+    --toc-page-indent: 20px;
+    --toc-section-indent: 38px;
     --toc-section-line-left: 26px;
 }
 .directory .toc-depth-1 {
-    --toc-page-indent: 40px;
-    --toc-section-indent: 58px;
+    --toc-page-indent: 38px;
+    --toc-section-indent: 56px;
     --toc-section-line-left: 44px;
 }
 .directory .toc-depth-2 {
-    --toc-page-indent: 58px;
-    --toc-section-indent: 76px;
+    --toc-page-indent: 56px;
+    --toc-section-indent: 74px;
     --toc-section-line-left: 62px;
 }
 .directory .toc-depth-3 {
-    --toc-page-indent: 76px;
-    --toc-section-indent: 92px;
+    --toc-page-indent: 74px;
+    --toc-section-indent: 90px;
     --toc-section-line-left: 78px;
 }
 .directory .toc-depth-4 {
-    --toc-page-indent: 92px;
-    --toc-section-indent: 112px;
+    --toc-page-indent: 90px;
+    --toc-section-indent: 110px;
     --toc-section-line-left: 98px;
 }
 .directory .toc-depth-5 {
-    --toc-page-indent: 112px;
-    --toc-section-indent: 130px;
+    --toc-page-indent: 110px;
+    --toc-section-indent: 128px;
     --toc-section-line-left: 116px;
 }
 .directory .toc-entry > .toc-page-link {
-    margin-left: var(--toc-page-indent);
+    padding-left: var(--toc-page-indent);
 }
 .directory .toc-section > a {
     color: var(--text-toc-subheading);
-    margin-left: var(--toc-section-indent);
+    padding-left: var(--toc-section-indent);
+}
+.directory .toc-section {
+    line-height: calc(1.45em - 1px);
+}
+.directory .toc-section:first-child {
+    padding-top: 0.5px;
+}
+.directory .toc-section:last-child {
+    padding-bottom: 0.5px;
 }
 .directory .toc-sections {
     max-height: 0;
     overflow: hidden;
-    transition: max-height 150ms ease;
+    transition: max-height 150ms ease, visibility 0s linear 150ms;
+    visibility: hidden;
 }
 .directory .toc-page.selected > .toc-sections {
     max-height: var(--toc-sections-height);
     position: relative;
+    transition-delay: 0s;
+    visibility: visible;
 }
 .directory .toc-page.selected > .toc-sections::before {
     background: var(--border-toc-subheading);
@@ -505,8 +525,12 @@ html {
 .directory a {
     color: inherit;
 }
+.directory a:focus-visible {
+    outline: 2px solid var(--link-color);
+    outline-offset: -2px;
+}
 .directory .toc-heading {
-    margin: 16px 0px 8px 22px;
+    margin: 16px 0px 8px 19px;
     font-family: "robotobold", sans-serif;
     font-size: 16px;
     color: var(--text-heading);
@@ -521,7 +545,7 @@ html {
 }
 
 .scroller .inner {
-    margin: 8px 2px 8px 6px;
+    margin: 8px 0;
     white-space: nowrap;
 }
 .scroller ul {

@@ -52,6 +52,12 @@ function navigateTo(dstPath, forward, pageYOffset) {
         document.title = responseText.substr(0, n);
         article.innerHTML = responseText.substr(n + 1);
 
+        // Discard any text selection or caret retained from the previous article.
+        var selection = window.getSelection();
+        if (selection) {
+            selection.removeAllRanges();
+        }
+
         // Set up AJAX links in the new content
         replaceLinks(article);
 

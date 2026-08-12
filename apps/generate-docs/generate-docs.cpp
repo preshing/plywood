@@ -325,23 +325,46 @@ private:
                 }
             }
 
-            // Recognize a page title followed by a parenthesized, code-formatted subheading.
+            // Recognize a page title followed by a parenthesized subheading containing any inline markup.
             u32 numSpans = heading->spans.numItems();
-            if (numSpans >= 3) {
-                auto* titleEnd = heading->spans[numSpans - 3]->var.as<markdown::Span::Text>();
-                auto* subheading = heading->spans[numSpans - 2]->var.as<markdown::Span::Code>();
-                auto* closeParen = heading->spans[numSpans - 1]->var.as<markdown::Span::Text>();
-                bool hasTitle = (numSpans > 3) || (titleEnd && (titleEnd->text.numBytes() > 2));
-                if (titleEnd && titleEnd->text.endsWith(" (") && subheading && closeParen &&
-                    (closeParen->text == ")") && hasTitle) {
+            if (numSpans > 0) {
+                auto* subheadingEnd = heading->spans.back()->var.as<markdown::Span::Text>();
+                s32 openingSpanIndex = -1;
+                s32 openingTextPos = -1;
+
+                // Find the last plain-text opening delimiter before the heading's final closing parenthesis.
+                if (subheadingEnd && subheadingEnd->text.endsWith(")")) {
+                    for (s32 spanIndex = numSpans - 1; spanIndex >= 0; spanIndex--) {
+                        auto* text = heading->spans[spanIndex]->var.as<markdown::Span::Text>();
+                        if (text && ((openingTextPos = text->text.reverseFind(" (")) >= 0)) {
+                            openingSpanIndex = spanIndex;
+                            break;
+                        }
+                    }
+                }
+
+                bool hasTitle = (openingSpanIndex > 0) || (openingTextPos > 0);
+                if (hasTitle) {
                     this->out.write("<h1>");
-                    for (u32 spanIndex = 0; spanIndex + 3 < numSpans; spanIndex++) {
+                    for (s32 spanIndex = 0; spanIndex < openingSpanIndex; spanIndex++) {
                         markdown::convertSpanToHtml(&this->out, heading->spans[spanIndex], this->options);
                     }
-                    printXmlEscapedString(this->out, titleEnd->text.shortenedBy(2));
-                    this->out.write("<br><span class=\"title-subheading\">");
-                    markdown::convertSpanToHtml(&this->out, heading->spans[numSpans - 2], this->options);
-                    this->out.write("</span></h1>\n");
+                    auto* openingText = heading->spans[openingSpanIndex]->var.as<markdown::Span::Text>();
+                    printXmlEscapedString(this->out, openingText->text.left(openingTextPos));
+                    this->out.write("<br><span class=\"title-subheading\">(");
+
+                    // Emit the suffix between the delimiters while preserving all of its inline markup.
+                    StringView firstText = openingText->text.substr(openingTextPos + 2);
+                    if (openingSpanIndex == s32(numSpans - 1)) {
+                        printXmlEscapedString(this->out, firstText.shortenedBy(1));
+                    } else {
+                        printXmlEscapedString(this->out, firstText);
+                        for (u32 spanIndex = openingSpanIndex + 1; spanIndex + 1 < numSpans; spanIndex++) {
+                            markdown::convertSpanToHtml(&this->out, heading->spans[spanIndex], this->options);
+                        }
+                        printXmlEscapedString(this->out, subheadingEnd->text.shortenedBy(1));
+                    }
+                    this->out.write(")</span></h1>\n");
                     this->pendingBlocks.erase(blockIndex);
                     return;
                 }
