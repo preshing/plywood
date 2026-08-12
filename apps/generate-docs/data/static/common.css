@@ -449,10 +449,12 @@ html {
     margin-left: var(--toc-section-indent);
 }
 .directory .toc-sections {
-    display: none;
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 150ms ease;
 }
 .directory .toc-page.selected > .toc-sections {
-    display: block;
+    max-height: var(--toc-sections-height);
     position: relative;
 }
 .directory .toc-page.selected > .toc-sections::before {
@@ -482,6 +484,11 @@ html {
 }
 .directory .toc-section > a:hover {
     color: var(--link-color);
+}
+@media (prefers-reduced-motion: reduce) {
+    .directory .toc-sections {
+        transition: none;
+    }
 }
 .directory .toc-page-link code,
 .directory .toc-section code {

@@ -148,6 +148,14 @@ function updateSelectedItem(path) {
         if (href === path) {
             var page = links[i].parentNode;
             if (page && page.classList.contains('toc-page')) {
+                // Use the section list's actual height as the transition endpoint.
+                for (var j = 0; j < page.children.length; j++) {
+                    var child = page.children[j];
+                    if (child.classList.contains('toc-sections')) {
+                        page.style.setProperty('--toc-sections-height', child.scrollHeight + 'px');
+                        break;
+                    }
+                }
                 page.classList.add('selected');
                 break;
             }
