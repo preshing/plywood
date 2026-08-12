@@ -464,17 +464,19 @@ html {
     top: 1px;
     width: 3px;
 }
-.directory .toc-page.selected > .toc-page-link,
-.directory .toc-page.selected > .toc-page-link > code,
-.directory .toc-page.selected > .toc-page-link > .toc-separator {
+.directory .toc-page.selected > .toc-page-link {
+    color: var(--text-primary);
+}
+.directory .toc-page.selected > .toc-page-link code {
     color: var(--text-primary);
 }
 .directory .toc-page.selected > .toc-page-link > .toc-title {
     font-weight: bold;
 }
-.directory .toc-page:not(.selected) > .toc-page-link:hover,
-.directory .toc-page:not(.selected) > .toc-page-link:hover > code,
-.directory .toc-page:not(.selected) > .toc-page-link:hover > .toc-separator {
+.directory .toc-page:not(.selected) > .toc-page-link:hover {
+    color: var(--link-color);
+}
+.directory .toc-page:not(.selected) > .toc-page-link:hover code {
     color: var(--link-color);
 }
 .directory .toc-section > a:hover {
@@ -491,9 +493,6 @@ html {
 .directory .toc-page-link code {
     color: var(--text-heading);
     font-weight: bold;
-}
-.directory .toc-separator {
-    color: var(--text-secondary);
 }
 .directory a {
     color: inherit;

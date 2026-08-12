@@ -252,6 +252,13 @@ static bool runMarkdownInlineParsingTests() {
         allPassed = false;
     }
 
+    // Convert inline source directly to HTML without introducing paragraph or other block markup.
+    String inlineHtml = markdown::convertInlineToHtml("# item\n- list\n`code`");
+    if (inlineHtml != "# item\n- list\n<code>code</code>") {
+        getStdOut().format("convertInlineToHtml failure\nActual:\n{}\n", inlineHtml);
+        allPassed = false;
+    }
+
     // An explicitly disabled inline form must not fall back to an enabled shortcut-reference form.
     markdown::ParseOptions noInlineLinks;
     noInlineLinks.inlineLinks = false;

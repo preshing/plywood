@@ -2902,6 +2902,16 @@ Array<Owned<Span>> parseInlineElements(StringView markdown, const ParseOptions& 
     return expandInlineSpans(parser, markdown);
 }
 
+// Convenience helper that parses inline Markdown and returns rendered HTML without block markup.
+String convertInlineToHtml(StringView src, const ParseOptions& parseOptions, const HTMLOptions& htmlOptions) {
+    Array<Owned<Span>> spans = parseInlineElements(src, parseOptions);
+    MemStream out;
+    for (const Span* span : spans) {
+        convertSpanToHtml(&out, span, htmlOptions);
+    }
+    return out.moveToString();
+}
+
 // Convenience helper that parses an entire Markdown string into a list of top-level blocks.
 Array<Owned<Block>> parseWholeDocument(StringView markdown, const ParseOptions& options) {
     Array<Owned<Block>> blocks;

@@ -299,11 +299,11 @@ private:
                 continue;
             this->foundFirstH1 = true;
 
-            // Recognize a code-formatted header filename followed by a colon and page title.
+            // Recognize a code-formatted prefix followed by a colon and page title.
             if (heading->spans.numItems() >= 2) {
-                auto* filename = heading->spans[0]->var.as<markdown::Span::Code>();
+                auto* prefix = heading->spans[0]->var.as<markdown::Span::Code>();
                 auto* title = heading->spans[1]->var.as<markdown::Span::Text>();
-                if (filename && filename->text.endsWith(".h") && title && title->text.startsWith(": ") &&
+                if (prefix && title && title->text.startsWith(": ") &&
                     ((title->text.numBytes() > 2) || (heading->spans.numItems() > 2))) {
                     this->out.write("<h1>");
                     markdown::convertSpanToHtml(&this->out, heading->spans[0], this->options);
@@ -318,15 +318,15 @@ private:
                 }
             }
 
-            // Recognize a page title followed by a parenthesized, code-formatted header filename.
+            // Recognize a page title followed by a parenthesized, code-formatted subheading.
             u32 numSpans = heading->spans.numItems();
             if (numSpans >= 3) {
                 auto* titleEnd = heading->spans[numSpans - 3]->var.as<markdown::Span::Text>();
-                auto* filename = heading->spans[numSpans - 2]->var.as<markdown::Span::Code>();
+                auto* subheading = heading->spans[numSpans - 2]->var.as<markdown::Span::Code>();
                 auto* closeParen = heading->spans[numSpans - 1]->var.as<markdown::Span::Text>();
                 bool hasTitle = (numSpans > 3) || (titleEnd && (titleEnd->text.numBytes() > 2));
-                if (titleEnd && titleEnd->text.endsWith(" (") && filename && filename->text.endsWith(".h") &&
-                    closeParen && (closeParen->text == ")") && hasTitle) {
+                if (titleEnd && titleEnd->text.endsWith(" (") && subheading && closeParen &&
+                    (closeParen->text == ")") && hasTitle) {
                     this->out.write("<h1>");
                     for (u32 spanIndex = 0; spanIndex + 3 < numSpans; spanIndex++) {
                         markdown::convertSpanToHtml(&this->out, heading->spans[spanIndex], this->options);
@@ -492,19 +492,12 @@ void generateTableOfContentsHtml(Stream& out, const json::Node& items,
         const Array<PageHeading>* headings = pageHeadings.find(&item);
         PLY_ASSERT(headings);
         StringView title = item.get("title").text();
-        String filePrefix;
-        if (item.get("file").isValid()) {
-            StringView separatorHtml = title ? "<span class=\"toc-separator\">: </span>" : "";
-            filePrefix = String::format("<code>{:&}</code>{}", item.get("file").text(), separatorHtml);
-        }
-        String titleHtml;
-        if (title) {
-            titleHtml = String::format("<span class=\"toc-title\">{:&}</span>", title);
-        }
+        String titleHtml =
+            String::format("<span class=\"toc-title\">{}</span>", markdown::convertInlineToHtml(title));
         String url = convertDocsPathToURL(item.get("path").text());
         out.format("<li class=\"toc-entry toc-page toc-depth-{}\">"
-                   "<a class=\"toc-page-link\" href=\"{}\">{}{}</a>",
-                   min(depth, 5u), url, filePrefix, titleHtml);
+                   "<a class=\"toc-page-link\" href=\"{}\">{}</a>",
+                   min(depth, 5u), url, titleHtml);
         if (*headings) {
             bool hasLevel2 = false;
             for (const PageHeading& heading : *headings) {
@@ -546,7 +539,14 @@ void convertPage(const json::Node& item, const json::Node* prevPage, const json:
     MemStream mem;
     parseMarkdown(mem, in, headings);
     String articleContent = mem.moveToString();
-    String pageTitle = item.get("title").text();
+
+    // Use the text contribution of the first title span as the browser document title.
+    Array<Owned<markdown::Span>> titleSpans = markdown::parseInlineElements(item.get("title").text());
+    MemStream titleOut;
+    if (titleSpans) {
+        writeHeadingText(titleOut, titleSpans[0]);
+    }
+    String pageTitle = titleOut.moveToString();
 
     // Generate prev/next navigation
     String prevLink, nextLink;
@@ -554,20 +554,20 @@ void convertPage(const json::Node& item, const json::Node* prevPage, const json:
         String url = convertDocsPathToURL(prevPage->get("path").text());
         prevLink =
             String::format("<a class=\"nav-card nav-prev\" href=\"{}\"><span class=\"nav-meta\">Previous</span>"
-                           "<span class=\"nav-title\">{:&}</span></a>",
-                           url, prevPage->get("title").text());
+                           "<span class=\"nav-title\">{}</span></a>",
+                           url, markdown::convertInlineToHtml(prevPage->get("title").text()));
     }
     if (nextPage) {
         String url = convertDocsPathToURL(nextPage->get("path").text());
         nextLink =
             String::format("<a class=\"nav-card nav-next\" href=\"{}\"><span class=\"nav-meta\">Next</span>"
-                           "<span class=\"nav-title\">{:&}</span></a>",
-                           url, nextPage->get("title").text());
+                           "<span class=\"nav-title\">{}</span></a>",
+                           url, markdown::convertInlineToHtml(nextPage->get("title").text()));
     }
     String navHtml = String::format("<div class=\"page-nav\">{}{}</div>", prevLink, nextLink);
 
     // Write content-only file for AJAX loading
-    String ajaxContent = String::format("{} :: Plywood C++ Runtime Library\n{}{}", pageTitle, articleContent, navHtml);
+    String ajaxContent = String::format("{} - Plywood C++ Runtime Library\n{}{}", pageTitle, articleContent, navHtml);
     String ajaxPath = joinPath(outFolder, "content/docs", relName + ".html");
     writeFileIfChanged(ajaxPath, ajaxContent);
 }

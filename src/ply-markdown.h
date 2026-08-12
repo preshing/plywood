@@ -248,6 +248,8 @@ struct HTMLOptions {
     bool childAnchors = false;
     Functor<String(StringView)> filterLinks;
 };
+String convertInlineToHtml(StringView src, const ParseOptions& parseOptions = {},
+                           const HTMLOptions& htmlOptions = {});
 String convertToHtml(StringView src, const ParseOptions& options = {});
 
 // Converts one parsed inline span subtree to HTML.

@@ -90,6 +90,10 @@ functions return `nullptr`.
 > Parses text directly as paragraph-style inline content without recognizing block constructs. Link reference
 > definitions are not collected by this entry point, so reference links require document parsing.
 
+`String convertInlineToHtml(StringView src, const ParseOptions& parseOptions = {}, const HTMLOptions& htmlOptions = {})`
+> Parses paragraph-style inline content and returns its rendered HTML without adding block markup. Parsing extensions
+> are selected with `ParseOptions`, while `HTMLOptions` controls rendering and link transformation.
+
 ### Whole-document parsing and HTML
 
 `Array<Owned<Block>> parseWholeDocument(StringView markdown, const ParseOptions& options = {})`
