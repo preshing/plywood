@@ -394,7 +394,6 @@ html {
 .content table {
     border-collapse: collapse;
     margin: 0 auto 1.5em auto;
-    color: var(--text-secondary);
 }
 .content table td {
     border: 2px solid var(--border-table);

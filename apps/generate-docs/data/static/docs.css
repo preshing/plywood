@@ -446,7 +446,7 @@
 .page-nav .nav-next::after {
     position: absolute;
     top: 50%;
-    transform: translateY(-50%);
+    transform: translateY(-58%);
     font-size: 30px;
     line-height: 1;
     color: var(--text-muted);
