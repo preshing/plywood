@@ -110,6 +110,7 @@ html {
     --text-secondary: #404040;
     --text-toc-subheading: #707070;
     --text-heading: #567bb0;
+    --text-title-subheading: #89a3c8;
     --text-wip: #d73030;
     --text-muted: #909090;
     --text-code: #909090;
@@ -151,6 +152,7 @@ html {
     --text-secondary: #b0b0b0;
     --text-toc-subheading: #808080;
     --text-heading: #9ab6d6;
+    --text-title-subheading: #74879e;
     --text-wip: #ff7777;
     --text-muted: #808080;
     --text-code: #a8a8a8;
@@ -300,18 +302,30 @@ html {
     margin-bottom: 11px;    
 }
 .content h1 code {
-    font-size: 35px;
+    font-size: 39px;
+    font-weight: bold;
     line-height: 1;
 }
-.content h2 code, .content h3 code {
+.content h1:has(> .title-subheading) > br {
+    display: none;
+}
+.content h1 .title-subheading {
+    display: block;
+    font-family: "robotobold", sans-serif;
+    font-size: 24px;
+    color: var(--text-title-subheading);
+    line-height: 1.5;
+    margin-top: -11px;
+}
+.content h2 code, .content h3 code, .content h1 .title-subheading code {
     font-weight: bold;
     line-height: 1;
 }
 .content h2 code {
     font-size: 30px;
 }
-.content h3 code {
-    font-size: 20px;
+.content h3 code, .content h1 .title-subheading code {
+    font-size: 22px;
 }
 .content p {
     margin-bottom: 20px;

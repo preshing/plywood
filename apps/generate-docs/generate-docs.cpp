@@ -285,6 +285,63 @@ private:
     Owned<markdown::Parser> parser = markdown::createParser(markdown::ParseOptions::githubFlavored());
     Array<Owned<markdown::Block>> pendingBlocks;
     String apiClassContext;
+    bool foundFirstH1 = false;
+
+    // Emits and removes a split filename/title heading when the first h1 uses a recognized Markdown form.
+    void emitSplitPageTitle() {
+        if (this->foundFirstH1)
+            return;
+
+        // Find the page's first top-level h1 in the current batch.
+        for (u32 blockIndex = 0; blockIndex < this->pendingBlocks.numItems(); blockIndex++) {
+            auto* heading = this->pendingBlocks[blockIndex]->var.as<markdown::Block::Heading>();
+            if (!heading || (heading->level != 1))
+                continue;
+            this->foundFirstH1 = true;
+
+            // Recognize a code-formatted header filename followed by a colon and page title.
+            if (heading->spans.numItems() >= 2) {
+                auto* filename = heading->spans[0]->var.as<markdown::Span::Code>();
+                auto* title = heading->spans[1]->var.as<markdown::Span::Text>();
+                if (filename && filename->text.endsWith(".h") && title && title->text.startsWith(": ") &&
+                    ((title->text.numBytes() > 2) || (heading->spans.numItems() > 2))) {
+                    this->out.write("<h1>");
+                    markdown::convertSpanToHtml(&this->out, heading->spans[0], this->options);
+                    this->out.write("<br><span class=\"title-subheading\">");
+                    printXmlEscapedString(this->out, title->text.substr(2));
+                    for (u32 spanIndex = 2; spanIndex < heading->spans.numItems(); spanIndex++) {
+                        markdown::convertSpanToHtml(&this->out, heading->spans[spanIndex], this->options);
+                    }
+                    this->out.write("</span></h1>\n");
+                    this->pendingBlocks.erase(blockIndex);
+                    return;
+                }
+            }
+
+            // Recognize a page title followed by a parenthesized, code-formatted header filename.
+            u32 numSpans = heading->spans.numItems();
+            if (numSpans >= 3) {
+                auto* titleEnd = heading->spans[numSpans - 3]->var.as<markdown::Span::Text>();
+                auto* filename = heading->spans[numSpans - 2]->var.as<markdown::Span::Code>();
+                auto* closeParen = heading->spans[numSpans - 1]->var.as<markdown::Span::Text>();
+                bool hasTitle = (numSpans > 3) || (titleEnd && (titleEnd->text.numBytes() > 2));
+                if (titleEnd && titleEnd->text.endsWith(" (") && filename && filename->text.endsWith(".h") &&
+                    closeParen && (closeParen->text == ")") && hasTitle) {
+                    this->out.write("<h1>");
+                    for (u32 spanIndex = 0; spanIndex + 3 < numSpans; spanIndex++) {
+                        markdown::convertSpanToHtml(&this->out, heading->spans[spanIndex], this->options);
+                    }
+                    printXmlEscapedString(this->out, titleEnd->text.shortenedBy(2));
+                    this->out.write("<br><span class=\"title-subheading\">");
+                    markdown::convertSpanToHtml(&this->out, heading->spans[numSpans - 2], this->options);
+                    this->out.write("</span></h1>\n");
+                    this->pendingBlocks.erase(blockIndex);
+                    return;
+                }
+            }
+            return;
+        }
+    }
 
     // Emits a contiguous run of declaration-paragraph + blockquote pairs as api_defs HTML.
     u32 emitApiDescriptionRun(u32 startIndex) {
@@ -321,6 +378,9 @@ private:
 
     // Emits all pending blocks, converting matching paragraph+blockquote runs to api_defs HTML.
     void emitPendingBlocks() {
+        // Pull a structured page title out before rendering the remaining Markdown tree.
+        this->emitSplitPageTitle();
+
         // Collect navigation entries before special API-description blocks consume the pending range.
         for (markdown::Block* block : this->pendingBlocks) {
             collectPageHeadings(block, this->headings);
