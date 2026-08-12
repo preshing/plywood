@@ -5,7 +5,6 @@
       └──┴┴┴┘
 ========================================================*/
 
-#include <ply-json.h>
 #include <ply-markdown.h>
 #include <ply-cpp.h>
 
@@ -15,7 +14,6 @@ using namespace ply::cpp;
 String sourceFolder = joinPath(PLYWOOD_ROOT_DIR, "apps/generate-docs/data");
 String docsFolder = joinPath(PLYWOOD_ROOT_DIR, "docs");
 String outFolder = joinPath(PLYWOOD_ROOT_DIR, "docs/build");
-json::Node contents;
 u32 publishKey = 0; // Prevent browsers from caching old stylesheets
 
 // Describes one article heading included in its expanded sidebar entry.
@@ -24,6 +22,15 @@ struct PageHeading {
     String id;
     String titleHtml;
 };
+
+// Stores one page from the Markdown table of contents in a form ready for HTML generation.
+struct ContentsPage {
+    String titleHtml;
+    String documentTitle;
+    String path;
+    Array<Owned<ContentsPage>> children;
+};
+Array<Owned<ContentsPage>> contents;
 
 // Tracks generated output so unchanged files can be preserved and obsolete files removed.
 struct GenerationStats {
@@ -439,31 +446,74 @@ void parseMarkdown(Stream& out, ViewStream& in, Array<PageHeading>& headings) {
     blockProcessor.flushToOutput();
 }
 
-// Flattens nested contents.json page entries into a linear traversal order.
-void flattenPages(Array<const json::Node*>& pages, const json::Node& items) {
-    for (const json::Node& item : items.arrayView()) {
-        pages.append(&item);
-        if (item.get("children").isValid()) {
-            flattenPages(pages, item.get("children"));
-        }
+// Extracts page entries from one Markdown list and validates its item structure.
+bool parseContentsList(Array<Owned<ContentsPage>>& pages, const markdown::Block* block) {
+    const markdown::Block::List* list = block->var.as<markdown::Block::List>();
+    if (!list) {
+        getStdErr().write("The documentation contents must be a Markdown list.\n");
+        return false;
     }
-}
 
-// Validates source paths before generation can modify the last successful output.
-bool validatePages(ArrayView<const json::Node*> pages) {
-    Set<String> paths;
     bool isValid = true;
-
-    // Check the path syntax, uniqueness and corresponding Markdown source for every page.
-    for (const json::Node* item : pages) {
-        const json::Node& pathNode = item->get("path");
-        if (!pathNode.isText()) {
-            getStdErr().format("Documentation page '{:&}' has no text path.\n", item->get("title").text());
+    for (const markdown::Block* itemBlock : list->childBlocks) {
+        const markdown::Block::ListItem* item = itemBlock->var.as<markdown::Block::ListItem>();
+        if (!item || item->childBlocks.isEmpty() || (item->childBlocks.numItems() > 2)) {
+            getStdErr().write("Each documentation contents item must contain one link and an optional sublist.\n");
             isValid = false;
             continue;
         }
 
-        StringView docsPath = pathNode.text();
+        // Require the item's first block to be a paragraph containing only one Markdown link.
+        const markdown::Block::Paragraph* paragraph = item->childBlocks[0]->var.as<markdown::Block::Paragraph>();
+        const markdown::Span::Link* link = nullptr;
+        if (paragraph && (paragraph->spans.numItems() == 1)) {
+            link = paragraph->spans[0]->var.as<markdown::Span::Link>();
+        }
+        if (!link || link->childSpans.isEmpty()) {
+            getStdErr().write("Each documentation contents item must contain a single Markdown link.\n");
+            isValid = false;
+            continue;
+        }
+
+        // Retain the rendered link label and the first span's plain text for their different output contexts.
+        Owned<ContentsPage> page = Heap::create<ContentsPage>();
+        MemStream htmlOut;
+        for (const markdown::Span* span : link->childSpans) {
+            markdown::convertSpanToHtml(&htmlOut, span, {});
+        }
+        page->titleHtml = htmlOut.moveToString();
+        MemStream documentTitleOut;
+        writeHeadingText(documentTitleOut, link->childSpans[0]);
+        page->documentTitle = documentTitleOut.moveToString();
+        page->path = link->destination;
+
+        // Recursively extract an optional nested list after the link paragraph.
+        if (item->childBlocks.numItems() == 2) {
+            if (!parseContentsList(page->children, item->childBlocks[1])) {
+                isValid = false;
+            }
+        }
+        pages.append(std::move(page));
+    }
+    return isValid;
+}
+
+// Flattens nested Markdown contents entries into a linear traversal order.
+void flattenPages(Array<const ContentsPage*>& pages, const Array<Owned<ContentsPage>>& items) {
+    for (const ContentsPage* item : items) {
+        pages.append(item);
+        flattenPages(pages, item->children);
+    }
+}
+
+// Validates source paths before generation can modify the last successful output.
+bool validatePages(ArrayView<const ContentsPage*> pages) {
+    Set<String> paths;
+    bool isValid = true;
+
+    // Check the path syntax, uniqueness and corresponding Markdown source for every page.
+    for (const ContentsPage* item : pages) {
+        StringView docsPath = item->path;
         if (!docsPath.startsWith("/docs/") || !docsPath.endsWith(".md")) {
             getStdErr().format("Invalid documentation path: {}\n", docsPath);
             isValid = false;
@@ -485,16 +535,13 @@ bool validatePages(ArrayView<const json::Node*> pages) {
 }
 
 // Renders nested table-of-contents entries as HTML list markup.
-void generateTableOfContentsHtml(Stream& out, const json::Node& items,
-                                 const Map<const json::Node*, Array<PageHeading>>& pageHeadings, u32 depth = 0) {
-    for (const json::Node& item : items.arrayView()) {
-        const json::Node& children = item.get("children");
-        const Array<PageHeading>* headings = pageHeadings.find(&item);
+void generateTableOfContentsHtml(Stream& out, const Array<Owned<ContentsPage>>& items,
+                                 const Map<const ContentsPage*, Array<PageHeading>>& pageHeadings, u32 depth = 0) {
+    for (const ContentsPage* item : items) {
+        const Array<PageHeading>* headings = pageHeadings.find(item);
         PLY_ASSERT(headings);
-        StringView title = item.get("title").text();
-        String titleHtml =
-            String::format("<span class=\"toc-title\">{}</span>", markdown::convertInlineToHtml(title));
-        String url = convertDocsPathToURL(item.get("path").text());
+        String titleHtml = String::format("<span class=\"toc-title\">{}</span>", item->titleHtml);
+        String url = convertDocsPathToURL(item->path);
         out.format("<li class=\"toc-entry toc-page toc-depth-{}\">"
                    "<a class=\"toc-page-link\" href=\"{}\">{}</a>",
                    min(depth, 5u), url, titleHtml);
@@ -517,20 +564,20 @@ void generateTableOfContentsHtml(Stream& out, const json::Node& items,
             }
             out.write("</ul>");
         }
-        if (children.isValid()) {
+        if (item->children) {
             out.write("<ul>");
-            generateTableOfContentsHtml(out, children, pageHeadings, depth + 1);
+            generateTableOfContentsHtml(out, item->children, pageHeadings, depth + 1);
             out.write("</ul>");
         }
         out.write("</li>");
     }
 }
 
-// Converts one contents.json entry into the generated documentation page HTML.
-void convertPage(const json::Node& item, const json::Node* prevPage, const json::Node* nextPage,
+// Converts one Markdown contents entry into the generated documentation page HTML.
+void convertPage(const ContentsPage& item, const ContentsPage* prevPage, const ContentsPage* nextPage,
                  Array<PageHeading>& headings) {
     // Resolve the repo-root-relative source path while preserving its old generated-file location.
-    StringView docsPath = item.get("path").text();
+    StringView docsPath = item.path;
     PLY_ASSERT(docsPath.startsWith("/docs/") && docsPath.endsWith(".md"));
     String markdownPath = joinPath(PLYWOOD_ROOT_DIR, docsPath.substr(1));
     String relName = docsPath.substr(6).shortenedBy(3);
@@ -540,49 +587,44 @@ void convertPage(const json::Node& item, const json::Node* prevPage, const json:
     parseMarkdown(mem, in, headings);
     String articleContent = mem.moveToString();
 
-    // Use the text contribution of the first title span as the browser document title.
-    Array<Owned<markdown::Span>> titleSpans = markdown::parseInlineElements(item.get("title").text());
-    MemStream titleOut;
-    if (titleSpans) {
-        writeHeadingText(titleOut, titleSpans[0]);
-    }
-    String pageTitle = titleOut.moveToString();
-
     // Generate prev/next navigation
     String prevLink, nextLink;
     if (prevPage) {
-        String url = convertDocsPathToURL(prevPage->get("path").text());
+        String url = convertDocsPathToURL(prevPage->path);
         prevLink =
             String::format("<a class=\"nav-card nav-prev\" href=\"{}\"><span class=\"nav-meta\">Previous</span>"
                            "<span class=\"nav-title\">{}</span></a>",
-                           url, markdown::convertInlineToHtml(prevPage->get("title").text()));
+                           url, prevPage->titleHtml);
     }
     if (nextPage) {
-        String url = convertDocsPathToURL(nextPage->get("path").text());
+        String url = convertDocsPathToURL(nextPage->path);
         nextLink =
             String::format("<a class=\"nav-card nav-next\" href=\"{}\"><span class=\"nav-meta\">Next</span>"
                            "<span class=\"nav-title\">{}</span></a>",
-                           url, markdown::convertInlineToHtml(nextPage->get("title").text()));
+                           url, nextPage->titleHtml);
     }
     String navHtml = String::format("<div class=\"page-nav\">{}{}</div>", prevLink, nextLink);
 
     // Write content-only file for AJAX loading
-    String ajaxContent = String::format("{} - Plywood C++ Runtime Library\n{}{}", pageTitle, articleContent, navHtml);
+    String ajaxContent =
+        String::format("{} - Plywood C++ Runtime Library\n{}{}", item.documentTitle, articleContent, navHtml);
     String ajaxPath = joinPath(outFolder, "content/docs", relName + ".html");
     writeFileIfChanged(ajaxPath, ajaxContent);
-}
-
-// Loads and parses a JSON file from disk.
-json::Node parseJson(StringView path) {
-    String src = FileSystem::loadTextAutodetect(path);
-    return json::Parser{}.parse(path, src).root;
 }
 
 // Regenerates the complete documentation site into docs/build if all source pages are valid.
 bool generateWholeSite() {
     // Parse and validate the page list before modifying any generated output.
-    contents = parseJson(joinPath(docsFolder, "contents.json"));
-    Array<const json::Node*> pages;
+    String contentsMarkdown = FileSystem::loadTextAutodetect(joinPath(docsFolder, "contents.md"));
+    Array<Owned<markdown::Block>> contentsBlocks = markdown::parseWholeDocument(contentsMarkdown);
+    contents.clear();
+    if (contentsBlocks.numItems() != 1) {
+        getStdErr().write("The documentation contents must contain exactly one Markdown list.\n");
+        return false;
+    }
+    if (!parseContentsList(contents, contentsBlocks[0]))
+        return false;
+    Array<const ContentsPage*> pages;
     flattenPages(pages, contents);
     if (!validatePages(pages))
         return false;
@@ -621,10 +663,10 @@ bool generateWholeSite() {
     writeFileIfChanged(joinPath(outFolder, "content/docs-template.html"), templateText);
 
     // Generate pages while collecting their level 2-3 headings for the sidebar.
-    Map<const json::Node*, Array<PageHeading>> pageHeadings;
+    Map<const ContentsPage*, Array<PageHeading>> pageHeadings;
     for (u32 i = 0; i < pages.numItems(); i++) {
-        const json::Node* prevPage = (i > 0) ? pages[i - 1] : nullptr;
-        const json::Node* nextPage = (i + 1 < pages.numItems()) ? pages[i + 1] : nullptr;
+        const ContentsPage* prevPage = (i > 0) ? pages[i - 1] : nullptr;
+        const ContentsPage* nextPage = (i + 1 < pages.numItems()) ? pages[i + 1] : nullptr;
         auto insertResult = pageHeadings.insert(pages[i]);
         PLY_ASSERT(!insertResult.wasFound);
         convertPage(*pages[i], prevPage, nextPage, *insertResult.value);
