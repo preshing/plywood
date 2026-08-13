@@ -1,12 +1,12 @@
-﻿/*========================================================
-
-     ____      Plywood C++ Runtime Library
-    ╱   ╱╲     https://plywood.dev/
-   ╱___╱╭╮╲   
-    └──┴┴┴┘    # Agent Harness
-               See documentation at: docs/agent-harness.md
-
-========================================================*/
+/*─────────────────────────────────────────────────────────┐
+│                                                          │
+│     ____      Plywood C++ Runtime Library                │
+│    ╱   ╱╲     https://plywood.dev/                       │
+│   ╱___╱╭╮╲                                               │
+│    └──┴┴┴┘    Agent Harness                              │
+│               Documentation: /docs/agent-harness.md      │
+│                                                          │
+└─────────────────────────────────────────────────────────*/
 
 #pragma once
 #include "ply-reflect.h"

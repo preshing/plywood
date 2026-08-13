@@ -1,9 +1,9 @@
-#=========================================================
-#      ____
-#     ╱   ╱╲    Plywood C++ Runtime Library
-#    ╱___╱╭╮╲   https://plywood.dev/
-#     └──┴┴┴┘
-#=========================================================
+#──────────────────────────────────────────────────────────┐
+#     ____                                                 │
+#    ╱   ╱╲     Plywood C++ Runtime Library                │
+#   ╱___╱╭╮╲    https://plywood.dev/                       │
+#    └──┴┴┴┘                                               │
+#──────────────────────────────────────────────────────────┘
 
 cmake_minimum_required(VERSION 3.10)
 set(CMAKE_CONFIGURATION_TYPES "Debug;Release;Final" CACHE INTERNAL "Build configs")

@@ -1,9 +1,9 @@
-#=========================================================
-#      ____
-#     ╱   ╱╲    Plywood C++ Runtime Library
-#    ╱___╱╭╮╲   https://plywood.dev/
-#     └──┴┴┴┘
-#=========================================================
+#──────────────────────────────────────────────────────────┐
+#     ____                                                 │
+#    ╱   ╱╲     Plywood C++ Runtime Library                │
+#   ╱___╱╭╮╲    https://plywood.dev/                       │
+#    └──┴┴┴┘                                               │
+#──────────────────────────────────────────────────────────┘
 
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 get_filename_component(PLYWOOD_ROOT "${CMAKE_CURRENT_LIST_DIR}/.." REALPATH)
