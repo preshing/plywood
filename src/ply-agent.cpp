@@ -1,12 +1,12 @@
-/*─────────────────────────────────────────────────────────┐
-│                                                          │
-│     ____      Plywood C++ Runtime Library                │
-│    ╱   ╱╲     https://plywood.dev/                       │
-│   ╱___╱╭╮╲                                               │
-│    └──┴┴┴┘    Agent Harness                              │
-│               Documentation: /docs/agent-harness.md      │
-│                                                          │
-└─────────────────────────────────────────────────────────*/
+/*────────────────────────────────────────────────────────────────────┐
+│                                                                     │
+│     ____      Plywood C++ Runtime Library                           │
+│    ╱   ╱╲     https://plywood.dev/                                  │
+│   ╱___╱╭╮╲                                                          │
+│    └──┴┴┴┘    Agent Harness                                         │
+│               Documentation: /docs/high-level/agent-harness.md      │
+│                                                                     │
+└────────────────────────────────────────────────────────────────────*/
 
 #include "ply-agent.h"
 #include "ply-network.h"

@@ -4,7 +4,7 @@
 │    ╱   ╱╲     https://plywood.dev/                                 │
 │   ╱___╱╭╮╲                                                         │
 │    └──┴┴┴┘    generate-docs                                        │
-│               Documentation: /docs/sample-apps/generate-docs.md    │
+│               Documentation: /docs/apps/generate-docs.md           │
 │                                                                    │
 └───────────────────────────────────────────────────────────────────*/
 
@@ -641,7 +641,7 @@ void convertPage(const ContentsPage& item, const ContentsPage* prevPage, const C
 // Regenerates the complete documentation site into docs/build if all source pages are valid.
 bool generateWholeSite() {
     // Parse and validate the page list before modifying any generated output.
-    String contentsMarkdown = FileSystem::loadTextAutodetect(joinPath(docsFolder, "contents.md"));
+    String contentsMarkdown = FileSystem::loadTextAutodetect(joinPath(docsFolder, "table-of-contents.md"));
     Array<Owned<markdown::Block>> contentsBlocks = markdown::parseWholeDocument(contentsMarkdown);
     contents.clear();
     if (contentsBlocks.numItems() != 1) {

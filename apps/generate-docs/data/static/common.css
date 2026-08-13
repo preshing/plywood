@@ -359,7 +359,7 @@ html {
     background: var(--scrollbar-thumb);
 }
 .content ul {
-    margin-left: 48px;
+    margin-left: 40px;
     margin-bottom: 1.5em;
     list-style-type: disc;
 }
@@ -390,7 +390,7 @@ html {
     line-height: 1.3333;
 }
 .content dl.api_defs dd {
-    margin-left: 32px;
+    margin-left: 40px;
 }
 
 /*------------------------------------------------

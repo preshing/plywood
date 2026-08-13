@@ -4,7 +4,7 @@
 │    ╱   ╱╲     https://plywood.dev/                                  │
 │   ╱___╱╭╮╲                                                          │
 │    └──┴┴┴┘    banner-comment                                        │
-│               Documentation: /docs/sample-apps/banner-comment.md    │
+│               Documentation: /docs/apps/banner-comment.md           │
 │                                                                     │
 └────────────────────────────────────────────────────────────────────*/
 
