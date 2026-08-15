@@ -743,10 +743,10 @@ struct Rect {
         return {mins, mins + size};
     }
     static Rect empty() {
-        return {getMaxValue<float>(), getMinValue<float>()};
+        return {maxRepresentableValue<float>(), minRepresentableValue<float>()};
     }
     static Rect full() {
-        return {getMinValue<float>(), getMaxValue<float>()};
+        return {minRepresentableValue<float>(), maxRepresentableValue<float>()};
     }
 
     explicit operator IntRect() const;
@@ -864,10 +864,10 @@ struct AABB {
     AABB(float minX, float minY, float maxX, float maxY) : mins{minX, minY}, maxs{maxX, maxY} {
     }
     static AABB empty() {
-        return {getMaxValue<float>(), getMinValue<float>()};
+        return {maxRepresentableValue<float>(), minRepresentableValue<float>()};
     }
     static AABB full() {
-        return {getMinValue<float>(), getMaxValue<float>()};
+        return {minRepresentableValue<float>(), maxRepresentableValue<float>()};
     }
     static AABB fromSize(const Float3& mins, const Float3& size) {
         return {mins, mins + size};
@@ -1291,10 +1291,10 @@ struct IntRect {
         return {mins, mins + size};
     }
     static IntRect empty() {
-        return {getMaxValue<int>(), getMinValue<int>()};
+        return {maxRepresentableValue<int>(), minRepresentableValue<int>()};
     }
     static IntRect full() {
-        return {getMinValue<int>(), getMaxValue<int>()};
+        return {minRepresentableValue<int>(), maxRepresentableValue<int>()};
     }
 
     explicit operator Rect() const {

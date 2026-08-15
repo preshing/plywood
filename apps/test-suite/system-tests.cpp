@@ -29,22 +29,22 @@ TEST_CASE("isRepresentable") {
     check(!isRepresentable<s8>(200));
     check(isRepresentable<u8>(200));
     check(!isRepresentable<s8>(u8(200)));
-    check(isRepresentable<u16>(getMaxValue<s16>()));
-    check(!isRepresentable<s16>(getMaxValue<u16>()));
-    check(!isRepresentable<s32>(getMinValue<s64>()));
-    check(!isRepresentable<s32>(getMaxValue<s64>()));
-    check(!isRepresentable<s32>(getMaxValue<u64>()));
-    check(!isRepresentable<u32>(getMinValue<s64>()));
-    check(!isRepresentable<u32>(getMaxValue<s64>()));
-    check(!isRepresentable<u32>(getMaxValue<u64>()));
-    check(isRepresentable<s64>(getMinValue<s32>()));
-    check(isRepresentable<s64>(getMaxValue<s32>()));
-    check(isRepresentable<s64>(getMaxValue<u32>()));
-    check(!isRepresentable<s64>(getMaxValue<u64>()));
-    check(!isRepresentable<u64>(getMinValue<s32>()));
-    check(isRepresentable<u64>(getMaxValue<s32>()));
-    check(isRepresentable<u64>(getMaxValue<u32>()));
-    check(isRepresentable<u64>(getMaxValue<s64>()));
+    check(isRepresentable<u16>(maxRepresentableValue<s16>()));
+    check(!isRepresentable<s16>(maxRepresentableValue<u16>()));
+    check(!isRepresentable<s32>(minRepresentableValue<s64>()));
+    check(!isRepresentable<s32>(maxRepresentableValue<s64>()));
+    check(!isRepresentable<s32>(maxRepresentableValue<u64>()));
+    check(!isRepresentable<u32>(minRepresentableValue<s64>()));
+    check(!isRepresentable<u32>(maxRepresentableValue<s64>()));
+    check(!isRepresentable<u32>(maxRepresentableValue<u64>()));
+    check(isRepresentable<s64>(minRepresentableValue<s32>()));
+    check(isRepresentable<s64>(maxRepresentableValue<s32>()));
+    check(isRepresentable<s64>(maxRepresentableValue<u32>()));
+    check(!isRepresentable<s64>(maxRepresentableValue<u64>()));
+    check(!isRepresentable<u64>(minRepresentableValue<s32>()));
+    check(isRepresentable<u64>(maxRepresentableValue<s32>()));
+    check(isRepresentable<u64>(maxRepresentableValue<u32>()));
+    check(isRepresentable<u64>(maxRepresentableValue<s64>()));
 
     // float to int
     check(isRepresentable<u32>(123.0f));
@@ -277,7 +277,7 @@ TEST_CASE("Heap::setOutOfMemoryHandler") {
     u32 outOfMemoryHandlerCallCount = 0;
     Heap::setOutOfMemoryHandler([&]() { outOfMemoryHandlerCallCount++; });
 
-    void* ptr = Heap::alloc(getMaxValue<uptr>());
+    void* ptr = Heap::alloc(maxRepresentableValue<uptr>());
     check(ptr == nullptr);
     check(outOfMemoryHandlerCallCount == 1);
 

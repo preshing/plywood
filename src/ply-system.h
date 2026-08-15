@@ -284,16 +284,16 @@ using uptr = u64;
 //--------------------------------------------
 
 template <typename T>
-constexpr T getMinValue();
+constexpr T minRepresentableValue();
 template <typename T>
-constexpr T getMaxValue();
+constexpr T maxRepresentableValue();
 #define PLY_MAKE_LIMITS(T, lo, hi) \
     template <> \
-    constexpr T getMinValue<T>() { \
+    constexpr T minRepresentableValue<T>() { \
         return lo; \
     } \
     template <> \
-    constexpr T getMaxValue<T>() { \
+    constexpr T maxRepresentableValue<T>() { \
         return hi; \
     }
 PLY_MAKE_LIMITS(s8, -0x80, 0x7f)
@@ -386,7 +386,7 @@ inline bool isAlignedToPowerOf2(u64 v, u64 a) {
     PLY_ASSERT(isPowerOf2(a));
     return (v & (a - 1)) == 0;
 }
-inline constexpr u32 roundUpToNearestPowerOf2(u32 v) {
+inline constexpr u32 roundUpToPowerOf2(u32 v) {
     v--;
     v |= v >> 1;
     v |= v >> 2;
@@ -395,7 +395,7 @@ inline constexpr u32 roundUpToNearestPowerOf2(u32 v) {
     v |= v >> 16;
     return v + 1;
 }
-inline constexpr u64 roundUpToNearestPowerOf2(u64 v) {
+inline constexpr u64 roundUpToPowerOf2(u64 v) {
     v--;
     v |= v >> 1;
     v |= v >> 2;
@@ -2401,7 +2401,7 @@ private:
 
     void alloc(u32 numItems) {
         PLY_ASSERT(!this->items_);
-        this->allocated = roundUpToNearestPowerOf2(numItems);
+        this->allocated = roundUpToPowerOf2(numItems);
         this->items_ = (Item*) Heap::alloc(uptr(this->allocated) * sizeof(Item));
         this->numItems_ = numItems;
     }
@@ -2702,7 +2702,7 @@ public:
             if (this->allocated == 0) {
                 this->allocated = numItems;
             } else {
-                this->allocated = roundUpToNearestPowerOf2(numItems); // FIXME: Generalize to other resize strategies?
+                this->allocated = roundUpToPowerOf2(numItems); // FIXME: Generalize to other resize strategies?
             }
             this->items_ = (Item*) Heap::realloc(this->items_, uptr(this->allocated) * sizeof(Item));
         }

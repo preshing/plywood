@@ -1127,7 +1127,7 @@ void handleRequest(TCPConnection* tcpConn, const Functor<void(HTTPServerRequest&
         } else if (contentLengthPtr) {
             // Explicit content length.
             u64 contentLength = 0;
-            if (!contentLengthPtr->match("%d", &contentLength) || (contentLength > getMaxValue<u32>())) {
+            if (!contentLengthPtr->match("%d", &contentLength) || (contentLength > maxRepresentableValue<u32>())) {
                 request.sendGenericResponse(HTTPServerResponse::BadRequest);
                 return;
             }

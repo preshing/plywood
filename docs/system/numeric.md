@@ -15,25 +15,8 @@ Plywood defines the following explicily-sized integer types, similar to `<stdint
 | `u16` | Unsigned 16-bit integer |
 | `u32` | Unsigned 32-bit integer |
 | `u64` | Unsigned 64-bit integer |
-
-These are equivalent to `ptrdiff_t`/`size_t` from the C standard library. They're defined as `s64`/`u64` in 64-bit environments and `s32`/`u32` in 32-bit environments such as WebAssembly.
-
-| | |
-| --- | --- |
 | `sptr` | Signed pointer-sized integer |
 | `uptr` | Unsigned pointer-sized integer |
-
-Plywood defines the following primitive numeric functions.
-
-### Numeric Limits
-
-`template <typename Type> Type getMinValue()`
-`template <typename Type> Type getMaxValue()`
-> Returns the minimum or maximum representable value for a given type `Type`. Available for all integer or floating-point types. Equivalent to `INT32_MIN`, `FLT_MAX` and similar constants from the C standard library, but implemented as template functions.
-> ```
-> s32 value = getMaxValue<s32>();      // returns 0x7fffffff
-> float value = getMinValue<float>();  // returns -3.402823466e+38f
-> ```
 
 ### Primitive Functions
 
@@ -65,6 +48,24 @@ Plywood defines the following primitive numeric functions.
 > float value = clamp(3.14f, 0.0f, 1.0f);  // returns 1.0f
 > ```
 
+### Alignment
+
+`u32 isPowerOf2(u32 value)`
+`u64 isPowerOf2(u64 value)`
+> Returns `true` if a `value` is a power of 2, `false` otherwise.
+
+`u32 alignToPowerOf2(u32 value, u32 alignment)`
+`u64 alignToPowerOf2(u64 value, u64 alignment)`
+> Rounds `value` up to the nearest multiple of `alignment`, which must be a power of 2.
+
+`bool isAlignedToPowerOf2(u32 value, u32 alignment)`
+`bool isAlignedToPowerOf2(u64 value, u64 alignment)`
+> Returns `true` if `value` is a multiple of `alignment`, which must be a power of 2.
+
+`u32 roundUpToPowerOf2(u32 value)`
+`u64 roundUpToPowerOf2(u64 value)`
+> Rounds `value` up to the nearest power of 2.
+
 ### Byte Ordering
 
 `u16 reverseBytes(u16 value)`
@@ -81,25 +82,7 @@ Plywood defines the following primitive numeric functions.
 >
 > These days, nearly every platform is little-endian, so these functions aren't often needed. The main use for these functions today is to work with [networking APIs](/docs/networking.md), where certain arguments are expected in big-endian order.
 
-### Alignment
-
-`u32 isPowerOf2(u32 value)`
-`u64 isPowerOf2(u64 value)`
-> Returns `true` if a `value` is a power of 2, `false` otherwise.
-
-`u32 alignToPowerOf2(u32 value, u32 alignment)`
-`u64 alignToPowerOf2(u64 value, u64 alignment)`
-> Rounds `value` up to the nearest multiple of `alignment`, which must be a power of 2.
-
-`bool isAlignedToPowerOf2(u32 value, u32 alignment)`
-`bool isAlignedToPowerOf2(u64 value, u64 alignment)`
-> Returns `true` if `value` is a multiple of `alignment`, which must be a power of 2.
-
-`u32 roundUpToNearestPowerOf2(u32 value)`
-`u64 roundUpToNearestPowerOf2(u64 value)`
-> Rounds `value` up to the nearest power of 2.
-
-### Numeric Casts
+### Numeric Casts and Limits
 
 `template <typename DstType, typename SrcType> bool isRepresentable(SrcType value)`
 > Returns `true` if `value` can be represented by the destination type `DstType`; `false` otherwise.
@@ -116,4 +99,12 @@ Plywood defines the following primitive numeric functions.
 >     u32 value2 = numericCast<u32>(value);  // OK
 > }
 > u32 value3 = numericCast<u32>(-1234);      // error: triggers runtime assertion
+> ```
+
+`template <typename Type> Type minRepresentableValue()`
+`template <typename Type> Type maxRepresentableValue()`
+> Returns the minimum or maximum representable value for a given type `Type`. Works with all integer and floating-point types.
+> ```
+> s32 value = maxRepresentableValue<s32>();      // returns 0x7fffffff
+> float value = minRepresentableValue<float>();  // returns -3.402823466e+38f
 > ```

@@ -747,7 +747,7 @@ private:
         if (numBytes == 0) {
             numBytes = 1;
         }
-        if (numBytes > getMaxValue<uptr>() - sizeof(ChunkHeader) - ChunkAlignment) {
+        if (numBytes > maxRepresentableValue<uptr>() - sizeof(ChunkHeader) - ChunkAlignment) {
             return 0;
         }
         uptr chunkSize = numBytes + sizeof(ChunkHeader);
@@ -991,7 +991,7 @@ private:
     // Returns the best-fit free chunk from tree bins for a minimum chunk size.
     Chunk* findBestTreeChunk(uptr chunkSize) {
         Chunk* best = nullptr;
-        uptr bestSize = getMaxValue<uptr>();
+        uptr bestSize = maxRepresentableValue<uptr>();
         u32 startBin = isSmallChunk(chunkSize) ? 0u : treeBinIndex(chunkSize);
         for (u32 i = startBin; i < NumTreeBins; i++) {
             Chunk* node = this->treeBins[i];
@@ -1515,7 +1515,7 @@ private:
         if (alignment == ChunkAlignment) {
             return allocLocked(numBytes);
         }
-        if (numBytes > getMaxValue<uptr>() - alignment - sizeof(AlignedAllocHeader)) {
+        if (numBytes > maxRepresentableValue<uptr>() - alignment - sizeof(AlignedAllocHeader)) {
             return nullptr;
         }
         uptr requestBytes = numBytes + alignment + sizeof(AlignedAllocHeader);
@@ -1677,7 +1677,7 @@ private:
                 continue;
             }
             PLY_ASSERT(this->treeBins[i]->treeParent == nullptr);
-            validateTree(this->treeBins[i], nullptr, 0, nullptr, getMaxValue<uptr>(), (const Chunk*) -1, i,
+            validateTree(this->treeBins[i], nullptr, 0, nullptr, maxRepresentableValue<uptr>(), (const Chunk*) -1, i,
                          &countedTreeNodes);
         }
 
@@ -2420,7 +2420,7 @@ void addToHash(HashBuilder& builder, StringView str) {
 
 u32 getBestNumHashIndices(u32 numItems) {
     if (numItems >= 8) {
-        return roundUpToNearestPowerOf2(u32((u64{numItems} * 5) >> 2));
+        return roundUpToPowerOf2(u32((u64{numItems} * 5) >> 2));
     }
     return (numItems < 4) ? 4 : 8;
 }
@@ -3411,7 +3411,7 @@ u64 readU64FromText(Stream& in, u32 radix) {
         // Note: 0x71c71c71c71c71b is the largest value that won't overflow for any
         // radix <= 36. We test against this constant first to avoid the costly integer
         // division.
-        if (result > 0x71c71c71c71c71b && result > (getMaxValue<u64>() - digit) / radix) {
+        if (result > 0x71c71c71c71b && result > (maxRepresentableValue<u64>() - digit) / radix) {
             overflow = true;
         }
         result = result * radix + digit;
@@ -4109,7 +4109,7 @@ void printNumber(Stream& outs, double value, const NumberFormat& format) {
     if (floatMode == NumberFormat::Regular) {
         u64 scale = 1;
         for (u32 i = 0; i < format.fractionalPrecision; i++) {
-            PLY_ASSERT(scale <= getMaxValue<u64>() / format.radix);
+            PLY_ASSERT(scale <= maxRepresentableValue<u64>() / format.radix);
             scale *= format.radix;
         }
 
@@ -4124,7 +4124,7 @@ void printNumber(Stream& outs, double value, const NumberFormat& format) {
     } else if (floatMode == NumberFormat::Scientific) {
         u64 scale = 1;
         for (u32 i = 0; i < format.fractionalPrecision; i++) {
-            PLY_ASSERT(scale <= getMaxValue<u64>() / format.radix);
+            PLY_ASSERT(scale <= maxRepresentableValue<u64>() / format.radix);
             scale *= format.radix;
         }
 
@@ -4135,7 +4135,7 @@ void printNumber(Stream& outs, double value, const NumberFormat& format) {
             value /= pow((double) format.radix, exponent);
         }
         u64 mantissa = (u64) (value * (double) scale + 0.5);
-        PLY_ASSERT(scale <= getMaxValue<u64>() / format.radix);
+        PLY_ASSERT(scale <= maxRepresentableValue<u64>() / format.radix);
         if (mantissa / format.radix >= scale) {
             mantissa /= format.radix;
             exponent++;

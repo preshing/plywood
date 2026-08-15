@@ -537,7 +537,7 @@ void BaseArray::reserve(TypeInfo* itemType, u32 numItems) {
         if (this->allocated == 0) {
             this->allocated = numItems;
         } else {
-            this->allocated = roundUpToNearestPowerOf2(numItems);
+            this->allocated = roundUpToPowerOf2(numItems);
         }
         this->items = Heap::realloc(this->items, uptr(itemType->fixedSize) * this->allocated);
     }
@@ -572,7 +572,7 @@ void AnyArray::reserve(u32 numItems) {
         if (this->allocated == 0) {
             this->allocated = numItems;
         } else {
-            this->allocated = roundUpToNearestPowerOf2(numItems); // FIXME: Generalize to other resize strategies?
+            this->allocated = roundUpToPowerOf2(numItems); // FIXME: Generalize to other resize strategies?
         }
         this->items = Heap::realloc(this->items, uptr(this->itemType->fixedSize) * this->allocated);
     }
@@ -927,8 +927,8 @@ void readFromJson(ReadFromJsonArgs& args, AnyObject obj, const json::Node& root)
             if (numItems > 0) {
                 baseMap->items = Heap::alloc(itemSize * numItems);
                 baseMap->allocated = numItems;
-                baseMap->indices = (s32*) Heap::alloc(sizeof(s32) * roundUpToNearestPowerOf2(numItems));
-                baseMap->numAllocatedIndices = roundUpToNearestPowerOf2(numItems);
+                baseMap->indices = (s32*) Heap::alloc(sizeof(s32) * roundUpToPowerOf2(numItems));
+                baseMap->numAllocatedIndices = roundUpToPowerOf2(numItems);
                 u32 index = 0;
                 for (const auto& entry : root.object().items) {
                     void* itemPtr = PLY_PTR_OFFSET(baseMap->items, uptr(index) * itemSize);
