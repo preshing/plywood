@@ -86,7 +86,7 @@ functions return `nullptr`.
 `Owned<Block> flush(Parser* parser)`
 > Finishes the current top-level block and returns it. Call it once all lines have been supplied.
 
-`Array<Owned<Span>> parseInlineElements(StringView markdown, const ParseOptions& options = {})`
+`Array<Owned<Span>> parseInlineSpans(StringView markdown, const ParseOptions& options = {})`
 > Parses text directly as paragraph-style inline content without recognizing block constructs. Link reference
 > definitions are not collected by this entry point, so reference links require document parsing.
 

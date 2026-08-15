@@ -206,10 +206,10 @@ static bool runMarkdownRecognitionOptionTests() {
     }
 
     // Soft breaks are observable in the span tree even though text newlines render identically in HTML.
-    Array<Owned<markdown::Span>> softBreakSpans = markdown::parseInlineElements("a\nb");
+    Array<Owned<markdown::Span>> softBreakSpans = markdown::parseInlineSpans("a\nb");
     markdown::ParseOptions noSoftBreaks;
     noSoftBreaks.softLineBreaks = false;
-    Array<Owned<markdown::Span>> plainNewlineSpans = markdown::parseInlineElements("a\nb", noSoftBreaks);
+    Array<Owned<markdown::Span>> plainNewlineSpans = markdown::parseInlineSpans("a\nb", noSoftBreaks);
     bool softBreakPassed = softBreakSpans.numItems() == 3 &&
                            softBreakSpans[1]->var.is<markdown::Span::SoftBreak>() &&
                            plainNewlineSpans.numItems() == 1 && plainNewlineSpans[0]->var.is<markdown::Span::Text>() &&
@@ -245,13 +245,13 @@ static bool runMarkdownInlineParsingTests() {
     }
 
     // Parse block-looking input directly as inline content while retaining enabled span recognition.
-    Array<Owned<markdown::Span>> spans = markdown::parseInlineElements("# item\n- list\n`code`");
+    Array<Owned<markdown::Span>> spans = markdown::parseInlineSpans("# item\n- list\n`code`");
     bool inlinePassed = spans.numItems() == 5 && spans[0]->var.is<markdown::Span::Text>() &&
                         spans[1]->var.is<markdown::Span::SoftBreak>() &&
                         spans[2]->var.is<markdown::Span::Text>() &&
                         spans[3]->var.is<markdown::Span::SoftBreak>() && spans[4]->var.is<markdown::Span::Code>();
     if (!inlinePassed) {
-        getStdOut().write("parseInlineElements block-isolation failure\n");
+        getStdOut().write("parseInlineSpans block-isolation failure\n");
         allPassed = false;
     }
 

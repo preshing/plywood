@@ -3,7 +3,7 @@
 │     ____      Plywood C++ Runtime Library                │
 │    ╱   ╱╲     https://plywood.dev/                       │
 │   ╱___╱╭╮╲                                               │
-│    └──┴┴┴┘    Operating System                           │
+│    └──┴┴┴┘    System                                     │
 │               Documentation: /docs/system/index.md       │
 │                                                          │
 └─────────────────────────────────────────────────────────*/

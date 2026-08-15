@@ -2900,14 +2900,14 @@ void destroy(Parser* parser) {
 }
 
 // Parses raw paragraph content directly into inline spans without recognizing block constructs.
-Array<Owned<Span>> parseInlineElements(StringView markdown, const ParseOptions& options) {
+Array<Owned<Span>> parseInlineSpans(StringView markdown, const ParseOptions& options) {
     Owned<Parser> parser = createParser(options);
     return expandInlineSpans(parser, markdown);
 }
 
 // Convenience helper that parses inline Markdown and returns rendered HTML without block markup.
 String convertInlineToHtml(StringView src, const ParseOptions& parseOptions, const HTMLOptions& htmlOptions) {
-    Array<Owned<Span>> spans = parseInlineElements(src, parseOptions);
+    Array<Owned<Span>> spans = parseInlineSpans(src, parseOptions);
     MemStream out;
     for (const Span* span : spans) {
         convertSpanToHtml(&out, span, htmlOptions);

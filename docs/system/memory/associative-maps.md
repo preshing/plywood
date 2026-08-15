@@ -6,48 +6,7 @@ Hash maps are collections of items that support fast key lookup. Plywood provide
 * `Set<Item>` uses a key type that's automatically determined from the item type. The items are kept in insertion order and the key type must be hashable.
 * `Map<Key, Value>` uses a key type that's determined by a separate template argument. The items are kept in insertion order and the key type must be hashable.
 
-These collections aren't thread-safe. Functions that read from the same collection can be called concurrently from separate threads, but functions that modify the same collection must not be called concurrently.
-
-## Hashable Types
-
-In the `Set` and `Map` class templates, [hashing](https://en.wikipedia.org/wiki/Hash_function) is used to speed up key lookups. Any hashable type can be used as a lookup key. In Plywood, the following types are hashable by default:
-
-| |
-| --- |
-| `s8` |
-| `s16` |
-| `s32` |
-| `s64` |
-| `u8` |
-| `u16` |
-| `u32` |
-| `u64` |
-| `float` |
-| `double` |
-| `T*` |
-| `StringView` |
-
-* When hashing a pointer, only the address is used, not the contents of the pointed-to object. [TBD: Change this.]
-* You can hash a `String` by implicitly converting it to a `StringView`.
-
-### Making Custom Types Hashable
-
-To make additional types hashable, overload the `addToHash` function for the desired type, as demonstrated below.
-
-```
-struct CustomType {
-    u32 x;
-    String str;
-};
-
-// User-defined addToHash overload.
-void addToHash(HashBuilder& builder, const CustomType& item) {
-    addToHash(builder, item.x);
-    addToHash(builder, item.str);
-}
-```
-
-`addToHash` is called internally by `Set` and `Map`. It's called using [argument-dependent lookup](https://en.cppreference.com/w/cpp/language/adl.html), so you can define it in the same namespace as the type itself.
+These classes aren't thread-safe. Functions that modify the same collection must not be called concurrently.
 
 ## `Set`
 
@@ -101,14 +60,10 @@ set.eraseQuick(4);
 items = set.items();  // Returns {7, 6}
 ```
 
-### Additional Constructors
-
 {context class=Set}
 
 `Set(std::initializer_list<Item> items)`
 > Constructs a set from a braced initializer list. The items are inserted in the order they appear in the list.
-
-### Accessing Items
 
 `const Item* find(const Key& key) const`
 > Looks for an item in the collection that matches the given key. Returns a pointer to the item if found, or `nullptr` if not found.
@@ -118,8 +73,6 @@ items = set.items();  // Returns {7, 6}
 `ArrayView<Item> items()`
 `ArrayView<const Item> items() const`
 > Returns a view of all items in the set. The items are in insertion order unless `eraseQuick` was called.
-
-### Modifying Set Contents
 
 `void clear()`
 > Calls the destructor of all existing items and resets to an empty set.
@@ -178,14 +131,10 @@ map.eraseQuick(4);
 items = map.items();  // Returns {{7, "date"}, {6, "cherry"}}
 ```
 
-### Additional Constructors
-
 {context class=Map}
 
 `Map(std::initializer_list<Item> items)`
 > Constructs a map from a braced initializer list. The key-value pairs are inserted in the order they appear in the list.
-
-### Accessing Items
 
 `const Value* find(const KeyView& key) const`
 > Looks up a value by key. Returns a pointer to the value if found, or `nullptr` if not present.
@@ -193,8 +142,6 @@ items = map.items();  // Returns {{7, "date"}, {6, "cherry"}}
 `ArrayView<Item> items()`
 `ArrayView<const Item> items() const`
 > Returns a view of all key-value pairs in the map. The pairs are in insertion order unless `eraseQuick` was called.
-
-### Modifying Map Contents
 
 `void clear()`
 > Calls the destructor of all existing items and resets to an empty map.
@@ -209,3 +156,42 @@ items = map.items();  // Returns {{7, "date"}, {6, "cherry"}}
 
 `bool eraseQuick(const KeyView& key)`
 > Removes the key-value pair with the given key without keeping the remaining pairs in insertion order. If an existing pair was found in the map, its destructor is called and `true` is returned. Otherwise, returns `false`.
+
+## Making Types Hashable
+
+In the `Set` and `Map` class templates, [hashing](https://en.wikipedia.org/wiki/Hash_function) is used to speed up key lookups. Any hashable type can be used as a lookup key. In Plywood, the following types are hashable by default:
+
+| |
+| --- |
+| `s8` |
+| `s16` |
+| `s32` |
+| `s64` |
+| `u8` |
+| `u16` |
+| `u32` |
+| `u64` |
+| `float` |
+| `double` |
+| `T*` |
+| `StringView` |
+
+* When hashing a pointer, only the address is used, not the contents of the pointed-to object. [TBD: Change this.]
+* You can hash a `String` by implicitly converting it to a `StringView`.
+
+To make additional types hashable, overload the `addToHash` function for the desired type, as demonstrated below.
+
+```
+struct CustomType {
+    u32 x;
+    String str;
+};
+
+// User-defined addToHash overload.
+void addToHash(HashBuilder& builder, const CustomType& item) {
+    addToHash(builder, item.x);
+    addToHash(builder, item.str);
+}
+```
+
+`addToHash` is called internally by `Set` and `Map`. It's called using [argument-dependent lookup](https://en.cppreference.com/w/cpp/language/adl.html), so you can define it in the same namespace as the type itself.

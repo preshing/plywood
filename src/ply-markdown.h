@@ -243,7 +243,7 @@ void destroy(Parser* parser);
 // Parsing
 Owned<Block> parseLine(Parser* parser, StringView line);
 Owned<Block> flush(Parser* parser);
-Array<Owned<Span>> parseInlineElements(StringView markdown, const ParseOptions& options = {});
+Array<Owned<Span>> parseInlineSpans(StringView markdown, const ParseOptions& options = {});
 Array<Owned<Block>> parseWholeDocument(StringView markdown, const ParseOptions& options = {});
 
 // Convert to HTML

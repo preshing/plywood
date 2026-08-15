@@ -1,27 +1,28 @@
 ﻿Strings (`ply-system.h`)
 ========================
 
-Plywood strings are general-purpose blocks of memory allocated from [the heap](/docs/system/memory/heap.md). They're often used to manipulate text, but they can store binary data as well. There are three main classes for working with strings:
+Plywood strings are general-purpose blocks of memory allocated from [the heap](/docs/system/memory/heap.md). They're
+often used to store UTF-8 text, but they can also store any other type of binary data.
 
-* `String` owns a block of memory and frees it when the destructor is called.
-* `StringView` is a read-only view into a block of memory.
-* `MutStringView` is a read-write view into a block of memory.
+There are three main classes for working with strings:
 
-These classes all use 32-bit integers for indexing, which means they can refereance a maximum of roughly 4 GB of memory.
+* [`String`](#string) owns a heap-allocated memory block and frees it when the destructor is called.
+* [`StringView`](#string-view) is a read-only view into an existing block of memory.
+* [`MutStringView`](#mut-string-view) is a read-write view into an existing block of memory.
 
-Plywood strings aren't null-terminated unless you add an explicit null byte to the end. This is sometimes necessary when passing strings to legacy functions that expect a null terminator.
+Plywood strings aren't null-terminated unless you add an explicit null byte to the end.
 
 ```
 String str = "Hello, world!";
-// The legacy function 'puts' expects a null terminator:
+// Append a null terminator to the string before calling puts:
 puts((str + '\0').bytes());
 ```
 
-These classes aren't thread-safe. Functions that read from the same string can be called concurrently from separate threads, but functions that modify the same string must not be called concurrently.
+These classes aren't thread-safe. Concurrent reads are OK, but functions that modify the same string must not be called concurrently.
 
 ## Common Methods
 
-The following member functions are implemented in both `String` and `StringView`:
+The following member functions are available on both `String` and `StringView` instances.
 
 ### Accessing String Bytes
 

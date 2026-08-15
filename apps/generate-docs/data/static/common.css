@@ -345,6 +345,9 @@ html {
 .content p code, .content ul code, .content table code {
     color: var(--text-code-inline);
 }
+.content a code {
+    color: var(--link-color);
+}
 .content pre {
     font-family: "jetbrains_mono", monospace;
     padding: 5px 7px;
