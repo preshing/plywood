@@ -34,34 +34,35 @@ The Plywood repository uses following directory structure.:
 - Documentation is in `docs/`.
 - Sample applications are in `apps/`.
 - Build scripts are in `share/`.
-- Build outputs are written to `bin/`.
+- Intermediate build files are written to `build/` as a subfolder of the app being built.
+- Output executables are written to `bin/`.
 
 ```
 plywood/
-├── .clang-format                   # Coding style used throughout Plywood.
-├── agent.json                      # Internal agent harness settings.
-├── apps/                           # Sample applications.
+├── .clang-format               # Code formatting settings.
+├── agent.json                  # Agent harness settings.
+├── apps/                       # Sample applications.
 │   ├── agent/
 │   │   ├── CMakeLists.txt
 │   │   ├── main.cpp
-│   │   ├── build/
+│   │   ├── build/              # Intermediate build folder.
 │   │   └── ...
 │   ├── banner-comment/
 │   ├── generate-docs/
 │   ├── serve-docs/
 │   └── test-suite/
-├── bin/                            # Sample application output folder.
+├── bin/                        # Output executables.
 │   ├── agent[.exe]
 │   └── ...
 ├── docs/
 │   ├── table-of-contents.md
-│   ├── build/                      # generate-docs output folder.
+│   ├── build/                  # HTML output files written by generate-docs.
 │   └── ...
 ├── share/
-│   ├── build-app.bat               # Sample build script (Windows).
-│   ├── build-app.sh                # Sample build script.
+│   ├── build-app.bat           # Sample build script (Windows).
+│   ├── build-app.sh            # Sample build script.
 │   └── ...
-└── src/                            # Runtime library source code.
+└── src/                        # Library source code.
     ├── ply-system.h
     ├── ply-system.cpp
     ├── ply-math.h
@@ -71,7 +72,7 @@ plywood/
 
 ## Namespace
 
-All Plywood functions and types are defined in the `ply` namespace. Some higher-level libraries use nested namespaces, like `ply::markdown`. It's common to omit the `ply::` qualifier by importing the `ply` namespace in user code. Throughout the rest of this documentation, the `ply::` qualifier is usually omitted.
+All Plywood functions and types are defined in the `ply` namespace. Some higher-level libraries use nested namespaces, like `ply::markdown`. It's common to omit the `ply::` qualifier by importing the `ply` namespace in user code.
 
 ```
 #include <ply-markdown.h>

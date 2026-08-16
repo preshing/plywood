@@ -1,29 +1,40 @@
 Preprocessor Macros (`ply-system.h`)
 ==================================
 
-When `<ply-system.h>` is included, it makes the following preprocessor macros available for the rest of the program to use.
-
 ## Platform Detection
 
-The header file automatically detects the target platform and enables one or more of the following preprocessor macros. These are provided for convenience when building platform-specific features in user code.
+These macros are defined automatically based on the availability of compiler-specific macros. Provided for convenience when building platform-specific features in user code.
 
-| | |
-| --- | --- |
-| `PLY_WINDOWS` | Defined when compiling for Windows. |
-| `PLY_LINUX` | Defined when compiling for Linux or Android. |
-| `PLY_ANDROID` | Defined when compiling for Android. |
-| `PLY_APPLE` | Defined when compiling for macOS or iOS. |
-| `PLY_MACOS` | Defined when compiling for macOS. |
-| `PLY_IOS` | Defined when compiling for iOS. |
-| `PLY_POSIX` | Defined when compiling for Linux, macOS, Android or iOS. Indicates that POSIX API is available. |
-| `PLY_MINGW` | Defined when compiling for [MinGW](https://www.mingw-w64.org/).  |
+`PLY_WINDOWS`
+> Defined as 1 when compiling for Windows.
+
+`PLY_LINUX`
+> Defined as 1 when compiling for Linux or Android.
+
+`PLY_ANDROID`
+> Defined as 1 when compiling for Android.
+
+`PLY_APPLE`
+> Defined as 1 when compiling for macOS or iOS.
+
+`PLY_MACOS`
+> Defined as 1 when compiling for macOS.
+
+`PLY_IOS`
+> Defined as 1 when compiling for iOS.
+
+`PLY_POSIX`
+> Defined as 1 when compiling for Linux, macOS, Android or iOS. Indicates that POSIX API is available.
+
+`PLY_MINGW`
+> Defined as 1 when compiling for [MinGW](https://www.mingw-w64.org/)
 
 `PLY_PTR_SIZE`
 > The size of a pointer, in bytes. Defined as `4` when compiling for a 32-bit architecture and `8` when compiling for a 64-bit architecture.
 
 ## Compiler-Specific Wrappers
 
-These macros are wrappers around compiler-specific extensions. They mainly hide differences between MSVC and GCC/Clang.
+These macros are wrappers around compiler-specific extensions. They're mainly used to hide differences between MSVC and GCC/Clang.
 
 `PLY_NO_INLINE`
 > Prevents inline class methods from being considered as inlining candidates.
@@ -38,23 +49,23 @@ These macros are wrappers around compiler-specific extensions. They mainly hide 
 > Emits a CPU instruction that forces the process to crash immediately. Used internally by `PLY_ASSERT` when an assertion fails.
 
 `PLY_COMPILER_BARRIER()`
-> Prevents the compiler from [reordering adjacent memory operations](https://preshing.com/20120625/memory-ordering-at-compile-time/). Can help ensure correct memory ordering in multithreaded code, though [atomic operations](/docs/system/multithreading.md#atomic) are usually a better option.
+> Prevents the compiler from [reordering adjacent memory operations](https://preshing.com/20120625/memory-ordering-at-compile-time/). Can help ensure correct memory ordering in multithreaded code.
 
 `PLY_NO_DISCARD`
-> Equivalent to the `nodiscard` keyword that was added in C++17.
+> Equivalent to C++17's `nodiscard` keyword.
 
 ## General-Purpose
 
 `PLY_STRINGIFY(arg)`
 > Converts its argument to a string literal.
 > ```
-> PLY_STRINGIFY(__LINE__)  // expands to "42" if used on line 42
+> PLY_STRINGIFY(__LINE__)  // expands to "42" on line 42
 > ```
 
 `PLY_CAT(a, b)`
 > Concatenates two macro arguments into a single token.
 > ```
-> PLY_CAT(foo, __LINE__)  // expands to "foo42" if used on line 42
+> PLY_CAT(foo, __LINE__)  // expands to "foo42" on line 42
 > ```
 
 `PLY_UNIQUE_VARIABLE(prefix)`

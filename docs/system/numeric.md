@@ -22,30 +22,19 @@ Plywood defines the following explicily-sized integer types, similar to `<stdint
 
 `template <typename Type> Type abs(Type value)`
 > Returns the absolute value of any integer or floating-point value.
-> ```
-> s32 value = abs(-10);      // returns 10
-> float value = abs(3.14f);  // returns 3.14f
-> ```
 
 `template <typename Type> Type min(Type value1, Type value2)`
 > Returns the minimum of two integer or floating-point values.
-> ```
-> s32 value = min(10, 20);          // returns 10
-> float value = min(3.14f, 2.71f);  // returns 2.71f
-> ```
 
 `template <typename Type> Type max(Type value1, Type value2)`
 > Returns the maximum of two integer or floating-point values.
-> ```
-> s32 value = max(10, 20);          // returns 20
-> float value = max(3.14f, 2.71f);  // returns 3.14f
-> ```
 
 `template <typename Type> Type clamp(Type value, Type lowerBound, Type upperBound)`
 > Clamps an integer or floating-point value to lie between a lower and upper bound.
 > ```
-> s32 value = clamp(5, 0, 10);             // returns 5
-> float value = clamp(3.14f, 0.0f, 1.0f);  // returns 1.0f
+> clamp(-1, 0, 10);  // returns 0
+> clamp(5, 0, 10);   // returns 5
+> clamp(11, 0, 10);  // returns 10
 > ```
 
 ### Alignment

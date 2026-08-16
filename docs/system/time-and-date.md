@@ -77,7 +77,7 @@ out.format("The time is {}.\n", String::fromDateTime("%l:%M %p (UTC%Z)", dateTim
 
 ## Performance Timer
 
-The performance timer takes precise CPU timing measurements using the CPU's internal clock. Timestamps are measured in CPU ticks, a system-specific unit of time.
+The performance timer takes precise CPU timing measurements. Timestamps are measured in CPU ticks, a system-specific unit of time.
 
 `u64 getCpuTicks()`
 > Returns the current timestamp, measured in CPU ticks.

@@ -157,7 +157,7 @@ items = map.items();  // Returns {{7, "date"}, {6, "cherry"}}
 `bool eraseQuick(const KeyView& key)`
 > Removes the key-value pair with the given key without keeping the remaining pairs in insertion order. If an existing pair was found in the map, its destructor is called and `true` is returned. Otherwise, returns `false`.
 
-## Making Types Hashable
+## Custom Key Types
 
 In the `Set` and `Map` class templates, [hashing](https://en.wikipedia.org/wiki/Hash_function) is used to speed up key lookups. Any hashable type can be used as a lookup key. In Plywood, the following types are hashable by default:
 

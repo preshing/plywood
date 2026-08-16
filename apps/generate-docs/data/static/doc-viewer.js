@@ -24,18 +24,35 @@ function savePageState() {
     window.history.replaceState(stateData, null);
 }
 
+function getScrollBehavior(smooth) {
+    return (smooth && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) ? 'smooth' : 'auto';
+}
+
 // Scroll to a fragment.
 function scrollToAnchor(anchor, smooth) {
     var anchorElement = document.getElementById(anchor);
     if (!anchorElement)
         return;
 
-    var useSmoothScroll = smooth && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    anchorElement.scrollIntoView({ behavior: useSmoothScroll ? 'smooth' : 'auto' });
+    anchorElement.scrollIntoView({ behavior: getScrollBehavior(smooth) });
 }
 
 // Navigate to a new page using AJAX
 function navigateTo(dstPath, forward, pageYOffset) {
+    // Extract anchor from path (e.g., /docs/system#section -> anchor = "section")
+    var anchorPos = dstPath.indexOf('#');
+    var anchor = (anchorPos >= 0) ? dstPath.substr(anchorPos + 1) : '';
+    var pathWithoutAnchor = (anchorPos >= 0) ? dstPath.substr(0, anchorPos) : dstPath;
+    var currentPath = location.pathname;
+    if (currentPath.length > 1 && currentPath.charAt(currentPath.length - 1) === '/') {
+        currentPath = currentPath.substr(0, currentPath.length - 1);
+    }
+    var comparableDstPath = pathWithoutAnchor;
+    if (comparableDstPath.length > 1 && comparableDstPath.charAt(comparableDstPath.length - 1) === '/') {
+        comparableDstPath = comparableDstPath.substr(0, comparableDstPath.length - 1);
+    }
+    var isCurrentPageTitle = forward && anchor === '' && comparableDstPath === currentPath;
+
     // Abort any in-flight request
     if (currentRequest !== null) {
         currentRequest.abort();
@@ -50,10 +67,12 @@ function navigateTo(dstPath, forward, pageYOffset) {
     // Highlight current page in sidebar
     updateSelectedItem(dstPath);
 
-    // Extract anchor from path (e.g., /docs/system#section -> anchor = "section")
-    var anchorPos = dstPath.indexOf('#');
-    var anchor = (anchorPos >= 0) ? dstPath.substr(anchorPos + 1) : '';
-    var pathWithoutAnchor = (anchorPos >= 0) ? dstPath.substr(0, anchorPos) : dstPath;
+    // Clicking the current page title only changes the scroll position; don't reload the article.
+    if (isCurrentPageTitle) {
+        window.scrollTo({ top: 0, behavior: getScrollBehavior(true) });
+        savePageState();
+        return;
+    }
 
     // Function to apply loaded content to the page
     var applyArticle = function(responseText) {
