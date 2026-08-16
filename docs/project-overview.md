@@ -21,73 +21,55 @@ The Plywood runtime library consists of four main components and several higher-
 **Sample Applications:**
 
 - [`agent`](/docs/apps/agent.md): Command-line agent with built-in web UI.
-- [`banner-comment`](/docs/apps/banner-comment.md): Generate banner comments.
+- [`test-suite`](/docs/apps/test-suite.md): Automated tests to validate Plywood's API-correctness.
 - [`generate-docs`](/docs/apps/generate-docs.md): Generate the HTML version of Plywood's documentation.
 - [`serve-docs`](/docs/apps/serve-docs.md): Serve the HTML documentation locally.
-- [`test-suite`](/docs/apps/test-suite.md): Automated tests to validate Plywood's API-correctness.
+- [`banner-comment`](/docs/apps/banner-comment.md): Generate banner comments.
 
 ## Directory Structure
 
-The Plywood repository uses following directory structure.:
-
-- Library source code is in `src/`.
-- Documentation is in `docs/`.
-- Sample applications are in `apps/`.
-- Build scripts are in `share/`.
-- Intermediate build files are written to `build/` as a subfolder of the app being built.
-- Output executables are written to `bin/`.
+The Plywood repository has the following directory structure. The `build` and `bin` folders aren't stored in Git.
 
 ```
 plywood/
-├── .clang-format               # Code formatting settings.
-├── agent.json                  # Agent harness settings.
+├── src/                        # Library source code.
+│   ├── ply-system.h
+│   ├── ply-system.cpp
+│   ├── ply-math.h
+│   ├── ply-math.cpp
+│   └── ...
+├── docs/                       # Documentation.
+│   ├── table-of-contents.md
+│   ├── ...
+│   └── build/                  # HTML output files written by generate-docs.
 ├── apps/                       # Sample applications.
 │   ├── agent/
-│   │   ├── CMakeLists.txt
 │   │   ├── main.cpp
+│   │   ├── CMakeLists.txt
 │   │   ├── build/              # Intermediate build folder.
 │   │   └── ...
-│   ├── banner-comment/
+│   ├── test-suite/
 │   ├── generate-docs/
 │   ├── serve-docs/
-│   └── test-suite/
+│   └── banner-comment/
+├── share/
+│   ├── build-app.sh            # Sample build script.
+│   ├── build-app.bat           # Sample build script (Windows).
+│   └── ...
 ├── bin/                        # Output executables.
 │   ├── agent[.exe]
 │   └── ...
-├── docs/
-│   ├── table-of-contents.md
-│   ├── build/                  # HTML output files written by generate-docs.
-│   └── ...
-├── share/
-│   ├── build-app.bat           # Sample build script (Windows).
-│   ├── build-app.sh            # Sample build script.
-│   └── ...
-└── src/                        # Library source code.
-    ├── ply-system.h
-    ├── ply-system.cpp
-    ├── ply-math.h
-    ├── ply-math.cpp
-    └── ...
+└── agent.json                  # Agent harness settings.
 ```
 
 ## Namespace
 
-All Plywood functions and types are defined in the `ply` namespace. Some higher-level libraries use nested namespaces, like `ply::markdown`. It's common to omit the `ply::` qualifier by importing the `ply` namespace in user code.
+All Plywood functions and types are defined in the `ply` namespace. Some higher-level libraries create nested namespaces, such as `ply::markdown`. When possible, importing `ply` directly into the global namespace is a convenient way to simplify name lookup.
 
 ```
 #include <ply-markdown.h>
 
-// Import the ply namespace so that the ply:: qualifier isn't needed.
-using namespace ply;
+using namespace ply;  // Import into global namespace.
 
-Array<Owned<markdown::Span>> spans = markdown::parseInlineSpans("Hello, **world!**");
+Array<Owned<markdown::Block>> blocks = markdown::parse("Hello, *world!*");
 ```
-
-## Coding Style
-
-- C++14 language features only.
-- Use the provided `.clang-format` rules for formatting.
-- Type names in `PascalCase`; variable and function names in `camelCase`.
-- Each code block should begin with a brief comment to explain what it does.
-- Use the fewest line of code possible without sacrificing readability.
-- When the body of an `if` or `else` statement consists of exactly one `continue`, `return`, or `break` statement, omit curly braces.

@@ -6,28 +6,28 @@ Preprocessor Macros (`ply-system.h`)
 These macros are defined automatically based on the availability of compiler-specific macros. Provided for convenience when building platform-specific features in user code.
 
 `PLY_WINDOWS`
-> Defined as 1 when compiling for Windows.
+> Defined as 1 when compiling for Windows; otherwise undefined.
 
 `PLY_LINUX`
-> Defined as 1 when compiling for Linux or Android.
+> Defined as 1 when compiling for Linux or Android; otherwise undefined.
 
 `PLY_ANDROID`
-> Defined as 1 when compiling for Android.
+> Defined as 1 when compiling for Android; otherwise undefined.
 
 `PLY_APPLE`
-> Defined as 1 when compiling for macOS or iOS.
+> Defined as 1 when compiling for macOS or iOS; otherwise undefined.
 
 `PLY_MACOS`
-> Defined as 1 when compiling for macOS.
+> Defined as 1 when compiling for macOS; otherwise undefined.
 
 `PLY_IOS`
-> Defined as 1 when compiling for iOS.
+> Defined as 1 when compiling for iOS; otherwise undefined.
 
 `PLY_POSIX`
-> Defined as 1 when compiling for Linux, macOS, Android or iOS. Indicates that POSIX API is available.
+> Defined as 1 when compiling for Linux, macOS, Android or iOS; otherwise undefined. Indicates that POSIX API is available.
 
 `PLY_MINGW`
-> Defined as 1 when compiling for [MinGW](https://www.mingw-w64.org/)
+> Defined as 1 when compiling for [MinGW](https://www.mingw-w64.org/); otherwise undefined.
 
 `PLY_PTR_SIZE`
 > The size of a pointer, in bytes. Defined as `4` when compiling for a 32-bit architecture and `8` when compiling for a 64-bit architecture.
@@ -54,18 +54,18 @@ These macros are wrappers around compiler-specific extensions. They're mainly us
 `PLY_NO_DISCARD`
 > Equivalent to C++17's `nodiscard` keyword.
 
-## General-Purpose
+## General-Purpose Macros
 
 `PLY_STRINGIFY(arg)`
 > Converts its argument to a string literal.
 > ```
-> PLY_STRINGIFY(__LINE__)  // expands to "42" on line 42
+> PLY_STRINGIFY(__LINE__)  // Expands to "42" on line 42.
 > ```
 
 `PLY_CAT(a, b)`
 > Concatenates two macro arguments into a single token.
 > ```
-> PLY_CAT(foo, __LINE__)  // expands to "foo42" on line 42
+> PLY_CAT(foo, __LINE__)  // Expands to "foo42" on line 42.
 > ```
 
 `PLY_UNIQUE_VARIABLE(prefix)`
@@ -75,13 +75,13 @@ These macros are wrappers around compiler-specific extensions. They're mainly us
 > Adds a byte offset to a pointer of any type and returns the result as `void*`.
 
 `PLY_OFFSET_OF(type, member)`
-> Returns the byte offset of a member within a struct or class. Similar to C++'s `offsetof` keyword but returns a `uptr`.
+> Returns the byte offset of a member within a struct or class. Similar to C++'s `offsetof` keyword, but returns a `uptr`.
 
 `PLY_STATIC_ARRAY_SIZE(arr)`
 > Evaluates to the number of elements in a C-style array.
 > ```
 > char buf[64];
-> PLY_STATIC_ARRAY_SIZE(buf)  // evaluates to 64
+> PLY_STATIC_ARRAY_SIZE(buf)  // Evaluates to 64.
 > ```
 
 `PLY_UNUSED(x)`
@@ -89,15 +89,7 @@ These macros are wrappers around compiler-specific extensions. They're mainly us
 > ```
 > int rc = close(socket);
 > PLY_ASSERT(rc == 0);
-> PLY_UNUSED(rc);  // Silences compiler warning when assertions are disabled
-> ```
-
-`PLY_CALL_MEMBER(obj, pmf)`
-> A macro for invoking pointer-to-member functions, as recommended by the [C++ FAQ](https://isocpp.org/wiki/faq/pointers-to-members#macro-for-ptr-to-memfn).
-> ```
-> void doSomething(Foo* obj, void (Foo::*pmf)()) {
->     PLY_CALL_MEMBER(obj, pmf)();
-> }
+> PLY_UNUSED(rc);  // Silences a compiler warning when assertions are disabled.
 > ```
 
 ## Assertions

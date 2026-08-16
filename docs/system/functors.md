@@ -18,5 +18,5 @@ It's movable and copyable if the callable is copyable.
 
 ```
 Functor<int(int, int)> add = [](int a, int b) { return a + b; };
-int result = add(3, 4);  // result is 7
+add(1, 2);  // Returns 3.
 ```

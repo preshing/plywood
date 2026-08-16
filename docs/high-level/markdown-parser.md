@@ -96,7 +96,7 @@ functions return `nullptr`.
 
 ### Whole-document parsing and HTML
 
-`Array<Owned<Block>> parseWholeDocument(StringView markdown, const ParseOptions& options = {})`
+`Array<Owned<Block>> parse(StringView markdown, const ParseOptions& options = {})`
 > Parses a complete string and returns its top-level blocks in document order. This is the whole-document equivalent
 > of streaming the lines through a parser configured with the same options and then calling `flush()`.
 

@@ -51,7 +51,7 @@ The following member functions are available on both `String` and `StringView` i
 > ```
 > String str = "Hello";
 > for (char c : str) {
->     // Iterates over 'H', 'e', 'l', 'l', 'o'
+>     // Iterates over 'H', 'e', 'l', 'l', 'o'.
 > }
 > ```
 

@@ -235,7 +235,7 @@ static bool runMarkdownInlineParsingTests() {
     }
 
     // Check that the same preset produces only fallback block and span types.
-    Array<Owned<markdown::Block>> noneBlocks = markdown::parseWholeDocument("# *x* &amp;\n", none);
+    Array<Owned<markdown::Block>> noneBlocks = markdown::parse("# *x* &amp;\n", none);
     bool noneTreePassed = noneBlocks.numItems() == 1 && noneBlocks[0]->var.is<markdown::Block::Paragraph>() &&
                           noneBlocks[0]->asLeaf()->spans.numItems() == 1 &&
                           noneBlocks[0]->asLeaf()->spans[0]->var.is<markdown::Span::Text>();

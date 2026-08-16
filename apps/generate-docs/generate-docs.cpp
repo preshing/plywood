@@ -642,7 +642,7 @@ void convertPage(const ContentsPage& item, const ContentsPage* prevPage, const C
 bool generateWholeSite() {
     // Parse and validate the page list before modifying any generated output.
     String contentsMarkdown = FileSystem::loadTextAutodetect(joinPath(docsFolder, "table-of-contents.md"));
-    Array<Owned<markdown::Block>> contentsBlocks = markdown::parseWholeDocument(contentsMarkdown);
+    Array<Owned<markdown::Block>> contentsBlocks = markdown::parse(contentsMarkdown);
     contents.clear();
     if (contentsBlocks.numItems() != 1) {
         getStdErr().write("The documentation contents must contain exactly one Markdown list.\n");

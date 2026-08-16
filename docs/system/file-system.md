@@ -147,10 +147,10 @@ String fullPath = Path::joinPath("home", "user", "documents", "file.txt");
 // On Windows: "home\\user\\documents\\file.txt"
 
 auto [dir, file] = Path::splitPath("/home/user/test.cpp");
-// dir is "/home/user", file is "test.cpp"
+// The directory is "/home/user" and the file is "test.cpp".
 
 bool ignored = matchGitIgnorePattern("build/output.o", false, "build/");
-// ignored is true
+// The path is ignored.
 ```
 
 ## `DirectoryWatcher`
@@ -176,20 +176,20 @@ When `mustRecurse` is `false`, the `path` refers to a specific file that changed
 > Stops the background watcher thread and waits for it to finish. After calling `stop()`, you may call `start()` again with a new root and callback. The destructor calls `stop()` automatically.
 
 ```
-// Watch a directory and log changes
+// Watch a directory and log changes.
 DirectoryWatcher watcher;
 watcher.start("/path/to/watch", [](StringView path, bool mustRecurse) {
     if (mustRecurse) {
-        // Too many changes or directory modified; rescan this path
+        // Too many changes or directory modified; rescan this path.
         puts(String::format("Rescan needed: {}", path).bytes);
     } else {
-        // Single file changed
+        // Single file changed.
         puts(String::format("File changed: {}", path).bytes);
     }
 });
 
 // ... do other work ...
 
-// Stop watching (also happens automatically in destructor)
+// Stop watching (also happens automatically in destructor).
 watcher.stop();
 ```

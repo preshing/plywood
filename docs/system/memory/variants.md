@@ -35,7 +35,7 @@ template <typename... Types> class Variant;
 Variant<int, String, float> value;
 value = 42;
 if (value.is<int>()) {
-    int* p = value.as<int>();  // p points to the int
+    int* p = value.as<int>();  // Points to the int.
 }
 value.switchTo<String>("hello");
 ```

@@ -49,15 +49,15 @@ The items in a `Set` are maintained in insertion order unless `eraseQuick` is ca
 
 ```
 Set<u32> set = {4, 5, 6, 7};
-ArrayView<u32> items = set.items();  // Returns {4, 5, 6, 7}
+ArrayView<u32> items = set.items();  // Returns {4, 5, 6, 7}.
 
-// erase maintains insertion order.
+// Calling erase maintains insertion order.
 set.erase(5);
-items = set.items();  // Returns {4, 6, 7}
+items = set.items();  // Returns {4, 6, 7}.
 
-// eraseQuick can change the order of remaining items.
+// Calling eraseQuick can change the order of remaining items.
 set.eraseQuick(4);
-items = set.items();  // Returns {7, 6}
+items = set.items();  // Returns {7, 6}.
 ```
 
 {context class=Set}
@@ -122,13 +122,13 @@ Map<u32, String> map = {
     {7, "date"},
 };
 
-// erase maintains insertion order.
+// Calling erase maintains insertion order.
 map.erase(5);
-auto items = map.items();  // Returns {{4, "apple"}, {6, "cherry"}, {7, "date"}}
+auto items = map.items();  // Returns {{4, "apple"}, {6, "cherry"}, {7, "date"}}.
 
-// eraseQuick can change the order of remaining items.
+// Calling eraseQuick can change the order of remaining items.
 map.eraseQuick(4);
-items = map.items();  // Returns {{7, "date"}, {6, "cherry"}}
+items = map.items();  // Returns {{7, "date"}, {6, "cherry"}}.
 ```
 
 {context class=Map}

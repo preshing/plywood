@@ -167,7 +167,6 @@
 #define PLY_OFFSET_OF(type, member) uptr(&((type*) 0)->member)
 #define PLY_STATIC_ARRAY_SIZE(arr) (sizeof(arr) / sizeof((arr)[0]))
 #define PLY_UNUSED(x) ((void) x)
-#define PLY_CALL_MEMBER(obj, pmf) ((obj).*(pmf))
 #define PLY_STATIC_ASSERT(cond) static_assert(cond, #cond)
 
 namespace ply {

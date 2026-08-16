@@ -2916,7 +2916,7 @@ String convertInlineToHtml(StringView src, const ParseOptions& parseOptions, con
 }
 
 // Convenience helper that parses an entire Markdown string into a list of top-level blocks.
-Array<Owned<Block>> parseWholeDocument(StringView markdown, const ParseOptions& options) {
+Array<Owned<Block>> parse(StringView markdown, const ParseOptions& options) {
     Array<Owned<Block>> blocks;
     Owned<Parser> parser = createParser(options);
     String cleaned = options.linkReferenceDefinitions ? collectLinkReferences(markdown, parser) : String{markdown};

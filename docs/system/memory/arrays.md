@@ -29,8 +29,8 @@ The following member functions are implemented for all array classes:
 > Subscript operator with runtime bounds checking. Returns a reference to the item at the specified `index`. Will assert if `index` is out of bounds.
 > ```
 > Array<u32> array = {4, 5, 6};
-> array[0];   // Returns 4
-> array[10];  // Asserts
+> array[0];   // Returns 4.
+> array[10];  // Asserts: Index out of bounds.
 > ```
 
 `Item& back(s32 offset = -1) &`
@@ -39,9 +39,9 @@ The following member functions are implemented for all array classes:
 > Returns a reference to the last item if no argument is provided; otherwise returns a reference to the item at the specified `offset` relative to the end of the array. An `offset` of `-1` returns the last item, `-2` returns the second-to-last item, and so on. Will assert if `offset` is out of bounds.
 > ```
 > Array<u32> array = {4, 5, 6};
-> array.back();     // Returns 6
-> array.back(-2);   // Returns 5
-> array.back(-10);  // Asserts
+> array.back();     // Returns 6.
+> array.back(-2);   // Returns 5.
+> array.back(-10);  // Asserts: Index out of bounds.
 > ```
 
 `Item* items()`
@@ -59,7 +59,7 @@ The following member functions are implemented for all array classes:
 > ```
 > Array<u32> array = {4, 5, 6};
 > if (array) {
->     // array is not empty
+>     // Array is not empty.
 > }
 > ```
 
@@ -70,10 +70,10 @@ The following member functions are implemented for all array classes:
 > Returns a view of a portion of the array. If only one argument is provided, returns a view from `start` to the end of the array. If two arguments are provided, returns a view of at most `numItems`. These functions don't assert if their arguments are out of range; instead they return an empty or truncated view.
 > ```
 > Array<u32> array = {4, 5, 6};
-> array.subview(1);     // Returns {5, 6}
-> array.subview(0, 2);  // Returns {4, 5}
-> array.subview(2, 3);  // Returns {6}
-> array.subview(10);    // Returns an empty view
+> array.subview(1);     // Returns {5, 6}.
+> array.subview(0, 2);  // Returns {4, 5}.
+> array.subview(2, 3);  // Returns {6}.
+> array.subview(10);    // Returns an empty view.
 > ```
 
 `Item* begin()`
@@ -109,7 +109,7 @@ The following member functions are implemented for all array classes:
 >
 > void test() {
 >     Array<u32> array = {4, 5, 6};
->     useReadOnlyView(array);  // Implicit conversion to ArrayView<const u32>
+>     useReadOnlyView(array);  // Implicit conversion to ArrayView<const u32>.
 > }
 > ```
 
@@ -157,11 +157,11 @@ You don't need to define the type before declaring an Array member variable. But
 struct Foo;  // Forward declaration
 
 struct Bar {
-    Array<Foo> array;  // OK to declare member variable before defining Foo
+    Array<Foo> array;  // OK to declare member variable before defining Foo.
 };
 
 void test() {
-    Array<Foo> array;  // error: Foo should be defined at this point
+    Array<Foo> array;  // Error: Foo should be defined at this point.
 }
 ```
 
