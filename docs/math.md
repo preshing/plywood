@@ -605,7 +605,7 @@ The header also defines several scalar constants and free functions that are use
 
 ### Related Helpers
 
-`const Mat3x3& as_mat3() const`
+`Mat3x3 asMat3() const`
 > Returns the linear 3x3 portion of the transform.
 
 `Mat3x4 invertedOrtho() const`

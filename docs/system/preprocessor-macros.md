@@ -100,9 +100,6 @@ These macros are wrappers around compiler-specific extensions. They're mainly us
 > }
 > ```
 
-`PLY_PUN_GUARD()`
-> The C++ standard [forbids type punning](https://timsong-cpp.github.io/cppwp/n4950/basic.lval#11), since the compiler would generate less efficient code if it couldn't assume [strict aliasing](https://cellperformance.beyond3d.com/articles/2006/06/understanding-strict-aliasing.html). Plywood uses type punning in some places anyway, and this macro indicates where it's used. It uses `PLY_COMPILER_BARRIER` internally to prevent the compiler from making assumptions about the contents of memory around the enclosed scope.
-
 ## Assertions
 
 PLY_ASSERT(cond)

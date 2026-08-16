@@ -14,11 +14,19 @@
 #include PLY_CONFIG_HEADER
 #endif
 
+// This (undocumented) configuration option controls whether Plywood is allowed to reinterpret certain data structures
+// in ways that aren't permitted by C++ strict aliasing rules. Default is 0. No miscompilations have been seen with
+// this set to 1, but technically it's only guaranteed safe when strict aliasing optimizations are disabled.
+#if !defined(PLY_BREAK_STRICT_ALIASING_RULES)
+#define PLY_BREAK_STRICT_ALIASING_RULES 0
+#endif
+
 #include <type_traits>
 #include <utility>
 #include <float.h>
 #include <initializer_list>
 #include <new>
+#include <string.h>
 
 //--------------------------------------------
 // Compiler detection
@@ -163,20 +171,6 @@
 #define PLY_STATIC_ASSERT(cond) static_assert(cond, #cond)
 
 namespace ply {
-
-//--------------------------------------------
-// PLY_PUN_GUARD
-//--------------------------------------------
-
-struct PunGuard {
-    PunGuard() {
-        PLY_COMPILER_BARRIER();
-    }
-    ~PunGuard() {
-        PLY_COMPILER_BARRIER();
-    }
-};
-#define PLY_PUN_GUARD ::ply::PunGuard PLY_UNIQUE_VARIABLE(_punGuard_)
 
 //--------------------------------------------
 // PLY_SET_IN_SCOPE
@@ -2217,12 +2211,22 @@ inline void addToHash(HashBuilder& builder, s64 value) {
     addToHash(builder, (u64) value);
 }
 inline void addToHash(HashBuilder& builder, float value) {
-    PLY_PUN_GUARD;
-    addToHash(builder, *(u32*) &value);
+#if PLY_BREAK_STRICT_ALIASING_RULES
+    addToHash(builder, *reinterpret_cast<const u32*>(&value));
+#else
+    u32 bits;
+    memcpy(&bits, &value, sizeof(bits));
+    addToHash(builder, bits);
+#endif
 }
 inline void addToHash(HashBuilder& builder, double value) {
-    PLY_PUN_GUARD;
-    addToHash(builder, *(u64*) &value);
+#if PLY_BREAK_STRICT_ALIASING_RULES
+    addToHash(builder, *reinterpret_cast<const u64*>(&value));
+#else
+    u64 bits;
+    memcpy(&bits, &value, sizeof(bits));
+    addToHash(builder, bits);
+#endif
 }
 void addToHash(HashBuilder& builder, StringView str);
 

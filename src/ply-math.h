@@ -32,20 +32,19 @@ inline float square(float v) {
     return v * v;
 }
 inline float roundNearest(float x) {
-#if PLY_CPU_ARM64
-    return roundf(x);
-#elif PLY_CPU_X86 || PLY_CPU_X64
+#if PLY_CPU_X86 || PLY_CPU_X64
     // Intrinsic version
     __m128 signBit = _mm_and_ps(_mm_set_ss(x), _mm_castsi128_ps(_mm_cvtsi32_si128(0x80000000u)));
     __m128 added = _mm_add_ss(_mm_set_ss(x), _mm_or_ps(signBit, _mm_castsi128_ps(_mm_cvtsi32_si128(0x3f000000u))));
-    return (float) _mm_cvtt_ss2si(added);
-#else
+    return static_cast<float>(_mm_cvtt_ss2si(added));
+#elif PLY_BREAK_STRICT_ALIASING_RULES
     // Non-intrinsic version
-    PLY_PUN_GUARD;
     float frac = 0.5f;
-    u32 s = (*(u32*) &x) & 0x80000000u;
-    u32 c = (*(u32*) &frac) | s;
-    return (float) (s32) (x + *(float*) &c);
+    u32 s = *reinterpret_cast<const u32*>(&x) & 0x80000000u;
+    u32 c = *reinterpret_cast<const u32*>(&frac) | s;
+    return static_cast<float>(static_cast<s32>(x + *reinterpret_cast<const float*>(&c)));
+#else
+    return roundf(x);
 #endif
 }
 inline float roundUp(float value) {
@@ -169,13 +168,19 @@ struct Float2 {
     explicit operator Int2() const;
     float& operator[](u32 index) {
         PLY_ASSERT(index < 2);
-        PLY_PUN_GUARD;
-        return ((float*) this)[index];
+#if PLY_BREAK_STRICT_ALIASING_RULES
+        return reinterpret_cast<float*>(this)[index];
+#else
+        return index == 0 ? x : y;
+#endif
     }
     float operator[](u32 index) const {
         PLY_ASSERT(index < 2);
-        PLY_PUN_GUARD;
-        return ((const float*) this)[index];
+#if PLY_BREAK_STRICT_ALIASING_RULES
+        return reinterpret_cast<const float*>(this)[index];
+#else
+        return index == 0 ? x : y;
+#endif
     }
     float lengthSquared() const {
         return x * x + y * y;
@@ -322,13 +327,19 @@ struct Float3 {
     explicit operator Int3() const;
     float& operator[](u32 index) {
         PLY_ASSERT(index < 3);
-        PLY_PUN_GUARD;
-        return ((float*) this)[index];
+#if PLY_BREAK_STRICT_ALIASING_RULES
+        return reinterpret_cast<float*>(this)[index];
+#else
+        return index == 0 ? x : index == 1 ? y : z;
+#endif
     }
     float operator[](u32 index) const {
         PLY_ASSERT(index < 3);
-        PLY_PUN_GUARD;
-        return ((const float*) this)[index];
+#if PLY_BREAK_STRICT_ALIASING_RULES
+        return reinterpret_cast<const float*>(this)[index];
+#else
+        return index == 0 ? x : index == 1 ? y : z;
+#endif
     }
     float lengthSquared() const {
         return x * x + y * y + z * z;
@@ -496,13 +507,19 @@ struct Float4 {
     explicit operator Color() const;
     float& operator[](u32 index) {
         PLY_ASSERT(index < 4);
-        PLY_PUN_GUARD;
-        return ((float*) this)[index];
+#if PLY_BREAK_STRICT_ALIASING_RULES
+        return reinterpret_cast<float*>(this)[index];
+#else
+        return index == 0 ? x : index == 1 ? y : index == 2 ? z : w;
+#endif
     }
     float operator[](u32 index) const {
         PLY_ASSERT(index < 4);
-        PLY_PUN_GUARD;
-        return ((const float*) this)[index];
+#if PLY_BREAK_STRICT_ALIASING_RULES
+        return reinterpret_cast<const float*>(this)[index];
+#else
+        return index == 0 ? x : index == 1 ? y : index == 2 ? z : w;
+#endif
     }
     float lengthSquared() const {
         return x * x + y * y + z * z + w * w;
@@ -643,58 +660,31 @@ Float4 stepTowards(const Float4& start, const Float4& target, float amount);
 // Swizzle functions
 
 inline PLY_NO_DISCARD Float2 Float2::swizzle(u32 i0, u32 i1) const {
-    PLY_PUN_GUARD;
-    auto* v = (const float*) this;
-    PLY_ASSERT(i0 < 2 && i1 < 2);
-    return {v[i0], v[i1]};
+    return {(*this)[i0], (*this)[i1]};
 }
 inline PLY_NO_DISCARD Float3 Float2::swizzle(u32 i0, u32 i1, u32 i2) const {
-    PLY_PUN_GUARD;
-    auto* v = (const float*) this;
-    PLY_ASSERT(i0 < 2 && i1 < 2 && i2 < 2);
-    return {v[i0], v[i1], v[i2]};
+    return {(*this)[i0], (*this)[i1], (*this)[i2]};
 }
 inline PLY_NO_DISCARD Float4 Float2::swizzle(u32 i0, u32 i1, u32 i2, u32 i3) const {
-    PLY_PUN_GUARD;
-    auto* v = (const float*) this;
-    PLY_ASSERT(i0 < 2 && i1 < 2 && i2 < 2 && i3 < 2);
-    return {v[i0], v[i1], v[i2], v[i3]};
+    return {(*this)[i0], (*this)[i1], (*this)[i2], (*this)[i3]};
 }
 inline PLY_NO_DISCARD Float2 Float3::swizzle(u32 i0, u32 i1) const {
-    PLY_PUN_GUARD;
-    auto* v = (const float*) this;
-    PLY_ASSERT(i0 < 3 && i1 < 3);
-    return {v[i0], v[i1]};
+    return {(*this)[i0], (*this)[i1]};
 }
 inline PLY_NO_DISCARD Float3 Float3::swizzle(u32 i0, u32 i1, u32 i2) const {
-    PLY_PUN_GUARD;
-    auto* v = (const float*) this;
-    PLY_ASSERT(i0 < 3 && i1 < 3 && i2 < 3);
-    return {v[i0], v[i1], v[i2]};
+    return {(*this)[i0], (*this)[i1], (*this)[i2]};
 }
 inline PLY_NO_DISCARD Float4 Float3::swizzle(u32 i0, u32 i1, u32 i2, u32 i3) const {
-    PLY_PUN_GUARD;
-    auto* v = (const float*) this;
-    PLY_ASSERT(i0 < 3 && i1 < 3 && i2 < 3 && i2 < 3);
-    return {v[i0], v[i1], v[i2], v[i3]};
+    return {(*this)[i0], (*this)[i1], (*this)[i2], (*this)[i3]};
 }
 inline PLY_NO_DISCARD Float2 Float4::swizzle(u32 i0, u32 i1) const {
-    PLY_PUN_GUARD;
-    auto* v = (const float*) this;
-    PLY_ASSERT(i0 < 4 && i1 < 4);
-    return {v[i0], v[i1]};
+    return {(*this)[i0], (*this)[i1]};
 }
 inline PLY_NO_DISCARD Float3 Float4::swizzle(u32 i0, u32 i1, u32 i2) const {
-    PLY_PUN_GUARD;
-    auto* v = (const float*) this;
-    PLY_ASSERT(i0 < 4 && i1 < 4 && i2 < 4);
-    return {v[i0], v[i1], v[i2]};
+    return {(*this)[i0], (*this)[i1], (*this)[i2]};
 }
 inline PLY_NO_DISCARD Float4 Float4::swizzle(u32 i0, u32 i1, u32 i2, u32 i3) const {
-    PLY_PUN_GUARD;
-    auto* v = (const float*) this;
-    PLY_ASSERT(i0 < 4 && i1 < 4 && i2 < 4 && i2 < 4);
-    return {v[i0], v[i1], v[i2], v[i3]};
+    return {(*this)[i0], (*this)[i1], (*this)[i2], (*this)[i3]};
 }
 
 //  ▄▄▄▄▄▄        ▄▄
@@ -1529,12 +1519,17 @@ struct Mat3x4 {
         PLY_ASSERT(i < 4);
         return col[i];
     }
-    const Mat3x3& as_mat3() const {
-        PLY_PUN_GUARD;
-        return (const Mat3x3&) *this;
+#if PLY_BREAK_STRICT_ALIASING_RULES
+    const Mat3x3& asMat3() const {
+        return reinterpret_cast<const Mat3x3&>(*this);
     }
+#else
+    Mat3x3 asMat3() const {
+        return {col[0], col[1], col[2]};
+    }
+#endif
     bool hasScale() const {
-        return ((Mat3x3*) this)->hasScale();
+        return asMat3().hasScale();
     }
     Mat3x4 invertedOrtho() const;
 };
@@ -1679,13 +1674,17 @@ struct Quaternion {
         return {-x, -y, -z, w};
     }
     Quaternion normalized() const {
-        Float4 value = ((Float4*) this)->normalized();
-        PLY_PUN_GUARD;
-        return (const Quaternion&) value;
+#if PLY_BREAK_STRICT_ALIASING_RULES
+        Float4 value = reinterpret_cast<const Float4*>(this)->normalized();
+        return reinterpret_cast<const Quaternion&>(value);
+#else
+        Float4 value{x, y, z, w};
+        value = value.normalized();
+        return {value.x, value.y, value.z, value.w};
+#endif
     }
     bool isUnitLength() const {
-        PLY_PUN_GUARD;
-        return abs(((Float4*) this)->lengthSquared() - 1.f) < 0.001f;
+        return abs(x * x + y * y + z * z + w * w - 1.f) < 0.001f;
     }
     Quaternion negatedIfCloserTo(const Quaternion& other) const;
 };

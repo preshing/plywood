@@ -222,12 +222,7 @@ Mat2x2 Mat2x2::fromComplex(const Float2& c) {
 }
 
 Mat2x2 Mat2x2::transposed() const {
-    PLY_PUN_GUARD;
-    auto* m = reinterpret_cast<const float(*)[2]>(this);
-    return {
-        {m[0][0], m[1][0]},
-        {m[0][1], m[1][1]},
-    };
+    return {{col[0].x, col[1].x}, {col[0].y, col[1].y}};
 }
 
 bool operator==(const Mat2x2& a, const Mat2x2& b) {
@@ -235,17 +230,7 @@ bool operator==(const Mat2x2& a, const Mat2x2& b) {
 }
 
 Float2 operator*(const Mat2x2& m_, const Float2& v_) {
-    Float2 result;
-    {
-        PLY_PUN_GUARD;
-        auto* res = reinterpret_cast<float*>(&result);
-        auto* m = reinterpret_cast<const float(*)[2]>(&m_);
-        auto* v = reinterpret_cast<const float*>(&v_);
-        for (u32 r = 0; r < 2; r++) {
-            res[r] = m[0][r] * v[0] + m[1][r] * v[1];
-        }
-    }
-    return result;
+    return {m_.col[0].x * v_.x + m_.col[1].x * v_.y, m_.col[0].y * v_.x + m_.col[1].y * v_.y};
 }
 
 Mat2x2 operator*(const Mat2x2& a, const Mat2x2& b) {
@@ -291,38 +276,17 @@ bool Mat3x3::hasScale() const {
 }
 
 Mat3x3 Mat3x3::transposed() const {
-    PLY_PUN_GUARD;
-    auto* m = reinterpret_cast<const float(*)[3]>(this);
-    return {
-        {m[0][0], m[1][0], m[2][0]},
-        {m[0][1], m[1][1], m[2][1]},
-        {m[0][2], m[1][2], m[2][2]},
-    };
+    return {{col[0].x, col[1].x, col[2].x}, {col[0].y, col[1].y, col[2].y}, {col[0].z, col[1].z, col[2].z}};
 }
 
 bool operator==(const Mat3x3& a_, const Mat3x3& b_) {
-    PLY_PUN_GUARD;
-    auto* a = reinterpret_cast<const float*>(&a_);
-    auto* b = reinterpret_cast<const float*>(&b_);
-    for (u32 r = 0; r < 9; r++) {
-        if (a[r] != b[r])
-            return false;
-    }
-    return true;
+    return a_.col[0] == b_.col[0] && a_.col[1] == b_.col[1] && a_.col[2] == b_.col[2];
 }
 
 Float3 operator*(const Mat3x3& m_, const Float3& v_) {
-    Float3 result;
-    {
-        PLY_PUN_GUARD;
-        auto* res = reinterpret_cast<float*>(&result);
-        auto* m = reinterpret_cast<const float(*)[3]>(&m_);
-        auto* v = reinterpret_cast<const float*>(&v_);
-        for (u32 r = 0; r < 3; r++) {
-            res[r] = m[0][r] * v[0] + m[1][r] * v[1] + m[2][r] * v[2];
-        }
-    }
-    return result;
+    return {m_.col[0].x * v_.x + m_.col[1].x * v_.y + m_.col[2].x * v_.z,
+            m_.col[0].y * v_.x + m_.col[1].y * v_.y + m_.col[2].y * v_.z,
+            m_.col[0].z * v_.x + m_.col[1].z * v_.y + m_.col[2].z * v_.z};
 }
 
 Mat3x3 operator*(const Mat3x3& a, const Mat3x3& b) {
@@ -389,56 +353,30 @@ Mat3x4 Mat3x4::fromQuaternion(const Quaternion& q, const Float3& pos) {
 }
 
 Mat3x4 Mat3x4::invertedOrtho() const {
-    Mat3x4 result;
-    reinterpret_cast<Mat3x3&>(result) = reinterpret_cast<const Mat3x3&>(*this).transposed();
-    result.col[3] = reinterpret_cast<Mat3x3&>(result) * -col[3];
-    return result;
+    Mat3x3 rotation = asMat3().transposed();
+    return {rotation.col[0], rotation.col[1], rotation.col[2], rotation * -col[3]};
 }
 
 bool operator==(const Mat3x4& a_, const Mat3x4& b_) {
-    PLY_PUN_GUARD;
-    auto* a = reinterpret_cast<const float*>(&a_);
-    auto* b = reinterpret_cast<const float*>(&b_);
-    for (u32 r = 0; r < 12; r++) {
-        if (a[r] != b[r])
-            return false;
-    }
-    return true;
+    return a_.col[0] == b_.col[0] && a_.col[1] == b_.col[1] && a_.col[2] == b_.col[2] && a_.col[3] == b_.col[3];
 }
 
 Float3 operator*(const Mat3x4& m_, const Float3& v_) {
-    Float3 result;
-    {
-        PLY_PUN_GUARD;
-        auto* res = reinterpret_cast<float*>(&result);
-        auto* m = reinterpret_cast<const float(*)[3]>(&m_);
-        auto* v = reinterpret_cast<const float*>(&v_);
-        for (u32 r = 0; r < 3; r++) {
-            res[r] = m[0][r] * v[0] + m[1][r] * v[1] + m[2][r] * v[2] + m[3][r];
-        }
-    }
-    return result;
+    return {m_.col[0].x * v_.x + m_.col[1].x * v_.y + m_.col[2].x * v_.z + m_.col[3].x,
+            m_.col[0].y * v_.x + m_.col[1].y * v_.y + m_.col[2].y * v_.z + m_.col[3].y,
+            m_.col[0].z * v_.x + m_.col[1].z * v_.y + m_.col[2].z * v_.z + m_.col[3].z};
 }
 
 Float4 operator*(const Mat3x4& m_, const Float4& v_) {
-    Float4 result;
-    {
-        PLY_PUN_GUARD;
-        auto* res = reinterpret_cast<float*>(&result);
-        auto* m = reinterpret_cast<const float(*)[3]>(&m_);
-        auto* v = reinterpret_cast<const float*>(&v_);
-        for (u32 r = 0; r < 3; r++) {
-            res[r] = m[0][r] * v[0] + m[1][r] * v[1] + m[2][r] * v[2] + m[3][r] * v[3];
-        }
-        res[3] = v[3];
-    }
-    return result;
+    return {m_.col[0].x * v_.x + m_.col[1].x * v_.y + m_.col[2].x * v_.z + m_.col[3].x * v_.w,
+            m_.col[0].y * v_.x + m_.col[1].y * v_.y + m_.col[2].y * v_.z + m_.col[3].y * v_.w,
+            m_.col[0].z * v_.x + m_.col[1].z * v_.y + m_.col[2].z * v_.z + m_.col[3].z * v_.w, v_.w};
 }
 
 Mat3x4 operator*(const Mat3x4& a, const Mat3x4& b) {
     Mat3x4 result;
     for (u32 c = 0; c < 3; c++) {
-        result.col[c] = a.as_mat3() * b.col[c];
+        result.col[c] = a.asMat3() * b.col[c];
     }
     result.col[3] = a * b.col[3];
     return result;
@@ -511,7 +449,8 @@ Mat4x4 Mat4x4::perspectiveProjection(const Rect& frustum, float zNear, float zFa
     return result;
 }
 
-Mat4x4 Mat4x4::orthographicProjection(const Rect& rect, YCoordType yCoordType, float zNear, float zFar, DeviceCoordType devCoordType) {
+Mat4x4 Mat4x4::orthographicProjection(const Rect& rect, YCoordType yCoordType, float zNear, float zFar,
+                                      DeviceCoordType devCoordType) {
     Mat4x4 result{0, 0, 0, 0};
     float tow = 2 / rect.width();
     float toh = 2 / rect.height();
@@ -536,14 +475,10 @@ Mat4x4 Mat4x4::orthographicProjection(const Rect& rect, YCoordType yCoordType, f
 }
 
 Mat4x4 Mat4x4::transposed() const {
-    PLY_PUN_GUARD;
-    auto* m = reinterpret_cast<const float(*)[4]>(this);
-    return {
-        {m[0][0], m[1][0], m[2][0], m[3][0]},
-        {m[0][1], m[1][1], m[2][1], m[3][1]},
-        {m[0][2], m[1][2], m[2][2], m[3][2]},
-        {m[0][3], m[1][3], m[2][3], m[3][3]},
-    };
+    return {{col[0].x, col[1].x, col[2].x, col[3].x},
+            {col[0].y, col[1].y, col[2].y, col[3].y},
+            {col[0].z, col[1].z, col[2].z, col[3].z},
+            {col[0].w, col[1].w, col[2].w, col[3].w}};
 }
 
 Mat4x4 Mat4x4::inverted() const {
@@ -605,28 +540,14 @@ Mat4x4 Mat4x4::invertedOrtho() const {
 }
 
 bool operator==(const Mat4x4& a_, const Mat4x4& b_) {
-    PLY_PUN_GUARD;
-    auto* a = reinterpret_cast<const float*>(&a_);
-    auto* b = reinterpret_cast<const float*>(&b_);
-    for (u32 r = 0; r < 16; r++) {
-        if (a[r] != b[r])
-            return false;
-    }
-    return true;
+    return a_.col[0] == b_.col[0] && a_.col[1] == b_.col[1] && a_.col[2] == b_.col[2] && a_.col[3] == b_.col[3];
 }
 
 Float4 operator*(const Mat4x4& m_, const Float4& v_) {
-    Float4 result;
-    {
-        PLY_PUN_GUARD;
-        auto* res = reinterpret_cast<float*>(&result);
-        auto* m = reinterpret_cast<const float(*)[4]>(&m_);
-        auto* v = reinterpret_cast<const float*>(&v_);
-        for (u32 r = 0; r < 4; r++) {
-            res[r] = m[0][r] * v[0] + m[1][r] * v[1] + m[2][r] * v[2] + m[3][r] * v[3];
-        }
-    }
-    return result;
+    return {m_.col[0].x * v_.x + m_.col[1].x * v_.y + m_.col[2].x * v_.z + m_.col[3].x * v_.w,
+            m_.col[0].y * v_.x + m_.col[1].y * v_.y + m_.col[2].y * v_.z + m_.col[3].y * v_.w,
+            m_.col[0].z * v_.x + m_.col[1].z * v_.y + m_.col[2].z * v_.z + m_.col[3].z * v_.w,
+            m_.col[0].w * v_.x + m_.col[1].w * v_.y + m_.col[2].w * v_.z + m_.col[3].w * v_.w};
 }
 
 Mat4x4 operator*(const Mat4x4& a, const Mat4x4& b) {
@@ -684,7 +605,7 @@ Quaternion Quaternion::fromUnitVectors(const Float3& start, const Float3& end) {
 }
 
 template <typename M>
-Quaternion quaternionFromOrtho(M m) {
+Quaternion quaternionFromOrtho(const M& m) {
     float t; // This will be set to 4*c*c for some quaternion component c.
     // At least one component's square must be >= 1/4. (Otherwise, it isn't a unit
     // quaternion.) Let's require t >= 1/2. This will accept any component whose square
@@ -715,13 +636,11 @@ Quaternion quaternionFromOrtho(M m) {
 }
 
 Quaternion Quaternion::fromOrtho(const Mat3x3& m) {
-    PLY_PUN_GUARD;
-    return quaternionFromOrtho(reinterpret_cast<const float(*)[3]>(&m));
+    return quaternionFromOrtho(m);
 }
 
 Quaternion Quaternion::fromOrtho(const Mat4x4& m) {
-    PLY_PUN_GUARD;
-    return quaternionFromOrtho(reinterpret_cast<const float(*)[4]>(&m));
+    return quaternionFromOrtho(m);
 }
 
 Quaternion Quaternion::negatedIfCloserTo(const Quaternion& other) const {
@@ -770,7 +689,7 @@ QuatPos QuatPos::rotate(const Float3& unitAxis, float radians) {
 }
 
 QuatPos QuatPos::fromOrtho(const Mat3x4& m) {
-    return {Quaternion::fromOrtho(m.as_mat3()), m[3]};
+    return {Quaternion::fromOrtho(m.asMat3()), m[3]};
 }
 
 QuatPos QuatPos::fromOrtho(const Mat4x4& m) {
