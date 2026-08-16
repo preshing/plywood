@@ -24,6 +24,16 @@ function savePageState() {
     window.history.replaceState(stateData, null);
 }
 
+// Scroll to a fragment.
+function scrollToAnchor(anchor, smooth) {
+    var anchorElement = document.getElementById(anchor);
+    if (!anchorElement)
+        return;
+
+    var useSmoothScroll = smooth && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    anchorElement.scrollIntoView({ behavior: useSmoothScroll ? 'smooth' : 'auto' });
+}
+
 // Navigate to a new page using AJAX
 function navigateTo(dstPath, forward, pageYOffset) {
     // Abort any in-flight request
@@ -63,10 +73,9 @@ function navigateTo(dstPath, forward, pageYOffset) {
 
         // Scroll to anchor or restore scroll position
         if (forward && anchor !== '') {
-            var anchorElement = document.getElementById(anchor);
-            if (anchorElement) {
-                anchorElement.scrollIntoView();
-            }
+            // pushState sets the fragment before AJAX inserts the heading, so :target and native
+            // fragment scrolling aren't reliably recalculated when the new article is applied.
+            scrollToAnchor(anchor, true);
         } else {
             window.scrollTo(0, pageYOffset);
         }
@@ -207,6 +216,12 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     if (article) {
         replaceLinks(article);
+
+        // Scroll explicitly on a full-page load too. Manual history restoration and late layout
+        // changes can otherwise prevent the browser's native fragment scroll from taking effect.
+        if (location.hash !== '') {
+            scrollToAnchor(location.hash.substr(1), false);
+        }
     }
 });
 
