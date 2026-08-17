@@ -10,6 +10,7 @@
 
 #include <ply-agent.h>
 #include <ply-json.h>
+#include "test-suite.h"
 
 using namespace ply;
 
@@ -90,11 +91,13 @@ static bool testTranscriptBufferToString() {
 }
 
 // Runs all transcript cases and returns true only when each one passes.
-bool runTranscriptTests() {
-    bool success = true;
-    success &= testTranscriptBuffer();
-    success &= testTranscriptUpdater();
-    success &= testTranscriptBufferToString();
-    getStdOut().write(success ? "Transcript tests passed\n" : "Transcript tests failed\n");
-    return success;
+TestResult runTranscriptTests() {
+    TestResult result;
+    result.add(testTranscriptBuffer());
+    result.add(testTranscriptUpdater());
+    result.add(testTranscriptBufferToString());
+    if (options.verbose) {
+        getStdOut().write(result.isSuccess() ? "Transcript tests passed\n" : "Transcript tests failed\n");
+    }
+    return result;
 }

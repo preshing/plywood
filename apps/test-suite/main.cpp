@@ -9,6 +9,7 @@
 └────────────────────────────────────────────────────────────────*/
 
 #include <ply-reflect.h>
+#include "test-suite.h"
 
 #if WITH_SYSTEM_TESTS || WITH_UNICODE_LOADING_TESTS
 #include "run-system-tests.h"
@@ -16,31 +17,8 @@
 
 using namespace ply;
 
-#if WITH_MARKDOWN_TESTS
-bool runMarkdownTests();
-#endif
-#if WITH_CPP_TESTS
-bool runCppTests(bool write);
-#endif
-#if WITH_TRANSCRIPT_TESTS
-bool runTranscriptTests();
-#endif
-#if WITH_FRAGMENTATION_TEST
-bool runFragmentationTest();
-#endif
-
-// Stores the options recognized by CommandLineParser.
-struct CommandLineOptions {
-    bool runSystem = false;
-    bool runUnicode = false;
-    bool runMarkdown = false;
-    bool runCpp = false;
-    bool regenCpp = false;
-    bool runTranscript = false;
-    bool runFragmentation = false;
-    bool runAll = false;
-    PLY_DECLARE_TYPE_INFO(CommandLineOptions)
-};
+// Provides every test-suite translation unit with the parsed command-line options.
+CommandLineOptions options;
 
 // Identifies a test suite and distinguishes normal C++ tests from golden-file generation.
 enum class TestSuite {
@@ -77,7 +55,8 @@ static void printUsage(StringView executablePath) {
 #if WITH_FRAGMENTATION_TEST
     err.write("  -frag       Run the fragmentation test suite\n");
 #endif
-    err.write("  -all        Run every compiled-in suite; must be specified alone\n");
+    err.write("  -all        Run every compiled-in suite; may be combined with -verbose\n");
+    err.write("  -verbose    Print detailed test progress and output\n");
 }
 
 // Returns the logical suite index used to reject duplicate selections.
@@ -101,46 +80,91 @@ static u32 getLogicalSuiteIndex(TestSuite suite) {
     return 0;
 }
 
-// Runs one selected suite and returns its pass/fail result.
-static bool runTestSuite(TestSuite suite) {
+// Runs one selected suite and returns its counted result.
+static TestResult runTestSuite(TestSuite suite) {
     switch (suite) {
 #if WITH_SYSTEM_TESTS
         case TestSuite::System:
-            getStdOut().write("\nSystem tests\n");
+            if (options.verbose) {
+                getStdOut().write("\nSystem tests\n");
+            }
             return runSystemTests();
 #endif
 #if WITH_UNICODE_LOADING_TESTS
         case TestSuite::Unicode:
-            getStdOut().write("\nUnicode loading tests\n");
+            if (options.verbose) {
+                getStdOut().write("\nUnicode loading tests\n");
+            }
             return runUnicodeLoadingTests();
 #endif
 #if WITH_MARKDOWN_TESTS
         case TestSuite::Markdown:
-            getStdOut().write("\nMarkdown tests\n");
+            if (options.verbose) {
+                getStdOut().write("\nMarkdown tests\n");
+            }
             return runMarkdownTests();
 #endif
 #if WITH_CPP_TESTS
         case TestSuite::Cpp:
-            getStdOut().write("\nC++ tests\n");
+            if (options.verbose) {
+                getStdOut().write("\nC++ tests\n");
+            }
             return runCppTests(false);
         case TestSuite::RegenCpp:
-            getStdOut().write("\nWriting C++ golden files\n");
+            if (options.verbose) {
+                getStdOut().write("\nWriting C++ golden files\n");
+            }
             return runCppTests(true);
 #endif
 #if WITH_TRANSCRIPT_TESTS
         case TestSuite::Transcript:
-            getStdOut().write("\nTranscript tests\n");
+            if (options.verbose) {
+                getStdOut().write("\nTranscript tests\n");
+            }
             return runTranscriptTests();
 #endif
 #if WITH_FRAGMENTATION_TEST
         case TestSuite::Fragmentation:
-            getStdOut().write("\nFragmentation test\n");
+            if (options.verbose) {
+                getStdOut().write("\nFragmentation test\n");
+            }
             return runFragmentationTest();
 #endif
         default:
             PLY_ASSERT(0);
-            return false;
+            return {};
     }
+}
+
+// Prints the compact result line for one completed category.
+static void printTestSuiteResult(TestSuite suite, const TestResult& result) {
+    StringView name;
+    switch (suite) {
+        case TestSuite::System:
+            name = "System tests";
+            break;
+        case TestSuite::Unicode:
+            name = "Unicode loading tests";
+            break;
+        case TestSuite::Markdown:
+            name = "Markdown tests";
+            break;
+        case TestSuite::Cpp:
+            name = "C++ tests";
+            break;
+        case TestSuite::RegenCpp:
+            name = "C++ golden files";
+            break;
+        case TestSuite::Transcript:
+            name = "Transcript tests";
+            break;
+        case TestSuite::Fragmentation:
+            name = "Fragmentation test";
+            break;
+    }
+    StringView action = suite == TestSuite::RegenCpp ? "rewritten" : "passed";
+    getStdOut().format("{}: {}/{} {}{}\n", name, result.numPassed, result.numRun, action,
+                       result.isSuccess() ? "" : " ***FAIL***");
 }
 
 // Parses the requested suites, preserves their order and aggregates their results.
@@ -151,7 +175,6 @@ int main(int argc, const char* argv[]) {
 #endif
 
     // Let CommandLineParser validate the complete set of compiled-in options.
-    CommandLineOptions options;
     CommandLineParser parser({
 #if WITH_SYSTEM_TESTS
         {"-system", PLY_LOOKUP_MEMBER(CommandLineOptions, runSystem), "Run the system tests"},
@@ -173,6 +196,7 @@ int main(int argc, const char* argv[]) {
         {"-frag", PLY_LOOKUP_MEMBER(CommandLineOptions, runFragmentation), "Run fragmentation tests"},
 #endif
         {"-all", PLY_LOOKUP_MEMBER(CommandLineOptions, runAll), "Run all tests"},
+        {"-verbose", PLY_LOOKUP_MEMBER(CommandLineOptions, verbose), "Print detailed test output"},
     });
     if (!parser.apply(argc, argv, &options)) {
         printUsage(argv[0]);
@@ -182,8 +206,8 @@ int main(int argc, const char* argv[]) {
     // Expand -all in canonical order, or rebuild the requested order from argv.
     Array<TestSuite> suites;
     if (options.runAll) {
-        if (argc != 2) {
-            getStdErr().write("Option -all must be specified alone.\n");
+        if (argc != (options.verbose ? 3 : 2)) {
+            getStdErr().write("Option -all may only be combined with -verbose.\n");
             printUsage(argv[0]);
             return 1;
         }
@@ -209,6 +233,9 @@ int main(int argc, const char* argv[]) {
         bool selectedSuites[6] = {};
         for (int i = 1; i < argc; i++) {
             StringView arg = argv[i];
+            if (arg == "-verbose") {
+                continue;
+            }
             TestSuite suite;
             if (arg == "-system") {
                 suite = TestSuite::System;
@@ -248,8 +275,11 @@ int main(int argc, const char* argv[]) {
     // Continue through every suite while retaining any earlier failure.
     bool success = true;
     for (TestSuite suite : suites) {
-        if (!runTestSuite(suite))
+        TestResult result = runTestSuite(suite);
+        printTestSuiteResult(suite, result);
+        if (!result.isSuccess()) {
             success = false;
+        }
     }
     return success ? 0 : 1;
 }
@@ -263,4 +293,5 @@ PLY_STRUCT_MEMBER(regenCpp)
 PLY_STRUCT_MEMBER(runTranscript)
 PLY_STRUCT_MEMBER(runFragmentation)
 PLY_STRUCT_MEMBER(runAll)
+PLY_STRUCT_MEMBER(verbose)
 PLY_STRUCT_END()

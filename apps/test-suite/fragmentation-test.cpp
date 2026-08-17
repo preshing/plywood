@@ -9,6 +9,7 @@
 └────────────────────────────────────────────────────────────────*/
 
 #include <ply-system.h>
+#include "test-suite.h"
 using namespace ply;
 
 // Using an unnamed namespace to avoid redefinition errors on macOS
@@ -30,7 +31,7 @@ Array<Allocation> allBlocks;
 u32 logCounter = 0;
 u32 totalAllocatedBytes = 0;
 
-// Helper functions
+// Chooses a small allocation most of the time and an occasional large allocation when allowed.
 u32 getRandomAllocationSize(bool allowLarge) {
     if (allowLarge && ((random.generateU32() % 10) == 0)) {
         return (random.generateU32() % (LargeBlockMax - LargeBlockMin)) + LargeBlockMin;
@@ -41,12 +42,16 @@ u32 getRandomAllocationSize(bool allowLarge) {
     return (random.generateU32() % 500) + 10;
 }
 
+// Emits the current fragmentation statistics when verbose output is enabled.
 void logStatus() {
+    if (!options.verbose)
+        return;
     uptr totalSystemMemoryUsed = Heap::getStats().totalSystemMemoryUsed;
     getStdOut().format("{}, {}, {}\n", logCounter, totalAllocatedBytes, totalSystemMemoryUsed);
     logCounter++;
 }
 
+// Allocates and tracks one randomly sized block.
 void addRandomBlock(bool allowLarge) {
     u32 numBytes = getRandomAllocationSize(allowLarge);
     allBlocks.append({Heap::alloc(numBytes), numBytes});
@@ -54,6 +59,7 @@ void addRandomBlock(bool allowLarge) {
     logStatus();
 }
 
+// Frees one randomly selected tracked block.
 void freeRandomBlock() {
     if (allBlocks.numItems() > 0) {
         u32 i = random.generateU32() % allBlocks.numItems();
@@ -67,7 +73,7 @@ void freeRandomBlock() {
 } // unnamed namespace
 
 // Runs the heap fragmentation stress test.
-bool runFragmentationTest() {
+TestResult runFragmentationTest() {
     Array<u32> targetKB = {400, 100, 2000, 400, 5000, 2000, 10000, 8000, 10000, 400, 2000, 0};
 
     for (u32 i = 0; i < targetKB.numItems(); i++) {
@@ -89,5 +95,7 @@ bool runFragmentationTest() {
         }
     }
 
-    return true;
+    TestResult result;
+    result.add(true);
+    return result;
 }

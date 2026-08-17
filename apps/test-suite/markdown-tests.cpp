@@ -9,16 +9,17 @@
 └────────────────────────────────────────────────────────────────*/
 
 #include <ply-markdown.h>
+#include "test-suite.h"
 
 using namespace ply;
 
 // Runs one Markdown fixture file with the selected parsing options.
-static bool runMarkdownTestFile(StringView fileName, StringView suiteName, const markdown::ParseOptions& options) {
+static TestResult runMarkdownTestFile(StringView fileName, StringView suiteName,
+                                      const markdown::ParseOptions& parseOptions) {
     String path = joinPath(TEST_SUITE_PATH, fileName);
     Stream in = FileSystem::openTextForReadAutodetect(path);
     String separatorLine = readLine(in);
-    u32 numTests = 0;
-    u32 numPassed = 0;
+    TestResult result;
     while (separatorLine) {
         PLY_ASSERT(separatorLine.startsWith("--------------------- #"));
         String line;
@@ -57,23 +58,28 @@ static bool runMarkdownTestFile(StringView fileName, StringView suiteName, const
         }
 
         // Convert markdown, update counters from an exact string match, and print case output.
-        String converted = markdown::convertToHtml(markdownSrc.moveToString(), options);
+        String converted = markdown::convertToHtml(markdownSrc.moveToString(), parseOptions);
         String expected = expectedHtml.moveToString();
-        numTests++;
-        if (converted == expected) {
-            numPassed++;
+        bool success = converted == expected;
+        result.add(success);
+        if (options.verbose) {
+            getStdOut().write(separatorLine);
+            getStdOut().write(converted);
+            getStdOut().format("({}/{} passed)\n", result.numPassed, result.numRun);
+        } else if (!success) {
+            getStdOut().write(separatorLine);
+            getStdOut().format("Expected:\n{}Actual:\n{}", expected, converted);
         }
-        getStdOut().write(separatorLine);
-        getStdOut().write(converted);
-        getStdOut().format("({}/{} passed)\n", numPassed, numTests);
 
         // If we stopped on a separator line, carry that state into the next loop iteration.
         separatorLine = line;
     }
 
     in.close();
-    getStdOut().format("{}/{} {} tests passed\n", numPassed, numTests, suiteName);
-    return numPassed == numTests;
+    if (options.verbose) {
+        getStdOut().format("{}/{} {} tests passed\n", result.numPassed, result.numRun, suiteName);
+    }
+    return result;
 }
 
 // Verifies that each GFM extension is disabled by default and can be enabled without enabling its peers.
@@ -91,8 +97,7 @@ static bool runMarkdownOptionIsolationTests() {
          "<p>| a | b |\n| --- | --- |\n| c | d |</p>\n",
          "<table>\n<thead>\n<tr>\n<th>a</th>\n<th>b</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td>c</td>\n"
          "<td>d</td>\n</tr>\n</tbody>\n</table>\n"},
-        {"taskListItems", &markdown::ParseOptions::taskListItems, "- [x] done\n",
-         "<ul>\n<li>[x] done</li>\n</ul>\n",
+        {"taskListItems", &markdown::ParseOptions::taskListItems, "- [x] done\n", "<ul>\n<li>[x] done</li>\n</ul>\n",
          "<ul>\n<li><input checked=\"\" disabled=\"\" type=\"checkbox\"> done</li>\n</ul>\n"},
         {"strikethrough", &markdown::ParseOptions::strikethrough, "~~gone~~\n", "<p>~~gone~~</p>\n",
          "<p><del>gone</del></p>\n"},
@@ -113,12 +118,12 @@ static bool runMarkdownOptionIsolationTests() {
             allPassed = false;
         }
 
-        markdown::ParseOptions options;
-        options.*enabledTest.flag = true;
+        markdown::ParseOptions parseOptions;
+        parseOptions.*enabledTest.flag = true;
         for (u32 syntaxIndex = 0; syntaxIndex < PLY_STATIC_ARRAY_SIZE(tests); syntaxIndex++) {
             const OptionTest& syntaxTest = tests[syntaxIndex];
             StringView expected = syntaxIndex == enabledIndex ? syntaxTest.enabledHtml : syntaxTest.defaultHtml;
-            String actual = markdown::convertToHtml(syntaxTest.source, options);
+            String actual = markdown::convertToHtml(syntaxTest.source, parseOptions);
             if (actual != expected) {
                 getStdOut().format("Markdown option isolation failure: enabling {} produced unexpected {} output\n"
                                    "Expected:\n{}Actual:\n{}",
@@ -127,7 +132,9 @@ static bool runMarkdownOptionIsolationTests() {
             }
         }
     }
-    getStdOut().format("Markdown option isolation checks {}\n", allPassed ? "passed" : "failed");
+    if (options.verbose) {
+        getStdOut().format("Markdown option isolation checks {}\n", allPassed ? "passed" : "failed");
+    }
     return allPassed;
 }
 
@@ -143,12 +150,10 @@ static bool runMarkdownRecognitionOptionTests() {
     };
 
     OptionTest tests[] = {
-        {"backslashEscapes", &markdown::ParseOptions::backslashEscapes, "\\#\n", "<p>#</p>\n",
-         "<p>\\#</p>\n"},
+        {"backslashEscapes", &markdown::ParseOptions::backslashEscapes, "\\#\n", "<p>#</p>\n", "<p>\\#</p>\n"},
         {"characterReferences", &markdown::ParseOptions::characterReferences, "&#42;x&#42;\n", "<p>*x*</p>\n",
          "<p>&amp;#42;x&amp;#42;</p>\n"},
-        {"codeSpans", &markdown::ParseOptions::codeSpans, "`x`\n", "<p><code>x</code></p>\n",
-         "<p>`x`</p>\n"},
+        {"codeSpans", &markdown::ParseOptions::codeSpans, "`x`\n", "<p><code>x</code></p>\n", "<p>`x`</p>\n"},
         {"emphasis", &markdown::ParseOptions::emphasis, "*x*\n", "<p><em>x</em></p>\n", "<p>*x*</p>\n"},
         {"strongEmphasis", &markdown::ParseOptions::strongEmphasis, "**x**\n", "<p><strong>x</strong></p>\n",
          "<p>**x**</p>\n"},
@@ -161,12 +166,10 @@ static bool runMarkdownRecognitionOptionTests() {
         {"referenceImages", &markdown::ParseOptions::referenceImages, "[x]: /image\n\n![x]\n",
          "<p><img src=\"/image\" alt=\"x\" /></p>\n", "<p>![x]</p>\n"},
         {"autolinks", &markdown::ParseOptions::autolinks, "<https://example.com>\n",
-         "<p><a href=\"https://example.com\">https://example.com</a></p>\n",
-         "<p>&lt;https://example.com&gt;</p>\n"},
+         "<p><a href=\"https://example.com\">https://example.com</a></p>\n", "<p>&lt;https://example.com&gt;</p>\n"},
         {"inlineHTML", &markdown::ParseOptions::inlineHTML, "a <i>x</i>\n", "<p>a <i>x</i></p>\n",
          "<p>a &lt;i&gt;x&lt;/i&gt;</p>\n"},
-        {"softLineBreaks", &markdown::ParseOptions::softLineBreaks, "a\nb\n", "<p>a\nb</p>\n",
-         "<p>a\nb</p>\n"},
+        {"softLineBreaks", &markdown::ParseOptions::softLineBreaks, "a\nb\n", "<p>a\nb</p>\n", "<p>a\nb</p>\n"},
         {"hardLineBreaks", &markdown::ParseOptions::hardLineBreaks, "a  \nb\n", "<p>a<br />\nb</p>\n",
          "<p>a  \nb</p>\n"},
         {"blockQuotes", &markdown::ParseOptions::blockQuotes, "> quote\n",
@@ -181,22 +184,21 @@ static bool runMarkdownRecognitionOptionTests() {
          "<pre><code>code\n</code></pre>\n", "<p>~~~\ncode\n~~~</p>\n"},
         {"htmlBlocks", &markdown::ParseOptions::htmlBlocks, "<div>\nraw\n</div>\n", "<div>\nraw\n</div>\n",
          "<p><div>\nraw\n</div></p>\n"},
-        {"atxHeadings", &markdown::ParseOptions::atxHeadings, "# title\n", "<h1>title</h1>\n",
-         "<p># title</p>\n"},
+        {"atxHeadings", &markdown::ParseOptions::atxHeadings, "# title\n", "<h1>title</h1>\n", "<p># title</p>\n"},
         {"setextHeadings", &markdown::ParseOptions::setextHeadings, "title\n===\n", "<h1>title</h1>\n",
          "<p>title\n===</p>\n"},
         {"thematicBreaks", &markdown::ParseOptions::thematicBreaks, "***\n", "<hr />\n", "<p>***</p>\n"},
-        {"linkReferenceDefinitions", &markdown::ParseOptions::linkReferenceDefinitions,
-         "[a]: /url\n\n[a]\n", "<p><a href=\"/url\">a</a></p>\n", "<p>[a]: /url</p>\n<p>[a]</p>\n"},
+        {"linkReferenceDefinitions", &markdown::ParseOptions::linkReferenceDefinitions, "[a]: /url\n\n[a]\n",
+         "<p><a href=\"/url\">a</a></p>\n", "<p>[a]: /url</p>\n<p>[a]</p>\n"},
     };
 
     // Verify default recognition and the result of disabling each option independently.
     bool allPassed = true;
     for (const OptionTest& test : tests) {
         String enabled = markdown::convertToHtml(test.source);
-        markdown::ParseOptions options;
-        options.*test.flag = false;
-        String disabled = markdown::convertToHtml(test.source, options);
+        markdown::ParseOptions parseOptions;
+        parseOptions.*test.flag = false;
+        String disabled = markdown::convertToHtml(test.source, parseOptions);
         if (enabled != test.enabledHtml || disabled != test.disabledHtml) {
             getStdOut().format("Markdown recognition option failure: {}\nExpected enabled:\n{}Actual enabled:\n{}"
                                "Expected disabled:\n{}Actual disabled:\n{}",
@@ -210,8 +212,7 @@ static bool runMarkdownRecognitionOptionTests() {
     markdown::ParseOptions noSoftBreaks;
     noSoftBreaks.softLineBreaks = false;
     Array<Owned<markdown::Span>> plainNewlineSpans = markdown::parseInlineSpans("a\nb", noSoftBreaks);
-    bool softBreakPassed = softBreakSpans.numItems() == 3 &&
-                           softBreakSpans[1]->var.is<markdown::Span::SoftBreak>() &&
+    bool softBreakPassed = softBreakSpans.numItems() == 3 && softBreakSpans[1]->var.is<markdown::Span::SoftBreak>() &&
                            plainNewlineSpans.numItems() == 1 && plainNewlineSpans[0]->var.is<markdown::Span::Text>() &&
                            plainNewlineSpans[0]->var.as<markdown::Span::Text>()->text == "a\nb";
     if (!softBreakPassed) {
@@ -219,7 +220,9 @@ static bool runMarkdownRecognitionOptionTests() {
         allPassed = false;
     }
 
-    getStdOut().format("Markdown recognition option checks {}\n", allPassed ? "passed" : "failed");
+    if (options.verbose) {
+        getStdOut().format("Markdown recognition option checks {}\n", allPassed ? "passed" : "failed");
+    }
     return allPassed;
 }
 
@@ -247,8 +250,7 @@ static bool runMarkdownInlineParsingTests() {
     // Parse block-looking input directly as inline content while retaining enabled span recognition.
     Array<Owned<markdown::Span>> spans = markdown::parseInlineSpans("# item\n- list\n`code`");
     bool inlinePassed = spans.numItems() == 5 && spans[0]->var.is<markdown::Span::Text>() &&
-                        spans[1]->var.is<markdown::Span::SoftBreak>() &&
-                        spans[2]->var.is<markdown::Span::Text>() &&
+                        spans[1]->var.is<markdown::Span::SoftBreak>() && spans[2]->var.is<markdown::Span::Text>() &&
                         spans[3]->var.is<markdown::Span::SoftBreak>() && spans[4]->var.is<markdown::Span::Code>();
     if (!inlinePassed) {
         getStdOut().write("parseInlineSpans block-isolation failure\n");
@@ -271,18 +273,32 @@ static bool runMarkdownInlineParsingTests() {
         allPassed = false;
     }
 
-    getStdOut().format("Markdown inline parsing checks {}\n", allPassed ? "passed" : "failed");
+    if (options.verbose) {
+        getStdOut().format("Markdown inline parsing checks {}\n", allPassed ? "passed" : "failed");
+    }
     return allPassed;
 }
 
 // Runs the CommonMark and GitHub Flavored Markdown conversion fixtures.
-bool runMarkdownTests() {
+TestResult runMarkdownTests() {
     // Stop at the first failing child suite while preserving its failure result.
-    bool success = true;
-    success = success && runMarkdownTestFile("markdown-tests.txt", "CommonMark", {});
-    success = success && runMarkdownTestFile("gfm-tests.txt", "GFM", markdown::ParseOptions::githubFlavored());
-    success = success && runMarkdownOptionIsolationTests();
-    success = success && runMarkdownRecognitionOptionTests();
-    success = success && runMarkdownInlineParsingTests();
-    return success;
+    TestResult result;
+    TestResult child = runMarkdownTestFile("markdown-tests.txt", "CommonMark", {});
+    result.add(child);
+    if (!child.isSuccess())
+        return result;
+    child = runMarkdownTestFile("gfm-tests.txt", "GFM", markdown::ParseOptions::githubFlavored());
+    result.add(child);
+    if (!child.isSuccess())
+        return result;
+    bool success = runMarkdownOptionIsolationTests();
+    result.add(success);
+    if (!success)
+        return result;
+    success = runMarkdownRecognitionOptionTests();
+    result.add(success);
+    if (!success)
+        return result;
+    result.add(runMarkdownInlineParsingTests());
+    return result;
 }

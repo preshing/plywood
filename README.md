@@ -13,7 +13,7 @@ GitHub repository: https://github.com/preshing/plywood
 - C++14 language features only.
 - Use the provided `.clang-format` rules for formatting.
 - Type names in `PascalCase`; variable and function names in `camelCase`.
-- Each code block should begin with a brief comment to explain what it does.
+- Every signiciant code block should begin with a brief comment to explain what it does.
 - Use the fewest line of code possible without sacrificing readability.
 - Use `this->` to refer to other function and data members within each member function.
 - The body of every `if`, `else`, `do`, `while` and `for` statement should be surrounded by curly braces unless it consists of exactly one `continue`, `return`, or `break` statement.

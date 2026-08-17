@@ -8,7 +8,7 @@
 │                                                                 │
 └────────────────────────────────────────────────────────────────*/
 
-#include <ply-system.h>
+#include "test-suite.h"
 
 using namespace ply;
 
@@ -33,6 +33,3 @@ struct RegisterTest {
 #define UNICODE_LOADING_TEST_CASE(name) TEST_CASE_IN_GROUP(name, RegisterTest::UnicodeLoading)
 
 bool check(bool);
-
-bool runSystemTests();
-bool runUnicodeLoadingTests();

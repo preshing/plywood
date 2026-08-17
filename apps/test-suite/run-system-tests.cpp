@@ -39,8 +39,8 @@ bool check(bool cond) {
 }
 
 // Runs the selected group of registered tests.
-static bool runTestGroup(RegisterTest::Group group) {
-    u32 numPassed = 0;
+static TestResult runTestGroup(RegisterTest::Group group) {
+    TestResult result;
     const auto& testCases = getTestCases();
     Stream out = getStdOut();
     u32 numTests = 0;
@@ -56,7 +56,10 @@ static bool runTestGroup(RegisterTest::Group group) {
     for (const Case& testCase : testCases) {
         if (testCase.group != group)
             continue;
-        out.format("[{}/{}] {}... ", ++testIndex, numTests, testCase.name);
+        testIndex++;
+        if (options.verbose) {
+            out.format("[{}/{}] {}... ", testIndex, numTests, testCase.name);
+        }
         gTestState.success = true;
 
         // Check for memory leaks while running the test case.
@@ -67,26 +70,18 @@ static bool runTestGroup(RegisterTest::Group group) {
             gTestState.success = false;
         }
 
-        out.write(gTestState.success ? "success\n" : "***FAIL***\n");
-        if (gTestState.success) {
-            numPassed++;
+        if (options.verbose) {
+            out.write(gTestState.success ? "success\n" : "***FAIL***\n");
+        } else if (!gTestState.success) {
+            out.format("***FAIL*** [{}/{}] {}\n", testIndex, numTests, testCase.name);
         }
+        result.add(gTestState.success);
         out.flush();
     }
-    float frac = 1.f;
-    if (numTests > 0)
-        frac = (float) numPassed / numTests;
-    out.format("{}/{} test cases passed ({}%)\n", numPassed, numTests, frac * 100.f);
-
-    return numPassed == numTests;
+    return result;
 }
 
 // Runs the system test suite, excluding the file-loading tests.
-bool runSystemTests() {
+TestResult runSystemTests() {
     return runTestGroup(RegisterTest::System);
-}
-
-// Runs the Unicode text-file loading test suite.
-bool runUnicodeLoadingTests() {
-    return runTestGroup(RegisterTest::UnicodeLoading);
 }

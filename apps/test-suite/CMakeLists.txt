@@ -75,7 +75,7 @@ if(WITH_TRANSCRIPT_TESTS_ENABLED)
 endif()
 
 # Add only the test-suite sources supported by this configuration.
-set(TEST_SUITE_SOURCE_PATTERNS main.cpp)
+set(TEST_SUITE_SOURCE_PATTERNS main.cpp test-suite.h)
 if(WITH_SYSTEM_TESTS_ENABLED OR WITH_UNICODE_LOADING_TESTS_ENABLED)
     list(APPEND TEST_SUITE_SOURCE_PATTERNS system-tests.cpp run-system-tests.cpp run-system-tests.h)
 endif()

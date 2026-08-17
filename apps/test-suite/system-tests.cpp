@@ -2159,27 +2159,53 @@ ExtractedFormat extractFormatFromName(StringView name) {
     return {true, tf};
 }
 
-UNICODE_LOADING_TEST_CASE("Autodetect file encodings") {
+// Loads each Unicode fixture as an independently counted test.
+TestResult runUnicodeLoadingTests() {
     String testsFolder = joinPath(TEST_SUITE_PATH, "unicode-test-files");
-    u32 entryCount = 0;
-    for (const DirectoryEntry& entry : FileSystem::listDir(testsFolder)) {
+    Array<DirectoryEntry> entries = FileSystem::listDir(testsFolder);
+    u32 numFiles = 0;
+    for (const DirectoryEntry& entry : entries) {
         if (!entry.isDir && entry.name.endsWith(".txt")) {
-            ExtractedFormat expectedFormat = extractFormatFromName(entry.name.shortenedBy(4));
-            check(expectedFormat.isValid);
-
-            TextFormat detectedFormat;
-            String contents = FileSystem::loadTextAutodetect(joinPath(testsFolder, entry.name), &detectedFormat);
-            check(detectedFormat.unicodeType == expectedFormat.format.unicodeType);
-            check(detectedFormat.newLine == expectedFormat.format.newLine);
-            check(detectedFormat.bom == expectedFormat.format.bom);
-
-            auto compareTo =
-                FileSystem::loadBinary(joinPath(testsFolder, entry.name.split(".")[0] + ".utf8.lf.nobom.txt"));
-            check(contents == compareTo);
-            entryCount++;
+            numFiles++;
         }
     }
-    check(entryCount == 50);
+
+    TestResult result;
+    u32 entryCount = 0;
+    for (const DirectoryEntry& entry : entries) {
+        if (!entry.isDir && entry.name.endsWith(".txt")) {
+            Heap::Stats beginStats = Heap::getStats();
+            bool success = true;
+            {
+                ExtractedFormat expectedFormat = extractFormatFromName(entry.name.shortenedBy(4));
+                success = expectedFormat.isValid;
+
+                TextFormat detectedFormat;
+                String contents = FileSystem::loadTextAutodetect(joinPath(testsFolder, entry.name), &detectedFormat);
+                success &= detectedFormat.unicodeType == expectedFormat.format.unicodeType;
+                success &= detectedFormat.newLine == expectedFormat.format.newLine;
+                success &= detectedFormat.bom == expectedFormat.format.bom;
+
+                auto compareTo =
+                    FileSystem::loadBinary(joinPath(testsFolder, entry.name.split(".")[0] + ".utf8.lf.nobom.txt"));
+                success &= contents == compareTo;
+            }
+            success &= beginStats.totalBytesConsumed == Heap::getStats().totalBytesConsumed;
+            entryCount++;
+            result.add(success);
+            if (options.verbose) {
+                getStdOut().format("[{}/{}] {}... {}\n", entryCount, numFiles, entry.name,
+                                   success ? "success" : "***FAIL***");
+            } else if (!success) {
+                getStdOut().format("***FAIL*** [{}/{}] {}\n", entryCount, numFiles, entry.name);
+            }
+        }
+    }
+    if (entryCount != 50) {
+        getStdOut().format("***FAIL*** Expected 50 Unicode loading fixtures, found {}\n", entryCount);
+        result.add(false);
+    }
+    return result;
 }
 
 //   ▄▄▄▄   ▄▄
