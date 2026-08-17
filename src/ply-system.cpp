@@ -22,7 +22,6 @@
 #include <sys/types.h>
 #include <dirent.h>
 #include <fcntl.h>
-#include <math.h>
 #if defined(PLY_APPLE)
 #include <fcntl.h>
 #include <dirent.h>
@@ -3453,6 +3452,32 @@ struct DoubleComponentOut {
     bool anyDigits = false;
 };
 
+static double raiseToIntegerPower(double base, double exponent) {
+    if (base == 1)
+        return 1;
+    bool negativeExponent = exponent < 0;
+    if (negativeExponent) {
+        // Avoid overflowing the positive power before taking its reciprocal.
+        exponent = -exponent;
+        base = 1 / base;
+    }
+    if (exponent > 2048) {
+        u64 infinityBits = 0x7ff0000000000000ull;
+        double infinity;
+        memcpy(&infinity, &infinityBits, sizeof(infinity));
+        return negativeExponent ? 0 : infinity;
+    }
+    u32 integerExponent = static_cast<u32>(exponent);
+    double result = 1;
+    while (integerExponent != 0) {
+        if (integerExponent & 1)
+            result *= base;
+        base *= base;
+        integerExponent >>= 1;
+    }
+    return result;
+}
+
 void readDoubleComponent(DoubleComponentOut* compOut, Stream& in, u32 radix) {
     double value = 0.0;
     double dr = (double) radix;
@@ -3527,7 +3552,7 @@ double readDoubleFromText(Stream& in, u32 radix) {
         }
         comp.anyDigits = false;
         readDoubleComponent(&comp, in, radix);
-        value *= pow((double) radix, negateExp ? -comp.result : comp.result);
+        value *= raiseToIntegerPower(static_cast<double>(radix), negateExp ? -comp.result : comp.result);
     }
 
     if (!comp.anyDigits) {
@@ -4086,10 +4111,11 @@ void printNumber(Stream& outs, double value, const NumberFormat& format) {
     }
 
     // Handle nan and inf.
-    if (isnan(value)) {
+    u64 magnitudeBits = bits & 0x7fffffffffffffffull;
+    if (magnitudeBits > 0x7ff0000000000000ull) {
         outs.write(format.capitalize ? "NAN" : "nan");
         return;
-    } else if (isinf(value)) {
+    } else if (magnitudeBits == 0x7ff0000000000000ull) {
         outs.write(format.capitalize ? "INF" : "inf");
         return;
     }
@@ -4097,7 +4123,8 @@ void printNumber(Stream& outs, double value, const NumberFormat& format) {
     // Autoselect scientific or regular notation.
     NumberFormat::FloatMode floatMode = format.floatMode;
     if (floatMode == NumberFormat::Auto) {
-        double minRegular = 0.5 / pow((double) format.radix, format.fractionalPrecision);
+        double minRegular = 0.5 / raiseToIntegerPower(static_cast<double>(format.radix),
+                                                      static_cast<double>(format.fractionalPrecision));
         if ((value > 1e10) || (value > 0.0 && value < minRegular)) {
             floatMode = NumberFormat::Scientific;
         } else {
@@ -4131,8 +4158,14 @@ void printNumber(Stream& outs, double value, const NumberFormat& format) {
         // Round the mantissa and renormalize if it crosses the radix.
         s32 exponent = 0;
         if (value != 0) {
-            exponent = (s32) floor(log(value) / log(format.radix));
-            value /= pow((double) format.radix, exponent);
+            while (value >= format.radix) {
+                value /= format.radix;
+                exponent++;
+            }
+            while (value < 1) {
+                value *= format.radix;
+                exponent--;
+            }
         }
         u64 mantissa = (u64) (value * (double) scale + 0.5);
         PLY_ASSERT(scale <= maxRepresentableValue<u64>() / format.radix);

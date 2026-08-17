@@ -10,6 +10,7 @@
 
 #include "run-system-tests.h"
 #include <ply-math.h>
+#include <math.h>
 
 //  ▄▄  ▄▄                               ▄▄
 //  ███ ██ ▄▄  ▄▄ ▄▄▄▄▄▄▄   ▄▄▄▄  ▄▄▄▄▄  ▄▄  ▄▄▄▄
@@ -71,6 +72,270 @@ static bool isClose(const Mat4x4& a, const Mat4x4& b, float epsilon = 0.0001f) {
         }
     }
     return true;
+}
+
+static u32 mathFloatBits(float value) {
+    u32 bits;
+    memcpy(&bits, &value, sizeof(bits));
+    return bits;
+}
+
+static float mathFloatFromBits(u32 bits) {
+    float value;
+    memcpy(&value, &bits, sizeof(value));
+    return value;
+}
+
+static u32 mathUlpDistance(float a, float b) {
+    if (a == b)
+        return 0;
+    u32 aBits = mathFloatBits(a);
+    u32 bBits = mathFloatBits(b);
+    u32 aOrdered = (aBits & 0x80000000u) ? ~aBits : aBits | 0x80000000u;
+    u32 bOrdered = (bBits & 0x80000000u) ? ~bBits : bBits | 0x80000000u;
+    return aOrdered > bOrdered ? aOrdered - bOrdered : bOrdered - aOrdered;
+}
+
+TEST_CASE("Trigonometric special values") {
+    float negativeZero = mathFloatFromBits(0x80000000u);
+    float infinity = mathFloatFromBits(0x7f800000u);
+    float negativeInfinity = mathFloatFromBits(0xff800000u);
+    float nan = mathFloatFromBits(0x7fc00000u);
+
+    check(mathFloatBits(ply::sin(0.f)) == 0);
+    check(mathFloatBits(ply::sin(negativeZero)) == 0x80000000u);
+    check(mathFloatBits(ply::tan(0.f)) == 0);
+    check(mathFloatBits(ply::tan(negativeZero)) == 0x80000000u);
+    check(ply::cos(0.f) == 1.f);
+    check(ply::cos(negativeZero) == 1.f);
+    check(ply::cosAndSin(0.f) == Float2{1, 0});
+    check(ply::cosAndSin(negativeZero) == Float2{1, negativeZero});
+    check(ply::sin(infinity) != ply::sin(infinity));
+    check(ply::cos(negativeInfinity) != ply::cos(negativeInfinity));
+    check(ply::tan(infinity) != ply::tan(infinity));
+    Float2 invalidCosSin = ply::cosAndSin(infinity);
+    check(invalidCosSin.x != invalidCosSin.x);
+    check(invalidCosSin.y != invalidCosSin.y);
+    check(ply::sin(nan) != ply::sin(nan));
+    check(ply::cos(nan) != ply::cos(nan));
+    check(ply::tan(nan) != ply::tan(nan));
+}
+
+TEST_CASE("Trigonometric accuracy") {
+    static constexpr float inputs[] = {
+        -1000000.f, -1000.f, -2 * Pi, -Pi, -Pi * 0.5f, -Pi * 0.25f,
+        -1.f, -0.5f, -0.0001f, 0.f, 0.0001f, 0.5f, 1.f, Pi * 0.25f,
+        Pi * 0.5f, Pi, 2 * Pi, 1000.f, 1000000.f,
+    };
+    u32 maxSinDistance = 0;
+    u32 maxCosDistance = 0;
+    u32 maxTanDistance = 0;
+    u32 maxCosSinDistance = 0;
+    float worstSinInput = 0;
+    float worstCosInput = 0;
+    float worstTanInput = 0;
+    auto measure = [&](float input) {
+        u32 sinDistance = mathUlpDistance(ply::sin(input), ::sinf(input));
+        u32 cosDistance = mathUlpDistance(ply::cos(input), ::cosf(input));
+        u32 tanDistance = mathUlpDistance(ply::tan(input), ::tanf(input));
+        Float2 cosAndSin = ply::cosAndSin(input);
+        maxCosSinDistance = max(maxCosSinDistance, mathUlpDistance(cosAndSin.x, ::cosf(input)));
+        maxCosSinDistance = max(maxCosSinDistance, mathUlpDistance(cosAndSin.y, ::sinf(input)));
+        if (sinDistance > maxSinDistance) {
+            maxSinDistance = sinDistance;
+            worstSinInput = input;
+        }
+        if (cosDistance > maxCosDistance) {
+            maxCosDistance = cosDistance;
+            worstCosInput = input;
+        }
+        if (tanDistance > maxTanDistance) {
+            maxTanDistance = tanDistance;
+            worstTanInput = input;
+        }
+    };
+    for (float input : inputs)
+        measure(input);
+    measure(mathFloatFromBits(0x7f7fffffu));
+    measure(mathFloatFromBits(0xff7fffffu));
+
+    // Sample all finite exponent ranges, including the large-input reduction path.
+    u32 randomBits = 0x12345678u;
+    for (u32 i = 0; i < 200000; i++) {
+        randomBits = randomBits * 1664525u + 1013904223u;
+        if ((randomBits & 0x7f800000u) == 0x7f800000u)
+            continue;
+        measure(mathFloatFromBits(randomBits));
+    }
+    if (maxSinDistance > 1 || maxCosDistance > 1 || maxTanDistance > 2 || maxCosSinDistance > 1) {
+        getStdOut().format("\n  worst ULP distances: sin {} at {}, cos {} at {}, tan {} at {}\n",
+                           maxSinDistance, worstSinInput, maxCosDistance, worstCosInput,
+                           maxTanDistance, worstTanInput);
+        getStdOut().format("  results/reference: sin {}/{}, cos {}/{}, tan {}/{}\n",
+                           ply::sin(worstSinInput), ::sinf(worstSinInput),
+                           ply::cos(worstCosInput), ::cosf(worstCosInput),
+                           ply::tan(worstTanInput), ::tanf(worstTanInput));
+        getStdOut().format("  worst cosAndSin ULP distance: {}\n", maxCosSinDistance);
+    }
+    check(maxSinDistance <= 1);
+    check(maxCosDistance <= 1);
+    check(maxTanDistance <= 2);
+    check(maxCosSinDistance <= 1);
+}
+
+TEST_CASE("Scalar math special values") {
+    float negativeZero = mathFloatFromBits(0x80000000u);
+    float infinity = mathFloatFromBits(0x7f800000u);
+    float negativeInfinity = mathFloatFromBits(0xff800000u);
+    float nan = mathFloatFromBits(0x7fc00000u);
+
+    check(mathFloatBits(roundDown(negativeZero)) == 0x80000000u);
+    check(mathFloatBits(roundUp(negativeZero)) == 0x80000000u);
+    check(mathFloatBits(roundNearest(negativeZero)) == 0x80000000u);
+    check(roundDown(1.75f) == 1);
+    check(roundDown(-1.25f) == -2);
+    check(roundUp(1.25f) == 2);
+    check(roundUp(-1.75f) == -1);
+    check(roundNearest(1.5f) == 2);
+    check(roundNearest(-1.5f) == -2);
+
+    check(mathFloatBits(ply::sqrt(negativeZero)) == 0x80000000u);
+    check(ply::sqrt(infinity) == infinity);
+    check(ply::sqrt(-1) != ply::sqrt(-1));
+    check(mathFloatBits(ply::fastSqrt(negativeZero)) == 0x80000000u);
+    check(ply::fastSqrt(infinity) == infinity);
+    check(ply::fastSqrt(-1) != ply::fastSqrt(-1));
+    check(ply::fastInvSqrt(0) == infinity);
+    check(ply::fastInvSqrt(negativeZero) == negativeInfinity);
+    check(ply::fastInvSqrt(infinity) == 0);
+    check(ply::fastInvSqrt(-1) != ply::fastInvSqrt(-1));
+    check(ply::log(1) == 0);
+    check(ply::log(0) == negativeInfinity);
+    check(ply::log(-1) != ply::log(-1));
+    check(ply::exp(negativeInfinity) == 0);
+    check(ply::exp(infinity) == infinity);
+    check(ply::exp(nan) != ply::exp(nan));
+
+    check(mathFloatBits(ply::arctan(Float2{1, negativeZero})) == 0x80000000u);
+    check(ply::arcsin(1) == Pi * 0.5f);
+    check(ply::arcsin(-1) == -Pi * 0.5f);
+    check(ply::arccos(1) == 0);
+    check(mathUlpDistance(ply::arccos(-1), Pi) <= 1);
+    check(ply::arcsin(2) != ply::arcsin(2));
+    check(ply::arccos(2) != ply::arccos(2));
+
+    check(ply::pow(-2, 3) == -8);
+    check(ply::pow(-2, 4) == 16);
+    check(ply::pow(-2, -3) == -0.125f);
+    check(ply::pow(-2, 0.5f) != ply::pow(-2, 0.5f));
+    check(ply::pow(0, -2) == infinity);
+    check(ply::pow(-1, infinity) == 1);
+    check(ply::pow(nan, 0) == 1);
+    check(ply::pow(1, nan) == 1);
+}
+
+TEST_CASE("Scalar math accuracy") {
+    u32 maxSqrtDistance = 0;
+    u32 maxLogDistance = 0;
+    u32 maxExpDistance = 0;
+    u32 maxPowDistance = 0;
+    u32 maxArcsinDistance = 0;
+    u32 maxArccosDistance = 0;
+    u32 maxArctanDistance = 0;
+    u32 maxVectorArctanDistance = 0;
+    bool roundingMatches = true;
+    u32 randomBits = 0x8badf00du;
+    for (u32 i = 0; i < 200000; i++) {
+        randomBits = randomBits * 1664525u + 1013904223u;
+        u32 positiveBits = randomBits & 0x7fffffffu;
+        if (positiveBits < 0x7f800000u) {
+            float positive = mathFloatFromBits(positiveBits);
+            maxSqrtDistance = max(maxSqrtDistance, mathUlpDistance(ply::sqrt(positive), ::sqrtf(positive)));
+            if (positive != 0)
+                maxLogDistance = max(maxLogDistance, mathUlpDistance(ply::log(positive), ::logf(positive)));
+        }
+
+        float signedValue = mathFloatFromBits(randomBits);
+        bool signedValueIsFinite = (randomBits & 0x7f800000u) != 0x7f800000u;
+        if (signedValueIsFinite) {
+            maxArctanDistance = max(maxArctanDistance,
+                                    mathUlpDistance(ply::arctan(signedValue), ::atanf(signedValue)));
+            roundingMatches &= mathFloatBits(roundDown(signedValue)) == mathFloatBits(::floorf(signedValue));
+            roundingMatches &= mathFloatBits(roundUp(signedValue)) == mathFloatBits(::ceilf(signedValue));
+            roundingMatches &= mathFloatBits(roundNearest(signedValue)) == mathFloatBits(::roundf(signedValue));
+        }
+
+        float unitValue = static_cast<s32>(randomBits) * (1.f / 2147483648.f);
+        maxArcsinDistance = max(maxArcsinDistance,
+                                mathUlpDistance(ply::arcsin(unitValue), ::asinf(unitValue)));
+        maxArccosDistance = max(maxArccosDistance,
+                                mathUlpDistance(ply::arccos(unitValue), ::acosf(unitValue)));
+
+        float expInput = static_cast<s32>(randomBits) * (100.f / 2147483648.f);
+        maxExpDistance = max(maxExpDistance, mathUlpDistance(ply::exp(expInput), ::expf(expInput)));
+
+        randomBits = randomBits * 1664525u + 1013904223u;
+        float other = mathFloatFromBits(randomBits);
+        if ((randomBits & 0x7f800000u) != 0x7f800000u && signedValueIsFinite) {
+            maxVectorArctanDistance =
+                max(maxVectorArctanDistance,
+                    mathUlpDistance(ply::arctan(Float2{other, signedValue}),
+                                    ::atan2f(signedValue, other)));
+        }
+
+        float base = 0.01f + static_cast<float>((randomBits >> 8) & 0xffffu) * (16.f / 65535.f);
+        randomBits = randomBits * 1664525u + 1013904223u;
+        float exponent = static_cast<s32>(randomBits) * (8.f / 2147483648.f);
+        maxPowDistance = max(maxPowDistance, mathUlpDistance(ply::pow(base, exponent), ::powf(base, exponent)));
+    }
+    if (maxSqrtDistance > 0 || maxLogDistance > 1 || maxExpDistance > 1 || maxPowDistance > 1 ||
+        maxArcsinDistance > 1 || maxArccosDistance > 1 || maxArctanDistance > 1 ||
+        maxVectorArctanDistance > 1) {
+        getStdOut().format("\n  worst ULP distances: sqrt {}, log {}, exp {}, pow {}, arcsin {}, arccos {}, arctan {}, vector arctan {}\n",
+                           maxSqrtDistance, maxLogDistance, maxExpDistance, maxPowDistance,
+                           maxArcsinDistance, maxArccosDistance, maxArctanDistance,
+                           maxVectorArctanDistance);
+    }
+    check(maxSqrtDistance == 0);
+    check(maxLogDistance <= 1);
+    check(maxExpDistance <= 1);
+    check(maxPowDistance <= 1);
+    check(maxArcsinDistance <= 1);
+    check(maxArccosDistance <= 1);
+    check(maxArctanDistance <= 1);
+    check(maxVectorArctanDistance <= 1);
+    check(roundingMatches);
+}
+
+TEST_CASE("Fast square root and vector normalization") {
+    float maxSqrtRelativeError = 0;
+    float maxInvSqrtRelativeError = 0;
+    u32 randomBits = 0x51f15e5du;
+    for (u32 i = 0; i < 200000; i++) {
+        randomBits = randomBits * 1664525u + 1013904223u;
+        u32 positiveBits = randomBits & 0x7fffffffu;
+        if (positiveBits == 0 || positiveBits >= 0x7f800000u)
+            continue;
+        float value = mathFloatFromBits(positiveBits);
+        float referenceSqrt = ::sqrtf(value);
+        float referenceInvSqrt = 1.f / referenceSqrt;
+        maxSqrtRelativeError = max(maxSqrtRelativeError,
+                                   abs(ply::fastSqrt(value) / referenceSqrt - 1));
+        maxInvSqrtRelativeError = max(maxInvSqrtRelativeError,
+                                      abs(ply::fastInvSqrt(value) / referenceInvSqrt - 1));
+    }
+    check(maxSqrtRelativeError < 0.00001f);
+    check(maxInvSqrtRelativeError < 0.00001f);
+
+    Float2 v2 = {3, 4};
+    Float3 v3 = {2, -3, 6};
+    Float4 v4 = {1, -2, 2, 4};
+    check(abs(v2.fastLength() / v2.length() - 1) < 0.00001f);
+    check(abs(v3.fastLength() / v3.length() - 1) < 0.00001f);
+    check(abs(v4.fastLength() / v4.length() - 1) < 0.00001f);
+    check(abs(v2.fastNormalized().length() - 1) < 0.00001f);
+    check(abs(v3.fastNormalized().length() - 1) < 0.00001f);
+    check(abs(v4.fastNormalized().length() - 1) < 0.00001f);
 }
 
 TEST_CASE("Mat4x4::inverted affine") {
@@ -603,6 +868,15 @@ TEST_CASE("String match float") {
     double value = 0;
     check(str.match("pi=%f", &value));
     check(value > 3.14 && value < 3.15);
+}
+
+TEST_CASE("readDoubleFromText subnormal exponent") {
+    // Ensure negative exponent scaling preserves representable subnormal values.
+    ViewStream in{"1e-309"};
+    double value = readDoubleFromText(in);
+    check(!in.inputError);
+    check(in.curByte == in.endByte);
+    check(value > 0);
 }
 
 TEST_CASE("String match quoted string") {

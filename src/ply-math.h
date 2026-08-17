@@ -12,7 +12,6 @@
 
 #include "ply-system.h"
 #include <stddef.h>
-#include <math.h>
 #include <float.h>
 #include <type_traits>
 #if defined(_MSC_VER)
@@ -31,31 +30,110 @@ static constexpr double DPi = 3.14159265358979323846;
 inline float square(float v) {
     return v * v;
 }
-inline float roundNearest(float x) {
+float sqrt(float value);
+inline float fastInvSqrt(float value) {
+    u32 bits;
+    memcpy(&bits, &value, sizeof(bits));
+    u32 magnitude = bits & 0x7fffffffu;
+    if ((bits >> 31) || magnitude == 0 || magnitude >= 0x7f800000u)
+        return 1.f / sqrt(value);
+
+    // Reciprocal square root instructions treat subnormal inputs as zero on some processors.
+    float multiplier = 1.f;
+    if (magnitude < 0x00800000u) {
+        value *= 16777216.f;
+        multiplier = 4096.f;
+    }
+
+    float estimate;
 #if PLY_CPU_X86 || PLY_CPU_X64
-    // Intrinsic version
-    __m128 signBit = _mm_and_ps(_mm_set_ss(x), _mm_castsi128_ps(_mm_cvtsi32_si128(0x80000000u)));
-    __m128 added = _mm_add_ss(_mm_set_ss(x), _mm_or_ps(signBit, _mm_castsi128_ps(_mm_cvtsi32_si128(0x3f000000u))));
-    return static_cast<float>(_mm_cvtt_ss2si(added));
-#elif PLY_BREAK_STRICT_ALIASING_RULES
-    // Non-intrinsic version
-    float frac = 0.5f;
-    u32 s = *reinterpret_cast<const u32*>(&x) & 0x80000000u;
-    u32 c = *reinterpret_cast<const u32*>(&frac) | s;
-    return static_cast<float>(static_cast<s32>(x + *reinterpret_cast<const float*>(&c)));
+    _mm_store_ss(&estimate, _mm_rsqrt_ss(_mm_set_ss(value)));
 #else
-    return roundf(x);
+    memcpy(&bits, &value, sizeof(bits));
+    bits = 0x5f375a86u - (bits >> 1);
+    memcpy(&estimate, &bits, sizeof(estimate));
 #endif
+    estimate *= 1.5f - 0.5f * value * estimate * estimate;
+#if !(PLY_CPU_X86 || PLY_CPU_X64)
+    // The portable initial estimate is less accurate than the hardware estimate.
+    estimate *= 1.5f - 0.5f * value * estimate * estimate;
+#endif
+    return estimate * multiplier;
+}
+inline float fastSqrt(float value) {
+    u32 bits;
+    memcpy(&bits, &value, sizeof(bits));
+    u32 magnitude = bits & 0x7fffffffu;
+    if ((bits >> 31) || magnitude == 0 || magnitude >= 0x7f800000u)
+        return sqrt(value);
+    return value * fastInvSqrt(value);
+}
+float log(float value);
+float exp(float value);
+float pow(float base, float exponent);
+
+inline float roundNearest(float x) {
+    u32 bits;
+    memcpy(&bits, &x, sizeof(bits));
+    u32 magnitude = bits & 0x7fffffffu;
+    s32 exponent = static_cast<s32>(magnitude >> 23) - 127;
+    if (exponent >= 23)
+        return x;
+    if (exponent < -1) {
+        bits &= 0x80000000u;
+    } else if (exponent == -1) {
+        bits = (bits & 0x80000000u) | 0x3f800000u;
+    } else {
+        u32 fractionalMask = (1u << (23 - exponent)) - 1;
+        bits += 1u << (22 - exponent);
+        bits &= ~fractionalMask;
+    }
+    memcpy(&x, &bits, sizeof(x));
+    return x;
 }
 inline float roundUp(float value) {
-    return ceilf(value);
+    u32 bits;
+    memcpy(&bits, &value, sizeof(bits));
+    u32 magnitude = bits & 0x7fffffffu;
+    s32 exponent = static_cast<s32>(magnitude >> 23) - 127;
+    if (exponent >= 23)
+        return value;
+    if (exponent < 0) {
+        bits = magnitude == 0 || (bits >> 31) ? bits & 0x80000000u : 0x3f800000u;
+    } else {
+        u32 fractionalMask = (1u << (23 - exponent)) - 1;
+        if ((bits & fractionalMask) == 0)
+            return value;
+        bits &= ~fractionalMask;
+        if ((bits >> 31) == 0)
+            bits += 1u << (23 - exponent);
+    }
+    memcpy(&value, &bits, sizeof(value));
+    return value;
 }
 inline float roundDown(float value) {
-    return floorf(value);
+    u32 bits;
+    memcpy(&bits, &value, sizeof(bits));
+    u32 magnitude = bits & 0x7fffffffu;
+    s32 exponent = static_cast<s32>(magnitude >> 23) - 127;
+    if (exponent >= 23)
+        return value;
+    if (exponent < 0) {
+        bits = magnitude == 0 || (bits >> 31) == 0 ? bits & 0x80000000u : 0xbf800000u;
+    } else {
+        u32 fractionalMask = (1u << (23 - exponent)) - 1;
+        if ((bits & fractionalMask) == 0)
+            return value;
+        bits &= ~fractionalMask;
+        if (bits >> 31)
+            bits += 1u << (23 - exponent);
+    }
+    memcpy(&value, &bits, sizeof(value));
+    return value;
 }
 inline float wrap(float value, float range) {
     PLY_ASSERT(range > 0);
-    float t = floorf(value / range);
+    float t = roundDown(value / range);
     return value - t * range;
 }
 inline u16 floatToHalf(const char* srcFloat) {
@@ -186,12 +264,19 @@ struct Float2 {
         return x * x + y * y;
     }
     float length() const {
-        return sqrtf(lengthSquared());
+        return sqrt(lengthSquared());
+    }
+    float fastLength() const {
+        return fastSqrt(this->lengthSquared());
     }
     bool isUnitLength() const {
         return ply::abs(lengthSquared() - 1.f) < 0.001f;
     }
     PLY_NO_DISCARD Float2 normalized() const;
+    PLY_NO_DISCARD Float2 fastNormalized() const {
+        float scale = fastInvSqrt(this->lengthSquared());
+        return {this->x * scale, this->y * scale};
+    }
     PLY_NO_DISCARD Float2 safeNormalized(const Float2& fallback = {1, 0}, float epsilon = 1e-6f) const;
     float& r() {
         return x;
@@ -281,7 +366,7 @@ inline Float2 abs(const Float2& a) {
     return {abs(a.x), abs(a.y)};
 }
 inline Float2 pow(const Float2& a, const Float2& b) {
-    return {powf(a.x, b.x), powf(a.y, b.y)};
+    return {pow(a.x, b.x), pow(a.y, b.y)};
 }
 inline Float2 min(const Float2& a, const Float2& b) {
     return {min(a.x, b.x), min(a.y, b.y)};
@@ -345,12 +430,19 @@ struct Float3 {
         return x * x + y * y + z * z;
     }
     float length() const {
-        return sqrtf(lengthSquared());
+        return sqrt(lengthSquared());
+    }
+    float fastLength() const {
+        return fastSqrt(this->lengthSquared());
     }
     bool isUnitLength() const {
         return abs(lengthSquared() - 1.f) < 0.001f;
     }
     PLY_NO_DISCARD Float3 normalized() const;
+    PLY_NO_DISCARD Float3 fastNormalized() const {
+        float scale = fastInvSqrt(this->lengthSquared());
+        return {this->x * scale, this->y * scale, this->z * scale};
+    }
     PLY_NO_DISCARD Float3 safeNormalized(const Float3& fallback = {1, 0, 0}, float epsilon = 1e-9f) const;
     float& r() {
         return x;
@@ -525,12 +617,19 @@ struct Float4 {
         return x * x + y * y + z * z + w * w;
     }
     float length() const {
-        return sqrtf(lengthSquared());
+        return sqrt(lengthSquared());
+    }
+    float fastLength() const {
+        return fastSqrt(this->lengthSquared());
     }
     bool isUnitLength() const {
         return abs(lengthSquared() - 1.f) < 0.001f;
     }
     PLY_NO_DISCARD Float4 normalized() const;
+    PLY_NO_DISCARD Float4 fastNormalized() const {
+        float scale = fastInvSqrt(this->lengthSquared());
+        return {this->x * scale, this->y * scale, this->z * scale, this->w * scale};
+    }
     PLY_NO_DISCARD Float4 safeNormalized(const Float4& fallback = {1, 0, 0, 0}, float epsilon = 1e-9f) const;
     float& r() {
         return x;
@@ -693,19 +792,25 @@ inline PLY_NO_DISCARD Float4 Float4::swizzle(u32 i0, u32 i1, u32 i2, u32 i3) con
 //    ██   ██     ██ ▀█▄▄██
 //                    ▄▄▄█▀
 
+float sin(float rad);
+float cos(float rad);
+float tan(float rad);
+Float2 cosAndSin(float rad);
+float arcsin(float value);
+float arccos(float value);
+float arctan(float value);
+float arctan(const Float2& pos);
+
 inline float fastSinPart(float x) {
     float val = 4 * x * (abs(x) - 1);
     return val * (0.225f * abs(val) + 0.775f);
 }
 inline float fastSin(float rad) {
     float frac = rad * (0.5f / Pi);
-    return fastSinPart((frac - floorf(frac)) * 2 - 1);
+    return fastSinPart((frac - roundDown(frac)) * 2 - 1);
 }
 inline float fastCos(float rad) {
     return fastSin(rad + (Pi * 0.5f));
-}
-inline Float2 fastCosSin(float rad) {
-    return {fastCos(rad), fastSin(rad)};
 }
 
 //  ▄▄▄▄▄                ▄▄
@@ -1625,12 +1730,10 @@ struct Complex {
         return Float2{1, 0};
     }
     static Float2 fromAngle(float radians) {
-        float c = cosf(radians);
-        float s = sinf(radians);
-        return Float2{c, s};
+        return cosAndSin(radians);
     }
     static float getAngle(const Float2& v) {
-        return atan2f(v.y, v.x);
+        return arctan(v);
     }
     static Float2 mul(const Float2& a, const Float2& b) {
         return {a.x * b.x - a.y * b.y, a.x * b.y + a.y * b.x};
