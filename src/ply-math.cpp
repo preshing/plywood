@@ -3,7 +3,7 @@
 │     ____      Plywood C++ Runtime Library                │
 │    ╱   ╱╲     https://plywood.dev/                       │
 │   ╱___╱╭╮╲                                               │
-│    └──┴┴┴┘    Scalar, 2D and 3D Math                     │
+│    └──┴┴┴┘    Math                                       │
 │               Documentation: /docs/math.md               │
 │                                                          │
 └─────────────────────────────────────────────────────────*/

@@ -1,5 +1,7 @@
-`ply-math.h`: Scalar, 2D and 3D Math
-============================
+`ply-math.h`: Math
+==================
+
+Scalar and vector math suitable for games and UI layouts.
 
 Basic Functions
 ---------------

@@ -19,7 +19,7 @@
     - [File System](/docs/system/file-system.md)
     - [Multithreading](/docs/system/multithreading.md)
     - [Processes](/docs/system/processes.md)
-- [`ply-math.h`: Scalar, 2D and 3D Math](/docs/math.md)
+- [`ply-math.h`: Math](/docs/math.md)
 - [`ply-reflect.h`: Reflection](/docs/reflect.md)
 - [`ply-network.h`: Networking](/docs/networking.md)
 - [Higher-Level Libraries](/docs/high-level/index.md)
