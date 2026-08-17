@@ -3,7 +3,7 @@
 │     ____      Plywood C++ Runtime Library                │
 │    ╱   ╱╲     https://plywood.dev/                       │
 │   ╱___╱╭╮╲                                               │
-│    └──┴┴┴┘    2D and 3D Math                             │
+│    └──┴┴┴┘    Scalar, 2D and 3D Math                     │
 │               Documentation: /docs/math.md               │
 │                                                          │
 └─────────────────────────────────────────────────────────*/
@@ -30,7 +30,11 @@ static constexpr double DPi = 3.14159265358979323846;
 inline float square(float v) {
     return v * v;
 }
+inline double square(double v) {
+    return v * v;
+}
 float sqrt(float value);
+double sqrt(double value);
 inline float fastInvSqrt(float value) {
     u32 bits;
     memcpy(&bits, &value, sizeof(bits));
@@ -69,8 +73,11 @@ inline float fastSqrt(float value) {
     return value * fastInvSqrt(value);
 }
 float log(float value);
+double log(double value);
 float exp(float value);
+double exp(double value);
 float pow(float base, float exponent);
+double pow(double base, double exponent);
 
 inline float roundNearest(float x) {
     u32 bits;
@@ -86,6 +93,25 @@ inline float roundNearest(float x) {
     } else {
         u32 fractionalMask = (1u << (23 - exponent)) - 1;
         bits += 1u << (22 - exponent);
+        bits &= ~fractionalMask;
+    }
+    memcpy(&x, &bits, sizeof(x));
+    return x;
+}
+inline double roundNearest(double x) {
+    u64 bits;
+    memcpy(&bits, &x, sizeof(bits));
+    u64 magnitude = bits & 0x7fffffffffffffffull;
+    s32 exponent = static_cast<s32>(magnitude >> 52) - 1023;
+    if (exponent >= 52)
+        return x;
+    if (exponent < -1) {
+        bits &= 0x8000000000000000ull;
+    } else if (exponent == -1) {
+        bits = (bits & 0x8000000000000000ull) | 0x3ff0000000000000ull;
+    } else {
+        u64 fractionalMask = (1ull << (52 - exponent)) - 1;
+        bits += 1ull << (51 - exponent);
         bits &= ~fractionalMask;
     }
     memcpy(&x, &bits, sizeof(x));
@@ -111,6 +137,26 @@ inline float roundUp(float value) {
     memcpy(&value, &bits, sizeof(value));
     return value;
 }
+inline double roundUp(double value) {
+    u64 bits;
+    memcpy(&bits, &value, sizeof(bits));
+    u64 magnitude = bits & 0x7fffffffffffffffull;
+    s32 exponent = static_cast<s32>(magnitude >> 52) - 1023;
+    if (exponent >= 52)
+        return value;
+    if (exponent < 0) {
+        bits = magnitude == 0 || (bits >> 63) ? bits & 0x8000000000000000ull : 0x3ff0000000000000ull;
+    } else {
+        u64 fractionalMask = (1ull << (52 - exponent)) - 1;
+        if ((bits & fractionalMask) == 0)
+            return value;
+        bits &= ~fractionalMask;
+        if ((bits >> 63) == 0)
+            bits += 1ull << (52 - exponent);
+    }
+    memcpy(&value, &bits, sizeof(value));
+    return value;
+}
 inline float roundDown(float value) {
     u32 bits;
     memcpy(&bits, &value, sizeof(bits));
@@ -131,9 +177,34 @@ inline float roundDown(float value) {
     memcpy(&value, &bits, sizeof(value));
     return value;
 }
+inline double roundDown(double value) {
+    u64 bits;
+    memcpy(&bits, &value, sizeof(bits));
+    u64 magnitude = bits & 0x7fffffffffffffffull;
+    s32 exponent = static_cast<s32>(magnitude >> 52) - 1023;
+    if (exponent >= 52)
+        return value;
+    if (exponent < 0) {
+        bits = magnitude == 0 || (bits >> 63) == 0 ? bits & 0x8000000000000000ull : 0xbff0000000000000ull;
+    } else {
+        u64 fractionalMask = (1ull << (52 - exponent)) - 1;
+        if ((bits & fractionalMask) == 0)
+            return value;
+        bits &= ~fractionalMask;
+        if (bits >> 63)
+            bits += 1ull << (52 - exponent);
+    }
+    memcpy(&value, &bits, sizeof(value));
+    return value;
+}
 inline float wrap(float value, float range) {
     PLY_ASSERT(range > 0);
     float t = roundDown(value / range);
+    return value - t * range;
+}
+inline double wrap(double value, double range) {
+    PLY_ASSERT(range > 0);
+    double t = roundDown(value / range);
     return value - t * range;
 }
 inline u16 floatToHalf(const char* srcFloat) {
@@ -147,10 +218,19 @@ inline u16 floatToHalf(const char* srcFloat) {
 inline float mix(float a, float b, float t) {
     return a * (1 - t) + b * t;
 }
+inline double mix(double a, double b, double t) {
+    return a * (1 - t) + b * t;
+}
 inline float unmix(float a, float b, float mixed) {
     return (mixed - a) / (b - a);
 }
+inline double unmix(double a, double b, double mixed) {
+    return (mixed - a) / (b - a);
+}
 inline float stepTowards(float start, float target, float amount) {
+    return start < target ? min(start + amount, target) : max(start - amount, target);
+}
+inline double stepTowards(double start, double target, double amount) {
     return start < target ? min(start + amount, target) : max(start - amount, target);
 }
 
@@ -793,12 +873,18 @@ inline PLY_NO_DISCARD Float4 Float4::swizzle(u32 i0, u32 i1, u32 i2, u32 i3) con
 //                    ▄▄▄█▀
 
 float sin(float rad);
+double sin(double rad);
 float cos(float rad);
+double cos(double rad);
 float tan(float rad);
+double tan(double rad);
 Float2 cosAndSin(float rad);
 float arcsin(float value);
+double arcsin(double value);
 float arccos(float value);
+double arccos(double value);
 float arctan(float value);
+double arctan(double value);
 float arctan(const Float2& pos);
 
 inline float fastSinPart(float x) {
@@ -1598,7 +1684,6 @@ inline Mat3x3 makeBasis(const Float3& dstUnitFwd, const Float3& srcFwd) {
 //
 
 struct Mat4x4;
-struct QuatPos;
 
 struct Mat3x4 {
     Float3 col[4];
@@ -1614,7 +1699,6 @@ struct Mat3x4 {
     static Mat3x4 rotate(const Float3& unitAxis, float radians);
     static Mat3x4 translate(const Float3& pos);
     static Mat3x4 fromQuaternion(const Quaternion& q, const Float3& pos = 0);
-    static Mat3x4 fromQuatPos(const QuatPos& qp);
 
     Float3& operator[](u32 i) {
         PLY_ASSERT(i < 4);
@@ -1679,7 +1763,6 @@ struct Mat4x4 {
     static Mat4x4 rotate(const Float3& unitAxis, float radians);
     static Mat4x4 translate(const Float3& pos);
     static Mat4x4 fromQuaternion(const Quaternion& q, const Float3& pos = 0);
-    static Mat4x4 fromQuatPos(const QuatPos& qp);
 
     // Returns a perspective projection matrix that maps the given view frustum to normalized device coordinate (NDC)
     // space. The camera is positioned at the origin and looks in the -z direction, with +x facing right and +y facing
@@ -1801,67 +1884,5 @@ inline Quaternion operator-(const Quaternion& q) {
 Float3 operator*(const Quaternion& q, const Float3& v);
 Quaternion operator*(const Quaternion& a, const Quaternion& b);
 Quaternion mix(const Quaternion& a, const Quaternion& b, float f);
-
-//   ▄▄▄▄                 ▄▄   ▄▄▄▄▄
-//  ██  ██ ▄▄  ▄▄  ▄▄▄▄  ▄██▄▄ ██  ██  ▄▄▄▄   ▄▄▄▄
-//  ██  ██ ██  ██  ▄▄▄██  ██   ██▀▀▀  ██  ██ ▀█▄▄▄
-//  ▀█▄▄█▀ ▀█▄▄██ ▀█▄▄██  ▀█▄▄ ██     ▀█▄▄█▀  ▄▄▄█▀
-//      ▀▀
-
-struct QuatPos {
-    Quaternion quat;
-    Float3 pos;
-
-    QuatPos() = default;
-    QuatPos(const Quaternion& quat, const Float3& pos) : quat(quat), pos(pos) {
-    }
-    static QuatPos identity();
-    static QuatPos translate(const Float3& pos);
-    static QuatPos rotate(const Float3& unitAxis, float radians);
-    static QuatPos fromOrtho(const Mat3x4& m);
-    static QuatPos fromOrtho(const Mat4x4& m);
-
-    QuatPos inverted() const;
-};
-
-inline Float3 operator*(const QuatPos& qp, const Float3& v) {
-    return (qp.quat * v) + qp.pos;
-}
-inline QuatPos operator*(const QuatPos& a, const QuatPos& b) {
-    return {a.quat * b.quat, (a.quat * b.pos) + a.pos};
-}
-inline QuatPos operator*(const QuatPos& a, const Quaternion& b) {
-    return {a.quat * b, a.pos};
-}
-inline QuatPos operator*(const Quaternion& a, const QuatPos& b) {
-    return {a * b.quat, a * b.pos};
-}
-inline Mat3x4 Mat3x4::fromQuatPos(const QuatPos& qp) {
-    return fromQuaternion(qp.quat, qp.pos);
-}
-inline Mat4x4 Mat4x4::fromQuatPos(const QuatPos& qp) {
-    return fromQuaternion(qp.quat, qp.pos);
-}
-
-// Cubic Bezier curves
-
-template <typename T>
-T sampleCubicBezier(const T& p0, const T& p1, const T& p2, const T& p3, float t) {
-    float omt = 1.f - t;
-    return p0 * (omt * omt * omt) + p1 * (3 * omt * omt * t) + p2 * (3 * omt * t * t) + p3 * (t * t * t);
-}
-template <typename T>
-T sampleCubicBezierDerivative(const T& p0, const T& p1, const T& p2, const T& p3, float t) {
-    T q0 = p1 - p0;
-    T q1 = p2 - p1;
-    T q2 = p3 - p2;
-    T r0 = mix(q0, q1, t);
-    T r1 = mix(q1, q2, t);
-    T p = mix(r0, r1, t);
-    return p;
-}
-inline float easeInAndOut(float t) {
-    return (3.f - 2.f * t) * t * t;
-}
 
 } // namespace ply

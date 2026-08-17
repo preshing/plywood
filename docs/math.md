@@ -1,38 +1,46 @@
-`ply-math.h`: 2D and 3D Math
+`ply-math.h`: Scalar, 2D and 3D Math
 ============================
 
-The math library provides small POD-style types for vectors, rectangles, matrices, colors and rotations.
-Most types expose public fields, support inline arithmetic operators and perform runtime bounds checks in
-`operator[]` when [assertions](/docs/system/preprocessor-macros.md#assertions) are enabled.
-
-Scalar Functions
-----------------
+Basic Functions
+---------------
 
 `float roundNearest(float value)`
+`double roundNearest(double value)`
 > Rounds `value` to the nearest integer, with halfway cases rounded away from zero.
 
 `float roundUp(float value)`
+`double roundUp(double value)`
 > Rounds `value` toward positive infinity.
 
 `float roundDown(float value)`
+`double roundDown(double value)`
 > Rounds `value` toward negative infinity.
 
 `float mix(float a, float b, float t)`
+`double mix(double a, double b, double t)`
 > Performs linear interpolation between `a` and `b`.
 
 `float unmix(float a, float b, float mixed)`
+`double unmix(double a, double b, double mixed)`
 > Returns the interpolation parameter that would produce `mixed` between `a` and `b`.
 
 `float stepTowards(float start, float target, float amount)`
+`double stepTowards(double start, double target, double amount)`
 > Moves `start` toward `target` by at most `amount` without overshooting.
 
 `float wrap(float value, float range)`
+`double wrap(double value, double range)`
 > Wraps `value` into the half-open interval `[0, range)`. `range` must be positive.
 
 `float square(float v)`
+`double square(double v)`
 > Returns `v * v`.
 
+Transcendental Functions
+------------------------
+
 `float sqrt(float value)`
+`double sqrt(double value)`
 > Returns the square root of `value`.
 
 `float fastSqrt(float value)`
@@ -42,28 +50,31 @@ Scalar Functions
 > Fast approximate reciprocal square root.
 
 `float log(float value)`
+`double log(double value)`
 > Returns the natural logarithm of `value`.
 
 `float exp(float value)`
+`double exp(double value)`
 > Returns Euler's number raised to `value`.
 
 `float pow(float base, float exponent)`
+`double pow(double base, double exponent)`
 > Returns `base` raised to `exponent`.
 
-Trigonometric Functions
------------------------
-
 `float sin(float rad)`
+`double sin(double rad)`
 > Returns the sine of `rad`.
 
 `float cos(float rad)`
+`double cos(double rad)`
 > Returns the cosine of `rad`.
 
 `float tan(float rad)`
+`double tan(double rad)`
 > Returns the tangent of `rad`.
 
 `Float2 cosAndSin(float rad)`
-> Returns the cosine and sine together as `{cos(rad), sin(rad)}` using a shared argument reduction.
+> Returns the cosine and sine together as `{cos(rad), sin(rad)}`. Faster than calling `sin` and `cos` separately.
 
 `float fastSin(float rad)`
 > Fast sine approximation.
@@ -72,16 +83,19 @@ Trigonometric Functions
 > Fast cosine approximation.
 
 `float arcsin(float value)`
+`double arcsin(double value)`
 > Returns the arcsine of `value` in radians.
 
 `float arccos(float value)`
+`double arccos(double value)`
 > Returns the arccosine of `value` in radians.
 
 `float arctan(float value)`
+`double arctan(double value)`
 > Returns the arctangent of `value` in radians.
 
 `float arctan(const Float2& pos)`
-> Returns the angle of `pos` in radians, preserving the correct quadrant.
+> Returns the angle of `pos` in radians.
 
 Boolean Vectors
 ---------------
@@ -506,9 +520,6 @@ Matrices
 `static Mat3x4 fromQuaternion(const Quaternion& q, const Float3& pos = 0)`
 > Constructs an affine transform from quaternion rotation plus translation.
 
-`static Mat3x4 fromQuatPos(const QuatPos& qp)`
-> Constructs an affine transform from a `QuatPos`.
-
 `Mat3x3 asMat3() const`
 > Returns the linear 3x3 portion of the transform.
 
@@ -616,45 +627,3 @@ Quaternions
 
 `Quaternion mix(const Quaternion& a, const Quaternion& b, float f)`
 > Linearly blends between two quaternion values.
-
-### `QuatPos`
-
-`QuatPos` combines a quaternion rotation with a translation vector.
-
-{context class=QuatPos}
-
-`static QuatPos identity()`
-> Constructs the identity rigid transform.
-
-`static QuatPos translate(const Float3& pos)`
-> Constructs a rigid transform representing pure translation.
-
-`static QuatPos rotate(const Float3& unitAxis, float radians)`
-> Constructs a rigid transform representing pure rotation.
-
-### Namespace-Level Functions
-
-`QuatPos inverted() const`
-> Returns the inverse rigid transform.
-
-`Float3 operator*(const QuatPos& qp, const Float3& v)`
-> Applies the transform to a point.
-
-`QuatPos operator*(const QuatPos& a, const QuatPos& b)`
-> Composes two rigid transforms.
-
-`QuatPos operator*(const QuatPos& a, const Quaternion& b)`
-`QuatPos operator*(const Quaternion& a, const QuatPos& b)`
-> Applies an additional rotation on the right or left side of a rigid transform.
-
-Cubic Bézier Curves
--------------------
-
-`template <typename T> T sampleCubicBezier(const T& p0, const T& p1, const T& p2, const T& p3, float t)`
-> Evaluates the cubic Bezier curve at parameter `t`.
-
-`template <typename T> T sampleCubicBezierDerivative(const T& p0, const T& p1, const T& p2, const T& p3, float t)`
-> Evaluates the derivative curve at parameter `t`, which is useful for tangent calculations.
-
-`float easeInAndOut(float t)`
-> Smoothstep-style easing curve over the range `[0, 1]`.

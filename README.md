@@ -16,4 +16,4 @@ GitHub repository: https://github.com/preshing/plywood
 - Each code block should begin with a brief comment to explain what it does.
 - Use the fewest line of code possible without sacrificing readability.
 - Use `this->` to refer to other function and data members within each member function.
-- When the body of an `if` or `else` statement consists of exactly one `continue`, `return`, or `break` statement, omit curly braces.
+- The body of every `if`, `else`, `do`, `while` and `for` statement should be surrounded by curly braces unless it consists of exactly one `continue`, `return`, or `break` statement.
