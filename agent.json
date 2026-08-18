@@ -1,7 +1,7 @@
 {
     "endPoint": {
         "url": "https://ollama.com/v1/chat/completions",
-        "protocol": "ollama-completions",
+        "protocol": "completions",
         "apiKeyEnv": "OLLAMA_API_KEY",
         "model": "glm-5.2"
     },

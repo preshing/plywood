@@ -369,6 +369,9 @@ html {
     margin-bottom: 1.5em;
     list-style-type: disc;
 }
+.content li > ul {
+    margin-bottom: 0;
+}
 .content .type {
     color: var(--type-color);
 }

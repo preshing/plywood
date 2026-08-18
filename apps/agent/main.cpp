@@ -14,6 +14,7 @@
 #include <ply-network.h>
 #include <ply-markdown.h>
 #include <curl/curl.h>
+#include <cstdlib>
 
 using namespace ply;
 
@@ -954,50 +955,52 @@ static bool loadSettingsWithIncludes(StringView settingsPath, Array<String>& inc
         agentSettings.endPoint.getAPIKey = []() -> String { return {}; };
 
         // Import url.
-        if (const auto& jUrl = jEndPoint.get("url")) {
-            if (!jUrl.isText()) {
-                getStdErr().format("url must be a string in: {}\n", settingsPath);
-                return false;
-            }
-            agentSettings.endPoint.url = jUrl.text();
+        const auto& jUrl = jEndPoint.get("url");
+        if (!jUrl.isText()) {
+            getStdErr().format("endPoint.url must be a string in: {}\n", settingsPath);
+            return false;
         }
+        agentSettings.endPoint.url = jUrl.text();
+
         // Import apiKeyEnv.
-        if (const auto& jApiKeyEnv = jEndPoint.get("apiKeyEnv")) {
-            if (!jApiKeyEnv.isText()) {
-                getStdErr().format("apiKeyEnv must be a string in: {}\n", settingsPath);
-                return false;
-            }
-            // The API key is read from the named environment variable on demand. Plywood
-            // strings aren't null-terminated, so append an explicit null byte for getenv.
-            String apiKeyEnvZ = String{jEndPoint.get("apiKeyEnv").text()} + '\0';
-            agentSettings.endPoint.getAPIKey = [apiKeyEnvZ = std::move(apiKeyEnvZ)]() -> String {
-                const char* envVar = getenv(apiKeyEnvZ.bytes());
-                if (!envVar)
-                    return {};
-                return envVar;
-            };
+        const auto& jApiKeyEnv = jEndPoint.get("apiKeyEnv");
+        if (!jApiKeyEnv.isText()) {
+            getStdErr().format("endPoint.apiKeyEnv must be a string in: {}\n", settingsPath);
+            return false;
         }
+        // The API key is read from the named environment variable on demand. Plywood
+        // strings aren't null-terminated, so append an explicit null byte for getenv.
+        String apiKeyEnvZ = String{jApiKeyEnv.text()} + '\0';
+        agentSettings.endPoint.getAPIKey = [apiKeyEnvZ = std::move(apiKeyEnvZ)]() -> String {
+            const char* envVar = std::getenv(apiKeyEnvZ.bytes());
+            if (!envVar)
+                return {};
+            return envVar;
+        };
+
         // Import protocol.
-        if (const auto& jProtocol = jEndPoint.get("protocol")) {
-            if (!jProtocol.isText()) {
-                getStdErr().format("protocol must be a string in: {}\n", settingsPath);
-                return false;
-            }
-            StringView protocol = jProtocol.text();
-            if (protocol.endsWith("-responses")) {
-                agentSettings.endPoint.protocol = Protocol::Responses;
-            } else {
-                agentSettings.endPoint.protocol = Protocol::Completions;
-            }
+        const auto& jProtocol = jEndPoint.get("protocol");
+        if (!jProtocol.isText()) {
+            getStdErr().format("endPoint.protocol must be a string in: {}\n", settingsPath);
+            return false;
         }
+        StringView protocol = jProtocol.text();
+        if (protocol == "responses") {
+            agentSettings.endPoint.protocol = Protocol::Responses;
+        } else if (protocol == "completions") {
+            agentSettings.endPoint.protocol = Protocol::Completions;
+        } else {
+            getStdErr().format("Unknown protocol '{}' in: {}\n", protocol, settingsPath);
+            return false;
+        }
+
         // Import model.
-        if (const auto& jModel = jEndPoint.get("model")) {
-            if (!jModel.isText()) {
-                getStdErr().format("model must be a string in: {}\n", settingsPath);
-                return false;
-            }
-            agentSettings.endPoint.model = jModel.text();
+        const auto& jModel = jEndPoint.get("model");
+        if (!jModel.isText()) {
+            getStdErr().format("endPoint.model must be a string in: {}\n", settingsPath);
+            return false;
         }
+        agentSettings.endPoint.model = jModel.text();
     }
 
     // Import systemPrompt.
@@ -1006,7 +1009,11 @@ static bool loadSettingsWithIncludes(StringView settingsPath, Array<String>& inc
             getStdErr().format("systemPrompt must be a string in: {}\n", settingsPath);
             return false;
         }
-        agentSettings.toolSet.systemPrompt = jSystemPrompt.text();
+        // Append this prompt after any prompt inherited from an included settings file.
+        if (agentSettings.toolSet.systemPrompt) {
+            agentSettings.toolSet.systemPrompt += '\n';
+        }
+        agentSettings.toolSet.systemPrompt += jSystemPrompt.text();
     }
 
     // Import userPrompt.

@@ -53,7 +53,8 @@ struct Transcript : RefCounted<Transcript> {
         Role role = Role::None;
         Buffer content; // Tail is flushed when the message ends.
         // These members are only used by ToolCall:
-        Buffer toolResponse; // Tail is flushed when the tool response ends.
+        String providerToolCallID; // ID used to pair the tool call with its response at the endpoint.
+        Buffer toolResponse;       // Tail is flushed when the tool response ends.
         bool toolEnded = false;
 
         PLY_DECLARE_TYPE_INFO(Transcript::Message)
@@ -61,6 +62,8 @@ struct Transcript : RefCounted<Transcript> {
 
     struct Turn {
         Array<Owned<Message>> messages;
+        // Opaque Responses API output items used when replaying manually managed context.
+        Array<String> providerOutputItems;
 
         PLY_DECLARE_TYPE_INFO(Transcript::Turn)
     };
@@ -79,10 +82,11 @@ struct Transcript : RefCounted<Transcript> {
 struct TranscriptEvent {
     enum Operation {
         NoOperation,
-        BeginMessage,       // Requires role and toolCallID (if ToolCall)
-        AppendText,         // Requires text
-        AppendToolResponse, // Requires toolCallID and text
-        EndToolResponse,    // Requires toolCallID
+        BeginMessage,             // Requires role and toolCallID (if ToolCall)
+        AppendText,               // Requires text
+        AppendToolResponse,       // Requires toolCallID and text
+        EndToolResponse,          // Requires toolCallID
+        AppendProviderOutputItem, // Requires text
         EndTurn,
     };
 
@@ -93,7 +97,9 @@ struct TranscriptEvent {
     // toolCallID is only used by BeginMessage(ToolCall), AppendToolResponse and EndToolResponse.
     // The first tool call written to a turn gets toolCallID=1, the next one 2, and so on.
     u32 toolCallID = 0;
-    // text is only used by AppendText and AppendToolResponse.
+    // providerToolCallID is only used by BeginMessage(ToolCall).
+    String providerToolCallID;
+    // text is used by AppendText, AppendToolResponse and AppendProviderOutputItem.
     String text;
 
     PLY_DECLARE_TYPE_INFO(TranscriptEvent)

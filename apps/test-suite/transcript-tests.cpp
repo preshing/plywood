@@ -62,9 +62,20 @@ static bool testTranscriptUpdater() {
     event = {};
     event.operation = TranscriptEvent::BeginMessage;
     event.role = Transcript::Role::ToolCall;
+    event.providerToolCallID = "call_123";
     applyTranscriptEvent(updater, event);
     success &= expect(transcript.turns[0].messages[0]->content.lines[0] == "partial",
                       "BeginMessage should finalize the previous message tail");
+    success &= expect(transcript.turns[0].messages[1]->providerToolCallID == "call_123",
+                      "BeginMessage should retain the endpoint's tool call ID");
+
+    // Opaque provider items are retained separately from the visible transcript.
+    event = {};
+    event.operation = TranscriptEvent::AppendProviderOutputItem;
+    event.text = R"({"type":"reasoning","encrypted_content":"opaque"})";
+    applyTranscriptEvent(updater, event);
+    success &= expect(transcript.turns[0].providerOutputItems[0] == event.text,
+                      "provider output items should be retained for context replay");
 
     event = {};
     event.operation = TranscriptEvent::AppendToolResponse;

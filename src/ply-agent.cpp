@@ -96,6 +96,7 @@ void applyTranscriptEvent(TranscriptUpdater* updater, const TranscriptEvent& eve
             Owned<Transcript::Message> msg = Heap::create<Transcript::Message>();
             msg->timeStamp = (u64) getUnixTimestamp();
             msg->role = event.role;
+            msg->providerToolCallID = event.providerToolCallID;
             turn.messages.append(std::move(msg));
             break;
         }
@@ -138,6 +139,11 @@ void applyTranscriptEvent(TranscriptUpdater* updater, const TranscriptEvent& eve
             }
             break;
         }
+        case TranscriptEvent::AppendProviderOutputItem: {
+            PLY_ASSERT(!transcript->turns.isEmpty());
+            transcript->turns.back().providerOutputItems.append(event.text);
+            break;
+        }
         case TranscriptEvent::EndTurn: {
             if (!transcript->turns.isEmpty() && transcript->turns.back().messages) {
                 transcript->turns.back().messages.back()->content.flush();
@@ -158,12 +164,14 @@ PLY_STRUCT_END()
 PLY_STRUCT_BEGIN(Transcript::Message)
 PLY_STRUCT_MEMBER(timeStamp)
 PLY_STRUCT_MEMBER(content)
+PLY_STRUCT_MEMBER(providerToolCallID)
 PLY_STRUCT_MEMBER(toolResponse)
 PLY_STRUCT_MEMBER(toolEnded)
 PLY_STRUCT_END()
 
 PLY_STRUCT_BEGIN(Transcript::Turn)
 PLY_STRUCT_MEMBER(messages)
+PLY_STRUCT_MEMBER(providerOutputItems)
 PLY_STRUCT_END()
 
 PLY_STRUCT_BEGIN(Transcript)
@@ -173,6 +181,7 @@ PLY_STRUCT_END()
 PLY_STRUCT_BEGIN(TranscriptEvent)
 PLY_STRUCT_MEMBER(timeStamp)
 PLY_STRUCT_MEMBER(toolCallID)
+PLY_STRUCT_MEMBER(providerToolCallID)
 PLY_STRUCT_MEMBER(text)
 PLY_STRUCT_END()
 
@@ -263,11 +272,13 @@ static void addEvent(Agent::Impl* impl, TranscriptEvent&& event) {
 // Emits a BeginMessage event for the given role. If the role is ToolCall, toolCallID
 // identifies the tool call (1-based, sequential within the current turn).
 // Must be called with toolCtx.mutex held.
-static void beginMessage(Agent::Impl* impl, Transcript::Role role, u32 toolCallID = 0) {
+static void beginMessage(Agent::Impl* impl, Transcript::Role role, u32 toolCallID = 0,
+                         StringView providerToolCallID = {}) {
     TranscriptEvent event;
     event.operation = TranscriptEvent::BeginMessage;
     event.role = role;
     event.toolCallID = toolCallID;
+    event.providerToolCallID = providerToolCallID;
     addEvent(impl, std::move(event));
 }
 
@@ -509,29 +520,28 @@ String makeRequestBody(Agent::Impl* impl) {
         root.set("reasoning_effort", json::Node::Text{"medium"});
 
     } else if (impl->settings.endPoint.protocol == Protocol::Responses) {
-#if 0
         //-------------------------------------------
         // OpenAI Responses API
         //-------------------------------------------
 
         // model
-        root.set("model", json::Node::Text{session->endPoint.model});
+        root.set("model", json::Node::Text{impl->settings.endPoint.model});
 
         // tool definitions
-        if (session->toolDefs) {
+        if (impl->settings.toolSet.handlers.items()) {
             json::Node jTools{json::Node::Array{}};
-            for (const ToolDefinition& tool : session->toolDefs) {
+            for (const Owned<ToolSet::Handler>& tool : impl->settings.toolSet.handlers) {
                 json::Node& jTool = jTools.array().append(json::Node::Object{});
                 jTool.set("type", json::Node::Text{"function"});
-                jTool.set("name", json::Node::Text{tool.name});
-                jTool.set("description", json::Node::Text{tool.description});
+                jTool.set("name", json::Node::Text{tool->name});
+                jTool.set("description", json::Node::Text{tool->description});
 
                 // tool parameters
                 json::Node jParams{json::Node::Object{}};
                 jParams.set("type", json::Node::Text{"object"});
                 json::Node jRequired{json::Node::Array{}};
                 json::Node jProps{json::Node::Object{}};
-                for (const ToolDefinition::Parameter& param : tool.parameters) {
+                for (const ToolSet::Parameter& param : tool->parameters) {
                     json::Node jParam{json::Node::Object{}};
                     jParam.set("description", json::Node::Text{param.description});
                     jParam.set("type", json::Node::Text{param.type});
@@ -550,48 +560,79 @@ String makeRequestBody(Agent::Impl* impl) {
 
         // messages
         json::Node jInput{json::Node::Array{}};
-        if (session->systemPrompt) {
+        if (impl->settings.toolSet.systemPrompt) {
             json::Node jMsg{json::Node::Object{}};
             jMsg.set("role", json::Node::Text{"developer"});
-            jMsg.set("content", json::Node::Text{session->systemPrompt});
+            jMsg.set("content", json::Node::Text{impl->settings.toolSet.systemPrompt});
             jInput.array().append(jMsg);
         }
-        for (const Message* msg : session->messages) {
-            json::Node jMsg{json::Node::Object{}};
-            if (const Message::User* user = msg->role.as<Message::User>()) {
-                jMsg.set("role", json::Node::Text{"user"});
-                json::Node jContent{json::Node::Object{}};
-                jContent.set("type", json::Node::Text{"input_text"});
-                jContent.set("text", json::Node::Text{user->content});
-                json::Node jArray{json::Node::Array{}};
-                jArray.array().append(std::move(jContent));
-                jMsg.set("content", std::move(jArray));
-            } else if (const Message::Assistant* assistant = msg->role.as<Message::Assistant>()) {
-                jMsg.set("role", json::Node::Text{"assistant"});
-                if (assistant->content) {
-                    json::Node jContent{json::Node::Object{}};
-                    jContent.set("type", json::Node::Text{"output_text"});
-                    jContent.set("text", json::Node::Text{assistant->content});
-                    json::Node jArray{json::Node::Array{}};
-                    jArray.array().append(std::move(jContent));
-                    jMsg.set("content", std::move(jArray));
-                }
-                if (assistant->reasoning) {
-                    jMsg.set("reasoning", json::Node::Text{assistant->reasoning});
-                }
-            } else {
-                PLY_ASSERT(0);
-            }
-            jInput.array().append(std::move(jMsg));
+
+        // Flatten the transcript chain so input items are emitted from root to leaf.
+        Array<const Transcript*> flattened;
+        for (const Transcript* transcript = impl->internalTranscript; transcript; transcript = transcript->parent) {
+            flattened.append(transcript);
         }
-        // add tool responses
-        for (const Message* msg : session->messages) {
-            if (auto* toolCall = msg->role.as<Transcript::ToolCall>()) {
-                json::Node jMsg{json::Node::Object{}};
-                jMsg.set("role", json::Node::Text{"tool"});
-                jMsg.set("content", json::Node::Text{toolCall->response});
-                jMsg.set("tool_call_id", json::Node::Text{toolCall->id});
-                jInput.array().append(std::move(jMsg));
+        for (s32 i = flattened.numItems() - 1; i >= 0; i--) {
+            for (u32 turnIndex = 0; turnIndex < flattened[i]->turns.numItems(); turnIndex++) {
+                const Transcript::Turn& turn = flattened[i]->turns[turnIndex];
+                u32 fallbackToolCallID = 0;
+                for (const Transcript::Message* msg : turn.messages) {
+                    if (msg->role == Transcript::Role::User ||
+                        (msg->role == Transcript::Role::Agent && turn.providerOutputItems.isEmpty())) {
+                        // Convert conversational messages to Responses API input message items.
+                        json::Node jMsg{json::Node::Object{}};
+                        bool isUser = msg->role == Transcript::Role::User;
+                        jMsg.set("type", json::Node::Text{"message"});
+                        jMsg.set("role", json::Node::Text{isUser ? "user" : "assistant"});
+                        jMsg.set("content", json::Node::Text{msg->content.toString()});
+                        jInput.array().append(std::move(jMsg));
+                    } else if (msg->role == Transcript::Role::ToolCall && turn.providerOutputItems.isEmpty()) {
+                        // Recreate the function call item and pair its completed output by call_id.
+                        fallbackToolCallID++;
+                        StringView tcName;
+                        json::Parser::Result parsedArgs;
+                        parseToolCallText(msg->content, tcName, parsedArgs);
+                        String arguments = parsedArgs.root.isObject() ? json::toString(parsedArgs.root, {false}) : "{}";
+                        String callID = msg->providerToolCallID
+                                            ? msg->providerToolCallID
+                                            : String::format("call_{}_{}_{}", i, turnIndex, fallbackToolCallID);
+
+                        json::Node jCall{json::Node::Object{}};
+                        jCall.set("type", json::Node::Text{"function_call"});
+                        jCall.set("call_id", json::Node::Text{callID});
+                        jCall.set("name", json::Node::Text{tcName});
+                        jCall.set("arguments", json::Node::Text{std::move(arguments)});
+                        jInput.array().append(std::move(jCall));
+                    }
+                }
+
+                // Replay the endpoint's original output items, including encrypted reasoning context.
+                for (StringView itemText : turn.providerOutputItems) {
+                    json::Parser parser;
+                    parser.setErrorCallback([](const json::ParseError&) {});
+                    json::Parser::Result item = parser.parse({}, itemText);
+                    if (item.root.isObject()) {
+                        jInput.array().append(std::move(item.root));
+                    }
+                }
+
+                // Append tool outputs after all function calls from the turn.
+                fallbackToolCallID = 0;
+                for (const Transcript::Message* msg : turn.messages) {
+                    if (msg->role != Transcript::Role::ToolCall)
+                        continue;
+                    fallbackToolCallID++;
+                    if (!msg->toolEnded)
+                        continue;
+                    String callID = msg->providerToolCallID
+                                        ? msg->providerToolCallID
+                                        : String::format("call_{}_{}_{}", i, turnIndex, fallbackToolCallID);
+                    json::Node jOutput{json::Node::Object{}};
+                    jOutput.set("type", json::Node::Text{"function_call_output"});
+                    jOutput.set("call_id", json::Node::Text{std::move(callID)});
+                    jOutput.set("output", json::Node::Text{msg->toolResponse.toString()});
+                    jInput.array().append(std::move(jOutput));
+                }
             }
         }
         root.set("input", std::move(jInput));
@@ -602,6 +643,11 @@ String makeRequestBody(Agent::Impl* impl) {
         // store
         root.set("store", json::Node::Bool{false});
 
+        // Request replayable reasoning data for manually managed conversation history.
+        json::Node jInclude{json::Node::Array{}};
+        jInclude.array().append(json::Node::Text{"reasoning.encrypted_content"});
+        root.set("include", std::move(jInclude));
+
         // reasoning
         {
             json::Node jReasoning{json::Node::Object{}};
@@ -609,7 +655,6 @@ String makeRequestBody(Agent::Impl* impl) {
             jReasoning.set("summary", json::Node::Text{"auto"});
             root.set("reasoning", std::move(jReasoning));
         }
-#endif
 
     } else {
         // Invalid protocol
@@ -733,42 +778,83 @@ void receiveLine(Agent::Impl* impl, StringView line) {
         }
 
     } else if (impl->settings.endPoint.protocol == Protocol::Responses) {
-        // Responses API
-#if 0
-        if (line.startsWith("event: ")) {
-            impl->eventType = line.substr(7).trim();
-        } else if (line.startsWith("data: ")) {
-            // Parse json message
+        // Parse Responses API data events; the event type is also present in each JSON object.
+        if (line.startsWith("data: ")) {
             json::Parser parser;
             parser.setErrorCallback([](const json::ParseError&) {});
             parser.setGreedy(false);
             json::Parser::Result result = parser.parse({}, line.substr(6).trim());
 
             if (result.root.isObject()) {
-                if (impl->eventType == "response.output_item.added") {
-                    // response.output_item.added
+                StringView eventType = result.root.get("type").text();
+                if (eventType == "response.output_text.delta" || eventType == "response.refusal.delta" ||
+                    eventType == "response.reasoning_summary_text.delta") {
+                    // Stream visible output, refusals and reasoning summaries into transcript messages.
+                    LockGuard<Mutex> guard{impl->toolCtx.mutex};
+                    if (impl->toolCtx.canceled)
+                        return;
+                    Transcript::Role role = eventType == "response.reasoning_summary_text.delta"
+                                                ? Transcript::Role::AgentThinking
+                                                : Transcript::Role::Agent;
+                    emitText(impl, role, result.root.get("delta").text());
+                } else if (eventType == "error" || eventType == "response.failed") {
+                    // Surface both transport-level stream errors and failed response objects.
+                    const json::Node& jError =
+                        eventType == "error" ? result.root : result.root.get("response").get("error");
+                    StringView message = jError.get("message").text();
+                    if (!message) {
+                        message = "Responses API request failed";
+                    }
+                    LockGuard<Mutex> guard{impl->toolCtx.mutex};
+                    if (impl->toolCtx.canceled)
+                        return;
+                    emitText(impl, Transcript::Role::Error, message);
+                } else if (eventType == "response.incomplete") {
+                    // Surface the reason that the endpoint stopped before completing its response.
+                    StringView reason = result.root.get("response").get("incomplete_details").get("reason").text();
+                    String message = "Responses API request incomplete";
+                    if (reason) {
+                        message += String::format(": {}", reason);
+                    }
+                    LockGuard<Mutex> guard{impl->toolCtx.mutex};
+                    if (impl->toolCtx.canceled)
+                        return;
+                    emitText(impl, Transcript::Role::Error, message);
+                } else if (eventType == "response.output_item.done") {
+                    const json::Node& jItem = result.root.get("item");
+                    if (jItem.isObject()) {
+                        // Preserve the complete output item for stateless conversation replay.
+                        LockGuard<Mutex> guard{impl->toolCtx.mutex};
+                        if (impl->toolCtx.canceled)
+                            return;
+                        TranscriptEvent itemEvent;
+                        itemEvent.operation = TranscriptEvent::AppendProviderOutputItem;
+                        itemEvent.text = json::toString(jItem, {false});
+                        addEvent(impl, std::move(itemEvent));
 
-                } else if (impl->eventType == "response.content_part.added") {
-                    // response.content_part.added
+                        if (jItem.get("type").text() != "function_call")
+                            return;
 
-                } else if (impl->eventType == "response.reasoning_summary_part.added") {
-                    // response.reasoning_summary_part.added
-
-                } else if (impl->eventType == "response.reasoning_summary_text.delta") {
-                    // response.reasoning_summary_text.delta
-
-                } else if (impl->eventType == "response.output_text.delta") {
-                    // response.output_text.delta
-                    const json::Node& delta = result.root.get("delta");
-                    callback(Verb::Speak, delta.text());
-
-                } else if (impl->eventType == "response.completed") {
-                    // response.complete
-                    impl->gotDone = true;
+                        // Queue the completed function call for the tool thread.
+                        u32 toolCallID = 1;
+                        for (const Owned<Transcript::Message>& msg : impl->internalTranscript->turns.back().messages) {
+                            if (msg->role == Transcript::Role::ToolCall) {
+                                toolCallID++;
+                            }
+                        }
+                        beginMessage(impl, Transcript::Role::ToolCall, toolCallID, jItem.get("call_id").text());
+                        appendText(impl,
+                                   String::format("{}{}", jItem.get("name").text(), jItem.get("arguments").text()));
+                        Transcript::Message* toolCallMsg = impl->internalTranscript->turns.back().messages.back().get();
+                        toolCallMsg->content.flush();
+                        impl->currentRole = Transcript::Role::ToolCall;
+                        impl->anyToolCallsThisTurn = true;
+                        impl->pendingToolCalls.append(toolCallMsg);
+                        impl->toolCondVar.wakeAll();
+                    }
                 }
             }
         }
-#endif
     }
 }
 
