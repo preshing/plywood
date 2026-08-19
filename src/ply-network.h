@@ -299,7 +299,7 @@ struct HTTPClientArgs {
     // When true, verify the peer against the cacert.pem bundle shipped next to the
     // executable (CURLOPT_CAINFO). When false, TLS verification is disabled, which is
     // only appropriate for trusted localhost endpoints.
-    bool useBundledCaCert = false;
+    bool useBundledCaCert = true;
 };
 
 struct HTTPClient;
@@ -374,7 +374,7 @@ struct HTTPServerRequest {
 };
 
 // Bind to a port and run an HTTP server that dispatches to the given handler.
-void runHTTPServer(u16 port, const Functor<void(HTTPServerRequest& request)>& reqHandler);
+void runHTTPServer(u16 port, const Functor<void(HTTPServerRequest& request)>& requestHandler);
 
 // Built-in request handler that simply echoes the client's address and request headers (for testing).
 void serveEchoPage(HTTPServerRequest& request);

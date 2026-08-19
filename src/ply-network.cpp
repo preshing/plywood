@@ -1049,7 +1049,7 @@ void serveEchoPage(HTTPServerRequest& request) {
 }
 
 // Parse an HTTP request from a TCP connection and dispatch it to the handler
-void handleRequest(TCPConnection* tcpConn, const Functor<void(HTTPServerRequest& request)>& reqHandler) {
+void handleRequest(TCPConnection* tcpConn, const Functor<void(HTTPServerRequest& request)>& requestHandler) {
     Stream in = tcpConn->createInStream();
     Stream out = tcpConn->createOutStream();
 
@@ -1155,7 +1155,7 @@ void handleRequest(TCPConnection* tcpConn, const Functor<void(HTTPServerRequest&
         }
 
         // Invoke request handler and require it to send exactly one response.
-        reqHandler(request);
+        requestHandler(request);
         if (request.responseType == HTTPServerResponseType::None) {
             // No response was sent.
             request.sendGenericResponse(HTTPServerResponse::InternalError);
@@ -1167,7 +1167,7 @@ void handleRequest(TCPConnection* tcpConn, const Functor<void(HTTPServerRequest&
 }
 
 // Accept connections on a port and handle each request in a new thread
-void runHTTPServer(u16 port, const Functor<void(HTTPServerRequest& request)>& reqHandler) {
+void runHTTPServer(u16 port, const Functor<void(HTTPServerRequest& request)>& requestHandler) {
     TCPListener listener = Network::bindTcp(port);
     if (!listener.isValid()) {
         getStdErr().format("Error: Can't bind to port {}\n", port);
@@ -1182,9 +1182,9 @@ void runHTTPServer(u16 port, const Functor<void(HTTPServerRequest& request)>& re
 
         // Transfer ownership through the thread callback using a raw pointer.
         TCPConnection* tcpConnPtr = tcpConn.release();
-        spawnThread([tcpConnPtr, &reqHandler] {
+        spawnThread([tcpConnPtr, &requestHandler] {
             Owned<TCPConnection> tcpConn = Owned<TCPConnection>::adopt(tcpConnPtr);
-            handleRequest(tcpConn.get(), reqHandler);
+            handleRequest(tcpConn.get(), requestHandler);
         });
     }
 }

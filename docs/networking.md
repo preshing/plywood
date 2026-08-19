@@ -135,81 +135,24 @@ Network::shutdown();
 
 ## `HTTPClient`
 
-The HTTP client builds on libcurl, so libcurl (with OpenSSL) must be available at build time when
-`PLY_WITH_HTTP_CLIENT` is enabled (the default). The HTTP server builds on the TCP/IP networking API, so applications
-must call `Network::initialize()` before starting the server and `Network::shutdown()` after it returns.
-
-`HTTPClient` is a libcurl wrapper that encapsulates a single HTTP request and can be interrupted from another thread.
-The same `HTTPClient` object can be reused across multiple requests.
-
-Except for `wakeUpHTTPClient`, the `HTTPClient` API is not thread-safe and is intended to be driven from a single
-thread. The typical request lifecycle is:
-
-1. Call `sendHTTPRequest()` to start a request.
-2. Call `waitForHTTPResponse()` repeatedly, processing response data delivered to the callback, until it returns
-   `false`.
-3. The request can be aborted early with `cancelHTTPRequest()`, or interrupted from another thread with
-   `wakeUpHTTPClient()` so that a blocked `waitForHTTPResponse()` returns promptly.
-
-`HTTPClient` is an opaque type; create instances with `createHTTPClient()` and destroy them with `destroy()` (or let
-the returned `Owned<HTTPClient>` go out of scope).
-
-### `HTTPClientArgs`
-
-`HTTPClientArgs` describes a request to send.
-
-{context class=HTTPClientArgs}
-
-`String url`
-> The request URL.
-
-`Map<String, String> headers`
-> HTTP headers to send with the request, e.g. `{"Content-Type" => "application/json"}`.
-
-`String body`
-> The request body. Must remain valid for the lifetime of the request because libcurl reads from it directly.
-
-`bool useBundledCaCert = false`
-> When `true`, verify the peer against the `cacert.pem` bundle shipped next to the executable. When `false`, TLS
-> verification is disabled, which is only appropriate for trusted localhost endpoints.
-
-### Client functions
-
-`Owned<HTTPClient> createHTTPClient()`
-> Creates a new `HTTPClient`.
-
-`void destroy(HTTPClient* httpClient)`
-> Destroys an `HTTPClient` created by `createHTTPClient()`. Any in-progress request is cancelled first.
-
-`void sendHTTPRequest(HTTPClient* httpClient, HTTPClientArgs&& args)`
-> Starts a new request. Must not be called while a request is already in progress.
-
-`void cancelHTTPRequest(HTTPClient* httpClient)`
-> Cancels any request in progress. After this returns, `isHTTPRequestInProgress()` returns `false`.
-
-`bool isHTTPRequestInProgress(const HTTPClient* httpClient)`
-> Returns `true` while a request is in progress.
-
-`bool waitForHTTPResponse(HTTPClient* httpClient, const Functor<void(StringView, bool)>& callback, u32 timeOutMillis = 1000)`
-> Drives the request, delivering incoming response data to `callback`. If response data is available, it invokes
-> `callback` and returns immediately. If no data is available, it waits up to `timeOutMillis` (interruptible by
-> `wakeUpHTTPClient()`). Returns `false` once the request completes or is cancelled; `true` if it is still in
-> progress. A no-op when no request is in progress. `callback` is invoked with `(chunk, false)` for each chunk of
-> response data, and one final time with `(errorMessage, true)` if the request fails.
-
-`void wakeUpHTTPClient(HTTPClient* httpClient)`
-> Can be called from any thread. If `waitForHTTPResponse()` is currently blocked in another thread, it returns
-> immediately; otherwise the next `waitForHTTPResponse()` call returns immediately.
+Setting `PLY_WITH_HTTP_CLIENT=1` enables `HTTPClient`, which encapsulates HTTP requests. The `HTTPClient` API is not thread-safe and is intended to be driven from a single
+thread except for `wakeUpHTTPClient`. All functions except `waitForHTTPResponse` are designed to return as quickly as possible, so they can be used in an application's main loop without causing frame spikes. Requires [libcurl](https://curl.se/libcurl/) to be linked and initialized using [`curl_global_init`](https://curl.se/libcurl/c/curl_global_init.html).
 
 ```
 #include <ply-network.h>
+#include <curl/curl.h>
 
 using namespace ply;
 
-void fetchPage() {
+int main() {
+    // Initialize libcurl.
+    if (curl_global_init(CURL_GLOBAL_DEFAULT) != CURLE_OK)
+        return 1;
+
+    // Perform an HTTP request.
     Owned<HTTPClient> client = createHTTPClient();
     HTTPClientArgs args;
-    args.url = "https://example.com";
+    args.url = "https://plywood.dev";
     sendHTTPRequest(client, std::move(args));
     Functor<void(StringView, bool)> callback = [](StringView data, bool isEnd) {
         if (isEnd) {
@@ -221,99 +164,137 @@ void fetchPage() {
     while (waitForHTTPResponse(client, callback)) {
         // Response data is delivered to `callback` inside waitForHTTPResponse().
     }
+    client.clear();
+
+    // Shut down libcurl.
+    curl_global_cleanup();
+    return 0;
 }
 ```
 
+`Owned<HTTPClient> createHTTPClient()`
+> Creates a new `HTTPClient`.
+
+`void destroy(HTTPClient* httpClient)`
+> Destroys an `HTTPClient` created by `createHTTPClient()`. Any in-progress request is cancelled first.
+
+`void sendHTTPRequest(HTTPClient* httpClient, HTTPClientArgs&& args)`
+> Starts a new request. Must not be called while a request is already in progress.
+> `HTTPClientArgs` is defined as follows:
+> ```
+> struct HTTPClientArgs {
+>     String url;
+>     Map<String, String> headers;
+>     String body;
+>     bool useBundledCaCert = true;
+> };
+> ```
+
+`void cancelHTTPRequest(HTTPClient* httpClient)`
+> Cancels any request in progress. After this returns, `isHTTPRequestInProgress()` returns `false`.
+> It's OK to call `sendHTTPRequest` on the same `HTTPClient` again after this.
+
+`bool isHTTPRequestInProgress(const HTTPClient* httpClient)`
+> Returns `true` while a request is in progress.
+
+`bool waitForHTTPResponse(HTTPClient* httpClient, const Functor<void(StringView, bool)>& callback, u32 timeOutMillis = 1000)`
+> Drives the request, delivering incoming response data to `callback`. If response data is available, it invokes
+> `callback` and returns immediately. If no data is available, it waits up to `timeOutMillis` (interruptible by
+> `wakeUpHTTPClient()`). Returns `false` once the request completes or is cancelled; `true` if it is still in
+> progress. `callback` is invoked with `(chunk, false)` for each chunk of
+> response data, and one final time with `(errorMessage, true)` if the request fails.
+
+`void wakeUpHTTPClient(HTTPClient* httpClient)`
+> Can be called from any thread. If `waitForHTTPResponse()` is currently blocked in another thread, it returns
+> immediately; otherwise the next `waitForHTTPResponse()` call returns immediately.
+
 ## HTTP Server
+
+Setting `PLY_WITH_HTTP_SERVER=1` enables the `runHTTPServer` function, which runs an HTTP server.
 
 ```
 #include <ply-network.h>
 
 using namespace ply;
 
-void servePage(HTTPRequest& request) {
-    HTTPResponse response{HTTPResponse::OK};
+void serverCallback(HTTPServerRequest& request) {
+    HTTPServerResponse response{HTTPServerResponse::OK};
     *response.headers.insert("content-type").value = "text/plain";
     request.sendFullResponse(std::move(response), String::format("Request URI: {}\n", request.uri));
 }
 
 int main() {
+    // Initialize the network.
     Network::initialize(IPV4);
-    runHTTPServer(8080, servePage);
+
+    // Run a webserver.
+    runHTTPServer(8080, serverCallback);
+
+    // Shut down the network.
     Network::shutdown();
     return 0;
 }
 ```
 
-## `HTTPRequest`
+`void runHTTPServer(u16 port, const Functor<void(HTTPServerRequest& request)>& requestHandler)`
+> When this function is called, the calling thread is blocked for as long as the server keeps running.
+> `Network::initialize()` must be called first.
+> `requestHandler` is a user-provided callback function that handles each HTTP request.
 
-`HTTPRequest` contains the parsed HTTP request passed to the request handler.
+### `HTTPServerRequest`
 
-{context class=HTTPRequest}
+`HTTPServerRequest` contains all the information the callback function needs to handle the request
+and exposes member functions for responding to the request.
+
+{context class=HTTPServerRequest}
 
 `IPAddress clientAddr`
 `u16 clientPort`
 > The remote TCP peer address and port.
 
 `String method`
-> The request method from the request line, such as `GET`, `HEAD`, `POST`, `PUT` or `PATCH`.
+> The request method, such as `GET`, `HEAD`, `POST`, `PUT` or `PATCH`.
 
 `String uri`
-> The raw request URI from the request line. It may include a query string.
+> The raw request URI.
 
 `String httpVersion`
-> The HTTP version token from the request line, such as `HTTP/1.1`.
+> The HTTP version token, such as `HTTP/1.1`.
 
 `Map<String, String> headers`
 > Request headers indexed by lower-case header name. For example, use `request.headers.find("content-type")` rather
-> than `request.headers.find("Content-Type")`. Header values are trimmed when parsed, but are otherwise stored as
-> sent by the client.
+> than `request.headers.find("Content-Type")`.
 
 `String body`
 > The request body bytes. This string can contain arbitrary binary data; it is not guaranteed to be null-terminated.
 
-`void sendFullResponse(HTTPResponse&& response, StringView body = {})`
+`void sendFullResponse(HTTPServerResponse&& response, StringView body = {})`
 > Sends a complete response. The connection can be reused for additional requests when HTTP rules permit it.
 
-`Stream beginStreamingResponse(HTTPResponse&& response)`
-> Sends response headers and returns the TCP output stream for raw body bytes. Does not use chunked encoding.
+`Stream beginStreamingResponse(HTTPServerResponse&& response)`
+> Sends response headers and returns the TCP output stream for raw body bytes.
 > The connection is closed when the caller destructs the returned stream.
 
-`void sendGenericResponse(HTTPResponse::Code responseCode)`
+`void sendGenericResponse(HTTPServerResponse::Code responseCode)`
 > Writes a minimal HTML error page for the given status code.
 
-## `HTTPResponse`
+### `HTTPServerResponse`
 
-`HTTPResponse` carries the response code and headers passed to `HTTPRequest::sendFullResponse()` or
-`HTTPRequest::beginStreamingResponse()`.
+`HTTPServerResponse` is an argument passed to several `HTTPServerRequest` member functions. It has the following members:
 
-{context class=HTTPResponse}
+{context class=HTTPServerResponse}
 
 `Code code`
-> The HTTP status code to emit.
+> The HTTP status code to emit. Must be one of the following enumerator values:
+>
+> | | |
+> | --- | --- |
+> | `Code::OK` | 200 |
+> | `Code::PermanentRedirect` | 301 |
+> | `Code::TemporaryRedirect` | 302 |
+> | `Code::BadRequest` | 400 |
+> | `Code::NotFound` | 404 |
+> | `Code::InternalError` | 500 |
 
 `Map<String, String> headers`
-> Response headers to emit. Insert lower-case header names.
-
-`HTTPResponse::Code` contains the status codes currently named by the helper: `OK`, `PermanentRedirect`,
-`TemporaryRedirect`, `BadRequest`, `NotFound` and `InternalError`.
-
-`sendFullResponse()` adds a correct `content-length` header automatically when the handler does not provide one. This
-is the normal path for reliable connection reuse. If the handler does not insert `connection`, the server writes
-`connection: keep-alive` or `connection: close` according to the connection state.
-
-For `HEAD` requests, the handler can pass the body normally. The server still computes `content-length`, but it does
-not write the body bytes to the socket.
-
-## `runHTTPServer`
-
-`runHTTPServer()` binds a TCP listener to `port`, accepts connections, and starts one thread per accepted TCP
-connection. Each connection thread calls the request handler once for each parsed HTTP request on that connection.
-
-The function runs until the listener fails or is closed. If binding fails, it writes an error to standard error and
-returns.
-
-## `serveEchoPage`
-
-`serveEchoPage()` is a built-in request handler for testing. It writes an HTML page that includes the remote address
-and parsed request header.
+> Response headers to emit.
