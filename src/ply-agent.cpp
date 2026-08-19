@@ -933,7 +933,7 @@ void performInferenceRequest(Agent::Impl* impl) {
     } state;
 
     // The callback splits the incoming response stream into JSONL lines and dispatches each one
-    // to receiveLine(). It is passed to waitForHTTPResponse() on each call.
+    // to receiveLine(). It remains owned by the HTTP request until that request completes or is cancelled.
     Functor<void(StringView, bool)> callback = [impl, &state](StringView data, bool isError) {
         if (isError) {
             // HTTPClient reports libcurl/HTTP errors by invoking the callback with
@@ -973,6 +973,7 @@ void performInferenceRequest(Agent::Impl* impl) {
         args.url = impl->settings.endPoint.url;
         args.headers = std::move(headers);
         args.body = std::move(body);
+        args.callback = std::move(callback);
         args.useBundledCaCert = true; // Verify TLS against the shipped cacert.pem.
         sendHTTPRequest(impl->httpClient, std::move(args));
     }
@@ -993,7 +994,7 @@ void performInferenceRequest(Agent::Impl* impl) {
         }
         if (!isHTTPRequestInProgress(impl->httpClient))
             break;
-        if (!waitForHTTPResponse(impl->httpClient, callback))
+        if (!waitForHTTPResponse(impl->httpClient))
             break;
     }
 

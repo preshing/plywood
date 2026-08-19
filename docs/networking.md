@@ -136,7 +136,7 @@ Network::shutdown();
 ## `HTTPClient`
 
 Setting `PLY_WITH_HTTP_CLIENT=1` enables `HTTPClient`, which encapsulates HTTP requests. The `HTTPClient` API is not thread-safe and is intended to be driven from a single
-thread except for `wakeUpHTTPClient`. All functions except `waitForHTTPResponse` are designed to return as quickly as possible, so they can be used in an application's main loop without causing frame spikes. Requires [libcurl](https://curl.se/libcurl/) to be linked and initialized using [`curl_global_init`](https://curl.se/libcurl/c/curl_global_init.html).
+thread except for `wakeUpHTTPClient`. All functions are designed to return as quickly as possible, so they can be used in an application's main loop without causing frame spikes. Requires [libcurl](https://curl.se/libcurl/) to be linked and initialized using [`curl_global_init`](https://curl.se/libcurl/c/curl_global_init.html).
 
 ```
 #include <ply-network.h>
@@ -153,15 +153,15 @@ int main() {
     Owned<HTTPClient> client = createHTTPClient();
     HTTPClientArgs args;
     args.url = "https://plywood.dev";
-    sendHTTPRequest(client, std::move(args));
-    Functor<void(StringView, bool)> callback = [](StringView data, bool isEnd) {
-        if (isEnd) {
-            getStdErr().format("Request finished: {}\n", data);
+    args.callback = [](StringView data, bool isError) {
+        if (isError) {
+            getStdErr().format("Request failed: {}\n", data);
         } else {
             getStdOut().write(data);
         }
     };
-    while (waitForHTTPResponse(client, callback)) {
+    sendHTTPRequest(client, std::move(args));
+    while (waitForHTTPResponse(client)) {
         // Response data is delivered to `callback` inside waitForHTTPResponse().
     }
     client.clear();
@@ -186,6 +186,7 @@ int main() {
 >     String url;
 >     Map<String, String> headers;
 >     String body;
+>     Functor<void(StringView, bool)> callback;
 >     bool useBundledCaCert = true;
 > };
 > ```
@@ -197,12 +198,11 @@ int main() {
 `bool isHTTPRequestInProgress(const HTTPClient* httpClient)`
 > Returns `true` while a request is in progress.
 
-`bool waitForHTTPResponse(HTTPClient* httpClient, const Functor<void(StringView, bool)>& callback, u32 timeOutMillis = 1000)`
-> Drives the request, delivering incoming response data to `callback`. If response data is available, it invokes
-> `callback` and returns immediately. If no data is available, it waits up to `timeOutMillis` (interruptible by
-> `wakeUpHTTPClient()`). Returns `false` once the request completes or is cancelled; `true` if it is still in
-> progress. `callback` is invoked with `(chunk, false)` for each chunk of
-> response data, and one final time with `(errorMessage, true)` if the request fails.
+`bool waitForHTTPResponse(HTTPClient* httpClient, u32 timeOutMillis = 1000)`
+> Drives the request, delivering incoming response data to the request's callback. If response data is available, it
+> invokes the callback and returns immediately. If no data is available, it waits up to `timeOutMillis` for data to arrive,
+> but can be interrupted by other threads calling `wakeUpHTTPClient()`. When `timeOutMillis` is 0, returns as soon as all
+> available data is processed. Returns `false` if no request is in progress; `true` otherwise.
 
 `void wakeUpHTTPClient(HTTPClient* httpClient)`
 > Can be called from any thread. If `waitForHTTPResponse()` is currently blocked in another thread, it returns

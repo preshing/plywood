@@ -286,16 +286,16 @@ public:
 //
 
 //-----------------------------------------------------------
-// HTTPClient is a libcurl wrapper that can be interrupted from other threads.
-// It encapsulates a single HTTP request.
+// HTTPClient encapsulates a single HTTP request.
 // The same HTTPClient object can be reused across multiple requests.
-// Except for wakeUpHTTPClient, the HTTPClient API is not thread-safe.
-// Most of it is designed to be used from a single thread.
+// The API is not thread-safe and is intended to be driven from a single thread except for wakeUpHTTPClient.
+// All functions except waitForHTTPResponse are designed to return as quickly as possible.
 //-----------------------------------------------------------
 struct HTTPClientArgs {
     String url;
     Map<String, String> headers; // HTTP headers, e.g. {"Content-Type" => "application/json"}.
     String body;
+    Functor<void(StringView, bool)> callback; // Receives (chunk, false), or (errorMessage, true) on failure.
     // When true, verify the peer against the cacert.pem bundle shipped next to the
     // executable (CURLOPT_CAINFO). When false, TLS verification is disabled, which is
     // only appropriate for trusted localhost endpoints.
@@ -306,21 +306,19 @@ struct HTTPClient;
 
 Owned<HTTPClient> createHTTPClient();
 void destroy(HTTPClient* httpClient);
-// Send a new request.
+// Start a new request. Must not be called while a request is already in progress.
 void sendHTTPRequest(HTTPClient* httpClient, HTTPClientArgs&& args);
-// Cancel any request in progress. isHTTPRequestInProgress will return false after this.
+// Cancel any request in progress. The HTTPClient can be reused after this returns.
 void cancelHTTPRequest(HTTPClient* httpClient);
 // Returns true as long as a request is still in progress.
 bool isHTTPRequestInProgress(const HTTPClient* httpClient);
-// If a request is in progress and incoming data is available, waitForHTTPResponse invokes `callback` and returns
-// immediately. If no incoming data is available, waitForHTTPResponse will wait up to the maximum timeout (can be interrupted
-// by wakeUpHTTPClient). If no request is in progress, waitForHTTPResponse is a no-op. `callback` is invoked with
-// (chunk, false) for each chunk of response data, and one final time with (errorMessage, true) if the request fails.
-bool waitForHTTPResponse(HTTPClient* httpClient, const Functor<void(StringView, bool)>& callback,
-                      u32 timeOutMillis = 1000);
-// wakeUpHTTPClient can be called from any thread as long as the HTTPClient exists. It there is a pending call to
-// waitForHTTPResponse in another thread, it returns immediately; otherwise, the next waitForHTTPResponse call will return
-// immediately.
+// Drives the request, delivering incoming response data to the request's callback. If response data is available, it
+// invokes the callback and returns immediately. If no data is available, it waits up to timeOutMillis for data to
+// arrive, but can be interrupted by other threads calling wakeUpHTTPClient. Returns false if no request is in progress;
+// true otherwise.
+bool waitForHTTPResponse(HTTPClient* httpClient, u32 timeOutMillis = 1000);
+// Can be called from any thread. If waitForHTTPResponse is currently blocked in another thread, it returns immediately;
+// otherwise, the next waitForHTTPResponse call returns immediately.
 void wakeUpHTTPClient(HTTPClient* httpClient);
 
 #endif // PLY_WITH_HTTP_CLIENT
@@ -364,16 +362,15 @@ struct HTTPServerRequest {
     // Request handlers can call this to send a complete response including provided headers and body.
     // (The underlying TCP connection may be reused for other requests/responses.)
     void sendFullResponse(HTTPServerResponse&& response, StringView body = {});
-    // This will send HTTP headers only. HTTPServerResponse::code must be OK.
-    // After that, the request handler is expected to write "streaming" data (typically just lines of JSONL
-    // over a TCP connection) to the responseStream before returning. The http server will automatically
-    // close the connection when the request handler returns.
+    // Send response headers and return the TCP output stream for raw body bytes.
+    // The connection is closed when the caller destructs the returned stream.
     Stream beginStreamingResponse(HTTPServerResponse&& response);
     // Send a minimal HTML error page with the given HTTP status code.
     void sendGenericResponse(HTTPServerResponse::Code responseCode);
 };
 
-// Bind to a port and run an HTTP server that dispatches to the given handler.
+// Bind to a port and run an HTTP server that dispatches to the given handler. Blocks for as long as the server runs.
+// Network::initialize must be called first.
 void runHTTPServer(u16 port, const Functor<void(HTTPServerRequest& request)>& requestHandler);
 
 // Built-in request handler that simply echoes the client's address and request headers (for testing).

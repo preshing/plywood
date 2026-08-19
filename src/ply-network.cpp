@@ -680,7 +680,7 @@ struct HTTPClient {
     CURL* requestHandle = nullptr;
     struct curl_slist* requestHeaders = NULL;
     HTTPClientArgs args;
-    const Functor<void(StringView, bool)>* callback = nullptr;
+    bool receivedData = false;
     // When true, enables CURLOPT_VERBOSE/CURLOPT_CERTINFO on outgoing requests and dumps
     // the SSL verification result + certificate chain to stderr after each request completes.
     bool debug = false;
@@ -703,9 +703,10 @@ void destroy(HTTPClient* httpClient) {
 }
 
 static size_t curlWriteCallback(char* ptr, size_t size, size_t nmemb, void* userdata) {
-    auto* httpClient = static_cast<const HTTPClient*>(userdata);
+    auto* httpClient = static_cast<HTTPClient*>(userdata);
     StringView data = {ptr, numericCast<u32>(size * nmemb)};
-    (*httpClient->callback)(data, false);
+    httpClient->receivedData = true;
+    httpClient->args.callback(data, false);
     return data.numBytes();
 }
 
@@ -731,6 +732,7 @@ static void dumpCurlDebugInfo(CURL* requestHandle) {
 
 void sendHTTPRequest(HTTPClient* httpClient, HTTPClientArgs&& args) {
     PLY_ASSERT(!httpClient->requestHandle);
+    PLY_ASSERT(args.callback);
     httpClient->args = std::move(args);
 
     // Create new requestHandle, configure it and add it to the multiHandle.
@@ -775,20 +777,17 @@ void cancelHTTPRequest(HTTPClient* httpClient) {
         httpClient->requestHandle = NULL;
         httpClient->requestHeaders = NULL;
     }
+    // Release the request callback and anything it captured.
+    httpClient->args.callback = {};
 }
 
 bool isHTTPRequestInProgress(const HTTPClient* httpClient) {
     return httpClient->requestHandle != nullptr;
 }
 
-bool waitForHTTPResponse(HTTPClient* httpClient, const Functor<void(StringView, bool)>& callback, u32 timeOutMillis) {
-    PLY_ASSERT(httpClient->requestHandle);
-    PLY_ASSERT(!httpClient->callback);
-    PLY_SET_IN_SCOPE(httpClient->callback, &callback);
-
-    // Handle incoming response data.
-    int stillRunning = 0;
-    CURLMcode mc = curl_multi_perform(httpClient->multiHandle, &stillRunning);
+static bool performHTTPRequest(HTTPClient* httpClient, int* stillRunning) {
+    // Handle incoming response data and update the transfer state.
+    CURLMcode mc = curl_multi_perform(httpClient->multiHandle, stillRunning);
     PLY_ASSERT(mc == CURLM_OK);
 
     // Handle completed requests and HTTP errors by iterating over available libcurl messages.
@@ -800,14 +799,16 @@ bool waitForHTTPResponse(HTTPClient* httpClient, const Functor<void(StringView, 
             // Request has completed.
             if (msg->data.result != CURLE_OK) {
                 // Internal libcurl error.
-                callback(String::format("libcurl error: {}", curl_easy_strerror(msg->data.result)), true);
+                httpClient->args.callback(String::format("libcurl error: {}", curl_easy_strerror(msg->data.result)),
+                                          true);
             } else {
                 long responseCode = 0;
                 curl_easy_getinfo(httpClient->requestHandle, CURLINFO_RESPONSE_CODE, &responseCode);
                 if (responseCode != 200) {
                     // HTTP error sent from the server.
-                    callback(String::format("Error: HTTP response code {} from server", numericCast<s64>(responseCode)),
-                             true);
+                    httpClient->args.callback(
+                        String::format("Error: HTTP response code {} from server", numericCast<s64>(responseCode)),
+                        true);
                 }
             }
             // Debug: dump the SSL verification result and certificate chain before
@@ -825,12 +826,28 @@ bool waitForHTTPResponse(HTTPClient* httpClient, const Functor<void(StringView, 
         msg = curl_multi_info_read(httpClient->multiHandle, &msgsInQueue);
     }
 
-    // Wait for more response data if needed.
-    if (httpClient->requestHandle && (stillRunning > 0)) {
-        mc = curl_multi_poll(httpClient->multiHandle, NULL, 0, timeOutMillis, NULL);
-        PLY_ASSERT(mc == CURLM_OK);
-    }
+    return true;
+}
 
+bool waitForHTTPResponse(HTTPClient* httpClient, u32 timeOutMillis) {
+    if (!httpClient->requestHandle)
+        return false;
+
+    // Process data that is already available and return immediately if any was delivered.
+    httpClient->receivedData = false;
+    int stillRunning = 0;
+    if (!performHTTPRequest(httpClient, &stillRunning))
+        return false;
+    if (httpClient->receivedData)
+        return true;
+
+    // Wait for activity, then process it before returning to the caller.
+    if (stillRunning > 0) {
+        CURLMcode mc = curl_multi_poll(httpClient->multiHandle, NULL, 0, timeOutMillis, NULL);
+        PLY_ASSERT(mc == CURLM_OK);
+        if (!performHTTPRequest(httpClient, &stillRunning))
+            return false;
+    }
     return true;
 }
 
