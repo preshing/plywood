@@ -101,8 +101,8 @@ struct WebTranscript {
 WebTranscript webTranscript;
 
 // Sends the complete page that reconstructs the transcript from JSONL events.
-static void serveWebPage(HTTPServerRequest& request) {
-    HTTPServerResponse response{HTTPServerResponse::OK};
+static void serveWebPage(HTTPServer::Request& request) {
+    HTTPServer::Response response{HTTPServer::Response::OK};
     *response.headers.insert("content-type").value = "text/html; charset=utf-8";
     *response.headers.insert("cache-control").value = "no-store";
     request.sendFullResponse(std::move(response), R"(<!doctype html>
@@ -341,8 +341,8 @@ streamEvents().catch(error => console.error(error));
 }
 
 // Streams the transcript accumulated so far, followed by new JSONL events.
-static void serveWebEvents(HTTPServerRequest& request) {
-    HTTPServerResponse response{HTTPServerResponse::OK};
+static void serveWebEvents(HTTPServer::Request& request) {
+    HTTPServer::Response response{HTTPServer::Response::OK};
     *response.headers.insert("content-type").value = "application/x-ndjson; charset=utf-8";
     *response.headers.insert("cache-control").value = "no-store";
     Stream out = request.beginStreamingResponse(std::move(response));
@@ -377,13 +377,13 @@ static void serveWebEvents(HTTPServerRequest& request) {
 }
 
 // Routes browser page and event stream requests.
-static void serveWebTranscript(HTTPServerRequest& request) {
+static void serveWebTranscript(HTTPServer::Request& request) {
     if (request.uri == "/events") {
         serveWebEvents(request);
     } else if (request.uri == "/" || request.uri == "/index.html") {
         serveWebPage(request);
     } else {
-        request.sendGenericResponse(HTTPServerResponse::NotFound);
+        request.sendGenericResponse(HTTPServer::Response::NotFound);
     }
 }
 
@@ -1203,7 +1203,7 @@ int main(int argc, const char* argv[]) {
     Thread webServerThread;
     if (options.runWebServer) {
         Network::initialize(IPV4);
-        webServerThread.run([] { runHTTPServer(8081, serveWebTranscript); });
+        webServerThread.run([] { HTTPServer::run(8081, serveWebTranscript); });
     }
 
     // Create a transcript with the user's prompt as the first turn.

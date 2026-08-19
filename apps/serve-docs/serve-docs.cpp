@@ -17,7 +17,7 @@ String docsFolder = joinPath(PLYWOOD_ROOT_DIR, "docs/build");
 //-------------------------------------
 // servePlywoodDocumentation
 //-------------------------------------
-void servePlywoodDocumentation(HTTPServerRequest& request) {
+void servePlywoodDocumentation(HTTPServer::Request& request) {
     String urlPath = request.uri;
     s32 queryPos = urlPath.find('?');
     if (queryPos >= 0) {
@@ -45,11 +45,11 @@ void servePlywoodDocumentation(HTTPServerRequest& request) {
         if (parts[0] == "static") {
             String localPath = joinPath(docsFolder, StringView{'/'}.join(parts));
             if (!FileSystem::exists(localPath)) {
-                request.sendGenericResponse(HTTPServerResponse::NotFound);
+                request.sendGenericResponse(HTTPServer::Response::NotFound);
                 return;
             }
 
-            HTTPServerResponse response{HTTPServerResponse::OK};
+            HTTPServer::Response response{HTTPServer::Response::OK};
             bool isTextFile = false;
             if (localPath.endsWith(".css")) {
                 *response.headers.insert("content-type").value = "text/css";
@@ -74,7 +74,7 @@ void servePlywoodDocumentation(HTTPServerRequest& request) {
             return;
         }
         if (parts[0].isEmpty()) {
-            HTTPServerResponse response{HTTPServerResponse::OK};
+            HTTPServer::Response response{HTTPServer::Response::OK};
             *response.headers.insert("content-type").value = "text/html";
             String templ = FileSystem::loadText(joinPath(docsFolder, "content/index.html"));
             String toc = FileSystem::loadText(joinPath(docsFolder, "content/toc.html"));
@@ -96,11 +96,11 @@ void servePlywoodDocumentation(HTTPServerRequest& request) {
             }
 
             if (!FileSystem::exists(localPath)) {
-                request.sendGenericResponse(HTTPServerResponse::NotFound);
+                request.sendGenericResponse(HTTPServer::Response::NotFound);
                 return;
             }
 
-            HTTPServerResponse response{HTTPServerResponse::OK};
+            HTTPServer::Response response{HTTPServer::Response::OK};
             *response.headers.insert("content-type").value = "text/html";
 
             if (isAjaxRequest) {
@@ -127,7 +127,7 @@ void servePlywoodDocumentation(HTTPServerRequest& request) {
         }
     }
 
-    request.sendGenericResponse(HTTPServerResponse::NotFound);
+    request.sendGenericResponse(HTTPServer::Response::NotFound);
 }
 
 //-------------------------------------
@@ -141,7 +141,7 @@ int main(int argc, const char* argv[]) {
     Network::initialize(IPV4);
     u16 port = 8080;
     getStdOut().format("Listening for connections on port {}...\n", port);
-    runHTTPServer(port, servePlywoodDocumentation);
+    HTTPServer::run(port, servePlywoodDocumentation);
     Network::shutdown();
     return 0;
 }

@@ -1,9 +1,14 @@
-﻿`ply-system.h`: System
-======================
+﻿`ply-system.h`: System Interface
+================================
 
-`ply-system.h` (~4,900 lines) is Plywood's main header file. Its contents are referred to as the System API. It exposes basic operating system services, data structures and other primitives. When `ply-system.h` is included in a project, `ply-system.cpp` should be compiled and linked as well.
+This is where Plywood provides cross-platform access to basic operating system services such as memory management, timers, file systems, threads and processes. Whenever `ply-system.h` is included in a project, `ply-system.cpp` must also be compiled and linked in.
 
-The System API is organized into the following categories:
+| | |
+| --- | --- |
+| `ply-system.h` | API declarations | ~4,900 lines |
+| `ply-system.cpp` | Implementation | ~6,800 lines |
+
+The System Interface is a single-header, monolithic API organized into the following categories:
 
 - [Preprocessor Macros](/docs/system/preprocessor-macros.md): Identifies the target platform; defines assertions and other macros.
 - [Numeric Functions and Types](/docs/system/numeric.md): Fixed-sized integers and primitive functions.
@@ -21,9 +26,9 @@ The System API is organized into the following categories:
 
 You can customize this module by defining any of the following preprocessor macros in your project's build settings.
 
-| | |
-| --- | --- |
-| `PLY_CONFIG_FILE` | The path to a file that will be automatically included by [`<ply-system.h>`](/docs/common). Additional configuration options can be placed here. |
-| `PLY_WITH_ASSERTS` | Controls whether [assertions](/docs/system/preprocessor-macros.md#assertions) are enabled. Default is 1 in Debug configurations, 0 in other configurations. |
-| `PLY_OVERRIDE_NEW` | Controls whether C++'s built-in `new` and `delete` operators should allocate from [Plywood's built-in heap](/docs/system/memory/heap.md). Default is 1. Projects that already use their own `new`/`delete` overloads should set this to 0. |
-| `PLY_WITH_DIRECTORY_WATCHER` | When set to 1, enables the optional [`DirectoryWatcher`](/docs/system/file-system.md#directory-watcher) feature. Default is 0. |
+| Name               | Description        | Default |
+| ------------------ | ------------------ | ------- |
+| `PLY_CONFIG_FILE`  | The path to another file that will be included by [`ply-system.h`](/docs/common). Additional configuration options can be put here. | _None_ |
+| `PLY_WITH_ASSERTS` | Controls whether [assertions](/docs/system/preprocessor-macros.md#assertions) are enabled. | 1 in Debug builds; 0 otherwise |
+| `PLY_OVERRIDE_NEW` | Controls whether C++'s built-in `new` and `delete` operators should allocate from [Plywood's built-in heap](/docs/system/memory/heap.md). Projects already having their own `new`/`delete` overloads should set this to 0. | 1 |
+| `PLY_WITH_DIRECTORY_WATCHER` | Enables the optional [`DirectoryWatcher`](/docs/system/file-system.md#directory-watcher) feature. | 0 |

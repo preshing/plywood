@@ -675,35 +675,35 @@ IPAddress Network::resolveHostName(StringView hostName, IPVersion ipVersion) {
 
 // HTTPClient uses libcurl's multi interface because it's the only supported way to immediately cancel a
 // partially completed HTTP request.
-struct HTTPClient {
+struct HTTPClientImpl : HTTPClient {
     CURLM* multiHandle = nullptr;
     CURL* requestHandle = nullptr;
     struct curl_slist* requestHeaders = NULL;
-    HTTPClientArgs args;
+    Args args;
     bool receivedData = false;
     // When true, enables CURLOPT_VERBOSE/CURLOPT_CERTINFO on outgoing requests and dumps
     // the SSL verification result + certificate chain to stderr after each request completes.
     bool debug = false;
 
-    HTTPClient() {
+    HTTPClientImpl() {
         this->multiHandle = curl_multi_init();
     }
-    ~HTTPClient() {
-        cancelHTTPRequest(this);
+    ~HTTPClientImpl() {
+        this->cancelRequest();
         curl_multi_cleanup(this->multiHandle);
     }
 };
 
-Owned<HTTPClient> createHTTPClient() {
-    return Owned<HTTPClient>::adopt(Heap::create<HTTPClient>());
+Owned<HTTPClient> HTTPClient::create() {
+    return Owned<HTTPClient>::adopt(Heap::create<HTTPClientImpl>());
 }
 
-void destroy(HTTPClient* httpClient) {
-    Heap::destroy(httpClient);
+void HTTPClient::destroy() {
+    Heap::destroy(static_cast<HTTPClientImpl*>(this));
 }
 
 static size_t curlWriteCallback(char* ptr, size_t size, size_t nmemb, void* userdata) {
-    auto* httpClient = static_cast<HTTPClient*>(userdata);
+    auto* httpClient = static_cast<HTTPClientImpl*>(userdata);
     StringView data = {ptr, numericCast<u32>(size * nmemb)};
     httpClient->receivedData = true;
     httpClient->args.callback(data, false);
@@ -730,7 +730,8 @@ static void dumpCurlDebugInfo(CURL* requestHandle) {
     }
 }
 
-void sendHTTPRequest(HTTPClient* httpClient, HTTPClientArgs&& args) {
+void HTTPClient::beginRequest(Args&& args) {
+    HTTPClientImpl* httpClient = static_cast<HTTPClientImpl*>(this);
     PLY_ASSERT(!httpClient->requestHandle);
     PLY_ASSERT(args.callback);
     httpClient->args = std::move(args);
@@ -750,7 +751,7 @@ void sendHTTPRequest(HTTPClient* httpClient, HTTPClientArgs&& args) {
     curl_easy_setopt(httpClient->requestHandle, CURLOPT_TIMEOUT, 60L);
     curl_easy_setopt(httpClient->requestHandle, CURLOPT_CONNECTTIMEOUT, 15L);
     // Debug: enable verbose output and capture the peer certificate chain for dumping
-    // after the request completes (see waitForHTTPResponse()).
+    // after the request completes (see receiveResponse()).
     if (httpClient->debug) {
         curl_easy_setopt(httpClient->requestHandle, CURLOPT_VERBOSE, 1L);
         curl_easy_setopt(httpClient->requestHandle, CURLOPT_CERTINFO, 1L);
@@ -769,7 +770,8 @@ void sendHTTPRequest(HTTPClient* httpClient, HTTPClientArgs&& args) {
     curl_multi_add_handle(httpClient->multiHandle, httpClient->requestHandle);
 }
 
-void cancelHTTPRequest(HTTPClient* httpClient) {
+void HTTPClient::cancelRequest() {
+    HTTPClientImpl* httpClient = static_cast<HTTPClientImpl*>(this);
     if (httpClient->requestHandle != nullptr) {
         curl_multi_remove_handle(httpClient->multiHandle, httpClient->requestHandle);
         curl_easy_cleanup(httpClient->requestHandle);
@@ -781,11 +783,12 @@ void cancelHTTPRequest(HTTPClient* httpClient) {
     httpClient->args.callback = {};
 }
 
-bool isHTTPRequestInProgress(const HTTPClient* httpClient) {
+bool HTTPClient::isRequestInProgress() const {
+    const HTTPClientImpl* httpClient = static_cast<const HTTPClientImpl*>(this);
     return httpClient->requestHandle != nullptr;
 }
 
-static bool performHTTPRequest(HTTPClient* httpClient, int* stillRunning) {
+static bool performHTTPRequest(HTTPClientImpl* httpClient, int* stillRunning) {
     // Handle incoming response data and update the transfer state.
     CURLMcode mc = curl_multi_perform(httpClient->multiHandle, stillRunning);
     PLY_ASSERT(mc == CURLM_OK);
@@ -816,7 +819,7 @@ static bool performHTTPRequest(HTTPClient* httpClient, int* stillRunning) {
             if (httpClient->debug)
                 dumpCurlDebugInfo(httpClient->requestHandle);
             // Destroy the request.
-            cancelHTTPRequest(httpClient);
+            httpClient->cancelRequest();
             return false;
         } else {
             // CURLMSG_DONE is currently the only message type defined by curl.
@@ -829,7 +832,8 @@ static bool performHTTPRequest(HTTPClient* httpClient, int* stillRunning) {
     return true;
 }
 
-bool waitForHTTPResponse(HTTPClient* httpClient, u32 timeOutMillis) {
+bool HTTPClient::receiveResponse(u32 timeOutMillis) {
+    HTTPClientImpl* httpClient = static_cast<HTTPClientImpl*>(this);
     if (!httpClient->requestHandle)
         return false;
 
@@ -851,7 +855,8 @@ bool waitForHTTPResponse(HTTPClient* httpClient, u32 timeOutMillis) {
     return true;
 }
 
-void wakeUpHTTPClient(HTTPClient* httpClient) {
+void HTTPClient::wakeUp() {
+    HTTPClientImpl* httpClient = static_cast<HTTPClientImpl*>(this);
     curl_multi_wakeup(httpClient->multiHandle);
 }
 
@@ -867,7 +872,7 @@ void wakeUpHTTPClient(HTTPClient* httpClient) {
 
 enum class HTTPServerResponseType { None, Full, Streaming };
 
-struct HTTPServerRequestImpl : HTTPServerRequest {
+struct HTTPServerRequestImpl : HTTPServer::Request {
     // Used internally.
     Stream* responseStream = nullptr;
     HTTPServerResponseType responseType = HTTPServerResponseType::None;
@@ -947,26 +952,26 @@ bool readChunkedBody(Stream& in, String* body) {
 }
 
 // Map HTTP status code to standard reason phrase
-StringView getResponseDescription(HTTPServerResponse::Code responseCode) {
+StringView getResponseDescription(HTTPServer::Response::Code responseCode) {
     switch (responseCode) {
-        case HTTPServerResponse::OK:
+        case HTTPServer::Response::OK:
             return "OK";
-        case HTTPServerResponse::PermanentRedirect:
+        case HTTPServer::Response::PermanentRedirect:
             return "Moved Permanently";
-        case HTTPServerResponse::TemporaryRedirect:
+        case HTTPServer::Response::TemporaryRedirect:
             return "Found";
-        case HTTPServerResponse::BadRequest:
+        case HTTPServer::Response::BadRequest:
             return "Bad Request";
-        case HTTPServerResponse::NotFound:
+        case HTTPServer::Response::NotFound:
             return "Not Found";
-        case HTTPServerResponse::InternalError:
+        case HTTPServer::Response::InternalError:
         default:
             return "Internal Server Error";
     }
 }
 
 // Write an HTTP status line and header block
-void writeResponseHeaders(Stream& out, const HTTPServerResponse& response) {
+void writeResponseHeaders(Stream& out, const HTTPServer::Response& response) {
     // Emit the response head before writing any body bytes.
     StringView message = getResponseDescription(response.code);
     out.format("HTTP/1.1 {} {}\r\n", response.code, message);
@@ -978,7 +983,7 @@ void writeResponseHeaders(Stream& out, const HTTPServerResponse& response) {
 }
 
 // Send a complete HTTP response whose body framing allows connection reuse
-void HTTPServerRequest::sendFullResponse(HTTPServerResponse&& response, StringView body) {
+void HTTPServer::Request::sendFullResponse(Response&& response, StringView body) {
     HTTPServerRequestImpl* req = static_cast<HTTPServerRequestImpl*>(this);
     PLY_ASSERT(req->responseType == HTTPServerResponseType::None);
 
@@ -1005,7 +1010,7 @@ void HTTPServerRequest::sendFullResponse(HTTPServerResponse&& response, StringVi
 }
 
 // Send headers for a raw streaming response and transfer the output stream to the handler
-Stream HTTPServerRequest::beginStreamingResponse(HTTPServerResponse&& response) {
+Stream HTTPServer::Request::beginStreamingResponse(Response&& response) {
     HTTPServerRequestImpl* req = static_cast<HTTPServerRequestImpl*>(this);
     PLY_ASSERT(req->responseType == HTTPServerResponseType::None);
 
@@ -1021,9 +1026,9 @@ Stream HTTPServerRequest::beginStreamingResponse(HTTPServerResponse&& response) 
 }
 
 // Write a minimal HTML error page with the given status code
-void HTTPServerRequest::sendGenericResponse(HTTPServerResponse::Code responseCode) {
+void HTTPServer::Request::sendGenericResponse(Response::Code responseCode) {
     HTTPServerRequestImpl* req = static_cast<HTTPServerRequestImpl*>(this);
-    HTTPServerResponse response{responseCode};
+    Response response{responseCode};
     *response.headers.insert("content-type").value = "text/html";
     StringView message = getResponseDescription(responseCode);
     req->sendFullResponse(std::move(response), String::format(R"(<html>
@@ -1038,8 +1043,8 @@ void HTTPServerRequest::sendGenericResponse(HTTPServerResponse::Code responseCod
 }
 
 // Send an HTML page that echoes request details for testing
-void serveEchoPage(HTTPServerRequest& request) {
-    HTTPServerResponse response{HTTPServerResponse::OK};
+void HTTPServer::echoPage(Request& request) {
+    Response response{Response::OK};
     *response.headers.insert("content-type").value = "text/html";
     MemStream out;
     out.write(R"(<html>
@@ -1066,7 +1071,7 @@ void serveEchoPage(HTTPServerRequest& request) {
 }
 
 // Parse an HTTP request from a TCP connection and dispatch it to the handler
-void handleRequest(TCPConnection* tcpConn, const Functor<void(HTTPServerRequest& request)>& requestHandler) {
+void handleRequest(TCPConnection* tcpConn, const Functor<void(HTTPServer::Request& request)>& requestHandler) {
     Stream in = tcpConn->createInStream();
     Stream out = tcpConn->createOutStream();
 
@@ -1083,13 +1088,13 @@ void handleRequest(TCPConnection* tcpConn, const Functor<void(HTTPServerRequest&
         do {
             requestLine = readLine(in);
             if (requestLine.isEmpty() && in.atEof) {
-                request.sendGenericResponse(HTTPServerResponse::BadRequest);
+                request.sendGenericResponse(HTTPServer::Response::BadRequest);
                 return;
             }
         } while (requestLine.trim().isEmpty());
         Array<StringView> tokens = requestLine.trim().split(" ");
         if (tokens.numItems() != 3) {
-            request.sendGenericResponse(HTTPServerResponse::BadRequest);
+            request.sendGenericResponse(HTTPServer::Response::BadRequest);
             return;
         }
         request.method = tokens[0];
@@ -1100,19 +1105,19 @@ void handleRequest(TCPConnection* tcpConn, const Functor<void(HTTPServerRequest&
         for (;;) {
             String line = readLine(in);
             if (line.isEmpty() && in.atEof) {
-                request.sendGenericResponse(HTTPServerResponse::BadRequest);
+                request.sendGenericResponse(HTTPServer::Response::BadRequest);
                 return;
             }
             if (line.trim().isEmpty())
                 break; // Blank line.
             if (isWhite(line[0])) {
                 // FIXME: Support unfolding https://tools.ietf.org/html/rfc822#section-3.1
-                request.sendGenericResponse(HTTPServerResponse::BadRequest);
+                request.sendGenericResponse(HTTPServer::Response::BadRequest);
                 return;
             }
             s32 colonPos = line.find(':');
             if (colonPos < 0) {
-                request.sendGenericResponse(HTTPServerResponse::BadRequest);
+                request.sendGenericResponse(HTTPServer::Response::BadRequest);
                 return;
             }
             *request.headers.insert(line.left(colonPos).trim().lower()).value = line.substr(colonPos + 1).trim();
@@ -1138,20 +1143,20 @@ void handleRequest(TCPConnection* tcpConn, const Functor<void(HTTPServerRequest&
         if (transferEncodingPtr && transferEncodingPtr->lower() == "chunked") {
             // Chunked transfer encoding.
             if (!readChunkedBody(in, &request.body)) {
-                request.sendGenericResponse(HTTPServerResponse::BadRequest);
+                request.sendGenericResponse(HTTPServer::Response::BadRequest);
                 return;
             }
         } else if (contentLengthPtr) {
             // Explicit content length.
             u64 contentLength = 0;
             if (!contentLengthPtr->match("%d", &contentLength) || (contentLength > maxRepresentableValue<u32>())) {
-                request.sendGenericResponse(HTTPServerResponse::BadRequest);
+                request.sendGenericResponse(HTTPServer::Response::BadRequest);
                 return;
             }
             if (contentLength > 0) {
                 request.body = String::allocate(numericCast<u32>(contentLength));
                 if (in.read(request.body.mutStringView()) != contentLength) {
-                    request.sendGenericResponse(HTTPServerResponse::BadRequest);
+                    request.sendGenericResponse(HTTPServer::Response::BadRequest);
                     return;
                 }
             }
@@ -1175,7 +1180,7 @@ void handleRequest(TCPConnection* tcpConn, const Functor<void(HTTPServerRequest&
         requestHandler(request);
         if (request.responseType == HTTPServerResponseType::None) {
             // No response was sent.
-            request.sendGenericResponse(HTTPServerResponse::InternalError);
+            request.sendGenericResponse(HTTPServer::Response::InternalError);
             return;
         }
         if (!request.canReuseConnection)
@@ -1184,7 +1189,7 @@ void handleRequest(TCPConnection* tcpConn, const Functor<void(HTTPServerRequest&
 }
 
 // Accept connections on a port and handle each request in a new thread
-void runHTTPServer(u16 port, const Functor<void(HTTPServerRequest& request)>& requestHandler) {
+void HTTPServer::run(u16 port, const Functor<void(Request& request)>& requestHandler) {
     TCPListener listener = Network::bindTcp(port);
     if (!listener.isValid()) {
         getStdErr().format("Error: Can't bind to port {}\n", port);

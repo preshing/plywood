@@ -279,102 +279,114 @@ public:
 
 #if PLY_WITH_HTTP_CLIENT
 
-//  ▄▄  ▄▄ ▄▄▄▄▄▄ ▄▄▄▄▄▄ ▄▄▄▄▄       ▄▄▄▄  ▄▄▄  ▄▄                ▄▄
-//  ██  ██   ██     ██   ██  ██     ██  ▀▀  ██  ▄▄  ▄▄▄▄  ▄▄▄▄▄  ▄██▄▄
-//  ██▀▀██   ██     ██   ██▀▀▀      ██      ██  ██ ██▄▄██ ██  ██  ██
-//  ██  ██   ██     ██   ██         ▀█▄▄█▀ ▄██▄ ██ ▀█▄▄▄  ██  ██  ▀█▄▄
+//  ▄▄  ▄▄ ▄▄▄▄▄▄ ▄▄▄▄▄▄ ▄▄▄▄▄   ▄▄▄▄  ▄▄▄  ▄▄                ▄▄
+//  ██  ██   ██     ██   ██  ██ ██  ▀▀  ██  ▄▄  ▄▄▄▄  ▄▄▄▄▄  ▄██▄▄
+//  ██▀▀██   ██     ██   ██▀▀▀  ██      ██  ██ ██▄▄██ ██  ██  ██
+//  ██  ██   ██     ██   ██     ▀█▄▄█▀ ▄██▄ ██ ▀█▄▄▄  ██  ██  ▀█▄▄
 //
 
 //-----------------------------------------------------------
 // HTTPClient encapsulates a single HTTP request.
 // The same HTTPClient object can be reused across multiple requests.
-// The API is not thread-safe and is intended to be driven from a single thread except for wakeUpHTTPClient.
-// All functions except waitForHTTPResponse are designed to return as quickly as possible.
+// The API is not thread-safe and is intended to be driven from a single thread except for wakeUp.
+// All functions are designed to return as quickly as possible.
 //-----------------------------------------------------------
-struct HTTPClientArgs {
-    String url;
-    Map<String, String> headers; // HTTP headers, e.g. {"Content-Type" => "application/json"}.
-    String body;
-    Functor<void(StringView, bool)> callback; // Receives (chunk, false), or (errorMessage, true) on failure.
-    // When true, verify the peer against the cacert.pem bundle shipped next to the
-    // executable (CURLOPT_CAINFO). When false, TLS verification is disabled, which is
-    // only appropriate for trusted localhost endpoints.
-    bool useBundledCaCert = true;
+struct HTTPClient {
+    struct Args {
+        String url;
+        Map<String, String> headers; // HTTP headers, e.g. {"Content-Type" => "application/json"}.
+        String body;
+        Functor<void(StringView, bool)> callback; // Receives (chunk, false), or (errorMessage, true) on failure.
+        // When true, verify the peer against the cacert.pem bundle shipped next to the
+        // executable (CURLOPT_CAINFO). When false, TLS verification is disabled, which is
+        // only appropriate for trusted localhost endpoints.
+        bool useBundledCaCert = true;
+    };
+
+    static Owned<HTTPClient> create();
+    void destroy();
+
+    // Begin a new request. Must not be called while a request is already in progress.
+    void beginRequest(Args&& args);
+    // Cancel any request in progress. The HTTPClient can be reused after this returns.
+    void cancelRequest();
+    // Returns true as long as a request is still in progress.
+    bool isRequestInProgress() const;
+    // Drives the request, delivering incoming response data to the request's callback. If response data is available,
+    // it invokes the callback and returns immediately. If no data is available, it waits up to timeOutMillis for data
+    // to arrive, but can be interrupted by other threads calling wakeUp. Returns false if no request is in progress;
+    // true otherwise.
+    bool receiveResponse(u32 timeOutMillis = 1000);
+    // Can be called from any thread. If receiveResponse is currently blocked in another thread, it returns immediately;
+    // otherwise, the next receiveResponse call returns immediately.
+    void wakeUp();
+
+private:
+    // Only the hidden subclass HTTPClientImpl can construct an HTTPClient.
+    friend struct HTTPClientImpl;
+    HTTPClient() = default;
+    HTTPClient(const HTTPClient&) = delete;
+    HTTPClient& operator=(const HTTPClient&) = delete;
+    HTTPClient(HTTPClient&&) = delete;
+    HTTPClient& operator=(HTTPClient&&) = delete;
 };
-
-struct HTTPClient;
-
-Owned<HTTPClient> createHTTPClient();
-void destroy(HTTPClient* httpClient);
-// Start a new request. Must not be called while a request is already in progress.
-void sendHTTPRequest(HTTPClient* httpClient, HTTPClientArgs&& args);
-// Cancel any request in progress. The HTTPClient can be reused after this returns.
-void cancelHTTPRequest(HTTPClient* httpClient);
-// Returns true as long as a request is still in progress.
-bool isHTTPRequestInProgress(const HTTPClient* httpClient);
-// Drives the request, delivering incoming response data to the request's callback. If response data is available, it
-// invokes the callback and returns immediately. If no data is available, it waits up to timeOutMillis for data to
-// arrive, but can be interrupted by other threads calling wakeUpHTTPClient. Returns false if no request is in progress;
-// true otherwise.
-bool waitForHTTPResponse(HTTPClient* httpClient, u32 timeOutMillis = 1000);
-// Can be called from any thread. If waitForHTTPResponse is currently blocked in another thread, it returns immediately;
-// otherwise, the next waitForHTTPResponse call returns immediately.
-void wakeUpHTTPClient(HTTPClient* httpClient);
 
 #endif // PLY_WITH_HTTP_CLIENT
 
 #if PLY_WITH_HTTP_SERVER
 
-//  ▄▄  ▄▄ ▄▄▄▄▄▄ ▄▄▄▄▄▄ ▄▄▄▄▄       ▄▄▄▄
-//  ██  ██   ██     ██   ██  ██     ██  ▀▀  ▄▄▄▄  ▄▄▄▄▄  ▄▄   ▄▄  ▄▄▄▄  ▄▄▄▄▄
-//  ██▀▀██   ██     ██   ██▀▀▀       ▀▀▀█▄ ██▄▄██ ██  ▀▀ ▀█▄ ▄█▀ ██▄▄██ ██  ▀▀
-//  ██  ██   ██     ██   ██         ▀█▄▄█▀ ▀█▄▄▄  ██       ▀█▀   ▀█▄▄▄  ██
+//  ▄▄  ▄▄ ▄▄▄▄▄▄ ▄▄▄▄▄▄ ▄▄▄▄▄   ▄▄▄▄
+//  ██  ██   ██     ██   ██  ██ ██  ▀▀  ▄▄▄▄  ▄▄▄▄▄  ▄▄   ▄▄  ▄▄▄▄  ▄▄▄▄▄
+//  ██▀▀██   ██     ██   ██▀▀▀   ▀▀▀█▄ ██▄▄██ ██  ▀▀ ▀█▄ ▄█▀ ██▄▄██ ██  ▀▀
+//  ██  ██   ██     ██   ██     ▀█▄▄█▀ ▀█▄▄▄  ██       ▀█▀   ▀█▄▄▄  ██
 //
 
-// HTTPServerResponse
-struct HTTPServerResponse {
-    enum Code {
-        OK = 200,
-        PermanentRedirect = 301,
-        TemporaryRedirect = 302,
-        BadRequest = 400,
-        NotFound = 404,
-        InternalError = 500,
+struct HTTPServer {
+    // Argument type used when the callback invokes a server response function.
+    struct Response {
+        enum Code {
+            OK = 200,
+            PermanentRedirect = 301,
+            TemporaryRedirect = 302,
+            BadRequest = 400,
+            NotFound = 404,
+            InternalError = 500,
+        };
+
+        Code code = InternalError;
+        // Header keys are stored in all lowercase.
+        Map<String, String> headers;
+        explicit Response(Code code) : code{code} {
+        }
     };
 
-    Code code = InternalError;
-    // Header keys are stored in all lowercase.
-    Map<String, String> headers;
-    explicit HTTPServerResponse(Code code) : code{code} {
-    }
+    // Request has additional hidden members in the HTTPRequestImpl subclass.
+    struct Request {
+        IPAddress clientAddr;
+        u16 clientPort = 0;
+        String method;
+        String uri;
+        String httpVersion;
+        Map<String, String> headers;
+        String body;
+
+        // Send a complete response using the provided headers and body.
+        // The underlying TCP connection may be reused for other requests/responses.
+        void sendFullResponse(Response&& response, StringView body = {});
+        // Send response headers and returns a Stream to write the remaining body.
+        // The connection will be closed when the Stream is destroyed.
+        Stream beginStreamingResponse(Response&& response);
+        // Send a basic HTML error page with the given HTTP status code.
+        void sendGenericResponse(Response::Code responseCode);
+    };
+
+    // Bind to the given port and run an HTTP server that dispatches incoming requests to the given callback function.
+    // This function never returns.
+    static void run(u16 port, const Functor<void(Request& request)>& requestHandler);
+
+    // Sample request handler for testing purposes.
+    static void echoPage(Request& request);
 };
-
-// HTTPServerRequest has additional hidden members in the HTTPRequestImpl subclass.
-struct HTTPServerRequest {
-    IPAddress clientAddr;
-    u16 clientPort = 0;
-    String method;
-    String uri;
-    String httpVersion;
-    Map<String, String> headers;
-    String body;
-
-    // Request handlers can call this to send a complete response including provided headers and body.
-    // (The underlying TCP connection may be reused for other requests/responses.)
-    void sendFullResponse(HTTPServerResponse&& response, StringView body = {});
-    // Send response headers and return the TCP output stream for raw body bytes.
-    // The connection is closed when the caller destructs the returned stream.
-    Stream beginStreamingResponse(HTTPServerResponse&& response);
-    // Send a minimal HTML error page with the given HTTP status code.
-    void sendGenericResponse(HTTPServerResponse::Code responseCode);
-};
-
-// Bind to a port and run an HTTP server that dispatches to the given handler. Blocks for as long as the server runs.
-// Network::initialize must be called first.
-void runHTTPServer(u16 port, const Functor<void(HTTPServerRequest& request)>& requestHandler);
-
-// Built-in request handler that simply echoes the client's address and request headers (for testing).
-void serveEchoPage(HTTPServerRequest& request);
 
 #endif // PLY_WITH_HTTP_SERVER
 

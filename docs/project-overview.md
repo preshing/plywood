@@ -5,7 +5,7 @@ The Plywood runtime library consists of four main components and several higher-
 
 **Main Runtime Library:**
 
-- [System (`ply-system.h`)](/docs/system/index.md): Memory, timers, file systems, threads and processes.
+- [System Interface (`ply-system.h`)](/docs/system/index.md): Memory, timers, file systems, threads and processes.
 - [Networking (`ply-network.h`)](/docs/networking.md): Client and server-side TCP and HTTP.
 - [Math (`ply-math.h`)](/docs/math.md): Scalar and vector math suitable for games and UI layouts.
 - [Reflection (`ply-reflect.h`)](/docs/reflect.md): Generic processing of data stored in Plywood data structures.
@@ -25,6 +25,8 @@ The Plywood runtime library consists of four main components and several higher-
 - [`generate-docs`](/docs/apps/generate-docs.md): Generate the HTML version of Plywood's documentation.
 - [`serve-docs`](/docs/apps/serve-docs.md): Serve the HTML documentation locally.
 - [`banner-comment`](/docs/apps/banner-comment.md): Generate banner comments.
+
+Each component is implemented by a single pair of `.h` and `.cpp` files in the `src` folder. Function-level linking is recommended, as it will automatically exclude unused features from the output executable, reducing its final size.
 
 ## Directory Structure
 
@@ -62,9 +64,9 @@ plywood/
 └── agent.json                  # Agent harness settings.
 ```
 
-## Namespace
+## The `ply` Namespace
 
-All Plywood functions and types are defined in the `ply` namespace. Some higher-level libraries create nested namespaces, such as `ply::markdown`. When possible, importing `ply` directly into the global namespace is a convenient way to simplify name lookup.
+All Plywood functions and types are defined in the `ply` namespace. Some higher-level libraries create nested namespaces, such as `ply::markdown`. If possible, importing `ply` directly into the global namespace is a convenient way to simplify name lookup.
 
 ```
 #include <ply-markdown.h>

@@ -1,36 +1,9 @@
 ﻿`ply-network.h`: Networking
 ===========================
 
-Plywood provides a portable networking API for TCP/IP communication. The API supports both IPv4 and IPv6 addresses.
+Plywood provides a portable API for TCP/IP networking supporting both IPv4 and IPv6 addresses, with optional HTTP support.
 
-Before using any networking functions, you must call `Network::initialize()`. When finished, call `Network::shutdown()`.
-
-## `IPAddress`
-
-Represents an IP address (either IPv4 or IPv6).
-
-{context class=IPAddress}
-
-`u32 netOrdered[4]`
-> The raw address bytes in network byte order. For IPv4, only `netOrdered[0]` is used.
-
-`IPVersion version() const`
-> Returns `IPVersion::V4` or `IPVersion::V6`.
-
-`bool isNull() const`
-> Returns `true` if this is a null/uninitialized address.
-
-`static constexpr IPAddress localHost(IPVersion ipVersion)`
-> Returns the localhost address (127.0.0.1 for IPv4, ::1 for IPv6).
-
-`static constexpr IPAddress from_ipv4(u32 netOrdered)`
-> Creates an IPv4 address from a 32-bit value in network byte order.
-
-`String toString() const`
-> Returns a human-readable string representation of the address.
-
-`static IPAddress fromString()`
-> Parses an IP address from a string.
+Before using any networking functions, call `Network::initialize()`. When finished, call `Network::shutdown()`.
 
 ## `Network`
 
@@ -56,19 +29,42 @@ The `Network` class provides static methods for network initialization and conne
 `static IPResult lastResult()`
 > Returns the result code from the most recent network operation.
 
+## `IPAddress`
+
+Represents an IP address (either IPv4 or IPv6).
+
+{context class=IPAddress}
+
+`u32 netOrdered[4]`
+> The raw address bytes in network byte order. For IPv4, only `netOrdered[0]` is used.
+
+`IPVersion version() const`
+> Returns `IPVersion::V4` or `IPVersion::V6`.
+
+`bool isNull() const`
+> Returns `true` if this is a null/uninitialized address.
+
+`static constexpr IPAddress localHost(IPVersion ipVersion)`
+> Returns the localhost address (`127.0.0.1` for IPv4, `::1` for IPv6).
+
+`static constexpr IPAddress from_ipv4(u32 netOrdered)`
+> Creates an IPv4 address from a 32-bit value in network byte order.
+
+`String toString() const`
+> Returns a human-readable string representation of the address.
+
+`static IPAddress fromString()`
+> Parses an IP address from a string.
+
 ## `TCPConnection`
 
-Represents an established TCP connection to a remote host.
+Represents an established TCP connection to a remote host. Exposes input and output pipes as public data members. Use `createInStream()` and `createOutStream()` to create `Stream` wrappers around them.
 
 {context class=TCPConnection}
 
 `PipeWinsock inPipe`
 `PipeWinsock outPipe`
-> The underlying pipe objects for reading and writing. Typically, use `createInStream()` and `createOutStream()` instead.
-
-`TCPConnection()`
-`~TCPConnection()`
-> Constructor and destructor. Connections are typically created via `Network::connectTcp()` or `TCPListener::accept()`.
+> The underlying pipe objects for reading and writing.
 
 `const IPAddress& remoteAddress() const`
 > Returns the IP address of the remote host.
@@ -87,18 +83,9 @@ Represents an established TCP connection to a remote host.
 
 ## `TCPListener`
 
-A `TCPListener` listens for incoming TCP connections on a specific port.
+A `TCPListener` listens for incoming TCP connections on a specific port. Supports move assignment.
 
 {context class=TCPListener}
-
-`TCPListener(SOCKET listenSocket = INVALID_SOCKET)`
-> Constructs a listener from a socket handle. Typically created via `Network::bindTcp()`.
-
-`TCPListener(TCPListener&& other)`
-> Move constructor.
-
-`TCPListener& operator=(TCPListener&& other)`
-> Move assignment.
 
 `bool isValid()`
 > Returns `true` if the listener is bound to a valid socket.
@@ -135,8 +122,11 @@ Network::shutdown();
 
 ## `HTTPClient`
 
-Setting `PLY_WITH_HTTP_CLIENT=1` enables `HTTPClient`, which encapsulates HTTP requests. The `HTTPClient` API is not thread-safe and is intended to be driven from a single
-thread except for `wakeUpHTTPClient`. All functions are designed to return as quickly as possible, so they can be used in an application's main loop without causing frame spikes. Requires [libcurl](https://curl.se/libcurl/) to be linked and initialized using [`curl_global_init`](https://curl.se/libcurl/c/curl_global_init.html).
+`HTTPClient` is an optional class for making HTTP requests to remote servers.
+To enable it, set the preprocessor definition `PLY_WITH_HTTP_CLIENT=1` in your project's settings.
+`HTTPClient`'s member functions aren't thread-safe and are meant to be called from a single thread except for `HTTPClient::wakeUp`.
+All member functions are designed to return as quickly as possible, so they can be used in an application's main loop without causing frame delays.
+Requires [libcurl](https://curl.se/libcurl/) to be linked and initialized.
 
 ```
 #include <ply-network.h>
@@ -150,8 +140,8 @@ int main() {
         return 1;
 
     // Perform an HTTP request.
-    Owned<HTTPClient> client = createHTTPClient();
-    HTTPClientArgs args;
+    Owned<HTTPClient> client = HTTPClient::create();
+    HTTPClient::Args args;
     args.url = "https://plywood.dev";
     args.callback = [](StringView data, bool isError) {
         if (isError) {
@@ -160,9 +150,9 @@ int main() {
             getStdOut().write(data);
         }
     };
-    sendHTTPRequest(client, std::move(args));
-    while (waitForHTTPResponse(client)) {
-        // Response data is delivered to `callback` inside waitForHTTPResponse().
+    client->beginRequest(std::move(args));
+    while (client->receiveResponse()) {
+        // Response data is delivered to `callback` inside receiveResponse().
     }
     client.clear();
 
@@ -172,17 +162,17 @@ int main() {
 }
 ```
 
-`Owned<HTTPClient> createHTTPClient()`
+`static Owned<HTTPClient> HTTPClient::create()`
 > Creates a new `HTTPClient`.
 
 `void destroy(HTTPClient* httpClient)`
-> Destroys an `HTTPClient` created by `createHTTPClient()`. Any in-progress request is cancelled first.
+> Destroys an `HTTPClient`. Any in-progress request is immediately cancelled.
 
-`void sendHTTPRequest(HTTPClient* httpClient, HTTPClientArgs&& args)`
+`void HTTPClient::beginRequest(Args&& args)`
 > Starts a new request. Must not be called while a request is already in progress.
-> `HTTPClientArgs` is defined as follows:
+> `HTTPClient::Args` is defined as follows:
 > ```
-> struct HTTPClientArgs {
+> struct Args {
 >     String url;
 >     Map<String, String> headers;
 >     String body;
@@ -191,36 +181,39 @@ int main() {
 > };
 > ```
 
-`void cancelHTTPRequest(HTTPClient* httpClient)`
-> Cancels any request in progress. After this returns, `isHTTPRequestInProgress()` returns `false`.
-> It's OK to call `sendHTTPRequest` on the same `HTTPClient` again after this.
+`void HTTPClient::cancelRequest()`
+> Cancels any request in progress. After this returns, `isRequestInProgress()` returns `false`.
+> It's safe to call `beginRequest()` on the same `HTTPClient` again after this.
 
-`bool isHTTPRequestInProgress(const HTTPClient* httpClient)`
+`bool HTTPClient::isRequestInProgress() const`
 > Returns `true` while a request is in progress.
 
-`bool waitForHTTPResponse(HTTPClient* httpClient, u32 timeOutMillis = 1000)`
+`bool HTTPClient::receiveResponse(u32 timeOutMillis = 1000)`
 > Drives the request, delivering incoming response data to the request's callback. If response data is available, it
 > invokes the callback and returns immediately. If no data is available, it waits up to `timeOutMillis` for data to arrive,
-> but can be interrupted by other threads calling `wakeUpHTTPClient()`. When `timeOutMillis` is 0, returns as soon as all
+> but can be interrupted by other threads calling `wakeUp()`. When `timeOutMillis` is 0, returns as soon as all
 > available data is processed. Returns `false` if no request is in progress; `true` otherwise.
 
-`void wakeUpHTTPClient(HTTPClient* httpClient)`
-> Can be called from any thread. If `waitForHTTPResponse()` is currently blocked in another thread, it returns
-> immediately; otherwise the next `waitForHTTPResponse()` call returns immediately.
+`void HTTPClient::wakeUp()`
+> Can be called from any thread. If `receiveResponse()` is currently blocked in another thread, it returns
+> immediately; otherwise the next `receiveResponse()` call returns immediately.
 
-## HTTP Server
+## `HTTPServer`
 
-Setting `PLY_WITH_HTTP_SERVER=1` enables the `runHTTPServer` function, which runs an HTTP server.
+`HTTPServer` is an optional class for running a local HTTP server.
+To enable it, set the preprocessor definition `PLY_WITH_HTTP_SERVER=1` in your projects's settings.
+No encryption capabilities are provided.
 
 ```
 #include <ply-network.h>
 
 using namespace ply;
 
-void serverCallback(HTTPServerRequest& request) {
-    HTTPServerResponse response{HTTPServerResponse::OK};
+void serverCallback(HTTPServer::Request& request) {
+    HTTPServer::Response response{HTTPServer::Response::OK};
     *response.headers.insert("content-type").value = "text/plain";
-    request.sendFullResponse(std::move(response), String::format("Request URI: {}\n", request.uri));
+    String body = String::format("Request URI: {}\n", request.uri);
+    request.sendFullResponse(std::move(response), body);
 }
 
 int main() {
@@ -228,7 +221,7 @@ int main() {
     Network::initialize(IPV4);
 
     // Run a webserver.
-    runHTTPServer(8080, serverCallback);
+    HTTPServer::run(8080, serverCallback);
 
     // Shut down the network.
     Network::shutdown();
@@ -236,17 +229,15 @@ int main() {
 }
 ```
 
-`void runHTTPServer(u16 port, const Functor<void(HTTPServerRequest& request)>& requestHandler)`
+`static void HTTPServer::run(u16 port, const Functor<void(Request& request)>& requestHandler)`
 > When this function is called, the calling thread is blocked for as long as the server keeps running.
 > `Network::initialize()` must be called first.
-> `requestHandler` is a user-provided callback function that handles each HTTP request.
+> `requestHandler` is a user-provided callback function that handles individual HTTP requests.
 
-### `HTTPServerRequest`
+For each incoming HTTP request, the `requestHandler` is called with an `HTTPServer::Request` object.
+This object exposes several public data members and member functions for responding to the request.
 
-`HTTPServerRequest` contains all the information the callback function needs to handle the request
-and exposes member functions for responding to the request.
-
-{context class=HTTPServerRequest}
+{context class="HTTPServer::Request"}
 
 `IPAddress clientAddr`
 `u16 clientPort`
@@ -262,39 +253,37 @@ and exposes member functions for responding to the request.
 > The HTTP version token, such as `HTTP/1.1`.
 
 `Map<String, String> headers`
-> Request headers indexed by lower-case header name. For example, use `request.headers.find("content-type")` rather
-> than `request.headers.find("Content-Type")`.
+> Request headers indexed by lower-case header name.
+> For example, keys contain "content-type" rather than "Content-Type".
 
 `String body`
-> The request body bytes. This string can contain arbitrary binary data; it is not guaranteed to be null-terminated.
+> The complete request body.
+> This string can contain arbitrary binary data and is not guaranteed to be null-terminated.
 
-`void sendFullResponse(HTTPServerResponse&& response, StringView body = {})`
+`void sendFullResponse(HTTPServer::Response&& response, StringView body = {})`
 > Sends a complete response. The connection can be reused for additional requests when HTTP rules permit it.
 
-`Stream beginStreamingResponse(HTTPServerResponse&& response)`
-> Sends response headers and returns the TCP output stream for raw body bytes.
-> The connection is closed when the caller destructs the returned stream.
+`Stream beginStreamingResponse(HTTPServer::Response&& response)`
+> Sends response headers only and returns a TCP stream for writing the body.
+> The connection is closed when the caller destroys the stream.
 
-`void sendGenericResponse(HTTPServerResponse::Code responseCode)`
-> Writes a minimal HTML error page for the given status code.
+`void sendGenericResponse(HTTPServer::Response::Code responseCode)`
+> Writes a generic HTML error page with the given status code.
 
-### `HTTPServerResponse`
+`HTTPServer::Response` has the following members:
 
-`HTTPServerResponse` is an argument passed to several `HTTPServerRequest` member functions. It has the following members:
+> | Name | Type | Description |
+> | --- | --- | --- |
+> | `code` | `HTTPServer::Response::Code` | The HTTP status code to emit. |
+> | `headers` | `Map<String, String>` | Response headers to emit. |
 
-{context class=HTTPServerResponse}
+`HTTPServer::Response::Code` is an enum type with the following values:
 
-`Code code`
-> The HTTP status code to emit. Must be one of the following enumerator values:
->
-> | | |
-> | --- | --- |
-> | `Code::OK` | 200 |
-> | `Code::PermanentRedirect` | 301 |
-> | `Code::TemporaryRedirect` | 302 |
-> | `Code::BadRequest` | 400 |
-> | `Code::NotFound` | 404 |
-> | `Code::InternalError` | 500 |
-
-`Map<String, String> headers`
-> Response headers to emit.
+| | |
+| --- | --- |
+| `Code::OK` | 200 |
+| `Code::PermanentRedirect` | 301 |
+| `Code::TemporaryRedirect` | 302 |
+| `Code::BadRequest` | 400 |
+| `Code::NotFound` | 404 |
+| `Code::InternalError` | 500 |

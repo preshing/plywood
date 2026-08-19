@@ -926,7 +926,7 @@ void performInferenceRequest(Agent::Impl* impl) {
     }
 
     // State accumulated across curl callbacks (the callback runs on this same inference thread,
-    // invoked from within waitForHTTPResponse()).
+    // invoked from within HTTPClient::receiveResponse()).
     struct RequestState {
         bool gotError = false;
         String errorMessage;
@@ -969,32 +969,32 @@ void performInferenceRequest(Agent::Impl* impl) {
 
     // Send the request via HTTPClient (libcurl multi interface).
     {
-        HTTPClientArgs args;
+        HTTPClient::Args args;
         args.url = impl->settings.endPoint.url;
         args.headers = std::move(headers);
         args.body = std::move(body);
         args.callback = std::move(callback);
         args.useBundledCaCert = true; // Verify TLS against the shipped cacert.pem.
-        sendHTTPRequest(impl->httpClient, std::move(args));
+        impl->httpClient->beginRequest(std::move(args));
     }
 
     // Drive the multi handle until the request completes or the client cancels.
-    // waitForHTTPResponse() performs curl_multi_perform/poll and returns false once the
+    // HTTPClient::receiveResponse() performs curl_multi_perform/poll and returns false once the
     // request has finished.
     for (;;) {
         // Check for cancellation between iterations. The client thread signals cancel
-        // by setting `canceled` and calling wakeUpHTTPClient(), which unblocks the
-        // curl_multi_poll inside waitForHTTPResponse() so this loop observes the change promptly.
+        // by setting `canceled` and calling HTTPClient::wakeUp(), which unblocks the
+        // curl_multi_poll inside receiveResponse() so this loop observes the change promptly.
         {
             LockGuard<Mutex> guard{impl->toolCtx.mutex};
             if (impl->toolCtx.canceled) {
-                cancelHTTPRequest(impl->httpClient);
+                impl->httpClient->cancelRequest();
                 break;
             }
         }
-        if (!isHTTPRequestInProgress(impl->httpClient))
+        if (!impl->httpClient->isRequestInProgress())
             break;
-        if (!waitForHTTPResponse(impl->httpClient))
+        if (!impl->httpClient->receiveResponse())
             break;
     }
 
@@ -1182,7 +1182,7 @@ Agent::Agent(const Settings& settings) {
     impl->toolCtx.agentImpl = impl;
     impl->toolCtx.workingDirectory = impl->settings.toolSet.workingDirectory;
     // The HTTPClient lives for the whole conversation and is reused across turns.
-    impl->httpClient = createHTTPClient();
+    impl->httpClient = HTTPClient::create();
 
     // Make a copy of the transcript leaf, but link to the same parent.
     impl->internalTranscript = Heap::create<Transcript>(*impl->settings.initialTranscript);
@@ -1236,7 +1236,7 @@ void Agent::cancel() {
         // Release any client thread waiting for the agent to stop.
         impl->clientCondVar.wakeAll();
         impl->completionCondVar.wakeAll();
-        wakeUpHTTPClient(impl->httpClient);
+        impl->httpClient->wakeUp();
     }
 }
 
