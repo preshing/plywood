@@ -183,16 +183,21 @@ function updateSelectedItem(path) {
             var page = links[i].parentNode;
             if (page && page.classList.contains('toc-page')) {
                 // Use the section list's actual height as the transition endpoint.
-                for (var j = 0; j < page.children.length; j++) {
-                    var child = page.children[j];
-                    if (child.classList.contains('toc-sections')) {
-                        page.style.setProperty('--toc-sections-height', child.scrollHeight + 'px');
-                        break;
-                    }
-                }
+                updateSelectedItemHeight(page);
                 page.classList.add('selected');
                 break;
             }
+        }
+    }
+}
+
+// Remeasures an expanded section list after layout-affecting resources change.
+function updateSelectedItemHeight(page) {
+    for (var i = 0; i < page.children.length; i++) {
+        var child = page.children[i];
+        if (child.classList.contains('toc-sections')) {
+            page.style.setProperty('--toc-sections-height', child.scrollHeight + 'px');
+            break;
         }
     }
 }
@@ -232,6 +237,16 @@ document.addEventListener('DOMContentLoaded', function() {
     if (directory) {
         replaceLinks(directory);
         updateSelectedItem(location.pathname);
+
+        // Correct the initial measurement after the sidebar web fonts finish loading.
+        if (document.fonts) {
+            document.fonts.ready.then(function() {
+                var selected = directory.querySelector('.toc-page.selected');
+                if (selected) {
+                    updateSelectedItemHeight(selected);
+                }
+            });
+        }
     }
     if (article) {
         replaceLinks(article);
