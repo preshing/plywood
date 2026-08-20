@@ -109,8 +109,8 @@ template <typename Key, typename Value> class Map;
 
 | | |
 | --- | --- |
-| `Key` | `key` |
-| `Value` | `value` |
+| `Key key` | The key in the pair. |
+| `Value value` | The value in the pair. |
 
 The items in a `Map` are kept in insertion order unless `eraseQuick` is called.
 

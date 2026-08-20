@@ -178,30 +178,19 @@ Most of these functions are used internally by `String::format`, but you can cal
 `void printNumber(Stream& out, s64 value, const NumberFormat& format = {})`
 `void printNumber(Stream& out, u64 value, const NumberFormat& format = {})`
 `void printNumber(Stream& out, double value, const NumberFormat& format = {})`
-> Writes a number to the given stream. `NumberFormat` is defined as follows:
-> ```
-> struct NumberFormat {
->     enum FloatMode {
->         Regular,
->         Scientific,
->         Auto,
->     };
->     enum SignMode {
->         ShowMinusOnly,
->         ShowPlus,
->         LeaveSpaceForSign,
->     };
-> 
->     u32 radix = 10;
->     bool capitalize = false;
->     // If the number uses fewer than zeroPad digits, it will be padded with leading zeros:
->     u32 zeroPad = 0;
->     SignMode signMode = ShowMinusOnly;
->     // These members are only used when printing floating-point values:
->     FloatMode floatMode = Auto;
->     u32 fractionalPrecision = 3;
-> };
-> ```
+> Writes a number to the given stream. `NumberFormat` has the following members:
+>
+> | | |
+> | --- | --- |
+> | `u32 radix` | The numeric base. Default is 10. |
+> | `bool capitalize` | Uses uppercase letters for digits and notation when `true`. Default is false. |
+> | `u32 zeroPad` | Pads numbers shorter than this width with leading zeros. Default is 0. |
+> | `SignMode signMode` | Controls whether and how space is reserved for a sign. Default is ShowMinusOnly. |
+> | `FloatMode floatMode` | Controls the notation used for floating-point values. Default is Auto. |
+> | `u32 fractionalPrecision` | Controls the fractional precision of floating-point values. Default is 3. |
+>
+> `NumberFormat::FloatMode` has the values `Regular`, `Scientific` and `Auto`. `NumberFormat::SignMode` has the values
+> `ShowMinusOnly`, `ShowPlus` and `LeaveSpaceForSign`.
 
 `void printEscapedString(Stream& out, StringView str)`
 > Writes a string with C-style escape sequences for special characters (e.g., `\n`, `\t`, `\\`).

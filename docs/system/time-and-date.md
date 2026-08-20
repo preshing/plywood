@@ -17,17 +17,17 @@ A [Unix timestamp](https://en.wikipedia.org/wiki/Unix_time) is an amount of elap
 `DateTime convertToDateTime(s64 unixTimestamp, s16 timeZoneOffsetInMinutes)`
 > Converts a Unix timestamp to a `DateTime` object with the following member variables:
 >
-> | | | |
-> | --- | --- | --- |
-> | `s32` | `year` | |
-> | `u8` | `month` | 1..12 |
-> | `u8` | `day` | 1..31 |
-> | `u8` | `weekday` | Sunday = 0, Saturday = 6 |
-> | `u8` | `hour` | 0..23 |
-> | `u8` | `minute` | 0..59 |
-> | `u8` | `second` | 0..59 |
-> | `s16` | `timeZoneOffsetInMinutes` | eg. EST = -300 |
-> | `u32` | `microsecond` | 0..999999 |
+> | | |
+> | --- | --- |
+> | `s32 year` | The calendar year. |
+> | `u8 month` | 1..12 |
+> | `u8 day` | 1..31 |
+> | `u8 weekday` | Sunday = 0, Saturday = 6 |
+> | `u8 hour` | 0..23 |
+> | `u8 minute` | 0..59 |
+> | `u8 second` | 0..59 |
+> | `s16 timeZoneOffsetInMinutes` | eg. EST = -300 |
+> | `u32 microsecond` | 0..999999 |
 >
 > The same Unix timestamp can produce different `DateTime` objects depending on the time zone used during conversion. The time zone of each `DateTime` object is indicated by the `timeZoneOffsetInMinutes` member and expressed relative to [Coordinated Universal Time (UTC)](https://en.wikipedia.org/wiki/CoordinatedUniversalTime). For example, a `timeZoneOffsetInMinutes` of `-300` corresponds to [Eastern Standard Time (EST)](https://en.wikipedia.org/wiki/EasternTimeZone), which is 5 hours behind UTC.
 >

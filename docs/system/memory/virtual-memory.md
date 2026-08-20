@@ -12,29 +12,28 @@ fault if accessed. To make pages usable, they must be mapped to physical memory 
 {context class=VirtualMemory}
 
 `static VirtualMemory::Properties getProperties()`
-> Returns information about the system's virtual memory page size and allocation alignment. `VirtualMemory::Properties` has these members:
->
-> | | | |
-> | --- | --- | --- |
-> | `uptr` | regionAlignment | `reserveRegion` and `allocRegion` sizes must be a multiple of this |
-> | `uptr` | pageSize | `commitPages` sizes must be a multiple of this |
-
-`static VirtualMemory::SystemStats getSystemStats()`
-> Returns statistics about the current process's virtual memory usage. `VirtualMemory::SystemStats` has platform-specific members:
->
-> On Windows:
+> Returns information about the system's virtual memory page size and allocation alignment. `VirtualMemory::Properties` has the following data members:
 >
 > | | |
 > | --- | --- |
-> | `uptr` | privateUsage |
-> | `uptr` | workingSetSize |
+> | `uptr regionAlignment` | `reserveRegion` and `allocRegion` sizes must be a multiple of this. |
+> | `uptr pageSize` | `commitPages` sizes must be a multiple of this. |
+
+`static VirtualMemory::SystemStats getSystemStats()`
+> Returns platform-specific statistics about the current process's virtual memory usage.
+> `VirtualMemory::SystemStats` has the following data members on Windows:
+>
+> | | |
+> | --- | --- |
+> | `uptr privateUsage` | Private memory allocated by the process. |
+> | `uptr workingSetSize` | Physical memory in the process working set. |
 >
 > On other platforms:
 >
 > | | |
 > | --- | --- |
-> | `uptr` | virtualSize |
-> | `uptr` | residentSize |
+> | `uptr virtualSize` | Virtual address space used by the process. |
+> | `uptr residentSize` | Physical memory resident for the process. |
 
 ## Managing Pages
 
@@ -60,8 +59,7 @@ fault if accessed. To make pages usable, they must be mapped to physical memory 
 
 ## Usage Stats
 
-`static Atomic<uptr> totalReservedBytes`
-> The current total amount of address space that was reserved using `allocRegion` or `reserveRegion`.
-
-`static Atomic<uptr> totalCommittedBytes`
-> The current total amount of memory that was committed using `allocRegion` or `commitPages`.
+| | |
+| --- | --- |
+| `static Atomic<uptr> totalReservedBytes` | The current total amount of address space that was reserved using `allocRegion` or `reserveRegion`. |
+| `static Atomic<uptr> totalCommittedBytes` | The current total amount of memory that was committed using `allocRegion` or `commitPages`. |

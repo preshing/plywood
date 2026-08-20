@@ -9,36 +9,36 @@ module are defined in the `ply::markdown` namespace.
 `ParseOptions` independently controls recognition of each supported Markdown construct. CommonMark constructs are
 enabled by default. Inline elements appear first, matching the declaration order:
 
-| | | |
-| --- | --- | --- |
-| `bool` | `backslashEscapes` | Recognizes backslash escapes before ASCII punctuation |
-| `bool` | `characterReferences` | Decodes named and numeric character references |
-| `bool` | `codeSpans` | Recognizes inline code delimited by backticks |
-| `bool` | `emphasis` | Recognizes emphasis delimiters |
-| `bool` | `strongEmphasis` | Recognizes strong-emphasis delimiters |
-| `bool` | `inlineLinks` | Recognizes links with inline destinations |
-| `bool` | `referenceLinks` | Resolves full, collapsed and shortcut reference links |
-| `bool` | `inlineImages` | Recognizes images with inline destinations |
-| `bool` | `referenceImages` | Resolves full, collapsed and shortcut reference images |
-| `bool` | `autolinks` | Recognizes URI and email autolinks enclosed in angle brackets |
-| `bool` | `inlineHTML` | Recognizes CommonMark inline HTML |
-| `bool` | `softLineBreaks` | Produces soft-break spans at ordinary line boundaries |
-| `bool` | `hardLineBreaks` | Recognizes hard breaks created by spaces or a backslash |
+| | |
+| --- | --- |
+| `bool backslashEscapes` | Recognizes backslash escapes before ASCII punctuation. |
+| `bool characterReferences` | Decodes named and numeric character references. |
+| `bool codeSpans` | Recognizes inline code delimited by backticks. |
+| `bool emphasis` | Recognizes emphasis delimiters. |
+| `bool strongEmphasis` | Recognizes strong-emphasis delimiters. |
+| `bool inlineLinks` | Recognizes links with inline destinations. |
+| `bool referenceLinks` | Resolves full, collapsed and shortcut reference links. |
+| `bool inlineImages` | Recognizes images with inline destinations. |
+| `bool referenceImages` | Resolves full, collapsed and shortcut reference images. |
+| `bool autolinks` | Recognizes URI and email autolinks enclosed in angle brackets. |
+| `bool inlineHTML` | Recognizes CommonMark inline HTML. |
+| `bool softLineBreaks` | Produces soft-break spans at ordinary line boundaries. |
+| `bool hardLineBreaks` | Recognizes hard breaks created by spaces or a backslash. |
 
 Block elements follow:
 
-| | | |
-| --- | --- | --- |
-| `bool` | `blockQuotes` | Recognizes block quote markers |
-| `bool` | `orderedLists` | Recognizes ordered list markers |
-| `bool` | `unorderedLists` | Recognizes unordered list markers |
-| `bool` | `indentedCodeBlocks` | Recognizes code blocks created by indentation |
-| `bool` | `fencedCodeBlocks` | Recognizes backtick- and tilde-fenced code blocks |
-| `bool` | `htmlBlocks` | Recognizes CommonMark HTML blocks |
-| `bool` | `atxHeadings` | Recognizes headings beginning with `#` markers |
-| `bool` | `setextHeadings` | Recognizes headings followed by `=` or `-` underlines |
-| `bool` | `thematicBreaks` | Recognizes thematic breaks |
-| `bool` | `linkReferenceDefinitions` | Collects and removes link reference definitions |
+| | |
+| --- | --- |
+| `bool blockQuotes` | Recognizes block quote markers. |
+| `bool orderedLists` | Recognizes ordered list markers. |
+| `bool unorderedLists` | Recognizes unordered list markers. |
+| `bool indentedCodeBlocks` | Recognizes code blocks created by indentation. |
+| `bool fencedCodeBlocks` | Recognizes backtick- and tilde-fenced code blocks. |
+| `bool htmlBlocks` | Recognizes CommonMark HTML blocks. |
+| `bool atxHeadings` | Recognizes headings beginning with `#` markers. |
+| `bool setextHeadings` | Recognizes headings followed by `=` or `-` underlines. |
+| `bool thematicBreaks` | Recognizes thematic breaks. |
+| `bool linkReferenceDefinitions` | Collects and removes link reference definitions. |
 
 Paragraphs and plain text are always available as fallbacks. When a construct is disabled, its markers remain text
 and do not open, close or interrupt blocks. Alternate delimiters for one construct share a flag; for example,
@@ -46,13 +46,13 @@ and do not open, close or interrupt blocks. Alternate delimiters for one constru
 
 GitHub Flavored Markdown (GFM) extensions are disabled by default:
 
-| | | |
-| --- | --- | --- |
-| `bool` | `tables` | Enables GFM pipe tables |
-| `bool` | `taskListItems` | Recognizes task markers at the start of list items |
-| `bool` | `strikethrough` | Enables text delimited by pairs of tildes |
-| `bool` | `extendedAutolinks` | Recognizes GFM URL and email autolinks without angle brackets |
-| `bool` | `tagFilter` | Escapes the opening characters of the raw HTML tags disallowed by GFM |
+| | |
+| --- | --- |
+| `bool tables` | Enables GFM pipe tables. |
+| `bool taskListItems` | Recognizes task markers at the start of list items. |
+| `bool strikethrough` | Enables text delimited by pairs of tildes. |
+| `bool extendedAutolinks` | Recognizes GFM URL and email autolinks without angle brackets. |
+| `bool tagFilter` | Escapes the opening characters of the raw HTML tags disallowed by GFM. |
 
 `ParseOptions::none()` returns an options object with recognition of all CommonMark and GFM constructs disabled.
 `ParseOptions::githubFlavored()` returns the default CommonMark configuration with all five GFM fields set to
@@ -108,10 +108,10 @@ functions return `nullptr`.
 > Renders an already-parsed block and its descendants to a stream. Use this overload to inspect or modify the AST, or
 > to render blocks incrementally. `HTMLOptions` controls rendering rather than Markdown syntax.
 
-| | | |
-| --- | --- | --- |
-| `bool` | `childAnchors` | Writes a child anchor span for a heading with an `id`, instead of putting the `id` on the heading |
-| `Functor<String(StringView)>` | `filterLinks` | Transforms each link or image destination before XML escaping and output |
+| | |
+| --- | --- |
+| `bool childAnchors` | Writes a child anchor span for a heading with an `id`, instead of putting the `id` on the heading. Default is false. |
+| `Functor<String(StringView)> filterLinks` | Transforms each link or image destination before XML escaping and output |
 
 ## Block tree
 

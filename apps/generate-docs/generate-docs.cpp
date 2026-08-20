@@ -101,6 +101,113 @@ void printDeclAsApiTitle(Stream& out, const Parser* parser, const Declaration& d
     out.write("</code>");
 }
 
+// Renders a table declaration, preserving source text the syntax visitor does not expose.
+void printHighlightedTableDeclaration(Stream& out, ArrayView<const TokenSpan> spans, StringView source) {
+    out.write("<code>");
+
+    // Match highlighted tokens to the source while preserving text between them, including array extents.
+    u32 searchOffset = 0;
+    u32 outputOffset = 0;
+    for (const TokenSpan& span : spans) {
+        if (span.isSpace || !span.token.text)
+            continue;
+
+        // Match the visitor's ordered tokens against the source; nested token offsets aren't monotonic.
+        s32 tokenOffset = source.find(span.token.text, searchOffset);
+        if (tokenOffset < 0)
+            continue;
+        searchOffset = tokenOffset + span.token.text.numBytes();
+
+        // Preserve source text between parser tokens.
+        printXmlEscapedString(out, source.substr(outputOffset, tokenOffset - outputOffset));
+        if (span.color == TokenSpan::Type) {
+            out.write("<span class=\"type\">");
+        } else if (span.color == TokenSpan::Symbol) {
+            out.write("<span class=\"symbol\">");
+        } else if (span.color == TokenSpan::Variable) {
+            out.write("<span class=\"var\">");
+        }
+        printXmlEscapedString(out, span.token.text);
+        if (span.color != TokenSpan::None) {
+            out.write("</span>");
+        }
+        outputOffset = searchOffset;
+    }
+    printXmlEscapedString(out, source.substr(outputOffset));
+    out.write("</code>");
+}
+
+// Highlights one blank-heading declaration/description table, leaving all other tables unchanged.
+void highlightMemberTable(markdown::Block::Table* table, StringView className) {
+    if (table->childBlocks.numItems() < 2)
+        return;
+
+    // Require exactly two empty header cells before inspecting body declarations.
+    auto* header = table->childBlocks[0]->var.as<markdown::Block::TableRow>();
+    if (!header || (header->childBlocks.numItems() != 2))
+        return;
+    auto* declarationHeader = header->childBlocks[0]->var.as<markdown::Block::TableCell>();
+    auto* descriptionHeader = header->childBlocks[1]->var.as<markdown::Block::TableCell>();
+    if (!declarationHeader || !descriptionHeader || !declarationHeader->spans.isEmpty() ||
+        !descriptionHeader->spans.isEmpty())
+        return;
+
+    Array<markdown::Span*> declarationSpans;
+    for (u32 rowIndex = 1; rowIndex < table->childBlocks.numItems(); rowIndex++) {
+        // Require exactly two cells and one code span in the declaration cell.
+        auto* row = table->childBlocks[rowIndex]->var.as<markdown::Block::TableRow>();
+        if (!row || (row->childBlocks.numItems() != 2))
+            return;
+        auto* declarationCell = row->childBlocks[0]->var.as<markdown::Block::TableCell>();
+        if (!declarationCell || (declarationCell->spans.numItems() != 1))
+            return;
+        auto* declarationCode = declarationCell->spans[0]->var.as<markdown::Span::Code>();
+        if (!declarationCode)
+            return;
+
+        // Require a complete, error-free declaration with exactly one named entity declarator.
+        Owned<Parser> validationParser = Parser::create();
+        ParseResult parseResult = validationParser->parseFile({}, declarationCode->text + ";");
+        auto* validatedEntity = (parseResult.declarations.numItems() == 1)
+                                    ? parseResult.declarations[0].var.as<Declaration::Entity>()
+                                    : nullptr;
+        if (!parseResult.success || !validatedEntity || (validatedEntity->initDeclarators.numItems() != 1) ||
+            validatedEntity->initDeclarators[0].qid.isEmpty())
+            return;
+
+        declarationSpans.append(declarationCell->spans[0]);
+    }
+
+    // Reparse and highlight the declarations only after the entire table has validated.
+    for (markdown::Span* span : declarationSpans) {
+        auto* declarationCode = span->var.as<markdown::Span::Code>();
+        PLY_ASSERT(declarationCode);
+        Owned<Parser> parser = Parser::create();
+        Declaration decl = parser->parseDeclaration(declarationCode->text, className);
+        auto* entity = decl.var.as<Declaration::Entity>();
+        PLY_ASSERT(entity && (entity->initDeclarators.numItems() == 1) && !entity->initDeclarators[0].qid.isEmpty());
+        Array<TokenSpan> spans = parser->syntaxHighlight(decl);
+        MemStream html;
+        printHighlightedTableDeclaration(html, spans, declarationCode->text);
+        auto& rawHTML = span->var.switchTo<markdown::Span::RawHTML>();
+        rawHTML.text = html.moveToString();
+    }
+}
+
+// Recursively highlights member tables at top level and inside API-description blockquotes.
+void highlightMemberTables(markdown::Block* block, StringView className) {
+    if (auto* table = block->var.as<markdown::Block::Table>()) {
+        highlightMemberTable(table, className);
+    }
+
+    // Visit tables in blockquotes and any other Markdown containers.
+    if (markdown::Block::Inner* inner = block->asInner()) {
+        for (markdown::Block* child : inner->childBlocks) {
+            highlightMemberTables(child, className);
+        }
+    }
+}
+
 // Converts a source documentation link to the corresponding generated site URL.
 String convertDocsPathToURL(StringView destination) {
     if (!destination.startsWith("/docs/"))
@@ -413,6 +520,11 @@ private:
     void emitPendingBlocks() {
         // Pull a structured page title out before rendering the remaining Markdown tree.
         this->emitSplitPageTitle();
+
+        // Highlight validated declaration tables before ordinary recursive Markdown rendering.
+        for (markdown::Block* block : this->pendingBlocks) {
+            highlightMemberTables(block, this->apiClassContext);
+        }
 
         // Collect navigation entries before special API-description blocks consume the pending range.
         for (markdown::Block* block : this->pendingBlocks) {

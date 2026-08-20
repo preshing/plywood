@@ -61,13 +61,12 @@ void destroy(Foo* foo) {
 > Out-of-memory events are usually unrecoverable. There's really no ideal way to handle them, other than to collect a report when the event occurs so that the issue can be investigated. In general, developers should establish a memory budget and aim to stay within it.
 
 `static Heap::Stats getStats()`
-> Returns statistics about heap usage. `numBytesAllocated` is the sum of the sizes of all allocated blocks. `virtualMemorySize`, a larger number, is the total amount of system memory used to store those blocks, including bookkeeping overhead and unused space.
-> ```cpp
-> struct Heap::Stats {
->     uptr totalBytesConsumed;     // Total number of bytes consumed by heap allocations including chunk headers.
->     uptr totalSystemMemoryUsed;  // Total number of bytes currently committed via the system's VirtualMemory API.
-> }
-> ```
+> Returns statistics about heap usage.
+>
+> | | |
+> | --- | --- |
+> | `uptr totalBytesConsumed` | The total number of bytes consumed by heap allocations, including chunk headers. |
+> | `uptr totalSystemMemoryUsed` | The total number of bytes currently committed through the system's `VirtualMemory` API. |
 
 `static void validate()`
 > Validates the heap's internal consistency. Useful for debugging. Will force an immediate crash if the heap is

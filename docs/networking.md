@@ -35,8 +35,9 @@ Represents an IP address (either IPv4 or IPv6).
 
 {context class=IPAddress}
 
-`u32 netOrdered[4]`
-> The raw address bytes in network byte order. For IPv4, only `netOrdered[0]` is used.
+| | |
+| --- | --- |
+| `u32 netOrdered[4]` | The raw address bytes in network byte order. For IPv4, only `netOrdered[0]` is used. |
 
 `IPVersion version() const`
 > Returns `IPVersion::V4` or `IPVersion::V6`.
@@ -62,9 +63,10 @@ Represents an established TCP connection to a remote host. Exposes input and out
 
 {context class=TCPConnection}
 
-`PipeWinsock inPipe`
-`PipeWinsock outPipe`
-> The underlying pipe objects for reading and writing.
+| | |
+| --- | --- |
+| `Owned<PipeWinsock> inPipe` | The underlying pipe object for reading on Windows. On POSIX systems, the type is `Owned<Pipe_FD>`. |
+| `Owned<PipeWinsock> outPipe` | The underlying pipe object for writing on Windows. On POSIX systems, the type is `Owned<Pipe_FD>`. |
 
 `const IPAddress& remoteAddress() const`
 > Returns the IP address of the remote host.
@@ -170,16 +172,16 @@ int main() {
 
 `void HTTPClient::beginRequest(Args&& args)`
 > Starts a new request. Must not be called while a request is already in progress.
-> `HTTPClient::Args` is defined as follows:
-> ```
-> struct Args {
->     String url;
->     Map<String, String> headers;
->     String body;
->     Functor<void(StringView, bool)> callback;
->     bool useBundledCaCert = true;
-> };
-> ```
+> `HTTPClient::Args` has the following data members.
+> All members are moved from when the function is called, leaving the original `args` in an empty state.
+>
+> | | |
+> | --- | --- |
+> | `String url` | The URL to request. |
+> | `Map<String, String> headers` | HTTP headers to send with the request. |
+> | `String body` | The request body. |
+> | `Functor<void(StringView, bool)> callback` | Receives response chunks as `(chunk, false)`, or an error as `(errorMessage, true)`. |
+> | `bool useBundledCaCert` | If `true`, verifies the peer using the bundled CA certificates. If `false`, disables TLS verification and should only be used for trusted localhost endpoints. Default is true. |
 
 `void HTTPClient::cancelRequest()`
 > Cancels any request in progress. After this returns, `isRequestInProgress()` returns `false`.
@@ -234,34 +236,27 @@ int main() {
 > `Network::initialize()` must be called first.
 > `requestHandler` is a user-provided callback function that handles individual HTTP requests.
 
-For each incoming HTTP request, the `requestHandler` is called with an `HTTPServer::Request` object.
-This object exposes several public data members and member functions for responding to the request.
+### `HTTPServer::Request`
+
+For each incoming HTTP request, the `requestHandler` is called with an `HTTPServer::Request` object,
+which exposes the following public data members and member functions:
 
 {context class="HTTPServer::Request"}
 
-`IPAddress clientAddr`
-`u16 clientPort`
-> The remote TCP peer address and port.
-
-`String method`
-> The request method, such as `GET`, `HEAD`, `POST`, `PUT` or `PATCH`.
-
-`String uri`
-> The raw request URI.
-
-`String httpVersion`
-> The HTTP version token, such as `HTTP/1.1`.
-
-`Map<String, String> headers`
-> Request headers indexed by lower-case header name.
-> For example, keys contain "content-type" rather than "Content-Type".
-
-`String body`
-> The complete request body.
-> This string can contain arbitrary binary data and is not guaranteed to be null-terminated.
+| | |
+| --- | --- |
+| `IPAddress clientAddr` | The remote TCP peer address. |
+| `u16 clientPort` | The remote TCP peer port. |
+| `String method` | The request method, such as `GET`, `HEAD`, `POST`, `PUT` or `PATCH`. |
+| `String uri` | The raw request URI. |
+| `String httpVersion` | The HTTP version token, such as `HTTP/1.1`. |
+| `Map<String, String> headers` | Request headers indexed by lower-case header name. For example, keys contain "content-type" rather than "Content-Type". |
+| `String body` | The complete request body. This string can contain arbitrary binary data and is not guaranteed to be null-terminated. |
 
 `void sendFullResponse(HTTPServer::Response&& response, StringView body = {})`
-> Sends a complete response. The connection can be reused for additional requests when HTTP rules permit it.
+> Sends a complete response.
+> The `response` argument is moved from, leaving the original argument in an empty state.
+> The underlying connection can be reused for additional requests when HTTP rules permit it.
 
 `Stream beginStreamingResponse(HTTPServer::Response&& response)`
 > Sends response headers only and returns a TCP stream for writing the body.
@@ -270,12 +265,14 @@ This object exposes several public data members and member functions for respond
 `void sendGenericResponse(HTTPServer::Response::Code responseCode)`
 > Writes a generic HTML error page with the given status code.
 
-`HTTPServer::Response` has the following members:
+### `HTTPServer::Response`
 
-> | Name | Type | Description |
-> | --- | --- | --- |
-> | `code` | `HTTPServer::Response::Code` | The HTTP status code to emit. |
-> | `headers` | `Map<String, String>` | Response headers to emit. |
+`HTTPServer::Response` is used as an argument to `HTTPServer::Request` member functions and has the following public data members:
+
+> | | |
+> | --- | --- |
+> | `Code code` | The HTTP status code to emit. Default is InternalError. |
+> | `Map<String, String> headers` | Response headers to emit. |
 
 `HTTPServer::Response::Code` is an enum type with the following values:
 

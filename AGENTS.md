@@ -16,4 +16,4 @@ GitHub repository: https://github.com/preshing/plywood
 - Every signiciant code block should begin with a brief comment to explain what it does.
 - Use the fewest line of code possible without sacrificing readability.
 - Use `this->` to refer to other function and data members within each member function.
-- The body of every `if`, `else`, `do`, `while` and `for` statement should be surrounded by curly braces unless it consists of exactly one `continue`, `return`, or `break` statement.
+- The body of every `if`, `else`, `do`, `while` and `for` statement must be surrounded by curly braces, except when it consists of exactly one `continue`, `return`, or `break` statement. In those three single-statement cases, curly braces must be omitted.
