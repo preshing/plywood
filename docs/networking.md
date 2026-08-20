@@ -145,11 +145,15 @@ int main() {
     Owned<HTTPClient> client = HTTPClient::create();
     HTTPClient::Args args;
     args.url = "https://plywood.dev";
-    args.callback = [](StringView data, bool isError) {
-        if (isError) {
-            getStdErr().format("Request failed: {}\n", data);
-        } else {
-            getStdOut().write(data);
+    args.callback = [](const HTTPClient::Event& event) {
+        if (auto* headers = event.as<HTTPClient::Headers>()) {
+            getStdOut().format("HTTP status: {}\n", headers->statusCode);
+        } else if (auto* data = event.as<HTTPClient::Data>()) {
+            getStdOut().write(data->bytes);
+        } else if (event.is<HTTPClient::End>()) {
+            getStdOut().write("Request complete\n");
+        } else if (auto* error = event.as<HTTPClient::Error>()) {
+            getStdErr().format("Request failed: {}\n", error->message);
         }
     };
     client->beginRequest(std::move(args));
@@ -180,7 +184,7 @@ int main() {
 > | `String url` | The URL to request. |
 > | `Map<String, String> headers` | HTTP headers to send with the request. |
 > | `String body` | The request body. |
-> | `Functor<void(StringView, bool)> callback` | Receives response chunks as `(chunk, false)`, or an error as `(errorMessage, true)`. |
+> | `Functor<void(const Event&)> callback` | Receives response events. |
 > | `bool useBundledCaCert` | If `true`, verifies the peer using the bundled CA certificates. If `false`, disables TLS verification and should only be used for trusted localhost endpoints. Default is true. |
 
 `void HTTPClient::cancelRequest()`
@@ -191,14 +195,29 @@ int main() {
 > Returns `true` while a request is in progress.
 
 `bool HTTPClient::receiveResponse(u32 timeOutMillis = 1000)`
-> Drives the request, delivering incoming response data to the request's callback. If response data is available, it
-> invokes the callback and returns immediately. If no data is available, it waits up to `timeOutMillis` for data to arrive,
+> Drives the request, delivering response events to the request's callback. If an event is available, it invokes the
+> callback and returns immediately. If no data is available, it waits up to `timeOutMillis` for data to arrive,
 > but can be interrupted by other threads calling `wakeUp()`. When `timeOutMillis` is 0, returns as soon as all
 > available data is processed. Returns `false` if no request is in progress; `true` otherwise.
 
 `void HTTPClient::wakeUp()`
 > Can be called from any thread. If `receiveResponse()` is currently blocked in another thread, it returns
 > immediately; otherwise the next `receiveResponse()` call returns immediately.
+
+### `HTTPClient::Event`
+
+> The `HTTPClient::Event` object received by the response callback is a [variant](/docs/system/memory/variants.md) with the following subtypes:
+>
+> | | |
+> | --- | --- |
+> | `HTTPClient::Headers` | Contains the HTTP status code and response headers. Header keys are stored in lowercase. |
+> | `HTTPClient::Data` | Contains the next response body chunk. Its `bytes` member is only valid for the duration of the callback. |
+> | `HTTPClient::End` | Indicates that the HTTP transfer completed successfully. HTTP error status codes are still successful transfers. |
+> | `HTTPClient::Error` | Contains a libcurl error message and terminates the event stream. It is never followed by `End`. |
+>
+> A successful request produces `Headers`, zero or more `Data` events and one `End` event. A transport failure
+> produces `Error`, possibly after `Headers` and `Data` events were already delivered. `cancelRequest()` does not
+> generate an event.
 
 ## `HTTPServer`
 

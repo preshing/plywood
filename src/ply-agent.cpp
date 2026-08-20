@@ -331,8 +331,7 @@ static u32 toolCallIDForMessage(Agent::Impl* impl, Transcript::Message* toolCall
 // followed by a JSON object of arguments (e.g. read{"path":"sample.txt"}). name is set
 // to the substring before the first '{'. argsOut receives the parsed JSON object.
 // Returns false if no JSON object could be parsed (name still holds the prefix).
-static bool parseToolCallText(const Transcript::Buffer& content, StringView& name,
-                              json::Parser::Result& argsOut) {
+static bool parseToolCallText(const Transcript::Buffer& content, StringView& name, json::Parser::Result& argsOut) {
     PLY_ASSERT(content.lines.numItems() <= 1);
     StringView text;
     if (content.lines) {
@@ -934,22 +933,32 @@ void performInferenceRequest(Agent::Impl* impl) {
 
     // The callback splits the incoming response stream into JSONL lines and dispatches each one
     // to receiveLine(). It remains owned by the HTTP request until that request completes or is cancelled.
-    Functor<void(StringView, bool)> callback = [impl, &state](StringView data, bool isError) {
-        if (isError) {
-            // HTTPClient reports libcurl/HTTP errors by invoking the callback with
-            // isError=true and the error message in `data`.
-            state.gotError = true;
-            state.errorMessage = data;
+    Functor<void(const HTTPClient::Event&)> callback = [impl, &state](const HTTPClient::Event& event) {
+        if (auto* headers = event.as<HTTPClient::Headers>()) {
+            // Treat non-200 responses as agent request failures while still allowing HTTPClient to deliver the body.
+            state.gotError = headers->statusCode != 200;
+            if (state.gotError) {
+                state.errorMessage = String::format("Error: HTTP response code {} from server", headers->statusCode);
+            }
             return;
         }
+        if (auto* error = event.as<HTTPClient::Error>()) {
+            // HTTPClient reports libcurl errors using a terminal Error event.
+            state.gotError = true;
+            state.errorMessage = error->message;
+            return;
+        }
+        auto* data = event.as<HTTPClient::Data>();
+        if (!data)
+            return;
 
         // Write raw HTTP response to log file
         if (impl->httpLogFile.isOpen()) {
-            impl->httpLogFile.write(data);
+            impl->httpLogFile.write(data->bytes);
         }
 
         // Split incoming data into lines.
-        StringView remaining = data;
+        StringView remaining = data->bytes;
         while (remaining) {
             s32 newLinePos = remaining.find('\n');
             if (newLinePos >= 0) {

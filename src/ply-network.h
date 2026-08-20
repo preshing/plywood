@@ -292,11 +292,26 @@ public:
 // All functions are designed to return as quickly as possible.
 //-----------------------------------------------------------
 struct HTTPClient {
+    struct Headers {
+        u32 statusCode = 0;
+        // Header keys are stored in all lowercase.
+        Map<String, String> headers;
+    };
+    struct Data {
+        // Only valid for the duration of the callback.
+        StringView bytes;
+    };
+    struct End {};
+    struct Error {
+        String message;
+    };
+    using Event = Variant<Headers, Data, End, Error>;
+
     struct Args {
         String url;
         Map<String, String> headers; // HTTP headers, e.g. {"Content-Type" => "application/json"}.
         String body;
-        Functor<void(StringView, bool)> callback; // Receives (chunk, false), or (errorMessage, true) on failure.
+        Functor<void(const Event&)> callback;
         // When true, verify the peer against the cacert.pem bundle shipped next to the
         // executable (CURLOPT_CAINFO). When false, TLS verification is disabled, which is
         // only appropriate for trusted localhost endpoints.
@@ -312,10 +327,10 @@ struct HTTPClient {
     void cancelRequest();
     // Returns true as long as a request is still in progress.
     bool isRequestInProgress() const;
-    // Drives the request, delivering incoming response data to the request's callback. If response data is available,
-    // it invokes the callback and returns immediately. If no data is available, it waits up to timeOutMillis for data
-    // to arrive, but can be interrupted by other threads calling wakeUp. Returns false if no request is in progress;
-    // true otherwise.
+    // Drives the request, delivering response events to the request's callback. If an event is available, it invokes
+    // the callback and returns immediately. If no event is available, it waits up to timeOutMillis for data to arrive,
+    // but can be interrupted by other threads calling wakeUp. Returns false if no request is in progress; true
+    // otherwise.
     bool receiveResponse(u32 timeOutMillis = 1000);
     // Can be called from any thread. If receiveResponse is currently blocked in another thread, it returns immediately;
     // otherwise, the next receiveResponse call returns immediately.
