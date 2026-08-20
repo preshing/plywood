@@ -889,6 +889,20 @@ void onError(Agent::Impl* impl, StringView message) {
     impl->currentRole = Transcript::Role::Error;
 }
 
+// Extracts the provider's message from a JSON error envelope and falls back to the HTTP status.
+static String makeHTTPErrorMessage(u32 statusCode, StringView responseBody) {
+    json::Parser parser;
+    parser.setErrorCallback([](const json::ParseError&) {});
+    parser.setGreedy(false);
+    json::Parser::Result result = parser.parse({}, responseBody.trim());
+    StringView message = result.root.get("error").get("message").text();
+    if (!message) {
+        message = result.root.get("message").text();
+    }
+    return message ? String::format("HTTP response code {} from server: {}", statusCode, message)
+                   : String::format("HTTP response code {} from server", statusCode);
+}
+
 // Performs an inference request and converts the response data to a queue of ResponseEvents.
 // This is the bulk of the work performed by the inference thread (Agent::Impl::inferenceThread).
 // The calling thread receives response data by periodically calling receiveResponseEvents.
@@ -897,6 +911,7 @@ void performInferenceRequest(Agent::Impl* impl) {
     // Reset the per-turn role tracking so the first streamed message begins a new
     // Message block.
     impl->currentRole = Transcript::Role::None;
+    impl->lineInProgress = MemStream{};
 
     if (impl->settings.enableHttpLog) {
         // Generate filename based on current date/time and URL
@@ -928,7 +943,9 @@ void performInferenceRequest(Agent::Impl* impl) {
     // invoked from within HTTPClient::receiveResponse()).
     struct RequestState {
         bool gotError = false;
+        u32 statusCode = 0;
         String errorMessage;
+        MemStream errorBody;
     } state;
 
     // The callback splits the incoming response stream into JSONL lines and dispatches each one
@@ -936,9 +953,19 @@ void performInferenceRequest(Agent::Impl* impl) {
     Functor<void(const HTTPClient::Event&)> callback = [impl, &state](const HTTPClient::Event& event) {
         if (auto* headers = event.as<HTTPClient::Headers>()) {
             // Treat non-200 responses as agent request failures while still allowing HTTPClient to deliver the body.
+            state.statusCode = headers->statusCode;
             state.gotError = headers->statusCode != 200;
             if (state.gotError) {
-                state.errorMessage = String::format("Error: HTTP response code {} from server", headers->statusCode);
+                state.errorMessage = String::format("HTTP response code {} from server", headers->statusCode);
+            }
+
+            // Log the response status and every delivered header before the response body.
+            if (impl->httpLogFile.isOpen()) {
+                impl->httpLogFile.format("HTTP response status: {}\n", headers->statusCode);
+                for (const auto& item : headers->headers.items()) {
+                    impl->httpLogFile.format("{}: {}\n", item.key, item.value);
+                }
+                impl->httpLogFile.write('\n');
             }
             return;
         }
@@ -948,6 +975,15 @@ void performInferenceRequest(Agent::Impl* impl) {
             state.errorMessage = error->message;
             return;
         }
+        if (event.is<HTTPClient::End>()) {
+            // Parse a final unterminated streaming line before completing the request.
+            String completedLine = impl->lineInProgress.moveToString();
+            impl->lineInProgress = MemStream{};
+            if (completedLine) {
+                receiveLine(impl, completedLine);
+            }
+            return;
+        }
         auto* data = event.as<HTTPClient::Data>();
         if (!data)
             return;
@@ -955,6 +991,9 @@ void performInferenceRequest(Agent::Impl* impl) {
         // Write raw HTTP response to log file
         if (impl->httpLogFile.isOpen()) {
             impl->httpLogFile.write(data->bytes);
+        }
+        if (state.statusCode != 200) {
+            state.errorBody.write(data->bytes);
         }
 
         // Split incoming data into lines.
@@ -1005,6 +1044,11 @@ void performInferenceRequest(Agent::Impl* impl) {
             break;
         if (!impl->httpClient->receiveResponse())
             break;
+    }
+
+    // Replace the generic HTTP failure with the provider's JSON error message when available.
+    if (state.statusCode != 0 && state.statusCode != 200) {
+        state.errorMessage = makeHTTPErrorMessage(state.statusCode, state.errorBody.moveToString());
     }
 
     // Report any error that occurred during the request.
