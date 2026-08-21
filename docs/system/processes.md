@@ -7,6 +7,9 @@
 `String getCurrentExecutablePath()`
 > Returns the path to the executable file for the current process.
 
+`String getEnvironmentVariable(StringView name)`
+> Returns the value of the environment variable specified by `name`. Returns an empty string if the variable is unset.
+
 ## `Subprocess`
 
 The `Subprocess` class represents a child process. You can spawn processes, redirect their I/O, and wait for them to complete.

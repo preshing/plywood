@@ -14,7 +14,6 @@
 #include <ply-network.h>
 #include <ply-markdown.h>
 #include <curl/curl.h>
-#include <cstdlib>
 
 using namespace ply;
 
@@ -952,7 +951,6 @@ static bool loadSettingsWithIncludes(StringView settingsPath, Array<String>& inc
 
         // Inherited endpoints must be fully replaced.
         agentSettings.endPoint = {};
-        agentSettings.endPoint.getAPIKey = []() -> String { return {}; };
 
         // Import url.
         const auto& jUrl = jEndPoint.get("url");
@@ -968,15 +966,8 @@ static bool loadSettingsWithIncludes(StringView settingsPath, Array<String>& inc
             getStdErr().format("endPoint.apiKeyEnv must be a string in: {}\n", settingsPath);
             return false;
         }
-        // The API key is read from the named environment variable on demand. Plywood
-        // strings aren't null-terminated, so append an explicit null byte for getenv.
-        String apiKeyEnvZ = String{jApiKeyEnv.text()} + '\0';
-        agentSettings.endPoint.getAPIKey = [apiKeyEnvZ = std::move(apiKeyEnvZ)]() -> String {
-            const char* envVar = std::getenv(apiKeyEnvZ.bytes());
-            if (!envVar)
-                return {};
-            return envVar;
-        };
+        // The API key is read from the named environment variable on demand.
+        agentSettings.endPoint.apiKeyEnv = jApiKeyEnv.text();
 
         // Import protocol.
         const auto& jProtocol = jEndPoint.get("protocol");
@@ -1106,7 +1097,6 @@ static bool loadSettingsWithIncludes(StringView settingsPath, Array<String>& inc
 // Load settings from the appropriate JSON files and convert them to Agent::Settings.
 static bool loadSettings() {
     // Set defaults.
-    agentSettings.endPoint.getAPIKey = []() -> String { return {}; };
     agentSettings.toolSet.workingDirectory = FileSystem::getWorkingDirectory();
 
     // Find settings file.

@@ -4815,7 +4815,11 @@ public:
 //  ▀█▄▄█▀ ▀█▄▄██ ██▄▄█▀ ██▄▄█▀ ██     ▀█▄▄█▀ ▀█▄▄▄ ▀█▄▄▄   ▄▄▄█▀  ▄▄▄█▀
 //                       ██
 
+// Returns the path to the executable file for the current process.
 String getCurrentExecutablePath();
+
+// Returns the value of the specified environment variable, or an empty string if the variable is unset.
+String getEnvironmentVariable(StringView name);
 
 struct Subprocess {
     enum PipeType {

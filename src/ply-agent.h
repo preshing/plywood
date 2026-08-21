@@ -128,7 +128,7 @@ enum class Protocol {
 // Describes an inference provider to connect to.
 struct EndPoint {
     String url;
-    Functor<String()> getAPIKey;
+    String apiKeyEnv;
     Protocol protocol = Protocol::Completions;
     String model;
 };

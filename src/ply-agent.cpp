@@ -890,7 +890,13 @@ void onError(Agent::Impl* impl, StringView message) {
 }
 
 // Extracts the provider's message from a JSON error envelope and falls back to the HTTP status.
-static String makeHTTPErrorMessage(u32 statusCode, StringView responseBody) {
+// When authentication is rejected, identify the environment variable that supplied the key.
+static String makeHTTPErrorMessage(u32 statusCode, StringView responseBody, StringView apiKeyEnv) {
+    MemStream httpMessage;
+    if ((statusCode == 401) && apiKeyEnv) {
+        httpMessage.format("The API key stored in {} was rejected by the server.\n", apiKeyEnv);
+    }
+    httpMessage.format("HTTP response code {}", statusCode);
     json::Parser parser;
     parser.setErrorCallback([](const json::ParseError&) {});
     parser.setGreedy(false);
@@ -899,8 +905,10 @@ static String makeHTTPErrorMessage(u32 statusCode, StringView responseBody) {
     if (!message) {
         message = result.root.get("message").text();
     }
-    return message ? String::format("HTTP response code {} from server: {}", statusCode, message)
-                   : String::format("HTTP response code {} from server", statusCode);
+    if (message) {
+        httpMessage.format(": {}", message);
+    }
+    return httpMessage.moveToString();
 }
 
 // Performs an inference request and converts the response data to a queue of ResponseEvents.
@@ -930,10 +938,11 @@ void performInferenceRequest(Agent::Impl* impl) {
     Map<String, String> headers;
     *headers.insert("Content-Type").value = "application/json";
     {
-        String apiKey = impl->settings.endPoint.getAPIKey();
+        String apiKey = getEnvironmentVariable(impl->settings.endPoint.apiKeyEnv);
         if (!apiKey) {
             LockGuard<Mutex> guard{impl->toolCtx.mutex};
-            onError(impl, "Missing API key");
+            onError(impl, String::format("Missing API key: environment variable {} is not set",
+                                         impl->settings.endPoint.apiKeyEnv));
             return;
         }
         *headers.insert("Authorization").value = String::format("Bearer {}", apiKey);
@@ -1048,7 +1057,8 @@ void performInferenceRequest(Agent::Impl* impl) {
 
     // Replace the generic HTTP failure with the provider's JSON error message when available.
     if (state.statusCode != 0 && state.statusCode != 200) {
-        state.errorMessage = makeHTTPErrorMessage(state.statusCode, state.errorBody.moveToString());
+        state.errorMessage = makeHTTPErrorMessage(state.statusCode, state.errorBody.moveToString(),
+                                                  impl->settings.endPoint.apiKeyEnv);
     }
 
     // Report any error that occurred during the request.

@@ -17,6 +17,7 @@
 #include <string>
 #include <fstream>
 #include <stdio.h>
+#include <stdlib.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -5208,6 +5209,30 @@ String fromWstring(WStringView str) {
         out.curByte += numBytes;
     }
     return out.moveToString();
+}
+
+String getEnvironmentVariable(StringView name) {
+#if defined(PLY_WINDOWS)
+    WString wName = toWstring(name);
+    DWORD numUnits = GetEnvironmentVariableW(wName, nullptr, 0);
+    if (numUnits == 0)
+        return {};
+    WString wValue = WString::allocate(numUnits);
+    DWORD rc = GetEnvironmentVariableW(wName, wValue, numUnits);
+    if (rc == 0 || rc >= numUnits)
+        return {};
+    return fromWstring(WStringView{wValue.units, rc});
+
+#elif defined(PLY_POSIX)
+    // Plywood strings aren't null-terminated, so append an explicit null byte for getenv.
+    String nameZ = String{name} + '\0';
+    const char* value = ::getenv(nameZ.bytes());
+    return value ? String{value} : String{};
+
+#else
+    // Not implemented on this platform.
+    return {};
+#endif
 }
 
 //  ▄▄▄▄▄          ▄▄   ▄▄
