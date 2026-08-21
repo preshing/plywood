@@ -465,7 +465,7 @@ void AnyObject::copyConstructFrom(const AnyObject& src) {
 //-----------------------------------
 // AnyOwnedObject
 //-----------------------------------
-static AnyOwnedObject create(TypeInfo* type) {
+AnyOwnedObject AnyOwnedObject::create(TypeInfo* type) {
     AnyOwnedObject result;
     result.data = Heap::alloc(type->fixedSize);
     result.type = type;
