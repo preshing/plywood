@@ -40,7 +40,8 @@ struct GenerationStats {
     Set<String> generatedPaths;
     u32 numUpdated = 0;
     u32 numUnchanged = 0;
-    u32 numOrphansRemoved = 0;
+    u32 numOrphanedFilesRemoved = 0;
+    u32 numOrphanedDirsRemoved = 0;
 };
 GenerationStats stats;
 
@@ -816,17 +817,29 @@ bool generateWholeSite() {
     writeFileIfChanged(joinPath(outFolder, "content/toc.html"), tocStream.moveToString());
 
     // Delete files left behind by pages or assets that are no longer generated.
+    Array<String> existingDirs;
     if (FileSystem::isDir(outFolder)) {
         for (const WalkTriple& triple : FileSystem::walk(outFolder)) {
+            existingDirs.append(triple.dirPath);
             for (const DirectoryEntry& entry : triple.files) {
                 String path = joinPath(triple.dirPath, entry.name);
                 if (!stats.generatedPaths.find(path)) {
                     FSResult result = FileSystem::deleteFile(path);
                     PLY_ASSERT(result == FS_OK);
                     PLY_UNUSED(result);
-                    stats.numOrphansRemoved++;
+                    stats.numOrphanedFilesRemoved++;
                 }
             }
+        }
+    }
+
+    // Delete directories left empty by the generation pass, starting with the deepest directories.
+    for (u32 i = existingDirs.numItems(); i-- > 1;) {
+        if (FileSystem::listDir(existingDirs[i]).isEmpty()) {
+            FSResult result = FileSystem::removeDirTree(existingDirs[i]);
+            PLY_ASSERT(result == FS_OK);
+            PLY_UNUSED(result);
+            stats.numOrphanedDirsRemoved++;
         }
     }
 
@@ -842,9 +855,14 @@ bool generateWholeSite() {
         out.format("{} {} file{} unchanged", separator, stats.numUnchanged, stats.numUnchanged == 1 ? "" : "s");
         separator = ',';
     }
-    if (stats.numOrphansRemoved > 0) {
-        out.format("{} {} orphaned file{} removed", separator, stats.numOrphansRemoved,
-                   stats.numOrphansRemoved == 1 ? "" : "s");
+    if (stats.numOrphanedFilesRemoved > 0) {
+        out.format("{} {} orphaned file{} removed", separator, stats.numOrphanedFilesRemoved,
+                   stats.numOrphanedFilesRemoved == 1 ? "" : "s");
+        separator = ',';
+    }
+    if (stats.numOrphanedDirsRemoved > 0) {
+        out.format("{} {} orphaned director{} removed", separator, stats.numOrphanedDirsRemoved,
+                   stats.numOrphanedDirsRemoved == 1 ? "y" : "ies");
     }
     out.write(".\n");
     return true;
