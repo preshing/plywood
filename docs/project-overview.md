@@ -5,7 +5,7 @@ The Plywood runtime library consists of four main components and several higher-
 
 **Main Runtime Library:**
 
-- [System Interface (`ply-system.h`)](/docs/system/index.md): Memory, timers, file systems, threads and processes.
+- [System (`ply-system.h`)](/docs/system/index.md): Memory, timers, file systems, threads and processes.
 - [Networking (`ply-network.h`)](/docs/networking.md): Client and server-side TCP and HTTP.
 - [Math (`ply-math.h`)](/docs/math.md): Scalar and vector math suitable for games and UI layouts.
 - [Reflection (`ply-reflect.h`)](/docs/reflect.md): Generic processing of data stored in Plywood data structures.
@@ -26,7 +26,7 @@ The Plywood runtime library consists of four main components and several higher-
 - [`serve-docs`](/docs/apps/serve-docs.md): Serve the HTML documentation locally.
 - [`banner-comment`](/docs/apps/banner-comment.md): Generate banner comments.
 
-Each component is implemented by a single pair of `.h` and `.cpp` files in the `src` folder. Function-level linking is recommended, as it will automatically exclude unused features from the output executable, reducing its final size.
+Whenever a Plywood `.h` file is included in a project, its corresponding `.cpp` file should also be compiled and linked in. You can use function-level linking to minimize output executable size if needed.
 
 ## Directory Structure
 

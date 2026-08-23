@@ -3,6 +3,11 @@
 
 Plywood provides a portable API for TCP/IP networking supporting both IPv4 and IPv6 addresses, with optional HTTP support.
 
+| File | Description | Size |
+| --- | --- | --- |
+| `ply-network.h` | Interface | ~400 lines |
+| `ply-network.cpp` | Implementation | ~1,300 lines |
+
 Before using any networking functions, call `Network::initialize()`. When finished, call `Network::shutdown()`.
 
 ## `Network`

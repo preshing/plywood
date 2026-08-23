@@ -111,6 +111,7 @@ html {
     --text-primary: #181818;
     --text-secondary: #404040;
     --text-toc-subheading: #707070;
+    --text-table-heading: #707070;
     --text-heading: #567bb0;
     --text-title-subheading: #a9c3e8;
     --text-wip: #d73030;
@@ -156,6 +157,7 @@ html {
     --text-primary: #e4e4e4;
     --text-secondary: #b0b0b0;
     --text-toc-subheading: #808080;
+    --text-table-heading: #808080;
     --text-heading: #9ab6d6;
     --text-title-subheading: #4e6b8e;
     --text-wip: #ff7777;
@@ -410,9 +412,16 @@ html {
     border-collapse: collapse;
     margin: 0 auto 1.5em auto;
 }
+.content table th,
 .content table td {
     border: 2px solid var(--border-table);
     padding: 0 7px;
+}
+.content table th {
+    font-family: "source_sans_3", sans-serif;
+    color: var(--text-table-heading);
+    font-size: 16px;
+    background-color: var(--border-table);
 }
 
 /*------------------------------------------------

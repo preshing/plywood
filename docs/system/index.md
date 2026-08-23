@@ -1,14 +1,14 @@
-﻿`ply-system.h`: System Interface
-================================
+﻿`ply-system.h`: System
+======================
 
-This is where Plywood provides cross-platform access to basic operating system services such as memory management, timers, file systems, threads and processes. Whenever `ply-system.h` is included in a project, `ply-system.cpp` must also be compiled and linked in.
+The System module provides cross-platform access to basic operating system services such as memory management, timers, file systems, threads and processes.
 
-| | |
-| --- | --- |
-| `ply-system.h` | API declarations | ~4,900 lines |
+| File | Description | Size |
+| --- | --- | --- |
+| `ply-system.h` | Interface | ~4,900 lines |
 | `ply-system.cpp` | Implementation | ~6,800 lines |
 
-The System Interface is a single-header, monolithic API organized into the following categories:
+This module is organized into the following categories:
 
 - [Preprocessor Macros](/docs/system/preprocessor-macros.md): Identifies the target platform; defines assertions and other macros.
 - [Numeric Functions and Types](/docs/system/numeric.md): Fixed-sized integers and primitive functions.

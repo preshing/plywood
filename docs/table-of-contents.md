@@ -1,6 +1,6 @@
 - [Introduction](/docs/introduction.md)
 - [Project Overview](/docs/project-overview.md)
-- [`ply-system.h`: System Interface](/docs/system/index.md)
+- [`ply-system.h`: System](/docs/system/index.md)
     - [Preprocessor Macros](/docs/system/preprocessor-macros.md)
     - [Numeric Functions and Types](/docs/system/numeric.md)
     - [Memory Management](/docs/system/memory/index.md)
