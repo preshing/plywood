@@ -26,7 +26,7 @@ The Plywood runtime library consists of four main components and several higher-
 - [`serve-docs`](/docs/apps/serve-docs.md): Serve the HTML documentation locally.
 - [`banner-comment`](/docs/apps/banner-comment.md): Generate banner comments.
 
-Whenever a Plywood `.h` file is included in a project, its corresponding `.cpp` file should also be compiled and linked in. You can use function-level linking to minimize output executable size if needed.
+Whenever a Plywood `.h` file is included in a project, its corresponding `.cpp` file should also be compiled and linked in.
 
 ## Directory Structure
 
@@ -71,7 +71,7 @@ All Plywood functions and types are defined in the `ply` namespace. Some higher-
 ```
 #include <ply-markdown.h>
 
-using namespace ply;  // Import into global namespace.
+using namespace ply;  // Import ply into global namespace.
 
 Array<Owned<markdown::Block>> blocks = markdown::parse("Hello, *world!*");
 ```

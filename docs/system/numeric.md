@@ -76,6 +76,14 @@ Numeric Functions and Types (`ply-system.h`)
 > isRepresentable<u32>(-1234);  // Returns false.
 > ```
 
+`template <typename Type> Type minRepresentableValue()`
+`template <typename Type> Type maxRepresentableValue()`
+> Returns the minimum or maximum representable value for a given type `Type`. Works with all integer and floating-point types.
+> ```
+> s32 value = maxRepresentableValue<s32>();      // Returns 0x7fffffff.
+> float value = minRepresentableValue<float>();  // Returns -3.402823466e+38f.
+> ```
+
 `template <typename DstType, typename SrcType> DstType numericCast(SrcType value)`
 > Casts `value` from one numeric type to another under the assumption that the value can be represented by the destination type. Will [assert](/docs/system/preprocessor-macros.md#assert) at runtime if the value can't be represented.
 > ```
@@ -84,12 +92,4 @@ Numeric Functions and Types (`ply-system.h`)
 >     u32 value2 = numericCast<u32>(value);  // OK
 > }
 > u32 value3 = numericCast<u32>(-1234);      // Error: triggers runtime assertion.
-> ```
-
-`template <typename Type> Type minRepresentableValue()`
-`template <typename Type> Type maxRepresentableValue()`
-> Returns the minimum or maximum representable value for a given type `Type`. Works with all integer and floating-point types.
-> ```
-> s32 value = maxRepresentableValue<s32>();      // Returns 0x7fffffff.
-> float value = minRepresentableValue<float>();  // Returns -3.402823466e+38f.
 > ```
