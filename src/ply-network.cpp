@@ -126,48 +126,95 @@ TCPConnection::~TCPConnection() {
 
 struct TCPListenerImpl : TCPListener {
     SOCKET listenSocket = INVALID_SOCKET;
-    Atomic<bool> wasStopped = false;
+    WSAEVENT acceptEvent = WSA_INVALID_EVENT;
+    Atomic<bool> stopRequested = false;
 };
 
 void TCPListener::destroy() {
     TCPListenerImpl* impl = static_cast<TCPListenerImpl*>(this);
     closesocket(impl->listenSocket);
+    WSACloseEvent(impl->acceptEvent);
     Heap::destroy(impl);
 }
 
 bool TCPListener::isListening() {
     TCPListenerImpl* impl = static_cast<TCPListenerImpl*>(this);
     PLY_ASSERT(impl->listenSocket != INVALID_SOCKET);
-    return !impl->wasStopped.load(Relaxed);
+    return !impl->stopRequested.load(Acquire);
 }
 
 void TCPListener::stopListening() {
     TCPListenerImpl* impl = static_cast<TCPListenerImpl*>(this);
     PLY_ASSERT(impl->listenSocket != INVALID_SOCKET);
-    if (!impl->wasStopped.exchange(true, Relaxed)) {
-        shutdown(impl->listenSocket, SD_BOTH);
+    if (!impl->stopRequested.exchange(true, Release)) {
+        BOOL rc = WSASetEvent(impl->acceptEvent);
+        PLY_ASSERT(rc);
+        PLY_UNUSED(rc);
     }
 }
 
 Owned<TCPConnection> TCPListener::accept() {
     TCPListenerImpl* impl = static_cast<TCPListenerImpl*>(this);
     PLY_ASSERT(impl->listenSocket != INVALID_SOCKET);
-    if (impl->wasStopped.load(Relaxed)) {
-        Network::lastResult_.store(IPResult::NO_SOCKET);
+    if (impl->stopRequested.load(Acquire)) {
+        Network::lastResult_.store(IPResult::NOT_LISTENING);
         return nullptr;
     }
 
+    // Wait until a connection is ready or stopListening manually signals the event.
     struct PLY_IF_IPV6(sockaddr_in6, sockaddr_in) remoteAddr;
     socklen_t remoteAddrLen = sizeof(sockaddr_in);
     if (PLY_IF_IPV6(Network::HasIPv6, false)) {
         remoteAddrLen = sizeof(sockaddr_in6);
     }
     socklen_t passedAddrLen = remoteAddrLen;
-    SOCKET hostSocket = ::accept(impl->listenSocket, (struct sockaddr*) &remoteAddr, &remoteAddrLen);
+    SOCKET hostSocket = INVALID_SOCKET;
+    while (hostSocket == INVALID_SOCKET) {
+        if (impl->stopRequested.load(Acquire)) {
+            Network::lastResult_.store(IPResult::NOT_LISTENING);
+            return nullptr;
+        }
+        DWORD waitResult = WSAWaitForMultipleEvents(1, &impl->acceptEvent, FALSE, WSA_INFINITE, FALSE);
+        if (impl->stopRequested.load(Acquire)) {
+            Network::lastResult_.store(IPResult::NOT_LISTENING);
+            return nullptr;
+        }
+        if (waitResult != WSA_WAIT_EVENT_0) {
+            Network::lastResult_.store(IPResult::UNKNOWN);
+            return nullptr;
+        }
 
-    if (hostSocket == INVALID_SOCKET) {
-        // FIXME: Check WSAGetLastError
-        PLY_ASSERT(PLY_IPWINSOCK_ALLOW_UNKNOWN_ERRORS);
+        // Atomically reset the event and retrieve the pending socket events.
+        WSANETWORKEVENTS networkEvents = {};
+        int rc = WSAEnumNetworkEvents(impl->listenSocket, impl->acceptEvent, &networkEvents);
+        if (rc == SOCKET_ERROR || networkEvents.iErrorCode[FD_ACCEPT_BIT] != 0) {
+            Network::lastResult_.store(IPResult::UNKNOWN);
+            return nullptr;
+        }
+        if ((networkEvents.lNetworkEvents & FD_ACCEPT) == 0) {
+            continue;
+        }
+
+        remoteAddrLen = passedAddrLen;
+        hostSocket = ::accept(impl->listenSocket, (struct sockaddr*) &remoteAddr, &remoteAddrLen);
+        if (hostSocket == INVALID_SOCKET && WSAGetLastError() != WSAEWOULDBLOCK) {
+            Network::lastResult_.store(IPResult::UNKNOWN);
+            return nullptr;
+        }
+    }
+
+    // Discard a connection that raced with the stop request.
+    if (impl->stopRequested.load(Acquire)) {
+        closesocket(hostSocket);
+        Network::lastResult_.store(IPResult::NOT_LISTENING);
+        return nullptr;
+    }
+
+    // Accepted sockets inherit the event selection, so restore blocking operation.
+    int rc = WSAEventSelect(hostSocket, WSA_INVALID_EVENT, 0);
+    u_long nonBlocking = 0;
+    if (rc == SOCKET_ERROR || ioctlsocket(hostSocket, FIONBIO, &nonBlocking) == SOCKET_ERROR) {
+        closesocket(hostSocket);
         Network::lastResult_.store(IPResult::UNKNOWN);
         return nullptr;
     }
@@ -177,8 +224,7 @@ Owned<TCPConnection> TCPListener::accept() {
 #if PLY_WITH_IPV6
     if (Network::HasIPv6 && remoteAddrLen == sizeof(sockaddr_in6)) {
         PLY_ASSERT(remoteAddr.sin6_family == AF_INET6);
-        memcpy(tcpConn->remoteAddr.netOrdered, &remoteAddr.sin6_addr,
-               sizeof(tcpConn->remoteAddr.netOrdered));
+        memcpy(tcpConn->remoteAddr.netOrdered, &remoteAddr.sin6_addr, sizeof(tcpConn->remoteAddr.netOrdered));
     } else
 #endif
     {
@@ -252,10 +298,20 @@ Owned<TCPListener> Network::bindTcp(u16 port) {
     if (rc == 0) {
         rc = listen(listenSocket, 1);
         if (rc == 0) {
-            Network::lastResult_.store(IPResult::OK);
-            TCPListenerImpl* listener = Heap::create<TCPListenerImpl>();
-            listener->listenSocket = listenSocket;
-            return Owned<TCPListener>::adopt(listener);
+            // Use an event so accept can wait without making a blocking Winsock call.
+            WSAEVENT acceptEvent = WSACreateEvent();
+            if (acceptEvent != WSA_INVALID_EVENT &&
+                WSAEventSelect(listenSocket, acceptEvent, FD_ACCEPT) != SOCKET_ERROR) {
+                Network::lastResult_.store(IPResult::OK);
+                TCPListenerImpl* listener = Heap::create<TCPListenerImpl>();
+                listener->listenSocket = listenSocket;
+                listener->acceptEvent = acceptEvent;
+                return Owned<TCPListener>::adopt(listener);
+            }
+            if (acceptEvent != WSA_INVALID_EVENT) {
+                WSACloseEvent(acceptEvent);
+            }
+            Network::lastResult_.store(IPResult::UNKNOWN);
         } else {
             int err = WSAGetLastError();
             switch (err) {
@@ -438,7 +494,7 @@ TCPConnection::~TCPConnection() {
 
 struct TCPListenerImpl : TCPListener {
     int listenSocket = -1;
-    Atomic<bool> wasStopped = false;
+    Atomic<bool> stopRequested = false;
 };
 
 void TCPListener::destroy() {
@@ -451,13 +507,13 @@ void TCPListener::destroy() {
 bool TCPListener::isListening() {
     TCPListenerImpl* impl = static_cast<TCPListenerImpl*>(this);
     PLY_ASSERT(impl->listenSocket >= 0);
-    return !impl->wasStopped.load(Relaxed);
+    return !impl->stopRequested.load(Acquire);
 }
 
 void TCPListener::stopListening() {
     TCPListenerImpl* impl = static_cast<TCPListenerImpl*>(this);
     PLY_ASSERT(impl->listenSocket >= 0);
-    if (!impl->wasStopped.exchange(true, Relaxed)) {
+    if (!impl->stopRequested.exchange(true, Release)) {
         shutdown(impl->listenSocket, SHUT_RDWR);
     }
 }
@@ -465,8 +521,8 @@ void TCPListener::stopListening() {
 Owned<TCPConnection> TCPListener::accept() {
     TCPListenerImpl* impl = static_cast<TCPListenerImpl*>(this);
     PLY_ASSERT(impl->listenSocket >= 0);
-    if (impl->wasStopped.load(Relaxed)) {
-        Network::lastResult_.store(IPResult::NO_SOCKET);
+    if (impl->stopRequested.load(Acquire)) {
+        Network::lastResult_.store(IPResult::NOT_LISTENING);
         return nullptr;
     }
 
@@ -481,13 +537,20 @@ Owned<TCPConnection> TCPListener::accept() {
     // `accept` returns -1 on failure; descriptor 0 is a valid accepted socket.
     if (hostSocket < 0) {
         // A concurrent stop request interrupts the blocking accept call.
-        if (impl->wasStopped.load(Relaxed)) {
-            Network::lastResult_.store(IPResult::NO_SOCKET);
+        if (impl->stopRequested.load(Acquire)) {
+            Network::lastResult_.store(IPResult::NOT_LISTENING);
             return nullptr;
         }
         // FIXME: Check errno
         PLY_ASSERT(PLY_IPPOSIX_ALLOW_UNKNOWN_ERRORS);
         Network::lastResult_.store(IPResult::UNKNOWN);
+        return nullptr;
+    }
+
+    // Discard a connection that raced with the stop request.
+    if (impl->stopRequested.load(Acquire)) {
+        ::close(hostSocket);
+        Network::lastResult_.store(IPResult::NOT_LISTENING);
         return nullptr;
     }
 
@@ -497,8 +560,7 @@ Owned<TCPConnection> TCPListener::accept() {
 #if PLY_WITH_IPV6
     if (Network::HasIPv6 && remoteAddrLen == sizeof(sockaddr_in6)) {
         PLY_ASSERT(remoteAddr.sin6_family == AF_INET6);
-        memcpy(tcpConn->remoteAddr.netOrdered, &remoteAddr.sin6_addr,
-               sizeof(tcpConn->remoteAddr.netOrdered));
+        memcpy(tcpConn->remoteAddr.netOrdered, &remoteAddr.sin6_addr, sizeof(tcpConn->remoteAddr.netOrdered));
     } else
 #endif
     {

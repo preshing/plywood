@@ -34,6 +34,18 @@ The `Network` class provides static methods for network initialization and conne
 `static IPResult lastResult()`
 > Returns the result code from the most recent network operation.
 
+`IPResult` can take on any of the following values:
+
+| Value | Description |
+| --- | --- |
+| `UNKNOWN` | An unrecognized or unexpected networking error occurred. |
+| `OK` | The operation completed successfully. |
+| `NO_SOCKET` | A socket could not be created because a system resource limit was reached. |
+| `UNREACHABLE` | The destination network could not be reached. |
+| `REFUSED` | The remote host refused the connection. |
+| `IN_USE` | The requested local address or port is already in use. |
+| `NOT_LISTENING` | `TCPListener::stopListening()` was called. |
+
 ## `IPAddress`
 
 Represents an IP address (either IPv4 or IPv6).

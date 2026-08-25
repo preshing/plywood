@@ -96,6 +96,7 @@ enum class IPResult : u8 {
     UNREACHABLE,
     REFUSED,
     IN_USE,
+    NOT_LISTENING,
 };
 
 class Network {
