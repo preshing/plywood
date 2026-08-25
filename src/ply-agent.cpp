@@ -518,7 +518,6 @@ String makeCompletionsRequestBody(Agent::Impl* impl) {
 
 // Handle Completions API response line.
 void receiveCompletionsLine(Agent::Impl* impl, StringView line) {
-
     if (line.startsWith("data: ")) {
         line = line.substr(6);
     }

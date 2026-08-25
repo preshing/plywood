@@ -39,7 +39,7 @@ enum IPVersion {
 };
 
 struct IPAddress {
-    u32 netOrdered[4]; // big endian
+    u32 netOrdered[4] = {0}; // big endian
 
     IPVersion version() const {
         return (this->netOrdered[0] == 0 && this->netOrdered[1] == 0 &&
@@ -129,26 +129,13 @@ public:
 //    ██   ▀█▄▄█▀ ██     ▀█▄▄█▀ ▀█▄▄█▀ ██  ██ ██  ██ ▀█▄▄▄  ▀█▄▄▄  ▀█▄▄ ██ ▀█▄▄█▀ ██  ██
 //
 
-#if defined(PLY_WINDOWS)
-
 struct TCPConnection {
-    IPAddress remoteAddr_;
-    u16 remotePort_ = 0;
-    Owned<PipeWinsock> inPipe;
-    Owned<PipeWinsock> outPipe;
+    IPAddress remoteAddr;
+    u16 remotePort = 0;
+    Owned<Pipe> inPipe;
+    Owned<Pipe> outPipe;
 
-    TCPConnection() {
-    }
     ~TCPConnection();
-    const IPAddress& remoteAddress() const {
-        return this->remoteAddr_;
-    }
-    u16 remotePort() const {
-        return this->remotePort_;
-    }
-    SOCKET getHandle() const {
-        return inPipe->socket;
-    }
     Stream createInStream() {
         return Stream{this->inPipe, false};
     }
@@ -156,36 +143,6 @@ struct TCPConnection {
         return Stream{this->outPipe, false};
     }
 };
-
-#elif defined(PLY_POSIX)
-
-struct TCPConnection {
-    IPAddress remoteAddr_;
-    u16 remotePort_ = 0;
-    Owned<PipeFD> inPipe;
-    Owned<PipeFD> outPipe;
-
-    TCPConnection() {
-    }
-    ~TCPConnection();
-    const IPAddress& remoteAddress() const {
-        return this->remoteAddr_;
-    }
-    u16 remotePort() const {
-        return this->remotePort_;
-    }
-    int getSocket() const {
-        return inPipe->fd;
-    }
-    Stream createInStream() {
-        return Stream{this->inPipe, false};
-    }
-    Stream createOutStream() {
-        return Stream{this->outPipe, false};
-    }
-};
-
-#endif
 
 //  ▄▄▄▄▄▄  ▄▄▄▄  ▄▄▄▄▄  ▄▄    ▄▄         ▄▄
 //    ██   ██  ▀▀ ██  ██ ██    ▄▄  ▄▄▄▄  ▄██▄▄  ▄▄▄▄  ▄▄▄▄▄   ▄▄▄▄  ▄▄▄▄▄
@@ -206,12 +163,12 @@ public:
         other.listenSocket = INVALID_SOCKET;
     }
     ~TCPListener() {
-        if (this->listenSocket >= 0) {
+        if (this->listenSocket != INVALID_SOCKET) {
             closesocket(this->listenSocket);
         }
     }
     TCPListener& operator=(TCPListener&& other) {
-        if (this->listenSocket >= 0) {
+        if (this->listenSocket != INVALID_SOCKET) {
             closesocket(this->listenSocket);
         }
         this->listenSocket = other.listenSocket;
@@ -219,13 +176,13 @@ public:
         return *this;
     }
     bool isValid() {
-        return this->listenSocket >= 0;
+        return this->listenSocket != INVALID_SOCKET;
     }
-    void endComm() {
+    void stopListening() {
         shutdown(this->listenSocket, SD_BOTH);
     }
     void close() {
-        if (this->listenSocket >= 0) {
+        if (this->listenSocket != INVALID_SOCKET) {
             closesocket(this->listenSocket);
             this->listenSocket = INVALID_SOCKET;
         }
@@ -262,7 +219,7 @@ public:
     bool isValid() {
         return this->listenSocket >= 0;
     }
-    void endComm() {
+    void stopListening() {
         shutdown(this->listenSocket, SHUT_RDWR);
     }
     void close() {

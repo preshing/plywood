@@ -70,17 +70,10 @@ Represents an established TCP connection to a remote host. Exposes input and out
 
 | | |
 | --- | --- |
-| `Owned<PipeWinsock> inPipe` | The underlying pipe object for reading on Windows. On POSIX systems, the type is `Owned<PipeFD>`. |
-| `Owned<PipeWinsock> outPipe` | The underlying pipe object for writing on Windows. On POSIX systems, the type is `Owned<PipeFD>`. |
-
-`const IPAddress& remoteAddress() const`
-> Returns the IP address of the remote host.
-
-`u16 remotePort() const`
-> Returns the port number of the remote host.
-
-`SOCKET getHandle() const`
-> Returns the underlying socket handle. Use with care.
+| `IPAddress remoteAddr` | The IP address of the remote host. |
+| `u16 remotePort` | The port number of the remote host. |
+| `Owned<Pipe> inPipe` | The underlying pipe object for reading. |
+| `Owned<Pipe> outPipe` | The underlying pipe object for writing. |
 
 `Stream createInStream()`
 > Creates a buffered stream for reading data from the connection.
@@ -97,14 +90,14 @@ A `TCPListener` listens for incoming TCP connections on a specific port. Support
 `bool isValid()`
 > Returns `true` if the listener is bound to a valid socket.
 
-`void endComm()`
-> Signals that no more connections will be accepted. Causes any blocking `accept()` call to return.
+`void stopListening()`
+> Immediately stops accepting new connections on the listening port. Existing connections are not closed. Future calls to `accept()` return null after this. If called while another thread is waiting inside `accept()`, the waiting thread will immediately return.
 
 `void close()`
 > Closes the listener socket.
 
 `Owned<TCPConnection> accept()`
-> Blocks until a client connects, then returns the new connection. Returns null if the listener was closed.
+> Blocks until either a client connects or `stopListening()` is called. If a client connects, the new connection is returned.
 
 ```
 // Simple echo server
