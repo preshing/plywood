@@ -4045,24 +4045,24 @@ public:
 
 #elif defined(PLY_POSIX)
 
-class Pipe_FD : public Pipe {
+class PipeFD : public Pipe {
 public:
     int fd = -1;
 
-    Pipe_FD() {
+    PipeFD() {
     }
-    Pipe_FD(Pipe_FD&& other) : fd{other.fd} {
+    PipeFD(PipeFD&& other) : fd{other.fd} {
         other.fd = -1;
     }
-    Pipe_FD(int fd, u32 flags) : fd{fd} {
+    PipeFD(int fd, u32 flags) : fd{fd} {
         this->flags = flags;
     }
-    Pipe_FD& operator=(Pipe_FD&& other) {
+    PipeFD& operator=(PipeFD&& other) {
         this->fd = other.fd;
         other.fd = -1;
         return *this;
     }
-    virtual ~Pipe_FD();
+    virtual ~PipeFD();
     virtual u32 read(MutStringView buf) override;
     virtual bool write(StringView buf) override;
     virtual void flush(bool toDevice = false) override;

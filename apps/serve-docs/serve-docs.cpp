@@ -138,7 +138,7 @@ int main(int argc, const char* argv[]) {
     SetConsoleOutputCP(CP_UTF8);
 #endif
 
-    Network::initialize(IPV4);
+    Network::initialize(IPv4);
     u16 port = 8080;
     getStdOut().format("Listening for connections on port {}...\n", port);
     HTTPServer::run(port, servePlywoodDocumentation);

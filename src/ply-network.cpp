@@ -32,7 +32,7 @@ namespace ply {
 
 String IPAddress::toString() const {
     char buf[INET6_ADDRSTRLEN] = {0};
-    if (this->version() == IPV4) {
+    if (this->version() == IPv4) {
         // FIXME: Rewrite without using CRT
         const char* r = inet_ntop(AF_INET, &this->netOrdered[3], buf, INET6_ADDRSTRLEN);
         PLY_ASSERT(r == buf);
@@ -153,7 +153,7 @@ Owned<TCPConnection> TCPListener::accept() {
     {
         struct sockaddr_in* remoteAddrV4 = (struct sockaddr_in*) &remoteAddr;
         PLY_ASSERT(remoteAddrV4->sin_family == AF_INET);
-        tcpConn->remoteAddr_ = IPAddress::from_ipv4(remoteAddrV4->sin_addr.s_addr);
+        tcpConn->remoteAddr_ = IPAddress::fromIPv4(remoteAddrV4->sin_addr.s_addr);
     }
     tcpConn->remotePort_ = convertBigEndian(remoteAddr.sin6_port);
     tcpConn->inPipe = Heap::create<PipeWinsock>(hostSocket, Pipe::HAS_READ_PERMISSION);
@@ -276,7 +276,7 @@ Owned<TCPConnection> Network::connectTcp(const IPAddress& address, u16 port) {
     } else
 #endif
     {
-        PLY_ASSERT(address.version() == IPV4);
+        PLY_ASSERT(address.version() == IPv4);
         struct sockaddr_in* remoteAddrV4 = (struct sockaddr_in*) &remoteAddr;
         memset(remoteAddrV4, 0, remoteAddrLen);
 #if PLY_KERNEL_FREEBSD
@@ -322,7 +322,7 @@ IPAddress Network::resolveHostName(StringView hostName, IPVersion ipVersion) {
     hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
 #if PLY_WITH_IPV6
-    if (ipVersion == IPV6) {
+    if (ipVersion == IPv6) {
         hints.ai_family = AF_INET6;
         hints.ai_flags = AI_V4MAPPED | AI_ADDRCONFIG; // Fallback to V4 if no V6
     }
@@ -334,7 +334,7 @@ IPAddress Network::resolveHostName(StringView hostName, IPVersion ipVersion) {
     struct addrinfo* best = nullptr;
     for (struct addrinfo* cur = res; cur; cur = cur->ai_next) {
 #if PLY_WITH_IPV6
-        if (cur->ai_family == AF_INET6 && ipVersion == IPV6) {
+        if (cur->ai_family == AF_INET6 && ipVersion == IPv6) {
             if (!best || best->ai_family != AF_INET6) {
                 best = cur;
             }
@@ -359,7 +359,7 @@ IPAddress Network::resolveHostName(StringView hostName, IPVersion ipVersion) {
         {
             PLY_ASSERT(best->ai_addrlen >= sizeof(sockaddr_in));
             struct sockaddr_in* resolvedAddr = (struct sockaddr_in*) best->ai_addr;
-            ipAddr = IPAddress::from_ipv4(resolvedAddr->sin_addr.s_addr);
+            ipAddr = IPAddress::fromIPv4(resolvedAddr->sin_addr.s_addr);
         }
     }
     freeaddrinfo(res);
@@ -377,7 +377,7 @@ void Network::initialize(IPVersion ipVersion) {
     IsInit = true;
 
 #if PLY_WITH_IPV6
-    if (ipVersion == IPV6) {
+    if (ipVersion == IPv6) {
         // FIXME: Is there a better way to test for IPv6 support?
         int testSocket = socket(AF_INET6, SOCK_STREAM, 0);
         if (testSocket >= 0) {
@@ -434,11 +434,11 @@ Owned<TCPConnection> TCPListener::accept() {
     {
         struct sockaddr_in* remoteAddrV4 = (struct sockaddr_in*) &remoteAddr;
         PLY_ASSERT(remoteAddrV4->sin_family == AF_INET);
-        tcpConn->remoteAddr_ = IPAddress::from_ipv4(remoteAddrV4->sin_addr.s_addr);
+        tcpConn->remoteAddr_ = IPAddress::fromIPv4(remoteAddrV4->sin_addr.s_addr);
     }
     tcpConn->remotePort_ = convertBigEndian(remoteAddr.sin6_port);
-    tcpConn->inPipe = Heap::create<Pipe_FD>(hostSocket, Pipe::HAS_READ_PERMISSION);
-    tcpConn->outPipe = Heap::create<Pipe_FD>(hostSocket, Pipe::HAS_WRITE_PERMISSION);
+    tcpConn->inPipe = Heap::create<PipeFD>(hostSocket, Pipe::HAS_READ_PERMISSION);
+    tcpConn->outPipe = Heap::create<PipeFD>(hostSocket, Pipe::HAS_WRITE_PERMISSION);
     Network::lastResult_.store(IPResult::OK);
     return tcpConn;
 }
@@ -570,7 +570,7 @@ Owned<TCPConnection> Network::connectTcp(const IPAddress& address, u16 port) {
     } else
 #endif
     {
-        PLY_ASSERT(address.version() == IPV4);
+        PLY_ASSERT(address.version() == IPv4);
         struct sockaddr_in* remoteAddrV4 = (struct sockaddr_in*) &remoteAddr;
         memset(remoteAddrV4, 0, remoteAddrLen);
 #if PLY_KERNEL_FREEBSD
@@ -586,8 +586,8 @@ Owned<TCPConnection> Network::connectTcp(const IPAddress& address, u16 port) {
         TCPConnection* tcpConn = Heap::create<TCPConnection>();
         tcpConn->remoteAddr_ = address;
         tcpConn->remotePort_ = port;
-        tcpConn->inPipe = Heap::create<Pipe_FD>(connectSocket, Pipe::HAS_READ_PERMISSION);
-        tcpConn->outPipe = Heap::create<Pipe_FD>(connectSocket, Pipe::HAS_WRITE_PERMISSION);
+        tcpConn->inPipe = Heap::create<PipeFD>(connectSocket, Pipe::HAS_READ_PERMISSION);
+        tcpConn->outPipe = Heap::create<PipeFD>(connectSocket, Pipe::HAS_WRITE_PERMISSION);
         Network::lastResult_.store(IPResult::OK);
         return tcpConn;
     }
@@ -619,7 +619,7 @@ IPAddress Network::resolveHostName(StringView hostName, IPVersion ipVersion) {
     hints.ai_family = AF_INET;
     hints.ai_socktype = SOCK_STREAM;
 #if PLY_WITH_IPV6
-    if (ipVersion == IPV6) {
+    if (ipVersion == IPv6) {
         hints.ai_family = AF_INET6;
         hints.ai_flags = AI_V4MAPPED | AI_ADDRCONFIG; // Fallback to V4 if no V6
     }
@@ -631,7 +631,7 @@ IPAddress Network::resolveHostName(StringView hostName, IPVersion ipVersion) {
     struct addrinfo* best = nullptr;
     for (struct addrinfo* cur = res; cur; cur = cur->ai_next) {
 #if PLY_WITH_IPV6
-        if (cur->ai_family == AF_INET6 && ipVersion == IPV6) {
+        if (cur->ai_family == AF_INET6 && ipVersion == IPv6) {
             if (!best || best->ai_family != AF_INET6) {
                 best = cur;
             }
@@ -656,7 +656,7 @@ IPAddress Network::resolveHostName(StringView hostName, IPVersion ipVersion) {
         {
             PLY_ASSERT(best->ai_addrlen >= sizeof(sockaddr_in));
             struct sockaddr_in* resolvedAddr = (struct sockaddr_in*) best->ai_addr;
-            ipAddr = IPAddress::from_ipv4(resolvedAddr->sin_addr.s_addr);
+            ipAddr = IPAddress::fromIPv4(resolvedAddr->sin_addr.s_addr);
         }
     }
     freeaddrinfo(res);

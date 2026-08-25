@@ -34,8 +34,8 @@ namespace ply {
 //
 
 enum IPVersion {
-    IPV4,
-    IPV6,
+    IPv4,
+    IPv6,
 };
 
 struct IPAddress {
@@ -44,18 +44,18 @@ struct IPAddress {
     IPVersion version() const {
         return (this->netOrdered[0] == 0 && this->netOrdered[1] == 0 &&
                 this->netOrdered[2] == convertBigEndian(0xffffu))
-                   ? IPV4
-                   : IPV6;
+                   ? IPv4
+                   : IPv6;
     }
     bool isNull() const {
         return this->netOrdered[0] == 0 && this->netOrdered[1] == 0 && this->netOrdered[2] == 0 &&
                this->netOrdered[3] == 0;
     }
     static constexpr IPAddress localHost(IPVersion ipVersion) {
-        return (ipVersion == IPV4) ? IPAddress{{0, 0, convertBigEndian(0xffffu), convertBigEndian(0x7f000001u)}}
+        return (ipVersion == IPv4) ? IPAddress{{0, 0, convertBigEndian(0xffffu), convertBigEndian(0x7f000001u)}}
                                    : IPAddress{{0, 0, 0, convertBigEndian(1u)}};
     }
-    static constexpr IPAddress from_ipv4(u32 netOrdered) {
+    static constexpr IPAddress fromIPv4(u32 netOrdered) {
         return {{0, 0, convertBigEndian(0xffffu), netOrdered}};
     }
     String toString() const;
@@ -162,8 +162,8 @@ struct TCPConnection {
 struct TCPConnection {
     IPAddress remoteAddr_;
     u16 remotePort_ = 0;
-    Owned<Pipe_FD> inPipe;
-    Owned<Pipe_FD> outPipe;
+    Owned<PipeFD> inPipe;
+    Owned<PipeFD> outPipe;
 
     TCPConnection() {
     }

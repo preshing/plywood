@@ -1192,7 +1192,7 @@ int main(int argc, const char* argv[]) {
     // Start the webserver in parallel with the agent.
     Thread webServerThread;
     if (options.runWebServer) {
-        Network::initialize(IPV4);
+        Network::initialize(IPv4);
         webServerThread.run([] { HTTPServer::run(8081, serveWebTranscript); });
     }
 

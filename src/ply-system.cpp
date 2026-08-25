@@ -2508,7 +2508,7 @@ void PipeHandle::seekTo(s64 offset) {
 
 #elif defined(PLY_POSIX)
 
-Pipe_FD::~Pipe_FD() {
+PipeFD::~PipeFD() {
     if (this->fd >= 0) {
         int rc = ::close(this->fd);
         PLY_ASSERT(rc == 0);
@@ -2516,7 +2516,7 @@ Pipe_FD::~Pipe_FD() {
     }
 }
 
-u32 Pipe_FD::read(MutStringView buf) {
+u32 PipeFD::read(MutStringView buf) {
     PLY_ASSERT(this->fd >= 0);
     // Retry as long as read() keeps failing due to EINTR caused by the debugger:
     s32 rc;
@@ -2529,7 +2529,7 @@ u32 Pipe_FD::read(MutStringView buf) {
     return rc;
 }
 
-bool Pipe_FD::write(StringView buf) {
+bool PipeFD::write(StringView buf) {
     PLY_ASSERT(this->fd >= 0);
     while (buf.numBytes() > 0) {
         s32 sent = (s32)::write(this->fd, buf.bytes(), buf.numBytes());
@@ -2541,12 +2541,12 @@ bool Pipe_FD::write(StringView buf) {
     return true;
 }
 
-void Pipe_FD::flush(bool toDevice) {
+void PipeFD::flush(bool toDevice) {
     // FIXME: Implement as per
     // https://github.com/libuv/libuv/issues/1579#issue-262113760
 }
 
-u64 Pipe_FD::getFileSize() {
+u64 PipeFD::getFileSize() {
     PLY_ASSERT(this->fd >= 0);
     struct stat buf;
     int rc = fstat(this->fd, &buf);
@@ -2555,7 +2555,7 @@ u64 Pipe_FD::getFileSize() {
     return buf.st_size;
 }
 
-void Pipe_FD::seekTo(s64 offset) {
+void PipeFD::seekTo(s64 offset) {
     PLY_ASSERT(this->fd >= 0);
     off_t rc = lseek(this->fd, numericCast<off_t>(offset), SEEK_SET);
     PLY_ASSERT(rc == 0);
@@ -4474,17 +4474,17 @@ Pipe* getStdErrPipe() {
 #elif defined(PLY_POSIX)
 
 Pipe* getStdInPipe() {
-    static Pipe_FD inPipe{STDIN_FILENO, Pipe::HAS_READ_PERMISSION};
+    static PipeFD inPipe{STDIN_FILENO, Pipe::HAS_READ_PERMISSION};
     return &inPipe;
 }
 
 Pipe* getStdOutPipe() {
-    static Pipe_FD outPipe{STDOUT_FILENO, Pipe::HAS_WRITE_PERMISSION};
+    static PipeFD outPipe{STDOUT_FILENO, Pipe::HAS_WRITE_PERMISSION};
     return &outPipe;
 }
 
 Pipe* getStdErrPipe() {
-    static Pipe_FD errorPipe{STDERR_FILENO, Pipe::HAS_WRITE_PERMISSION};
+    static PipeFD errorPipe{STDERR_FILENO, Pipe::HAS_WRITE_PERMISSION};
     return &errorPipe;
 }
 
@@ -6560,7 +6560,7 @@ Owned<Pipe> FileSystem::openPipeForRead(StringView path) {
     int fd = openFdForRead(path);
     if (fd == -1)
         return nullptr;
-    return Heap::create<Pipe_FD>(fd, Pipe::HAS_READ_PERMISSION | Pipe::CAN_SEEK);
+    return Heap::create<PipeFD>(fd, Pipe::HAS_READ_PERMISSION | Pipe::CAN_SEEK);
 }
 
 int FileSystem::openFdForWrite(StringView path) {
@@ -6590,7 +6590,7 @@ Owned<Pipe> FileSystem::openPipeForWrite(StringView path) {
     int fd = openFdForWrite(path);
     if (fd == -1)
         return nullptr;
-    return Heap::create<Pipe_FD>(fd, Pipe::HAS_WRITE_PERMISSION | Pipe::CAN_SEEK);
+    return Heap::create<PipeFD>(fd, Pipe::HAS_WRITE_PERMISSION | Pipe::CAN_SEEK);
 }
 
 FSResult FileSystem::moveFile(StringView srcPath, StringView dstPath) {

@@ -53,7 +53,7 @@ Represents an IP address (either IPv4 or IPv6).
 `static constexpr IPAddress localHost(IPVersion ipVersion)`
 > Returns the localhost address (`127.0.0.1` for IPv4, `::1` for IPv6).
 
-`static constexpr IPAddress from_ipv4(u32 netOrdered)`
+`static constexpr IPAddress fromIPv4(u32 netOrdered)`
 > Creates an IPv4 address from a 32-bit value in network byte order.
 
 `String toString() const`
@@ -70,8 +70,8 @@ Represents an established TCP connection to a remote host. Exposes input and out
 
 | | |
 | --- | --- |
-| `Owned<PipeWinsock> inPipe` | The underlying pipe object for reading on Windows. On POSIX systems, the type is `Owned<Pipe_FD>`. |
-| `Owned<PipeWinsock> outPipe` | The underlying pipe object for writing on Windows. On POSIX systems, the type is `Owned<Pipe_FD>`. |
+| `Owned<PipeWinsock> inPipe` | The underlying pipe object for reading on Windows. On POSIX systems, the type is `Owned<PipeFD>`. |
+| `Owned<PipeWinsock> outPipe` | The underlying pipe object for writing on Windows. On POSIX systems, the type is `Owned<PipeFD>`. |
 
 `const IPAddress& remoteAddress() const`
 > Returns the IP address of the remote host.
@@ -244,7 +244,7 @@ void serverCallback(HTTPServer::Request& request) {
 
 int main() {
     // Initialize the network.
-    Network::initialize(IPV4);
+    Network::initialize(IPv4);
 
     // Run a webserver.
     HTTPServer::run(8080, serverCallback);
