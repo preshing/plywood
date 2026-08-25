@@ -124,8 +124,35 @@ TCPConnection::~TCPConnection() {
     }
 }
 
+struct TCPListenerImpl : TCPListener {
+    SOCKET listenSocket = INVALID_SOCKET;
+    Atomic<bool> wasStopped = false;
+};
+
+void TCPListener::destroy() {
+    TCPListenerImpl* impl = static_cast<TCPListenerImpl*>(this);
+    closesocket(impl->listenSocket);
+    Heap::destroy(impl);
+}
+
+bool TCPListener::isListening() {
+    TCPListenerImpl* impl = static_cast<TCPListenerImpl*>(this);
+    PLY_ASSERT(impl->listenSocket != INVALID_SOCKET);
+    return !impl->wasStopped.load(Relaxed);
+}
+
+void TCPListener::stopListening() {
+    TCPListenerImpl* impl = static_cast<TCPListenerImpl*>(this);
+    PLY_ASSERT(impl->listenSocket != INVALID_SOCKET);
+    if (!impl->wasStopped.exchange(true, Relaxed)) {
+        shutdown(impl->listenSocket, SD_BOTH);
+    }
+}
+
 Owned<TCPConnection> TCPListener::accept() {
-    if (this->listenSocket == INVALID_SOCKET) {
+    TCPListenerImpl* impl = static_cast<TCPListenerImpl*>(this);
+    PLY_ASSERT(impl->listenSocket != INVALID_SOCKET);
+    if (impl->wasStopped.load(Relaxed)) {
         Network::lastResult_.store(IPResult::NO_SOCKET);
         return nullptr;
     }
@@ -136,7 +163,7 @@ Owned<TCPConnection> TCPListener::accept() {
         remoteAddrLen = sizeof(sockaddr_in6);
     }
     socklen_t passedAddrLen = remoteAddrLen;
-    SOCKET hostSocket = ::accept(this->listenSocket, (struct sockaddr*) &remoteAddr, &remoteAddrLen);
+    SOCKET hostSocket = ::accept(impl->listenSocket, (struct sockaddr*) &remoteAddr, &remoteAddrLen);
 
     if (hostSocket == INVALID_SOCKET) {
         // FIXME: Check WSAGetLastError
@@ -150,7 +177,8 @@ Owned<TCPConnection> TCPListener::accept() {
 #if PLY_WITH_IPV6
     if (Network::HasIPv6 && remoteAddrLen == sizeof(sockaddr_in6)) {
         PLY_ASSERT(remoteAddr.sin6_family == AF_INET6);
-        memcpy(&tcpConn->remoteAddr, &remoteAddr.sin6_addr, 16);
+        memcpy(tcpConn->remoteAddr.netOrdered, &remoteAddr.sin6_addr,
+               sizeof(tcpConn->remoteAddr.netOrdered));
     } else
 #endif
     {
@@ -185,7 +213,7 @@ SOCKET createSocket(int type) {
     return s;
 }
 
-TCPListener Network::bindTcp(u16 port) {
+Owned<TCPListener> Network::bindTcp(u16 port) {
     SOCKET listenSocket = createSocket(SOCK_STREAM);
     if (listenSocket == INVALID_SOCKET) { // lastResult_ is already set
         return {};
@@ -225,7 +253,9 @@ TCPListener Network::bindTcp(u16 port) {
         rc = listen(listenSocket, 1);
         if (rc == 0) {
             Network::lastResult_.store(IPResult::OK);
-            return TCPListener{listenSocket};
+            TCPListenerImpl* listener = Heap::create<TCPListenerImpl>();
+            listener->listenSocket = listenSocket;
+            return Owned<TCPListener>::adopt(listener);
         } else {
             int err = WSAGetLastError();
             switch (err) {
@@ -356,7 +386,7 @@ IPAddress Network::resolveHostName(StringView hostName, IPVersion ipVersion) {
         if (best->ai_family == AF_INET6) {
             PLY_ASSERT(best->ai_addrlen >= sizeof(sockaddr_in6));
             struct sockaddr_in6* resolvedAddr = (struct sockaddr_in6*) best->ai_addr;
-            memcpy(&ipAddr, &resolvedAddr->sin6_addr, 16);
+            memcpy(ipAddr.netOrdered, &resolvedAddr->sin6_addr, sizeof(ipAddr.netOrdered));
         } else
 #endif
         {
@@ -406,8 +436,36 @@ TCPConnection::~TCPConnection() {
     }
 }
 
+struct TCPListenerImpl : TCPListener {
+    int listenSocket = -1;
+    Atomic<bool> wasStopped = false;
+};
+
+void TCPListener::destroy() {
+    TCPListenerImpl* impl = static_cast<TCPListenerImpl*>(this);
+    PLY_ASSERT(impl->listenSocket >= 0);
+    ::close(impl->listenSocket);
+    Heap::destroy(impl);
+}
+
+bool TCPListener::isListening() {
+    TCPListenerImpl* impl = static_cast<TCPListenerImpl*>(this);
+    PLY_ASSERT(impl->listenSocket >= 0);
+    return !impl->wasStopped.load(Relaxed);
+}
+
+void TCPListener::stopListening() {
+    TCPListenerImpl* impl = static_cast<TCPListenerImpl*>(this);
+    PLY_ASSERT(impl->listenSocket >= 0);
+    if (!impl->wasStopped.exchange(true, Relaxed)) {
+        shutdown(impl->listenSocket, SHUT_RDWR);
+    }
+}
+
 Owned<TCPConnection> TCPListener::accept() {
-    if (this->listenSocket < 0) {
+    TCPListenerImpl* impl = static_cast<TCPListenerImpl*>(this);
+    PLY_ASSERT(impl->listenSocket >= 0);
+    if (impl->wasStopped.load(Relaxed)) {
         Network::lastResult_.store(IPResult::NO_SOCKET);
         return nullptr;
     }
@@ -418,10 +476,15 @@ Owned<TCPConnection> TCPListener::accept() {
         remoteAddrLen = sizeof(sockaddr_in6);
     }
     socklen_t passedAddrLen = remoteAddrLen;
-    int hostSocket = ::accept(this->listenSocket, (struct sockaddr*) &remoteAddr, &remoteAddrLen);
+    int hostSocket = ::accept(impl->listenSocket, (struct sockaddr*) &remoteAddr, &remoteAddrLen);
 
     // `accept` returns -1 on failure; descriptor 0 is a valid accepted socket.
     if (hostSocket < 0) {
+        // A concurrent stop request interrupts the blocking accept call.
+        if (impl->wasStopped.load(Relaxed)) {
+            Network::lastResult_.store(IPResult::NO_SOCKET);
+            return nullptr;
+        }
         // FIXME: Check errno
         PLY_ASSERT(PLY_IPPOSIX_ALLOW_UNKNOWN_ERRORS);
         Network::lastResult_.store(IPResult::UNKNOWN);
@@ -434,7 +497,8 @@ Owned<TCPConnection> TCPListener::accept() {
 #if PLY_WITH_IPV6
     if (Network::HasIPv6 && remoteAddrLen == sizeof(sockaddr_in6)) {
         PLY_ASSERT(remoteAddr.sin6_family == AF_INET6);
-        memcpy(&tcpConn->remoteAddr, &remoteAddr.sin6_addr, 16);
+        memcpy(tcpConn->remoteAddr.netOrdered, &remoteAddr.sin6_addr,
+               sizeof(tcpConn->remoteAddr.netOrdered));
     } else
 #endif
     {
@@ -478,7 +542,7 @@ int createSocket(int type) {
     return s;
 }
 
-TCPListener Network::bindTcp(u16 port) {
+Owned<TCPListener> Network::bindTcp(u16 port) {
     int listenSocket = createSocket(SOCK_STREAM);
     if (listenSocket < 0) { // lastResult_ is already set
         return {};
@@ -518,7 +582,9 @@ TCPListener Network::bindTcp(u16 port) {
         rc = listen(listenSocket, 1);
         if (rc == 0) {
             Network::lastResult_.store(IPResult::OK);
-            return TCPListener{listenSocket};
+            TCPListenerImpl* listener = Heap::create<TCPListenerImpl>();
+            listener->listenSocket = listenSocket;
+            return Owned<TCPListener>::adopt(listener);
         } else {
             switch (errno) {
                 case EADDRINUSE: {
@@ -656,7 +722,7 @@ IPAddress Network::resolveHostName(StringView hostName, IPVersion ipVersion) {
         if (best->ai_family == AF_INET6) {
             PLY_ASSERT(best->ai_addrlen >= sizeof(sockaddr_in6));
             struct sockaddr_in6* resolvedAddr = (struct sockaddr_in6*) best->ai_addr;
-            memcpy(&ipAddr, &resolvedAddr->sin6_addr, 16);
+            memcpy(ipAddr.netOrdered, &resolvedAddr->sin6_addr, sizeof(ipAddr.netOrdered));
         } else
 #endif
         {
@@ -1233,19 +1299,15 @@ void handleRequest(TCPConnection* tcpConn, const Functor<void(HTTPServer::Reques
 
 // Accept connections on a port and handle each request in a new thread
 void HTTPServer::run(u16 port, const Functor<void(Request& request)>& requestHandler) {
-    TCPListener listener = Network::bindTcp(port);
-    if (!listener.isValid()) {
+    Owned<TCPListener> listener = Network::bindTcp(port);
+    if (!listener) {
         getStdErr().format("Error: Can't bind to port {}\n", port);
         return;
     }
 
     // Accepting incoming TCP connections in a loop.
-    for (;;) {
-        Owned<TCPConnection> tcpConn = listener.accept();
-        if (!tcpConn)
-            break;
-
-        // Transfer ownership through the thread callback using a raw pointer.
+    while (Owned<TCPConnection> tcpConn = listener->accept()) {
+        // Transfer tcpConn ownership to a new thread.
         TCPConnection* tcpConnPtr = tcpConn.release();
         spawnThread([tcpConnPtr, &requestHandler] {
             Owned<TCPConnection> tcpConn = Owned<TCPConnection>::adopt(tcpConnPtr);

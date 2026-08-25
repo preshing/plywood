@@ -115,7 +115,7 @@ public:
 
     static void initialize(IPVersion ipVersion);
     static void shutdown();
-    static TCPListener bindTcp(u16 port);
+    static Owned<TCPListener> bindTcp(u16 port);
     static Owned<TCPConnection> connectTcp(const IPAddress& address, u16 port);
     static IPAddress resolveHostName(StringView hostName, IPVersion ipVersion);
     static IPResult lastResult() {
@@ -150,89 +150,12 @@ struct TCPConnection {
 //    ██   ▀█▄▄█▀ ██     ██▄▄▄ ██  ▄▄▄█▀  ▀█▄▄ ▀█▄▄▄  ██  ██ ▀█▄▄▄  ██
 //
 
-#if defined(PLY_WINDOWS)
-
 struct TCPListener {
-public:
-    SOCKET listenSocket = INVALID_SOCKET;
-
-    TCPListener(SOCKET listenSocket = INVALID_SOCKET) : listenSocket{listenSocket} {
-    }
-    TCPListener(TCPListener&& other) {
-        this->listenSocket = other.listenSocket;
-        other.listenSocket = INVALID_SOCKET;
-    }
-    ~TCPListener() {
-        if (this->listenSocket != INVALID_SOCKET) {
-            closesocket(this->listenSocket);
-        }
-    }
-    TCPListener& operator=(TCPListener&& other) {
-        if (this->listenSocket != INVALID_SOCKET) {
-            closesocket(this->listenSocket);
-        }
-        this->listenSocket = other.listenSocket;
-        other.listenSocket = INVALID_SOCKET;
-        return *this;
-    }
-    bool isValid() {
-        return this->listenSocket != INVALID_SOCKET;
-    }
-    void stopListening() {
-        shutdown(this->listenSocket, SD_BOTH);
-    }
-    void close() {
-        if (this->listenSocket != INVALID_SOCKET) {
-            closesocket(this->listenSocket);
-            this->listenSocket = INVALID_SOCKET;
-        }
-    }
-
+    void destroy();
+    bool isListening();
+    void stopListening();
     Owned<TCPConnection> accept();
 };
-
-#elif defined(PLY_POSIX)
-
-struct TCPListener {
-public:
-    int listenSocket = -1;
-
-    TCPListener(int listenSocket = -1) : listenSocket{listenSocket} {
-    }
-    TCPListener(TCPListener&& other) {
-        this->listenSocket = other.listenSocket;
-        other.listenSocket = -1;
-    }
-    ~TCPListener() {
-        if (this->listenSocket >= 0) {
-            ::close(this->listenSocket);
-        }
-    }
-    TCPListener& operator=(TCPListener&& other) {
-        if (this->listenSocket >= 0) {
-            ::close(this->listenSocket);
-        }
-        this->listenSocket = other.listenSocket;
-        other.listenSocket = -1;
-        return *this;
-    }
-    bool isValid() {
-        return this->listenSocket >= 0;
-    }
-    void stopListening() {
-        shutdown(this->listenSocket, SHUT_RDWR);
-    }
-    void close() {
-        if (this->listenSocket >= 0) {
-            ::close(this->listenSocket);
-            this->listenSocket = -1;
-        }
-    }
-
-    Owned<TCPConnection> accept();
-};
-
-#endif
 
 #if PLY_WITH_HTTP_CLIENT
 

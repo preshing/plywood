@@ -22,7 +22,7 @@ The `Network` class provides static methods for network initialization and conne
 `static void shutdown()`
 > Shuts down the networking subsystem and releases resources.
 
-`static TCPListener bindTcp(u16 port)`
+`static Owned<TCPListener> bindTcp(u16 port)`
 > Creates a TCP listener bound to the specified port. The listener can accept incoming connections.
 
 `static Owned<TCPConnection> connectTcp(const IPAddress& address, u16 port)`
@@ -83,18 +83,15 @@ Represents an established TCP connection to a remote host. Exposes input and out
 
 ## `TCPListener`
 
-A `TCPListener` listens for incoming TCP connections on a specific port. Supports move assignment.
+A `TCPListener` listens for incoming TCP connections on a specific port.
 
 {context class=TCPListener}
 
-`bool isValid()`
-> Returns `true` if the listener is bound to a valid socket.
+`bool isListening()`
+> Returns `true` if `stopListening()` has not been called.
 
 `void stopListening()`
 > Immediately stops accepting new connections on the listening port. Existing connections are not closed. Future calls to `accept()` return null after this. If called while another thread is waiting inside `accept()`, the waiting thread will immediately return.
-
-`void close()`
-> Closes the listener socket.
 
 `Owned<TCPConnection> accept()`
 > Blocks until either a client connects or `stopListening()` is called. If a client connects, the new connection is returned.
@@ -102,10 +99,10 @@ A `TCPListener` listens for incoming TCP connections on a specific port. Support
 ```
 // Simple echo server
 Network::initialize(IPVersion::V4);
-TCPListener listener = Network::bindTcp(8080);
+Owned<TCPListener> listener = Network::bindTcp(8080);
 
 while (true) {
-    Owned<TCPConnection> conn = listener.accept();
+    Owned<TCPConnection> conn = listener->accept();
     if (!conn) break;
 
     Stream in = conn->createInStream();
