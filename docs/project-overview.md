@@ -6,9 +6,9 @@ The Plywood runtime library consists of four main components and several higher-
 **Main Runtime Library:**
 
 - [System (`ply-system.h`)](/docs/system/index.md): Memory, timers, file systems, threads and processes.
-- [Networking (`ply-network.h`)](/docs/networking.md): Client and server-side TCP and HTTP.
 - [Math (`ply-math.h`)](/docs/math.md): Scalar and vector math suitable for games and UI layouts.
 - [Reflection (`ply-reflect.h`)](/docs/reflect.md): Generic processing of data stored in Plywood data structures.
+- [Networking (`ply-network.h`)](/docs/networking.md): Client and server-side TCP and HTTP.
 
 **Higher-Level Libraries:**
 

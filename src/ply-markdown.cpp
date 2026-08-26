@@ -3197,6 +3197,19 @@ void convertSpanToHtml(Stream* outs, const Span* span, const HTMLOptions& option
     }
 }
 
+// Returns true if the table's header row is empty.
+static bool isTableHeaderEmpty(const Block::Table* table) {
+    if (!table->childBlocks)
+        return true;
+    const Block* headerBlock = table->childBlocks[0];
+    PLY_ASSERT(headerBlock->var.is<Block::TableRow>());
+    for (const Block* cell : headerBlock->var.as<Block::TableRow>()->childBlocks) {
+        if (cell->var.as<Block::TableCell>()->spans)
+            return false;
+    }
+    return true;
+}
+
 // Renders one block subtree to HTML.
 void convertToHtml(Stream* outs, const Block* block, const HTMLOptions& options) {
     if (auto* list = block->var.as<Block::List>()) {
@@ -3245,9 +3258,15 @@ void convertToHtml(Stream* outs, const Block* block, const HTMLOptions& options)
         outs->write("</blockquote>\n");
     } else if (auto* table = block->var.as<Block::Table>()) {
         PLY_ASSERT(table->childBlocks);
-        outs->write("<table>\n<thead>\n");
-        convertToHtml(outs, table->childBlocks[0], options);
-        outs->write("</thead>\n");
+        outs->write("<table>\n");
+        // The header row is only part of the output when it has visible content; an all-empty
+        // header row exists only to satisfy the Markdown syntax and is dropped entirely.
+        bool hasHeader = !isTableHeaderEmpty(table);
+        if (hasHeader) {
+            outs->write("<thead>\n");
+            convertToHtml(outs, table->childBlocks[0], options);
+            outs->write("</thead>\n");
+        }
         if (table->childBlocks.numItems() > 1) {
             outs->write("<tbody>\n");
             for (u32 row = 1; row < table->childBlocks.numItems(); row++) {
@@ -3266,8 +3285,7 @@ void convertToHtml(Stream* outs, const Block* block, const HTMLOptions& options)
         const Block* rowBlock = block->parent;
         const Block* tableBlock = rowBlock->parent;
         auto* table = tableBlock->var.as<Block::Table>();
-        PLY_ASSERT(table && table->childBlocks && table->childBlocks[0]->var.is<Block::TableRow>());
-        bool isHeader = table->childBlocks[0] == rowBlock;
+        bool isHeader = (table->childBlocks[0] == rowBlock) && !isTableHeaderEmpty(table);
         StringView tag = isHeader ? "th" : "td";
         outs->format("<{}", tag);
 

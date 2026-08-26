@@ -3,10 +3,10 @@
 
 The System module provides cross-platform access to basic operating system services such as memory management, timers, file systems, threads and processes.
 
-| File | Description | Size |
+| | | |
 | --- | --- | --- |
-| `ply-system.h` | Interface | ~4,900 lines |
-| `ply-system.cpp` | Implementation | ~6,800 lines |
+| `ply-system.h` | ~4,900 lines | Interface |
+| `ply-system.cpp` | ~6,800 lines | Implementation |
 
 This module is organized into the following categories:
 

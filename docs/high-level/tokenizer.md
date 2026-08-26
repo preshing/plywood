@@ -3,7 +3,7 @@
 
 The tokenizer provides utilities for converting source text into tokens and tracking their locations in the original input.
 
-| File | Description | Size |
+| | | |
 | --- | --- | --- |
-| `ply-tokenizer.h` | Interface | ~200 lines |
-| `ply-tokenizer.cpp` | Implementation | ~800 lines |
+| `ply-tokenizer.h` | ~200 lines | Interface |
+| `ply-tokenizer.cpp` | ~800 lines | Implementation |
