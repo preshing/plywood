@@ -4552,7 +4552,7 @@ u32 encodeUnicode(FixedArray<char, 4>& buf, UnicodeType unicodeType, u32 codepoi
             }
         } else {
             // Encode this codepoint directly as a byte.
-            c = max((s32) codepoint, 255);
+            c = (s32) min(codepoint, u32(255));
         }
         if (c < 0)
             return 0; // Optionally skip unrepresentable character.
@@ -4573,7 +4573,7 @@ u32 encodeUnicode(FixedArray<char, 4>& buf, UnicodeType unicodeType, u32 codepoi
             // 3-byte encoding: 1110xxxx 10xxxxxx 10xxxxxx
             buf[0] = char(0xe0 | (codepoint >> 12));
             buf[1] = char(0x80 | ((codepoint >> 6) & 0x3f));
-            buf[2] = char(0x80 | ((codepoint & 0x3f)));
+            buf[2] = char(0x80 | (codepoint & 0x3f));
             return 3;
         } else {
             // 4-byte encoding: 11110xxx 10xxxxxx 10xxxxxx 10xxxxxx
@@ -4589,7 +4589,7 @@ u32 encodeUnicode(FixedArray<char, 4>& buf, UnicodeType unicodeType, u32 codepoi
     } else if (unicodeType == UnicodeType::UTF16LE) {
 #endif
         if (codepoint < 0x10000) {
-            // Note: 0xd800 to 0xd8ff are invalid Unicode codepoints reserved for UTF-16
+            // Note: 0xd800 to 0xdfff are invalid Unicode codepoints reserved for UTF-16
             // surrogates. Such codepoints will simply be written as unpaired
             // surrogates.
             *(u16*) &buf[0] = (u16) codepoint;
@@ -4607,7 +4607,7 @@ u32 encodeUnicode(FixedArray<char, 4>& buf, UnicodeType unicodeType, u32 codepoi
     } else if (unicodeType == UnicodeType::UTF16BE) {
 #endif
         if (codepoint < 0x10000) {
-            // Note: 0xd800 to 0xd8ff are invalid Unicode codepoints reserved for UTF-16
+            // Note: 0xd800 to 0xdfff are invalid Unicode codepoints reserved for UTF-16
             // surrogates. Such codepoints will simply be written as unpaired
             // surrogates.
             *(u16*) &buf[0] = reverseBytes((u16) codepoint);
@@ -4816,47 +4816,39 @@ u32 InPipeConvertUnicode::read(MutStringView dstBuf) {
 
 // srcBuf expects UTF-8-encoded data.
 bool OutPipeConvertUnicode::write(StringView srcBuf) {
-    ViewStream srcIn{srcBuf};
-
-    // If the shim contains data, join it with the source buffer.
-    if (this->shimUsed > 0) {
-        u32 numBytesAppended = min(srcBuf.numBytes(), 4 - this->shimUsed);
-        memcpy(this->shimStorage + this->shimUsed, srcBuf.bytes(), numBytesAppended);
-        this->shimUsed += numBytesAppended;
-
-        // Decode a codepoint from the shim using UTF-8.
-        ViewStream s{StringView{this->shimStorage, this->shimUsed}};
-        DecodeResult decoded = decodeUnicode(s, UnicodeType::UTF8, nullptr);
+    // Complete a retained sequence and process any bytes exposed after an ill-formed prefix.
+    while (this->shimUsed > 0) {
+        DecodeResult decoded = decodeUnicode(StringView{this->shimStorage, this->shimUsed}, UnicodeType::UTF8, nullptr);
         if (decoded.status == DecodeStatus::NotEnoughData) {
-            PLY_ASSERT(numBytesAppended == srcBuf.numBytes());
-            return true; // Not enough data available in shim.
+            if (!srcBuf)
+                return true;
+            PLY_ASSERT(this->shimUsed < sizeof(this->shimStorage));
+            this->shimStorage[this->shimUsed++] = srcBuf[0];
+            srcBuf = srcBuf.substr(1);
+            continue;
         }
 
-        // Convert codepoint to the destination encoding.
-        encodeUnicode(this->childOut, this->dstType, decoded.point, this->extParams);
-
-        // Skip ahead in the source buffer and clear the shim.
-        srcIn.curByte += numBytesAppended;
-        this->shimUsed = 0;
+        // Convert the decoded point and retain any bytes not consumed from the shim.
+        if (!encodeUnicode(this->childOut, this->dstType, decoded.point, this->extParams))
+            return false;
+        this->shimUsed -= decoded.numBytes;
+        memmove(this->shimStorage, this->shimStorage + decoded.numBytes, this->shimUsed);
     }
 
-    while (!this->childOut.atEof) {
-        // Decode a codepoint from the source buffer using UTF-8.
-        DecodeResult decoded = decodeUnicode(srcIn, UnicodeType::UTF8, nullptr);
+    // Convert complete points directly and retain an incomplete trailing sequence.
+    while (srcBuf) {
+        DecodeResult decoded = decodeUnicode(srcBuf, UnicodeType::UTF8, nullptr);
         if (decoded.status == DecodeStatus::NotEnoughData) {
-            // Not enough data available. Copy the rest of the source buffer to shim,
-            // including the previous byte consumed by decode().
-            this->shimUsed = srcIn.numRemainingBytes() + 1;
-            PLY_ASSERT(this->shimUsed < 4);
-            memcpy(this->shimStorage, srcIn.curByte - 1, this->shimUsed);
+            PLY_ASSERT(srcBuf.numBytes() < sizeof(this->shimStorage));
+            this->shimUsed = srcBuf.numBytes();
+            memcpy(this->shimStorage, srcBuf.bytes(), this->shimUsed);
             return true;
         }
-
-        // Convert codepoint to the destination encoding.
-        encodeUnicode(this->childOut, this->dstType, decoded.point, this->extParams);
+        if (!encodeUnicode(this->childOut, this->dstType, decoded.point, this->extParams))
+            return false;
+        srcBuf = srcBuf.substr(decoded.numBytes);
     }
-
-    return false; // We reached the end of the Stream.
+    return true;
 }
 
 void OutPipeConvertUnicode::flush(bool toDevice) {
@@ -5218,7 +5210,7 @@ String getEnvironmentVariable(StringView name) {
     if (numUnits == 0)
         return {};
     WString wValue = WString::allocate(numUnits);
-    DWORD rc = GetEnvironmentVariableW(wName, wValue, numUnits);
+    DWORD rc = GetEnvironmentVariableW(wName, (LPWSTR) wValue.units, numUnits);
     if (rc == 0 || rc >= numUnits)
         return {};
     return fromWstring(WStringView{wValue.units, rc});

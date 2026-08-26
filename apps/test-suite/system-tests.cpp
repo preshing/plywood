@@ -2096,6 +2096,36 @@ TEST_CASE("binarySearch() with different numeric types") {
 #undef TEST_CASE_PREFIX
 #define TEST_CASE_PREFIX Unicode_
 
+TEST_CASE("Encode Unicode codepoints") {
+    // Verify the direct single-byte path and every variable-length UTF-8 form.
+    FixedArray<char, 4> encoded;
+    check(encodeUnicode(encoded, UnicodeType::None, 'A') == 1);
+    check(encoded[0] == 'A');
+    check(encodeUnicode(encoded, UnicodeType::UTF8, 0xa2) == 2);
+    check(StringView{encoded.items(), 2} == StringView{"\xc2\xa2", 2});
+    check(encodeUnicode(encoded, UnicodeType::UTF8, 0x3002) == 3);
+    check(StringView{encoded.items(), 3} == StringView{"\xe3\x80\x82", 3});
+    check(encodeUnicode(encoded, UnicodeType::UTF8, 0x1f642) == 4);
+    check(StringView{encoded.items(), 4} == StringView{"\xf0\x9f\x99\x82", 4});
+}
+
+TEST_CASE("Convert complete and fragmented UTF-8") {
+    // A complete ASCII write must not duplicate its final byte.
+    OutPipeConvertUnicode complete{MemStream{}, UnicodeType::UTF16LE};
+    complete.write("PATH");
+    complete.flush(false);
+    String completeResult = static_cast<MemStream&>(complete.childOut).moveToString();
+    check(completeResult == StringView{"P\0A\0T\0H\0", 8});
+
+    // Preserve all bytes when a multibyte point and following text cross writes.
+    OutPipeConvertUnicode fragmented{MemStream{}, UnicodeType::UTF16LE};
+    fragmented.write(StringView{"\xe3", 1});
+    fragmented.write(StringView{"\x80\x82xyz", 5});
+    fragmented.flush(false);
+    String fragmentedResult = static_cast<MemStream&>(fragmented.childOut).moveToString();
+    check(fragmentedResult == StringView{"\x02\x30x\0y\0z\0", 8});
+}
+
 TEST_CASE("Decode truncated UTF-8") {
     // e3 80 82 is the valid UTF-8 encoding of U+3002
     // e3 80 is the truncated version of it
