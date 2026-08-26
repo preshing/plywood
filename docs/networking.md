@@ -12,7 +12,7 @@ Before using any networking functions, call `Network::initialize()`. When finish
 
 ## `Network`
 
-The `Network` class provides static methods for network initialization and connection management.
+The `Network` class provides static methods for network initialization and hostname resolution.
 
 {context class=Network}
 
@@ -21,12 +21,6 @@ The `Network` class provides static methods for network initialization and conne
 
 `static void shutdown()`
 > Shuts down the networking subsystem and releases resources.
-
-`static Owned<TCPListener> bindTcp(u16 port)`
-> Creates a TCP listener bound to the specified port. The listener can accept incoming connections.
-
-`static Owned<TCPConnection> connectTcp(const IPAddress& address, u16 port)`
-> Establishes a TCP connection to the specified address and port. Returns null on failure.
 
 `static IPAddress resolveHostName(StringView hostName, IPVersion ipVersion)`
 > Resolves a hostname (e.g., "example.com") to an IP address using DNS.
@@ -88,6 +82,9 @@ Represents an established TCP connection to a remote host. Exposes input and out
 | `Owned<Pipe> inPipe` | The underlying pipe object for reading. |
 | `Owned<Pipe> outPipe` | The underlying pipe object for writing. |
 
+`static Owned<TCPConnection> connectTo(const IPAddress& address, u16 port)`
+> Establishes a TCP connection to the specified address and port. Returns null on failure.
+
 `Stream createInStream()`
 > Creates a buffered stream for reading data from the connection.
 
@@ -99,6 +96,9 @@ Represents an established TCP connection to a remote host. Exposes input and out
 A `TCPListener` listens for incoming TCP connections on a specific port.
 
 {context class=TCPListener}
+
+`static Owned<TCPListener> create(u16 port)`
+> Creates a TCP listener bound to the specified port. The listener can accept incoming connections.
 
 `bool isListening()`
 > Returns `true` if `stopListening()` has not been called.
@@ -112,7 +112,7 @@ A `TCPListener` listens for incoming TCP connections on a specific port.
 ```
 // Simple echo server
 Network::initialize(IPVersion::V4);
-Owned<TCPListener> listener = Network::bindTcp(8080);
+Owned<TCPListener> listener = TCPListener::create(8080);
 
 while (true) {
     Owned<TCPConnection> conn = listener->accept();

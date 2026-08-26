@@ -290,7 +290,7 @@ SOCKET createSocket(int type) {
     return s;
 }
 
-Owned<TCPListener> Network::bindTcp(u16 port) {
+Owned<TCPListener> TCPListener::create(u16 port) {
     SOCKET listenSocket = createSocket(SOCK_STREAM);
     if (listenSocket == INVALID_SOCKET) { // lastResult_ is already set
         return {};
@@ -371,7 +371,7 @@ Owned<TCPListener> Network::bindTcp(u16 port) {
     return {};
 }
 
-Owned<TCPConnection> Network::connectTcp(const IPAddress& address, u16 port) {
+Owned<TCPConnection> TCPConnection::connectTo(const IPAddress& address, u16 port) {
     SOCKET connectSocket = createSocket(SOCK_STREAM);
     if (connectSocket == INVALID_SOCKET) { // lastResult_ is already set
         return {};
@@ -784,7 +784,7 @@ int createSocket(int type) {
     return s;
 }
 
-Owned<TCPListener> Network::bindTcp(u16 port) {
+Owned<TCPListener> TCPListener::create(u16 port) {
     int listenSocket = createSocket(SOCK_STREAM);
     if (listenSocket < 0) { // lastResult_ is already set
         return {};
@@ -886,7 +886,7 @@ Owned<TCPListener> Network::bindTcp(u16 port) {
     return {};
 }
 
-Owned<TCPConnection> Network::connectTcp(const IPAddress& address, u16 port) {
+Owned<TCPConnection> TCPConnection::connectTo(const IPAddress& address, u16 port) {
     int connectSocket = createSocket(SOCK_STREAM);
     if (connectSocket < 0) { // lastResult_ is already set
         return {};
@@ -1569,7 +1569,7 @@ void handleRequest(TCPConnection* tcpConn, const Functor<void(HTTPServer::Reques
 
 // Accept connections on a port and handle each request in a new thread
 void HTTPServer::run(u16 port, const Functor<void(Request& request)>& requestHandler) {
-    Owned<TCPListener> listener = Network::bindTcp(port);
+    Owned<TCPListener> listener = TCPListener::create(port);
     if (!listener) {
         getStdErr().format("Error: Can't bind to port {}\n", port);
         return;

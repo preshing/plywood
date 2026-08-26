@@ -16,7 +16,7 @@
 
 NETWORK_TEST_CASE("TCPListener::stopListening unblocks accept") {
     Network::initialize(IPv4);
-    Owned<TCPListener> listener = Network::bindTcp(0);
+    Owned<TCPListener> listener = TCPListener::create(0);
     if (!check(listener)) {
         Network::shutdown();
         return;

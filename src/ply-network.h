@@ -117,8 +117,6 @@ public:
 
     static void initialize(IPVersion ipVersion);
     static void shutdown();
-    static Owned<TCPListener> bindTcp(u16 port);
-    static Owned<TCPConnection> connectTcp(const IPAddress& address, u16 port);
     static IPAddress resolveHostName(StringView hostName, IPVersion ipVersion);
     static IPResult lastResult() {
         return Network::lastResult_.load();
@@ -137,7 +135,9 @@ struct TCPConnection {
     Owned<Pipe> inPipe;
     Owned<Pipe> outPipe;
 
+    static Owned<TCPConnection> connectTo(const IPAddress& address, u16 port);
     ~TCPConnection();
+
     Stream createInStream() {
         return Stream{this->inPipe, false};
     }
@@ -153,7 +153,9 @@ struct TCPConnection {
 //
 
 struct TCPListener {
+    static Owned<TCPListener> create(u16 port);
     void destroy();
+
     bool isListening();
     void stopListening();
     Owned<TCPConnection> accept();
