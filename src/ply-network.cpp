@@ -12,6 +12,10 @@
 
 #if defined(PLY_POSIX)
 #include <arpa/inet.h>
+#if defined(PLY_APPLE)
+#include <fcntl.h>
+#include <sys/event.h>
+#endif
 #include <signal.h>
 #define PLY_IPPOSIX_ALLOW_UNKNOWN_ERRORS 0
 #endif
@@ -66,6 +70,9 @@ bool Network::HasIPv6 = false;
 ThreadLocal<IPResult> Network::lastResult_;
 
 #if defined(PLY_WINDOWS)
+//----------------------------------------------------------
+// Windows
+//----------------------------------------------------------
 
 PipeWinsock::~PipeWinsock() {
     if (this->socket != INVALID_SOCKET) {
@@ -248,7 +255,10 @@ SOCKET createSocket(int type) {
     if (s == INVALID_SOCKET) {
         int err = WSAGetLastError();
         switch (err) {
-            case 0: // Dummy case to prevent compiler warnings
+            case WSAEACCES: {
+                Network::lastResult_.store(IPResult::ACCESS_DENIED);
+                break;
+            }
             default: {
                 PLY_ASSERT(PLY_IPWINSOCK_ALLOW_UNKNOWN_ERRORS); // FIXME: Recognize this code
                 Network::lastResult_.store(IPResult::UNKNOWN);
@@ -267,6 +277,11 @@ Owned<TCPListener> Network::bindTcp(u16 port) {
 
     BOOL reuseAddr = TRUE;
     int rc = setsockopt(listenSocket, SOL_SOCKET, SO_REUSEADDR, (const char*) &reuseAddr, sizeof(reuseAddr));
+    if (rc != 0 && WSAGetLastError() == WSAEACCES) {
+        Network::lastResult_.store(IPResult::ACCESS_DENIED);
+        ::closesocket(listenSocket);
+        return {};
+    }
     PLY_ASSERT(rc == 0 || PLY_IPWINSOCK_ALLOW_UNKNOWN_ERRORS);
 
     struct PLY_IF_IPV6(sockaddr_in6, sockaddr_in) serverAddr;
@@ -297,37 +312,28 @@ Owned<TCPListener> Network::bindTcp(u16 port) {
     rc = bind(listenSocket, (struct sockaddr*) &serverAddr, serverAddrLen);
     if (rc == 0) {
         rc = listen(listenSocket, 1);
-        if (rc == 0) {
-            // Use an event so accept can wait without making a blocking Winsock call.
-            WSAEVENT acceptEvent = WSACreateEvent();
-            if (acceptEvent != WSA_INVALID_EVENT &&
-                WSAEventSelect(listenSocket, acceptEvent, FD_ACCEPT) != SOCKET_ERROR) {
-                Network::lastResult_.store(IPResult::OK);
-                TCPListenerImpl* listener = Heap::create<TCPListenerImpl>();
-                listener->listenSocket = listenSocket;
-                listener->acceptEvent = acceptEvent;
-                return Owned<TCPListener>::adopt(listener);
-            }
-            if (acceptEvent != WSA_INVALID_EVENT) {
-                WSACloseEvent(acceptEvent);
-            }
-            Network::lastResult_.store(IPResult::UNKNOWN);
-        } else {
-            int err = WSAGetLastError();
-            switch (err) {
-                case 0: // Dummy case to prevent compiler warnings
-                default: {
-                    // FIXME: Recognize this error code
-                    PLY_ASSERT(PLY_IPWINSOCK_ALLOW_UNKNOWN_ERRORS);
-                    Network::lastResult_.store(IPResult::UNKNOWN);
-                    break;
-                }
-            }
+    }
+    if (rc == 0) {
+        // Use an event so accept can wait without making a blocking Winsock call.
+        WSAEVENT acceptEvent = WSACreateEvent();
+        if (acceptEvent != WSA_INVALID_EVENT && WSAEventSelect(listenSocket, acceptEvent, FD_ACCEPT) != SOCKET_ERROR) {
+            Network::lastResult_.store(IPResult::OK);
+            TCPListenerImpl* listener = Heap::create<TCPListenerImpl>();
+            listener->listenSocket = listenSocket;
+            listener->acceptEvent = acceptEvent;
+            return Owned<TCPListener>::adopt(listener);
         }
+        if (acceptEvent != WSA_INVALID_EVENT) {
+            WSACloseEvent(acceptEvent);
+        }
+        Network::lastResult_.store(IPResult::UNKNOWN);
     } else {
         int err = WSAGetLastError();
         switch (err) {
-            case 0: // Dummy case to prevent compiler warnings
+            case WSAEACCES: {
+                Network::lastResult_.store(IPResult::ACCESS_DENIED);
+                break;
+            }
             default: {
                 // FIXME: Recognize this error code
                 PLY_ASSERT(PLY_IPWINSOCK_ALLOW_UNKNOWN_ERRORS);
@@ -389,6 +395,10 @@ Owned<TCPConnection> Network::connectTcp(const IPAddress& address, u16 port) {
 
     int err = WSAGetLastError();
     switch (err) {
+        case WSAEACCES: {
+            Network::lastResult_.store(IPResult::ACCESS_DENIED);
+            break;
+        }
         case WSAECONNREFUSED: {
             Network::lastResult_.store(IPResult::REFUSED);
             break;
@@ -456,6 +466,9 @@ IPAddress Network::resolveHostName(StringView hostName, IPVersion ipVersion) {
 }
 
 #elif defined(PLY_POSIX)
+//----------------------------------------------------------
+// POSIX
+//----------------------------------------------------------
 
 void Network::initialize(IPVersion ipVersion) {
     // FIXME: Move this to some kind of generic Plywood initialization function, since this disables
@@ -492,6 +505,163 @@ TCPConnection::~TCPConnection() {
     }
 }
 
+// Build the POSIX connection wrapper after accepting a socket.
+Owned<TCPConnection> createAcceptedTCPConnection(int hostSocket,
+                                                 const struct PLY_IF_IPV6(sockaddr_in6, sockaddr_in) & remoteAddr,
+                                                 socklen_t remoteAddrLen, socklen_t passedAddrLen) {
+    PLY_ASSERT(passedAddrLen >= remoteAddrLen);
+    PLY_UNUSED(passedAddrLen);
+    TCPConnection* tcpConn = Heap::create<TCPConnection>();
+#if PLY_WITH_IPV6
+    if (Network::HasIPv6 && remoteAddrLen == sizeof(sockaddr_in6)) {
+        PLY_ASSERT(remoteAddr.sin6_family == AF_INET6);
+        memcpy(tcpConn->remoteAddr.netOrdered, &remoteAddr.sin6_addr, sizeof(tcpConn->remoteAddr.netOrdered));
+        tcpConn->remotePort = convertBigEndian(remoteAddr.sin6_port);
+    } else
+#endif
+    {
+        const struct sockaddr_in* remoteAddrV4 = (const struct sockaddr_in*) &remoteAddr;
+        PLY_ASSERT(remoteAddrV4->sin_family == AF_INET);
+        tcpConn->remoteAddr = IPAddress::fromIPv4(remoteAddrV4->sin_addr.s_addr);
+        tcpConn->remotePort = convertBigEndian(remoteAddrV4->sin_port);
+    }
+    tcpConn->inPipe = Heap::create<PipeFD>(hostSocket, Pipe::HAS_READ_PERMISSION);
+    tcpConn->outPipe = Heap::create<PipeFD>(hostSocket, Pipe::HAS_WRITE_PERMISSION);
+    Network::lastResult_.store(IPResult::OK);
+    return tcpConn;
+}
+
+#if defined(PLY_APPLE)
+//----------------------------------------------------------
+// macOS, iOS
+//----------------------------------------------------------
+
+struct TCPListenerImpl : TCPListener {
+    Mutex listenSocketMutex;
+    int listenSocket = -1;
+    int acceptKQueue = -1;
+    Atomic<bool> stopRequested = false;
+};
+
+void TCPListener::destroy() {
+    TCPListenerImpl* impl = static_cast<TCPListenerImpl*>(this);
+    PLY_ASSERT(impl->listenSocket >= 0 || impl->stopRequested.load(Acquire));
+    PLY_ASSERT(impl->acceptKQueue >= 0);
+    if (impl->listenSocket >= 0) {
+        ::close(impl->listenSocket);
+    }
+    ::close(impl->acceptKQueue);
+    Heap::destroy(impl);
+}
+
+bool TCPListener::isListening() {
+    TCPListenerImpl* impl = static_cast<TCPListenerImpl*>(this);
+    PLY_ASSERT(impl->acceptKQueue >= 0);
+    return !impl->stopRequested.load(Acquire);
+}
+
+void TCPListener::stopListening() {
+    TCPListenerImpl* impl = static_cast<TCPListenerImpl*>(this);
+    PLY_ASSERT(impl->acceptKQueue >= 0);
+    if (!impl->stopRequested.exchange(true, Release)) {
+        // Wake accept before taking the socket mutex, which it holds while waiting.
+        struct kevent change;
+        EV_SET(&change, 0, EVFILT_USER, 0, NOTE_TRIGGER, 0, nullptr);
+        int rc;
+        do {
+            rc = ::kevent(impl->acceptKQueue, &change, 1, nullptr, 0, nullptr);
+        } while (rc < 0 && errno == EINTR);
+        PLY_ASSERT(rc == 0 || PLY_IPPOSIX_ALLOW_UNKNOWN_ERRORS);
+        PLY_UNUSED(rc);
+    }
+
+    // Close the listener so the port stops accepting connections before this function returns.
+    LockGuard<Mutex> lock{impl->listenSocketMutex};
+    if (impl->listenSocket >= 0) {
+        int listenSocket = impl->listenSocket;
+        impl->listenSocket = -1;
+        ::close(listenSocket);
+    }
+}
+
+Owned<TCPConnection> TCPListener::accept() {
+    TCPListenerImpl* impl = static_cast<TCPListenerImpl*>(this);
+    PLY_ASSERT(impl->acceptKQueue >= 0);
+    if (impl->stopRequested.load(Acquire)) {
+        Network::lastResult_.store(IPResult::NOT_LISTENING);
+        return nullptr;
+    }
+
+    struct PLY_IF_IPV6(sockaddr_in6, sockaddr_in) remoteAddr;
+    socklen_t remoteAddrLen =
+        PLY_IF_IPV6(Network::HasIPv6 ? sizeof(sockaddr_in6) : sizeof(sockaddr_in), sizeof(sockaddr_in));
+    socklen_t passedAddrLen = remoteAddrLen;
+    int hostSocket;
+    while (true) {
+        // Serialize access so stopListening can't close and recycle the descriptor while it's used.
+        LockGuard<Mutex> lock{impl->listenSocketMutex};
+        if (impl->stopRequested.load(Acquire)) {
+            Network::lastResult_.store(IPResult::NOT_LISTENING);
+            return nullptr;
+        }
+        PLY_ASSERT(impl->listenSocket >= 0);
+
+        // Wait until either a connection is ready or stopListening triggers the user event.
+        struct kevent event;
+        int numEvents;
+        do {
+            numEvents = ::kevent(impl->acceptKQueue, nullptr, 0, &event, 1, nullptr);
+        } while (numEvents < 0 && errno == EINTR);
+        if (numEvents == 1 && event.filter == EVFILT_USER) {
+            PLY_ASSERT(impl->stopRequested.load(Acquire));
+            Network::lastResult_.store(IPResult::NOT_LISTENING);
+            return nullptr;
+        }
+        if (impl->stopRequested.load(Acquire)) {
+            Network::lastResult_.store(IPResult::NOT_LISTENING);
+            return nullptr;
+        }
+        if (numEvents != 1 || event.filter != EVFILT_READ || event.ident != (uintptr_t) impl->listenSocket) {
+            Network::lastResult_.store(IPResult::UNKNOWN);
+            return nullptr;
+        }
+
+        // Use nonblocking accept because a ready connection can disappear after kevent returns.
+        remoteAddrLen = passedAddrLen;
+        hostSocket = ::accept(impl->listenSocket, (struct sockaddr*) &remoteAddr, &remoteAddrLen);
+        if (hostSocket >= 0) {
+            break;
+        }
+        if (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK)
+            continue;
+        PLY_ASSERT(PLY_IPPOSIX_ALLOW_UNKNOWN_ERRORS); // FIXME: Recognize this errno
+        Network::lastResult_.store(IPResult::UNKNOWN);
+        return nullptr;
+    }
+
+    // Discard a connection that raced with the stop request.
+    if (impl->stopRequested.load(Acquire)) {
+        ::close(hostSocket);
+        Network::lastResult_.store(IPResult::NOT_LISTENING);
+        return nullptr;
+    }
+
+    // Apple systems inherit O_NONBLOCK from the listener; connections are expected to block.
+    int hostSocketFlags = ::fcntl(hostSocket, F_GETFL, 0);
+    if (hostSocketFlags < 0 ||
+        ((hostSocketFlags & O_NONBLOCK) && ::fcntl(hostSocket, F_SETFL, hostSocketFlags & ~O_NONBLOCK) < 0)) {
+        ::close(hostSocket);
+        Network::lastResult_.store(IPResult::UNKNOWN);
+        return nullptr;
+    }
+    return createAcceptedTCPConnection(hostSocket, remoteAddr, remoteAddrLen, passedAddrLen);
+}
+
+#else
+//----------------------------------------------------------
+// Linux, Android
+//----------------------------------------------------------
+
 struct TCPListenerImpl : TCPListener {
     int listenSocket = -1;
     Atomic<bool> stopRequested = false;
@@ -514,7 +684,7 @@ void TCPListener::stopListening() {
     TCPListenerImpl* impl = static_cast<TCPListenerImpl*>(this);
     PLY_ASSERT(impl->listenSocket >= 0);
     if (!impl->stopRequested.exchange(true, Release)) {
-        shutdown(impl->listenSocket, SHUT_RDWR);
+        ::shutdown(impl->listenSocket, SHUT_RDWR);
     }
 }
 
@@ -527,10 +697,8 @@ Owned<TCPConnection> TCPListener::accept() {
     }
 
     struct PLY_IF_IPV6(sockaddr_in6, sockaddr_in) remoteAddr;
-    socklen_t remoteAddrLen = sizeof(sockaddr_in);
-    if (PLY_IF_IPV6(Network::HasIPv6, false)) {
-        remoteAddrLen = sizeof(sockaddr_in6);
-    }
+    socklen_t remoteAddrLen =
+        PLY_IF_IPV6(Network::HasIPv6 ? sizeof(sockaddr_in6) : sizeof(sockaddr_in), sizeof(sockaddr_in));
     socklen_t passedAddrLen = remoteAddrLen;
     int hostSocket = ::accept(impl->listenSocket, (struct sockaddr*) &remoteAddr, &remoteAddrLen);
 
@@ -553,27 +721,10 @@ Owned<TCPConnection> TCPListener::accept() {
         Network::lastResult_.store(IPResult::NOT_LISTENING);
         return nullptr;
     }
-
-    PLY_ASSERT(passedAddrLen >= remoteAddrLen);
-    PLY_UNUSED(passedAddrLen);
-    TCPConnection* tcpConn = Heap::create<TCPConnection>();
-#if PLY_WITH_IPV6
-    if (Network::HasIPv6 && remoteAddrLen == sizeof(sockaddr_in6)) {
-        PLY_ASSERT(remoteAddr.sin6_family == AF_INET6);
-        memcpy(tcpConn->remoteAddr.netOrdered, &remoteAddr.sin6_addr, sizeof(tcpConn->remoteAddr.netOrdered));
-    } else
-#endif
-    {
-        struct sockaddr_in* remoteAddrV4 = (struct sockaddr_in*) &remoteAddr;
-        PLY_ASSERT(remoteAddrV4->sin_family == AF_INET);
-        tcpConn->remoteAddr = IPAddress::fromIPv4(remoteAddrV4->sin_addr.s_addr);
-    }
-    tcpConn->remotePort = convertBigEndian(remoteAddr.sin6_port);
-    tcpConn->inPipe = Heap::create<PipeFD>(hostSocket, Pipe::HAS_READ_PERMISSION);
-    tcpConn->outPipe = Heap::create<PipeFD>(hostSocket, Pipe::HAS_WRITE_PERMISSION);
-    Network::lastResult_.store(IPResult::OK);
-    return tcpConn;
+    return createAcceptedTCPConnection(hostSocket, remoteAddr, remoteAddrLen, passedAddrLen);
 }
+
+#endif
 
 int createSocket(int type) {
     int family = AF_INET;
@@ -583,6 +734,11 @@ int createSocket(int type) {
     int s = socket(family, type, 0);
     if (s < 0) {
         switch (errno) {
+            case EACCES:
+            case EPERM: {
+                Network::lastResult_.store(IPResult::ACCESS_DENIED);
+                break;
+            }
             case ENOBUFS:
             case ENOMEM:
             case ENFILE:
@@ -612,6 +768,11 @@ Owned<TCPListener> Network::bindTcp(u16 port) {
 
     int reuseAddr = 1;
     int rc = setsockopt(listenSocket, SOL_SOCKET, SO_REUSEADDR, &reuseAddr, sizeof(reuseAddr));
+    if (rc != 0 && (errno == EACCES || errno == EPERM)) {
+        Network::lastResult_.store(IPResult::ACCESS_DENIED);
+        ::close(listenSocket);
+        return {};
+    }
     PLY_ASSERT(rc == 0 || PLY_IPPOSIX_ALLOW_UNKNOWN_ERRORS);
 
     struct PLY_IF_IPV6(sockaddr_in6, sockaddr_in) serverAddr;
@@ -642,27 +803,45 @@ Owned<TCPListener> Network::bindTcp(u16 port) {
     rc = bind(listenSocket, (struct sockaddr*) &serverAddr, serverAddrLen);
     if (rc == 0) {
         rc = listen(listenSocket, 1);
-        if (rc == 0) {
+    }
+    if (rc == 0) {
+#if defined(PLY_APPLE)
+        // Make accept nonblocking and register socket and stop events with a new kqueue.
+        int socketFlags = ::fcntl(listenSocket, F_GETFL, 0);
+        int acceptKQueue = ::kqueue();
+        struct kevent changes[2];
+        EV_SET(&changes[0], listenSocket, EVFILT_READ, EV_ADD, 0, 0, nullptr);
+        EV_SET(&changes[1], 0, EVFILT_USER, EV_ADD | EV_CLEAR, 0, 0, nullptr);
+        int registerResult = -1;
+        if (socketFlags >= 0 && acceptKQueue >= 0 && ::fcntl(listenSocket, F_SETFL, socketFlags | O_NONBLOCK) == 0) {
+            do {
+                registerResult = ::kevent(acceptKQueue, changes, 2, nullptr, 0, nullptr);
+            } while (registerResult < 0 && errno == EINTR);
+        }
+        if (registerResult == 0) {
             Network::lastResult_.store(IPResult::OK);
             TCPListenerImpl* listener = Heap::create<TCPListenerImpl>();
             listener->listenSocket = listenSocket;
+            listener->acceptKQueue = acceptKQueue;
             return Owned<TCPListener>::adopt(listener);
-        } else {
-            switch (errno) {
-                case EADDRINUSE: {
-                    Network::lastResult_.store(IPResult::IN_USE);
-                    break;
-                }
-                default: {
-                    // FIXME: Recognize this errno
-                    PLY_ASSERT(PLY_IPPOSIX_ALLOW_UNKNOWN_ERRORS);
-                    Network::lastResult_.store(IPResult::UNKNOWN);
-                    break;
-                }
-            }
         }
+        if (acceptKQueue >= 0) {
+            ::close(acceptKQueue);
+        }
+        Network::lastResult_.store(IPResult::NO_SOCKET);
+#else
+        Network::lastResult_.store(IPResult::OK);
+        TCPListenerImpl* listener = Heap::create<TCPListenerImpl>();
+        listener->listenSocket = listenSocket;
+        return Owned<TCPListener>::adopt(listener);
+#endif
     } else {
         switch (errno) {
+            case EACCES:
+            case EPERM: {
+                Network::lastResult_.store(IPResult::ACCESS_DENIED);
+                break;
+            }
             case EADDRINUSE: {
                 Network::lastResult_.store(IPResult::IN_USE);
                 break;
@@ -727,6 +906,11 @@ Owned<TCPConnection> Network::connectTcp(const IPAddress& address, u16 port) {
     }
 
     switch (errno) {
+        case EACCES:
+        case EPERM: {
+            Network::lastResult_.store(IPResult::ACCESS_DENIED);
+            break;
+        }
         case ECONNREFUSED: {
             Network::lastResult_.store(IPResult::REFUSED);
             break;

@@ -45,6 +45,7 @@ The `Network` class provides static methods for network initialization and conne
 | `REFUSED` | The remote host refused the connection. |
 | `IN_USE` | The requested local address or port is already in use. |
 | `NOT_LISTENING` | `TCPListener::stopListening()` was called. |
+| `ACCESS_DENIED` | The operation was denied by an operating system security policy. |
 
 ## `IPAddress`
 
