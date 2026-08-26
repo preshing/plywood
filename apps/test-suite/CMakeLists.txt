@@ -14,6 +14,7 @@ include(../../share/common.cmake)
 # otherwise, zero directives create a denylist and unspecified suites stay enabled.
 set(TEST_DIRECTIVES
     WITH_SYSTEM_TESTS
+    WITH_NETWORK_TESTS
     WITH_UNICODE_LOADING_TESTS
     WITH_MARKDOWN_TESTS
     WITH_CPP_TESTS
@@ -57,6 +58,9 @@ endif()
 
 # Add only the Plywood components required by the enabled suites and command-line parser.
 set(PLYWOOD_COMPONENTS ply-system.* ply-json.* ply-math.* ply-reflect.* ply-tokenizer.*)
+if(WITH_NETWORK_TESTS_ENABLED)
+    list(APPEND PLYWOOD_COMPONENTS ply-network.*)
+endif()
 if(WITH_MARKDOWN_TESTS_ENABLED)
     list(APPEND PLYWOOD_COMPONENTS ply-markdown.*)
 endif()
@@ -74,8 +78,14 @@ endif()
 
 # Add only the test-suite sources supported by this configuration.
 set(TEST_SUITE_SOURCE_PATTERNS main.cpp test-suite.h)
+if(WITH_NETWORK_TESTS_ENABLED)
+    list(APPEND TEST_SUITE_SOURCE_PATTERNS network-tests.cpp)
+endif()
 if(WITH_SYSTEM_TESTS_ENABLED OR WITH_UNICODE_LOADING_TESTS_ENABLED)
-    list(APPEND TEST_SUITE_SOURCE_PATTERNS system-tests.cpp run-system-tests.cpp run-system-tests.h)
+    list(APPEND TEST_SUITE_SOURCE_PATTERNS system-tests.cpp)
+endif()
+if(WITH_SYSTEM_TESTS_ENABLED OR WITH_NETWORK_TESTS_ENABLED OR WITH_UNICODE_LOADING_TESTS_ENABLED)
+    list(APPEND TEST_SUITE_SOURCE_PATTERNS run-system-tests.cpp run-system-tests.h)
 endif()
 if(WITH_MARKDOWN_TESTS_ENABLED)
     list(APPEND TEST_SUITE_SOURCE_PATTERNS markdown-tests.cpp)
@@ -94,10 +104,14 @@ add_source_files(TEST_SUITE_SOURCES "${CMAKE_CURRENT_LIST_DIR}" ${TEST_SUITE_SOU
 add_executable(test-suite ${TEST_SUITE_SOURCES})
 set_runtime_output_directory(test-suite "${PLYWOOD_ROOT}/bin")
 target_link_libraries(test-suite PRIVATE plywood)
+if(WIN32 AND WITH_NETWORK_TESTS_ENABLED)
+    target_link_libraries(test-suite PRIVATE ws2_32.lib)
+endif()
 target_compile_definitions(test-suite PRIVATE
     TEST_SUITE_PATH="${CMAKE_CURRENT_LIST_DIR}"
     BUILD_DIR="${CMAKE_BINARY_DIR}"
     WITH_SYSTEM_TESTS=${WITH_SYSTEM_TESTS_ENABLED}
+    WITH_NETWORK_TESTS=${WITH_NETWORK_TESTS_ENABLED}
     WITH_UNICODE_LOADING_TESTS=${WITH_UNICODE_LOADING_TESTS_ENABLED}
     WITH_MARKDOWN_TESTS=${WITH_MARKDOWN_TESTS_ENABLED}
     WITH_CPP_TESTS=${WITH_CPP_TESTS_ENABLED}

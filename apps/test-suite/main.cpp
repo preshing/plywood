@@ -11,7 +11,7 @@
 #include <ply-reflect.h>
 #include "test-suite.h"
 
-#if WITH_SYSTEM_TESTS || WITH_UNICODE_LOADING_TESTS
+#if WITH_SYSTEM_TESTS || WITH_NETWORK_TESTS || WITH_UNICODE_LOADING_TESTS
 #include "run-system-tests.h"
 #endif
 
@@ -23,6 +23,7 @@ CommandLineOptions options;
 // Identifies a test suite and distinguishes normal C++ tests from golden-file generation.
 enum class TestSuite {
     System,
+    Network,
     Unicode,
     Markdown,
     Cpp,
@@ -38,6 +39,9 @@ static void printUsage(StringView executablePath) {
     err.write("Options may be combined and run in command-line order:\n");
 #if WITH_SYSTEM_TESTS
     err.write("  -system     Run the system test suite\n");
+#endif
+#if WITH_NETWORK_TESTS
+    err.write("  -network    Run the network test suite\n");
 #endif
 #if WITH_UNICODE_LOADING_TESTS
     err.write("  -unicode    Run the Unicode file loading test suite\n");
@@ -64,17 +68,19 @@ static u32 getLogicalSuiteIndex(TestSuite suite) {
     switch (suite) {
         case TestSuite::System:
             return 0;
-        case TestSuite::Unicode:
+        case TestSuite::Network:
             return 1;
-        case TestSuite::Markdown:
+        case TestSuite::Unicode:
             return 2;
+        case TestSuite::Markdown:
+            return 3;
         case TestSuite::Cpp:
         case TestSuite::RegenCpp:
-            return 3;
-        case TestSuite::Transcript:
             return 4;
-        case TestSuite::Fragmentation:
+        case TestSuite::Transcript:
             return 5;
+        case TestSuite::Fragmentation:
+            return 6;
     }
     PLY_ASSERT(0);
     return 0;
@@ -89,6 +95,13 @@ static TestResult runTestSuite(TestSuite suite) {
                 getStdOut().write("\nSystem tests\n");
             }
             return runSystemTests();
+#endif
+#if WITH_NETWORK_TESTS
+        case TestSuite::Network:
+            if (options.verbose) {
+                getStdOut().write("\nNetwork tests\n");
+            }
+            return runNetworkTests();
 #endif
 #if WITH_UNICODE_LOADING_TESTS
         case TestSuite::Unicode:
@@ -143,6 +156,9 @@ static void printTestSuiteResult(TestSuite suite, const TestResult& result) {
         case TestSuite::System:
             name = "System tests";
             break;
+        case TestSuite::Network:
+            name = "Network tests";
+            break;
         case TestSuite::Unicode:
             name = "Unicode loading tests";
             break;
@@ -179,6 +195,9 @@ int main(int argc, const char* argv[]) {
 #if WITH_SYSTEM_TESTS
         {"-system", PLY_LOOKUP_MEMBER(CommandLineOptions, runSystem), "Run the system tests"},
 #endif
+#if WITH_NETWORK_TESTS
+        {"-network", PLY_LOOKUP_MEMBER(CommandLineOptions, runNetwork), "Run the network tests"},
+#endif
 #if WITH_UNICODE_LOADING_TESTS
         {"-unicode", PLY_LOOKUP_MEMBER(CommandLineOptions, runUnicode), "Run Unicode file loading tests"},
 #endif
@@ -214,6 +233,9 @@ int main(int argc, const char* argv[]) {
 #if WITH_SYSTEM_TESTS
         suites.append(TestSuite::System);
 #endif
+#if WITH_NETWORK_TESTS
+        suites.append(TestSuite::Network);
+#endif
 #if WITH_UNICODE_LOADING_TESTS
         suites.append(TestSuite::Unicode);
 #endif
@@ -230,7 +252,7 @@ int main(int argc, const char* argv[]) {
         suites.append(TestSuite::Fragmentation);
 #endif
     } else {
-        bool selectedSuites[6] = {};
+        bool selectedSuites[7] = {};
         for (int i = 1; i < argc; i++) {
             StringView arg = argv[i];
             if (arg == "-verbose") {
@@ -239,6 +261,8 @@ int main(int argc, const char* argv[]) {
             TestSuite suite;
             if (arg == "-system") {
                 suite = TestSuite::System;
+            } else if (arg == "-network") {
+                suite = TestSuite::Network;
             } else if (arg == "-unicode") {
                 suite = TestSuite::Unicode;
             } else if (arg == "-markdown") {
@@ -286,6 +310,7 @@ int main(int argc, const char* argv[]) {
 
 PLY_STRUCT_BEGIN(CommandLineOptions)
 PLY_STRUCT_MEMBER(runSystem)
+PLY_STRUCT_MEMBER(runNetwork)
 PLY_STRUCT_MEMBER(runUnicode)
 PLY_STRUCT_MEMBER(runMarkdown)
 PLY_STRUCT_MEMBER(runCpp)

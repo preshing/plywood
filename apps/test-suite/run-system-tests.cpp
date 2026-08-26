@@ -85,3 +85,8 @@ static TestResult runTestGroup(RegisterTest::Group group) {
 TestResult runSystemTests() {
     return runTestGroup(RegisterTest::System);
 }
+
+// Runs the network test suite.
+TestResult runNetworkTests() {
+    return runTestGroup(RegisterTest::Network);
+}
