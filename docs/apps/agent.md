@@ -4,18 +4,27 @@
 If CMake is installed, the following command will build and run the `agent` sample application. On Windows, use `share\build-app.bat` instead.
 
 ```
-$ share/build-app.sh agent -run [-j <settings-path>] [-l] [-s] [prompt]
+$ share/build-app.sh agent --run [-c <settings-path>] [-l] [-s] [prompt]
 ```
 
 Or, if the app is already built:
 
 ```
-$ bin/agent [-j <settings-path>] [-l] [-s] [prompt]
+$ bin/agent [-c <settings-path>] [-l] [-s] [prompt]
 ```
 
-If the `-j` option is specified, the app loads settings directly from the specified file. Otherwise, the app searches for a file named `agent.json` in the current working directory. If none is found, it checks each ancestor directory and loads the first `agent.json` file it finds.
+Available command-line options:
 
-The settings file must contain a single JSON object with any of the following optional properties:
+| Short | Long | Description |
+|---|---|---|
+| `-c` | `--config` | Path to a JSON settings file. |
+| `-l` | `--http-log` | Write a raw HTTP log. |
+| `-s` | `--serve` | Create a webserver on port 8081. |
+| `-h` | `--help` | Print the available options. |
+
+If `-c/--config` is specified, the app loads settings directly from the specified file. Otherwise, the app searches for a file named `agent.json` in the current working directory. If none is found, it checks each ancestor directory and loads the first `agent.json` file it finds.
+
+The settings file must contain a single JSON object with any of the following properties:
 
 - `endPoint`: A subobject with four required properties:
     - `url`: The URL of an inference server.

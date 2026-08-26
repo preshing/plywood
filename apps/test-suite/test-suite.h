@@ -26,6 +26,7 @@ struct CommandLineOptions {
     bool runFragmentation = false;
     bool runAll = false;
     bool verbose = false;
+    bool printUsage = false;
     PLY_DECLARE_TYPE_INFO(CommandLineOptions)
 };
 

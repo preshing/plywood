@@ -21,16 +21,19 @@ if not exist "%PLYWOOD_ROOT%\apps\%APP_NAME%\CMakeLists.txt" (
     exit /b 1
 )
 
-rem Require -run before passing arguments to the app.
-if not "%~2"=="" if not "%~2"=="-run" (
-    >&2 echo Error: Expected -run after the app name, but got '%~2'.
+rem Require -r or --run before passing arguments to the app.
+set "RUN_APP=0"
+if "%~2"=="-r" set "RUN_APP=1"
+if "%~2"=="--run" set "RUN_APP=1"
+if not "%~2"=="" if "%RUN_APP%"=="0" (
+    >&2 echo Error: Expected -r or --run after the app name, but got '%~2'.
     exit /b 1
 )
 
 rem Generate the build system for the app in Debug mode.
-rem Skip this step if -run was specified and CMakeCache.txt already exists.
+rem Skip this step if the app will run and CMakeCache.txt already exists.
 set "BUILD_DIR=%PLYWOOD_ROOT%\apps\%APP_NAME%\build-win"
-if not "%~2"=="-run" goto generateBuildSystem
+if "%RUN_APP%"=="0" goto generateBuildSystem
 if exist "%BUILD_DIR%\CMakeCache.txt" goto buildApp
 :generateBuildSystem
 cmake -S "%PLYWOOD_ROOT%\apps\%APP_NAME%" -B "%BUILD_DIR%" -DCMAKE_BUILD_TYPE=Debug
@@ -42,8 +45,8 @@ rem This also regenerates the build system if out of date.
 cmake --build "%BUILD_DIR%" --config Debug
 if errorlevel 1 exit /b %errorlevel%
 
-rem Optionally run the app with all arguments that follow -run.
-if not "%~2"=="-run" exit /b 0
+rem Optionally run the app with all arguments that follow -r or --run.
+if "%RUN_APP%"=="0" exit /b 0
 set "APP_ARGS=%* "
 set "APP_ARGS=%APP_ARGS:* =%"
 set "APP_ARGS=%APP_ARGS:* =%"
@@ -53,5 +56,5 @@ exit /b %errorlevel%
 
 rem Print usage.
 :usage
->&2 echo Usage: %~nx0 ^<app^> [-run [app arguments...]]
+>&2 echo Usage: %~nx0 ^<app^> [-r^|--run [app arguments...]]
 exit /b 1

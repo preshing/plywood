@@ -1227,17 +1227,24 @@ json::Node convertToJson(const json::WriteOptions& writeOptions, AnyObject obj) 
     }
 }
 
-// Prints the executable path and available command line options to stderr.
-void CommandLineParser::printAvailableOptions(bool withHeader) const {
-    Stream err = getStdErr();
-    if (withHeader) {
-        err.write("\nAvailable options:\n");
-    }
+// Constructs a parser and verifies the short and long argument spellings.
+CommandLineParser::CommandLineParser(Array<CmdLineArgHandler>&& handlers) : handlers{std::move(handlers)} {
     for (const CmdLineArgHandler& handler : this->handlers) {
-        err.format("  {}", handler.arg);
-        if (handler.dataMember->type->key == TypeKey::String)
-            err.write(" <value>");
-        err.format(": {}\n", handler.description);
+        StringView argName;
+        PLY_ASSERT(handler.shortArg.match("-%i", &argName));
+        PLY_ASSERT(handler.longArg.match("--%i", &argName));
+        PLY_UNUSED(argName);
+    }
+}
+
+// Prints the available command line options to the specified stream.
+void CommandLineParser::printAvailableOptions(Stream& out) const {
+    for (const CmdLineArgHandler& handler : this->handlers) {
+        out.format("  {}, {}", handler.shortArg, handler.longArg);
+        if (handler.dataMember->type->key == TypeKey::String) {
+            out.write(" <value>");
+        }
+        out.format(": {}\n", handler.description);
     }
 }
 
@@ -1275,7 +1282,7 @@ bool CommandLineParser::apply(int argc, const char* argv[], AnyObject obj) {
         // Find a handler whose name matches namePart.
         const CmdLineArgHandler* matched = nullptr;
         for (const CmdLineArgHandler& handler : this->handlers) {
-            if (namePart == handler.arg) {
+            if (handler.matches(namePart)) {
                 matched = &handler;
                 break;
             }
@@ -1286,15 +1293,20 @@ bool CommandLineParser::apply(int argc, const char* argv[], AnyObject obj) {
             for (const CmdLineArgHandler& handler : this->handlers) {
                 if (handler.dataMember->type->key != TypeKey::String)
                     continue;
-                if (arg.startsWith(handler.arg)) {
-                    StringView rest = arg.substr(handler.arg.numBytes());
-                    if (rest && rest[0] == '"') {
-                        matched = &handler;
-                        inlineValue = rest;
-                        hasInlineValue = true;
-                        break;
+                StringView optionArgs[] = {handler.shortArg, handler.longArg};
+                for (StringView optionArg : optionArgs) {
+                    if (arg.startsWith(optionArg)) {
+                        StringView rest = arg.substr(optionArg.numBytes());
+                        if (rest && rest[0] == '"') {
+                            matched = &handler;
+                            inlineValue = rest;
+                            hasInlineValue = true;
+                            break;
+                        }
                     }
                 }
+                if (matched)
+                    break;
             }
         }
 
@@ -1307,6 +1319,10 @@ bool CommandLineParser::apply(int argc, const char* argv[], AnyObject obj) {
         const StructTypeInfo::Member* m = matched->dataMember;
         void* memberPtr = PLY_PTR_OFFSET(obj.data, m->offset);
         if (m->type->key == TypeKey::Bool) {
+            if (hasInlineValue) {
+                getStdErr().format("Option {} does not accept a value\n", namePart);
+                return false;
+            }
             *reinterpret_cast<bool*>(memberPtr) = true;
         } else if (m->type->key == TypeKey::String) {
             StringView valueView = inlineValue;
@@ -1318,7 +1334,7 @@ bool CommandLineParser::apply(int argc, const char* argv[], AnyObject obj) {
             } else {
                 // Consume the next argument as the value.
                 if (i + 1 >= argc) {
-                    getStdErr().format("Option {} requires a value\n", matched->arg);
+                    getStdErr().format("Option {} requires a value\n", namePart);
                     return false;
                 }
                 valueView = argv[++i];

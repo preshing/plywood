@@ -442,15 +442,21 @@ json::Node convertToJson(const json::WriteOptions& writeOptions, AnyObject obj);
 //-----------------------------------
 // CommandLineParser
 //-----------------------------------
+// Associates short and long command-line spellings with one reflected data member.
 struct CmdLineArgHandler {
-    String arg;
+    String shortArg;
+    String longArg;
     const StructTypeInfo::Member* dataMember;
     String description;
+
+    bool matches(StringView arg) const {
+        return arg == this->shortArg || arg == this->longArg;
+    }
 };
 
 struct CommandLineParser {
     // These members must be initialized before calling apply.
-    // - When dataMember is a bool, the argument sets it to true.
+    // - When dataMember is a bool, the argument sets it to true and must not have a value.
     // - When dataMember is a String, the command line argument must be followed by a string.
     //   Multiple formats are accepted: -foo bar, -foo"bar", -foo=bar, -foo="bar"
     Array<CmdLineArgHandler> handlers;
@@ -460,11 +466,10 @@ struct CommandLineParser {
     String executablePath;
 
     // Constructor.
-    CommandLineParser(Array<CmdLineArgHandler>&& handlers) : handlers{std::move(handlers)} {
-    }
+    CommandLineParser(Array<CmdLineArgHandler>&& handlers);
 
-    // Prints the available command line options to stderr.
-    void printAvailableOptions(bool withHeader = false) const;
+    // Prints the available command line options to the specified stream.
+    void printAvailableOptions(Stream& out) const;
 
     // Returns true if argument parsing succeeds.
     // Otherwise, prints an error message to stderr, then returns false.

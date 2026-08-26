@@ -13,16 +13,20 @@ PLYWOOD_ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 
 # Get the app name.
 if [ "$#" -eq 0 ]; then
-    echo "Usage: ${0##*/} <app> [-run [app arguments...]]" >&2
+    echo "Usage: ${0##*/} <app> [-r|--run [app arguments...]]" >&2
     exit 1
 fi
 APP_NAME=$1
 shift
 
-# Require -run before passing arguments to the app.
-if [ "$#" -gt 0 ] && [ "$1" != "-run" ]; then
-    echo "Error: Expected -run after the app name, but got '$1'." >&2
-    exit 1
+# Require -r or --run before passing arguments to the app.
+RUN_APP=0
+if [ "$#" -gt 0 ]; then
+    if [ "$1" != "-r" ] && [ "$1" != "--run" ]; then
+        echo "Error: Expected -r or --run after the app name, but got '$1'." >&2
+        exit 1
+    fi
+    RUN_APP=1
 fi
 
 # Reject names that don't identify an app project.
@@ -32,9 +36,9 @@ if [ ! -f "$PLYWOOD_ROOT/apps/$APP_NAME/CMakeLists.txt" ]; then
 fi
 
 # Generate the build system for the app in Debug mode.
-# Skip this step if -run was specified and CMakeCache.txt already exists.
+# Skip this step if the app will run and CMakeCache.txt already exists.
 BUILD_DIR="$PLYWOOD_ROOT/apps/$APP_NAME/build"
-if [ "$1" != "-run" ] || [ ! -f "$BUILD_DIR/CMakeCache.txt" ]; then
+if [ "$RUN_APP" -eq 0 ] || [ ! -f "$BUILD_DIR/CMakeCache.txt" ]; then
     cmake -S "$PLYWOOD_ROOT/apps/$APP_NAME" -B "$BUILD_DIR" -DCMAKE_BUILD_TYPE=Debug
 fi
 
@@ -42,8 +46,8 @@ fi
 # This also regenerates the build system if out of date.
 cmake --build "$BUILD_DIR" --config Debug
 
-# Optionally run the app with all arguments that follow -run.
-if [ "$1" = "-run" ]; then
+# Optionally run the app with all arguments that follow -r or --run.
+if [ "$RUN_APP" -eq 1 ]; then
     shift
     exec "$PLYWOOD_ROOT/bin/$APP_NAME" "$@"
 fi

@@ -1136,6 +1136,12 @@ static bool loadSettings() {
     return true;
 }
 
+// Prints the command-line syntax and registered options.
+static void printUsage(Stream& out, StringView executablePath, const CommandLineParser& parser) {
+    out.format("Usage: {} [options] [prompt]\n", executablePath);
+    parser.printAvailableOptions(out);
+}
+
 //  ▄▄   ▄▄        ▄▄
 //  ███▄███  ▄▄▄▄  ▄▄ ▄▄▄▄▄
 //  ██▀█▀██  ▄▄▄██ ██ ██  ██
@@ -1150,10 +1156,10 @@ int main(int argc, const char* argv[]) {
 
     // Parse command line options.
     CommandLineParser parser({
-        {"-j", PLY_LOOKUP_MEMBER(CommandLineOptions, settingsPath), "Path to JSON settings file"},
-        {"-l", PLY_LOOKUP_MEMBER(CommandLineOptions, enableHttpLog), "Write raw HTTP log"},
-        {"-s", PLY_LOOKUP_MEMBER(CommandLineOptions, runWebServer), "Create a webserver on port 8081"},
-        {"-usage", PLY_LOOKUP_MEMBER(CommandLineOptions, printUsage), "Print available options"},
+        {"-c", "--config", PLY_LOOKUP_MEMBER(CommandLineOptions, settingsPath), "Path to JSON settings file"},
+        {"-l", "--http-log", PLY_LOOKUP_MEMBER(CommandLineOptions, enableHttpLog), "Write raw HTTP log"},
+        {"-s", "--serve", PLY_LOOKUP_MEMBER(CommandLineOptions, runWebServer), "Create a webserver on port 8081"},
+        {"-h", "--help", PLY_LOOKUP_MEMBER(CommandLineOptions, printUsage), "Print this help"},
     });
     u32 numUserPrompts = 0;
     parser.defaultHandler = [&](ArrayView<const char*> args, u32 index) {
@@ -1162,11 +1168,14 @@ int main(int argc, const char* argv[]) {
     };
     if (!parser.apply(argc, argv, &options)) {
         // Error during parsing.
-        parser.printAvailableOptions(true);
+        Stream err = getStdErr();
+        err.write("\n");
+        printUsage(err, argv[0], parser);
         return 1;
     }
     if (options.printUsage) {
-        parser.printAvailableOptions(false);
+        Stream out = getStdOut();
+        printUsage(out, argv[0], parser);
         return 0;
     }
     if (numUserPrompts > 1) {

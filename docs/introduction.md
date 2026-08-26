@@ -19,5 +19,5 @@ $ cd plywood
 Make sure you have a C++ compiler installed using your system package manager or by installing a C++ IDE such as Visual Studio or Xcode. If [CMake](https://cmake.org/) is installed, the following command will create a build system for Plywood's test suite, build it, then run all available tests. On Windows, use `share\build-app.bat` instead.
 
 ```
-$ share/build-app.sh test-suite -run -all
+$ share/build-app.sh test-suite --run --all
 ```

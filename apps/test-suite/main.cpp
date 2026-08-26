@@ -32,35 +32,11 @@ enum class TestSuite {
     Fragmentation,
 };
 
-// Prints usage containing only the suites compiled into this executable.
-static void printUsage(StringView executablePath) {
-    Stream err = getStdErr();
-    err.format("Usage: {} <options>\n", executablePath);
-    err.write("Options may be combined and run in command-line order:\n");
-#if WITH_SYSTEM_TESTS
-    err.write("  -system     Run the system test suite\n");
-#endif
-#if WITH_NETWORK_TESTS
-    err.write("  -network    Run the network test suite\n");
-#endif
-#if WITH_UNICODE_LOADING_TESTS
-    err.write("  -unicode    Run the Unicode file loading test suite\n");
-#endif
-#if WITH_MARKDOWN_TESTS
-    err.write("  -markdown   Run the Markdown test suite\n");
-#endif
-#if WITH_CPP_TESTS
-    err.write("  -cpp        Run the C++ parser and preprocessor test suites\n");
-    err.write("  -regencpp   Regenerate the C++ parser and preprocessor golden files\n");
-#endif
-#if WITH_TRANSCRIPT_TESTS
-    err.write("  -transcript Run the transcript tests\n");
-#endif
-#if WITH_FRAGMENTATION_TEST
-    err.write("  -frag       Run the fragmentation test suite\n");
-#endif
-    err.write("  -all        Run every compiled-in suite; may be combined with -verbose\n");
-    err.write("  -verbose    Print detailed test progress and output\n");
+// Prints usage containing only the options registered for this executable.
+static void printUsage(Stream& out, StringView executablePath, const CommandLineParser& parser) {
+    out.format("Usage: {} <options>\n", executablePath);
+    out.write("Options may be combined and run in command-line order:\n");
+    parser.printAvailableOptions(out);
 }
 
 // Returns the logical suite index used to reject duplicate selections.
@@ -193,41 +169,54 @@ int main(int argc, const char* argv[]) {
     // Let CommandLineParser validate the complete set of compiled-in options.
     CommandLineParser parser({
 #if WITH_SYSTEM_TESTS
-        {"-system", PLY_LOOKUP_MEMBER(CommandLineOptions, runSystem), "Run the system tests"},
+        {"-s", "--system", PLY_LOOKUP_MEMBER(CommandLineOptions, runSystem), "Run the system test suite"},
 #endif
 #if WITH_NETWORK_TESTS
-        {"-network", PLY_LOOKUP_MEMBER(CommandLineOptions, runNetwork), "Run the network tests"},
+        {"-n", "--network", PLY_LOOKUP_MEMBER(CommandLineOptions, runNetwork), "Run the network test suite"},
 #endif
 #if WITH_UNICODE_LOADING_TESTS
-        {"-unicode", PLY_LOOKUP_MEMBER(CommandLineOptions, runUnicode), "Run Unicode file loading tests"},
+        {"-u", "--unicode", PLY_LOOKUP_MEMBER(CommandLineOptions, runUnicode),
+         "Run the Unicode file loading test suite"},
 #endif
 #if WITH_MARKDOWN_TESTS
-        {"-markdown", PLY_LOOKUP_MEMBER(CommandLineOptions, runMarkdown), "Run Markdown tests"},
+        {"-m", "--markdown", PLY_LOOKUP_MEMBER(CommandLineOptions, runMarkdown), "Run the Markdown test suite"},
 #endif
 #if WITH_CPP_TESTS
-        {"-cpp", PLY_LOOKUP_MEMBER(CommandLineOptions, runCpp), "Run C++ tests"},
-        {"-regencpp", PLY_LOOKUP_MEMBER(CommandLineOptions, regenCpp), "Regenerate C++ golden files"},
+        {"-c", "--cpp", PLY_LOOKUP_MEMBER(CommandLineOptions, runCpp),
+         "Run the C++ parser and preprocessor test suites"},
+        {"-r", "--regen-cpp", PLY_LOOKUP_MEMBER(CommandLineOptions, regenCpp),
+         "Regenerate the C++ parser and preprocessor golden files"},
 #endif
 #if WITH_TRANSCRIPT_TESTS
-        {"-transcript", PLY_LOOKUP_MEMBER(CommandLineOptions, runTranscript), "Run transcript tests"},
+        {"-t", "--transcript", PLY_LOOKUP_MEMBER(CommandLineOptions, runTranscript), "Run the transcript tests"},
 #endif
 #if WITH_FRAGMENTATION_TEST
-        {"-frag", PLY_LOOKUP_MEMBER(CommandLineOptions, runFragmentation), "Run fragmentation tests"},
+        {"-f", "--fragmentation", PLY_LOOKUP_MEMBER(CommandLineOptions, runFragmentation),
+         "Run the fragmentation test suite"},
 #endif
-        {"-all", PLY_LOOKUP_MEMBER(CommandLineOptions, runAll), "Run all tests"},
-        {"-verbose", PLY_LOOKUP_MEMBER(CommandLineOptions, verbose), "Print detailed test output"},
+        {"-a", "--all", PLY_LOOKUP_MEMBER(CommandLineOptions, runAll),
+         "Run every compiled-in suite; may be combined with --verbose"},
+        {"-v", "--verbose", PLY_LOOKUP_MEMBER(CommandLineOptions, verbose), "Print detailed test progress and output"},
+        {"-h", "--help", PLY_LOOKUP_MEMBER(CommandLineOptions, printUsage), "Print this help"},
     });
     if (!parser.apply(argc, argv, &options)) {
-        printUsage(argv[0]);
+        Stream err = getStdErr();
+        printUsage(err, argv[0], parser);
         return 1;
     }
+    if (options.printUsage) {
+        Stream out = getStdOut();
+        printUsage(out, argv[0], parser);
+        return 0;
+    }
 
-    // Expand -all in canonical order, or rebuild the requested order from argv.
+    // Expand --all in canonical order, or rebuild the requested order from argv.
     Array<TestSuite> suites;
     if (options.runAll) {
         if (argc != (options.verbose ? 3 : 2)) {
-            getStdErr().write("Option -all may only be combined with -verbose.\n");
-            printUsage(argv[0]);
+            getStdErr().write("Option --all may only be combined with --verbose.\n");
+            Stream err = getStdErr();
+            printUsage(err, argv[0], parser);
             return 1;
         }
 #if WITH_SYSTEM_TESTS
@@ -255,34 +244,35 @@ int main(int argc, const char* argv[]) {
         bool selectedSuites[7] = {};
         for (int i = 1; i < argc; i++) {
             StringView arg = argv[i];
-            if (arg == "-verbose") {
+            if (arg == "-v" || arg == "--verbose") {
                 continue;
             }
             TestSuite suite;
-            if (arg == "-system") {
+            if (arg == "-s" || arg == "--system") {
                 suite = TestSuite::System;
-            } else if (arg == "-network") {
+            } else if (arg == "-n" || arg == "--network") {
                 suite = TestSuite::Network;
-            } else if (arg == "-unicode") {
+            } else if (arg == "-u" || arg == "--unicode") {
                 suite = TestSuite::Unicode;
-            } else if (arg == "-markdown") {
+            } else if (arg == "-m" || arg == "--markdown") {
                 suite = TestSuite::Markdown;
-            } else if (arg == "-cpp") {
+            } else if (arg == "-c" || arg == "--cpp") {
                 suite = TestSuite::Cpp;
-            } else if (arg == "-regencpp") {
+            } else if (arg == "-r" || arg == "--regen-cpp") {
                 suite = TestSuite::RegenCpp;
-            } else if (arg == "-transcript") {
+            } else if (arg == "-t" || arg == "--transcript") {
                 suite = TestSuite::Transcript;
             } else {
-                PLY_ASSERT(arg == "-frag");
+                PLY_ASSERT(arg == "-f" || arg == "--fragmentation");
                 suite = TestSuite::Fragmentation;
             }
 
-            // -cpp and -regencpp select the same logical suite and cannot be combined.
+            // --cpp and --regen-cpp select the same logical suite and cannot be combined.
             u32 logicalIndex = getLogicalSuiteIndex(suite);
             if (selectedSuites[logicalIndex]) {
                 getStdErr().format("Test suite selected more than once: {}\n", arg);
-                printUsage(argv[0]);
+                Stream err = getStdErr();
+                printUsage(err, argv[0], parser);
                 return 1;
             }
             selectedSuites[logicalIndex] = true;
@@ -292,7 +282,8 @@ int main(int argc, const char* argv[]) {
 
     // An empty command line is an error rather than an implicit -all.
     if (!suites) {
-        printUsage(argv[0]);
+        Stream err = getStdErr();
+        printUsage(err, argv[0], parser);
         return 1;
     }
 
@@ -319,4 +310,5 @@ PLY_STRUCT_MEMBER(runTranscript)
 PLY_STRUCT_MEMBER(runFragmentation)
 PLY_STRUCT_MEMBER(runAll)
 PLY_STRUCT_MEMBER(verbose)
+PLY_STRUCT_MEMBER(printUsage)
 PLY_STRUCT_END()

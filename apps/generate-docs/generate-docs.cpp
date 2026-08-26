@@ -10,6 +10,7 @@
 
 #include <ply-markdown.h>
 #include <ply-cpp.h>
+#include <ply-reflect.h>
 
 using namespace ply;
 using namespace ply::cpp;
@@ -44,6 +45,13 @@ struct GenerationStats {
     u32 numOrphanedDirsRemoved = 0;
 };
 GenerationStats stats;
+
+// Stores the command-line options that control documentation generation.
+struct CommandLineOptions {
+    bool watch = false;
+    bool printUsage = false;
+    PLY_DECLARE_TYPE_INFO(CommandLineOptions)
+};
 
 // Writes one generated file only when its contents changed and records its path as expected output.
 void writeFileIfChanged(StringView path, StringView contents) {
@@ -868,25 +876,41 @@ bool generateWholeSite() {
     return true;
 }
 
+// Prints the command-line syntax and registered options.
+static void printUsage(Stream& out, StringView executablePath, const CommandLineParser& parser) {
+    out.format("Usage: {} [options]\n", executablePath);
+    parser.printAvailableOptions(out);
+}
+
 // Entry point that runs a full generation pass and optional file system watch loop.
 int main(int argc, const char* argv[]) {
 #if defined(PLY_WINDOWS)
     SetConsoleOutputCP(CP_UTF8);
 #endif
 
-    // Check for -watch argument
-    bool watchMode = false;
-    for (int i = 1; i < argc; i++) {
-        if (StringView{argv[i]} == "-watch") {
-            watchMode = true;
-            break;
-        }
+    // Parse command-line options before generating any files.
+    CommandLineOptions options;
+    CommandLineParser parser({
+        {"-w", "--watch", PLY_LOOKUP_MEMBER(CommandLineOptions, watch), "Watch for changes and regenerate"},
+        {"-h", "--help", PLY_LOOKUP_MEMBER(CommandLineOptions, printUsage), "Print this help"},
+    });
+    if (!parser.apply(argc, argv, &options)) {
+        Stream err = getStdErr();
+        err.write("\n");
+        printUsage(err, argv[0], parser);
+        return 1;
+    }
+    if (options.printUsage) {
+        Stream out = getStdOut();
+        printUsage(out, argv[0], parser);
+        return 0;
     }
 
-    if (!generateWholeSite())
+    if (!generateWholeSite()) {
         return 1;
+    }
 
-    if (watchMode) {
+    if (options.watch) {
 #if PLY_WITH_DIRECTORY_WATCHER
         getStdOut().write("Watching for changes...\n");
 
@@ -919,9 +943,14 @@ int main(int argc, const char* argv[]) {
             generateWholeSite();
         }
 #else
-        getStdOut().write("-watch is not supported on this platform.");
+        getStdOut().write("--watch is not supported on this platform.\n");
 #endif
     }
 
     return 0;
 }
+
+PLY_STRUCT_BEGIN(CommandLineOptions)
+PLY_STRUCT_MEMBER(watch)
+PLY_STRUCT_MEMBER(printUsage)
+PLY_STRUCT_END()
