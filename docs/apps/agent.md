@@ -28,9 +28,9 @@ The settings file must contain a single JSON object with any of the following pr
 
 - `endPoint`: A subobject with four required properties:
     - `url`: The URL of an inference server.
-    - `protocol`: Either "responses" or "completions".
+    - `protocol`: Must be one of "completions", "responses" or "anthropic".
     - `apiKeyEnv`: The name of an environment variable containing an API key.
-    - `model`: The model name.
+    - `model`: The name of the model to use.
 - `systemPrompt`: A system prompt message.
 - `userPrompt`: The user prompt. Can be overridden by passing a prompt on the command line.
 - `workingDirectory`: The working directory used by the agent and as the base for relative permission paths. The default is the directory containing the settings file itself. Can be absolute or relative to directory containing the settings file.

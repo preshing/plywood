@@ -62,7 +62,7 @@ struct Transcript : RefCounted<Transcript> {
 
     struct Turn {
         Array<Owned<Message>> messages;
-        // Opaque Responses API output items used when replaying manually managed context.
+        // Opaque provider output items used when replaying manually managed context.
         Array<String> providerOutputItems;
 
         PLY_DECLARE_TYPE_INFO(Transcript::Turn)
@@ -123,6 +123,7 @@ void applyTranscriptEvent(TranscriptUpdater* updater, const TranscriptEvent& eve
 enum class Protocol {
     Completions,
     Responses,
+    Anthropic,
 };
 
 // Describes an inference provider to connect to.

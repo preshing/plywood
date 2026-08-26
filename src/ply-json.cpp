@@ -536,7 +536,12 @@ struct WriteContext {
             indent();
             this->out.write(']');
         } else if (const Node::Number* n = node.var.as<Node::Number>()) {
-            printNumber(this->out, n->value);
+            // Emit exactly representable integers without a fractional suffix for strict JSON schemas.
+            if (isRepresentable<s64>(n->value)) {
+                printNumber(this->out, (s64) n->value);
+            } else {
+                printNumber(this->out, n->value);
+            }
         } else if (const Node::Bool* b = node.var.as<Node::Bool>()) {
             this->out.write(b->value ? "true" : "false");
         } else if (const Node::Text* txt = node.var.as<Node::Text>()) {

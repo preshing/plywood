@@ -976,10 +976,12 @@ static bool loadSettingsWithIncludes(StringView settingsPath, Array<String>& inc
             return false;
         }
         StringView protocol = jProtocol.text();
-        if (protocol == "responses") {
-            agentSettings.endPoint.protocol = Protocol::Responses;
-        } else if (protocol == "completions") {
+        if (protocol == "completions") {
             agentSettings.endPoint.protocol = Protocol::Completions;
+        } else if (protocol == "responses") {
+            agentSettings.endPoint.protocol = Protocol::Responses;
+        } else if (protocol == "anthropic") {
+            agentSettings.endPoint.protocol = Protocol::Anthropic;
         } else {
             getStdErr().format("Unknown protocol '{}' in: {}\n", protocol, settingsPath);
             return false;

@@ -187,6 +187,17 @@ PLY_STRUCT_END()
 
 #if !PLY_AGENT_TRANSCRIPT_ONLY
 
+// ProtocolHandler owns protocol-specific request construction and stream parsing state.
+struct ProtocolHandler {
+    Agent::Impl* const impl;
+
+    explicit ProtocolHandler(Agent::Impl* impl) : impl{impl} {
+    }
+    virtual ~ProtocolHandler() = default;
+    virtual String makeRequestBody() = 0;
+    virtual void receiveLine(StringView line) = 0;
+};
+
 //   ▄▄▄▄                        ▄▄         ▄▄▄▄                 ▄▄▄
 //  ██  ██  ▄▄▄▄▄  ▄▄▄▄  ▄▄▄▄▄  ▄██▄▄        ██  ▄▄▄▄▄▄▄  ▄▄▄▄▄   ██
 //  ██▀▀██ ██  ██ ██▄▄██ ██  ██  ██   ▀▀ ▀▀  ██  ██ ██ ██ ██  ██  ██
@@ -226,6 +237,7 @@ struct Agent::Impl : RefCounted<Agent::Impl> {
     Stream httpLogFile;
     MemStream lineInProgress;
     Owned<HTTPClient> httpClient; // Only used by the inference thread.
+    Owned<ProtocolHandler> protocolHandler;
     bool anyToolCallsThisTurn = false;
 
     //----------------------------------------------
@@ -347,7 +359,14 @@ static bool parseToolCallText(const Transcript::Buffer& content, StringView& nam
 //  ▀█▄▄█▀ ▀█▄▄█▀ ██ ██ ██ ██▄▄█▀ ▄██▄ ▀█▄▄▄   ▀█▄▄ ██ ▀█▄▄█▀ ██  ██  ▄▄▄█▀     ██  ██ ██     ▄██▄
 //                         ██
 
-String makeCompletionsRequestBody(Agent::Impl* impl) {
+struct CompletionsProtocolHandler : ProtocolHandler {
+    using ProtocolHandler::ProtocolHandler;
+    virtual String makeRequestBody() override;
+    virtual void receiveLine(StringView line) override;
+};
+
+String CompletionsProtocolHandler::makeRequestBody() {
+    Agent::Impl* impl = this->impl;
     json::Node root{json::Node::Object{}};
 
     // model
@@ -517,7 +536,8 @@ String makeCompletionsRequestBody(Agent::Impl* impl) {
 }
 
 // Handle Completions API response line.
-void receiveCompletionsLine(Agent::Impl* impl, StringView line) {
+void CompletionsProtocolHandler::receiveLine(StringView line) {
+    Agent::Impl* impl = this->impl;
     if (line.startsWith("data: ")) {
         line = line.substr(6);
     }
@@ -623,7 +643,14 @@ void receiveCompletionsLine(Agent::Impl* impl, StringView line) {
 //  ██  ██ ▀█▄▄▄   ▄▄▄█▀ ██▄▄█▀ ▀█▄▄█▀ ██  ██  ▄▄▄█▀ ▀█▄▄▄   ▄▄▄█▀     ██  ██ ██     ▄██▄
 //                       ██
 
-String makeResponsesRequestBody(Agent::Impl* impl) {
+struct ResponsesProtocolHandler : ProtocolHandler {
+    using ProtocolHandler::ProtocolHandler;
+    virtual String makeRequestBody() override;
+    virtual void receiveLine(StringView line) override;
+};
+
+String ResponsesProtocolHandler::makeRequestBody() {
+    Agent::Impl* impl = this->impl;
     json::Node root{json::Node::Object{}};
 
     // model
@@ -764,7 +791,8 @@ String makeResponsesRequestBody(Agent::Impl* impl) {
     return json::toString(root, options);
 }
 
-void receiveResponsesLine(Agent::Impl* impl, StringView line) {
+void ResponsesProtocolHandler::receiveLine(StringView line) {
+    Agent::Impl* impl = this->impl;
     // Parse Responses API data events; the event type is also present in each JSON object.
     if (line.startsWith("data: ")) {
         json::Parser parser;
@@ -843,6 +871,257 @@ void receiveResponsesLine(Agent::Impl* impl, StringView line) {
     }
 }
 
+//   ▄▄▄▄          ▄▄   ▄▄                          ▄▄            ▄▄▄▄  ▄▄▄▄▄  ▄▄▄▄
+//  ██  ██ ▄▄▄▄▄  ▄██▄▄ ██▄▄▄  ▄▄▄▄▄   ▄▄▄▄  ▄▄▄▄▄  ▄▄  ▄▄▄▄     ██  ██ ██  ██  ██
+//  ██▀▀██ ██  ██  ██   ██  ██ ██  ▀▀ ██  ██ ██  ██ ██ ██        ██▀▀██ ██▀▀▀   ██
+//  ██  ██ ██  ██  ▀█▄▄ ██  ██ ██     ▀█▄▄█▀ ██▄▄█▀ ██ ▀█▄▄▄     ██  ██ ██     ▄██▄
+//                                           ██
+
+struct AnthropicProtocolHandler : ProtocolHandler {
+    // Accumulate the active SSE content block until it is complete and replayable.
+    s32 contentBlockIndex = -1;
+    json::Node contentBlock;
+    Transcript::Message* toolCall = nullptr;
+
+    using ProtocolHandler::ProtocolHandler;
+    virtual String makeRequestBody() override;
+    virtual void receiveLine(StringView line) override;
+};
+
+String AnthropicProtocolHandler::makeRequestBody() {
+    Agent::Impl* impl = this->impl;
+
+    // Discard any incomplete block left by the preceding request.
+    this->contentBlockIndex = -1;
+    this->contentBlock = {};
+    this->toolCall = nullptr;
+
+    json::Node root{json::Node::Object{}};
+    root.set("model", json::Node::Text{impl->settings.endPoint.model});
+    root.set("max_tokens", json::Node::Number{16384});
+    root.set("stream", json::Node::Bool{true});
+    if (impl->settings.toolSet.systemPrompt) {
+        root.set("system", json::Node::Text{impl->settings.toolSet.systemPrompt});
+    }
+
+    // Describe tools using the Messages API's input_schema format.
+    if (impl->settings.toolSet.handlers.items()) {
+        json::Node jTools{json::Node::Array{}};
+        for (const Owned<ToolSet::Handler>& tool : impl->settings.toolSet.handlers) {
+            json::Node& jTool = jTools.array().append(json::Node::Object{});
+            jTool.set("name", json::Node::Text{tool->name});
+            jTool.set("description", json::Node::Text{tool->description});
+            json::Node jSchema{json::Node::Object{}};
+            jSchema.set("type", json::Node::Text{"object"});
+            json::Node jRequired{json::Node::Array{}};
+            json::Node jProperties{json::Node::Object{}};
+            for (const ToolSet::Parameter& param : tool->parameters) {
+                json::Node jParam{json::Node::Object{}};
+                jParam.set("type", json::Node::Text{param.type});
+                jParam.set("description", json::Node::Text{param.description});
+                jProperties.set(param.name, std::move(jParam));
+                if (param.required) {
+                    jRequired.array().append(json::Node::Text{param.name});
+                }
+            }
+            jSchema.set("properties", std::move(jProperties));
+            jSchema.set("required", std::move(jRequired));
+            jTool.set("input_schema", std::move(jSchema));
+        }
+        root.set("tools", std::move(jTools));
+    }
+
+    // Flatten the transcript and translate each turn into alternating Messages API messages.
+    Array<const Transcript*> flattened;
+    for (const Transcript* transcript = impl->internalTranscript; transcript; transcript = transcript->parent) {
+        flattened.append(transcript);
+    }
+    json::Node jMessages{json::Node::Array{}};
+    for (s32 i = flattened.numItems() - 1; i >= 0; i--) {
+        for (u32 turnIndex = 0; turnIndex < flattened[i]->turns.numItems(); turnIndex++) {
+            const Transcript::Turn& turn = flattened[i]->turns[turnIndex];
+            json::Node jAssistantContent{json::Node::Array{}};
+            json::Node jToolResults{json::Node::Array{}};
+            u32 fallbackToolCallID = 0;
+            for (const Transcript::Message* msg : turn.messages) {
+                if (msg->role == Transcript::Role::User) {
+                    json::Node& jMessage = jMessages.array().append(json::Node::Object{});
+                    jMessage.set("role", json::Node::Text{"user"});
+                    jMessage.set("content", json::Node::Text{msg->content.toString()});
+                } else if (msg->role == Transcript::Role::Agent && turn.providerOutputItems.isEmpty()) {
+                    json::Node& jText = jAssistantContent.array().append(json::Node::Object{});
+                    jText.set("type", json::Node::Text{"text"});
+                    jText.set("text", json::Node::Text{msg->content.toString()});
+                } else if (msg->role == Transcript::Role::ToolCall) {
+                    // Recreate tool blocks when opaque provider output isn't available.
+                    fallbackToolCallID++;
+                    StringView name;
+                    json::Parser::Result parsedArgs;
+                    parseToolCallText(msg->content, name, parsedArgs);
+                    String callID = msg->providerToolCallID
+                                        ? msg->providerToolCallID
+                                        : String::format("toolu_{}_{}_{}", i, turnIndex, fallbackToolCallID);
+                    if (turn.providerOutputItems.isEmpty()) {
+                        json::Node& jCall = jAssistantContent.array().append(json::Node::Object{});
+                        jCall.set("type", json::Node::Text{"tool_use"});
+                        jCall.set("id", json::Node::Text{callID});
+                        jCall.set("name", json::Node::Text{name});
+                        jCall.set("input", parsedArgs.root.isObject() ? std::move(parsedArgs.root)
+                                                                      : json::Node{json::Node::Object{}});
+                    }
+                    if (msg->toolEnded) {
+                        json::Node& jResult = jToolResults.array().append(json::Node::Object{});
+                        jResult.set("type", json::Node::Text{"tool_result"});
+                        jResult.set("tool_use_id", json::Node::Text{std::move(callID)});
+                        jResult.set("content", json::Node::Text{msg->toolResponse.toString()});
+                    }
+                }
+            }
+
+            // Replay original content blocks to preserve signed thinking context.
+            for (StringView itemText : turn.providerOutputItems) {
+                json::Parser parser;
+                parser.setErrorCallback([](const json::ParseError&) {});
+                json::Parser::Result item = parser.parse({}, itemText);
+                if (item.root.isObject()) {
+                    jAssistantContent.array().append(std::move(item.root));
+                }
+            }
+
+            // Anthropic requires tool results in the user message immediately after tool uses.
+            if (jAssistantContent.array().items()) {
+                json::Node& jMessage = jMessages.array().append(json::Node::Object{});
+                jMessage.set("role", json::Node::Text{"assistant"});
+                jMessage.set("content", std::move(jAssistantContent));
+            }
+            if (jToolResults.array().items()) {
+                json::Node& jMessage = jMessages.array().append(json::Node::Object{});
+                jMessage.set("role", json::Node::Text{"user"});
+                jMessage.set("content", std::move(jToolResults));
+            }
+        }
+    }
+    root.set("messages", std::move(jMessages));
+    return json::toString(root, {false});
+}
+
+void AnthropicProtocolHandler::receiveLine(StringView line) {
+    Agent::Impl* impl = this->impl;
+    if (!line.startsWith("data: "))
+        return;
+
+    // Parse the JSON payload; the SSE event name is duplicated in its type property.
+    json::Parser parser;
+    parser.setErrorCallback([](const json::ParseError&) {});
+    parser.setGreedy(false);
+    json::Parser::Result result = parser.parse({}, line.substr(6).trim());
+    if (!result.root.isObject())
+        return;
+    StringView eventType = result.root.get("type").text();
+    const json::Node& jDelta = result.root.get("delta");
+
+    if (eventType == "content_block_start") {
+        const json::Node& jBlock = result.root.get("content_block");
+        this->contentBlock = json::Node{jBlock};
+        this->contentBlockIndex = (s32) result.root.get("index").getNumber();
+        if (jBlock.get("type").text() != "tool_use")
+            return;
+        LockGuard<Mutex> guard{impl->toolCtx.mutex};
+        if (impl->toolCtx.canceled)
+            return;
+
+        // Start buffering the tool name followed by streamed JSON arguments.
+        u32 toolCallID = 1;
+        for (const Owned<Transcript::Message>& msg : impl->internalTranscript->turns.back().messages) {
+            if (msg->role == Transcript::Role::ToolCall) {
+                toolCallID++;
+            }
+        }
+        beginMessage(impl, Transcript::Role::ToolCall, toolCallID, jBlock.get("id").text());
+        appendText(impl, String{jBlock.get("name").text()});
+        this->toolCall = impl->internalTranscript->turns.back().messages.back().get();
+        impl->currentRole = Transcript::Role::ToolCall;
+    } else if (eventType == "content_block_delta") {
+        StringView deltaType = jDelta.get("type").text();
+        StringView field;
+        StringView deltaText;
+        if (deltaType == "text_delta") {
+            field = "text";
+            deltaText = jDelta.get("text").text();
+        } else if (deltaType == "thinking_delta") {
+            field = "thinking";
+            deltaText = jDelta.get("thinking").text();
+        } else if (deltaType == "signature_delta") {
+            field = "signature";
+            deltaText = jDelta.get("signature").text();
+        }
+        if (field && this->contentBlock.isObject() &&
+            this->contentBlockIndex == (s32) result.root.get("index").getNumber()) {
+            String text = this->contentBlock.get(field).text();
+            text += deltaText;
+            this->contentBlock.set(field, json::Node::Text{std::move(text)});
+        }
+
+        if (deltaType == "text_delta" || deltaType == "thinking_delta") {
+            LockGuard<Mutex> guard{impl->toolCtx.mutex};
+            if (impl->toolCtx.canceled)
+                return;
+            Transcript::Role role =
+                deltaType == "thinking_delta" ? Transcript::Role::AgentThinking : Transcript::Role::Agent;
+            StringView text = deltaType == "thinking_delta" ? jDelta.get("thinking").text() : jDelta.get("text").text();
+            emitText(impl, role, text);
+        } else if (deltaType == "input_json_delta") {
+            LockGuard<Mutex> guard{impl->toolCtx.mutex};
+            if (impl->toolCtx.canceled)
+                return;
+            if (this->toolCall && this->contentBlockIndex == (s32) result.root.get("index").getNumber()) {
+                appendText(impl, String{jDelta.get("partial_json").text()});
+            }
+        }
+    } else if (eventType == "content_block_stop") {
+        LockGuard<Mutex> guard{impl->toolCtx.mutex};
+        if (impl->toolCtx.canceled)
+            return;
+        if (this->contentBlockIndex != (s32) result.root.get("index").getNumber())
+            return;
+        if (this->toolCall) {
+            // Queue the tool only after its complete input JSON has arrived.
+            if (this->toolCall->content.toString().find('{') < 0) {
+                appendText(impl, String{"{}"});
+            }
+            this->toolCall->content.flush();
+            StringView name;
+            json::Parser::Result parsedArgs;
+            parseToolCallText(this->toolCall->content, name, parsedArgs);
+            this->contentBlock.get("input") =
+                parsedArgs.root.isObject() ? std::move(parsedArgs.root) : json::Node{json::Node::Object{}};
+            impl->anyToolCallsThisTurn = true;
+            impl->pendingToolCalls.append(this->toolCall);
+            impl->toolCondVar.wakeAll();
+            this->toolCall = nullptr;
+        }
+
+        // Preserve the completed block for exact stateless replay on the next request.
+        TranscriptEvent itemEvent;
+        itemEvent.operation = TranscriptEvent::AppendProviderOutputItem;
+        itemEvent.text = json::toString(this->contentBlock, {false});
+        addEvent(impl, std::move(itemEvent));
+        this->contentBlock = {};
+        this->contentBlockIndex = -1;
+    } else if (eventType == "error") {
+        LockGuard<Mutex> guard{impl->toolCtx.mutex};
+        if (impl->toolCtx.canceled)
+            return;
+        StringView message = result.root.get("error").get("message").text();
+        emitText(impl, Transcript::Role::Error, message ? message : "Anthropic API request failed");
+    } else if (eventType == "message_delta" && jDelta.get("stop_reason").text() == "max_tokens") {
+        LockGuard<Mutex> guard{impl->toolCtx.mutex};
+        if (impl->toolCtx.canceled)
+            return;
+        emitText(impl, Transcript::Role::Error, "Anthropic API request reached max_tokens");
+    }
+}
+
 //  ▄▄▄▄          ▄▄▄                                              ▄▄▄▄▄▄ ▄▄                              ▄▄
 //   ██  ▄▄▄▄▄   ██    ▄▄▄▄  ▄▄▄▄▄   ▄▄▄▄  ▄▄▄▄▄   ▄▄▄▄  ▄▄▄▄        ██   ██▄▄▄  ▄▄▄▄▄   ▄▄▄▄   ▄▄▄▄   ▄▄▄██
 //   ██  ██  ██ ▀██▀▀ ██▄▄██ ██  ▀▀ ██▄▄██ ██  ██ ██    ██▄▄██       ██   ██  ██ ██  ▀▀ ██▄▄██  ▄▄▄██ ██  ██
@@ -897,19 +1176,13 @@ static String makeHTTPErrorMessage(u32 statusCode, StringView responseBody, Stri
     return httpMessage.moveToString();
 }
 
-// Dispatches the accumulated line to the parser for the selected API protocol.
+// Dispatches the accumulated line to the selected protocol handler.
 void receiveLineInProgress(Agent::Impl* impl) {
     String line = impl->lineInProgress.moveToString();
     impl->lineInProgress = MemStream{};
     if (!line)
         return;
-    if (impl->settings.endPoint.protocol == Protocol::Completions) {
-        receiveCompletionsLine(impl, line);
-    } else if (impl->settings.endPoint.protocol == Protocol::Responses) {
-        receiveResponsesLine(impl, line);
-    } else {
-        PLY_ASSERT(0);
-    }
+    impl->protocolHandler->receiveLine(line);
 }
 
 // Performs an inference request and converts the response data to a queue of ResponseEvents.
@@ -932,17 +1205,10 @@ void performInferenceRequest(Agent::Impl* impl) {
     }
     PLY_ON_SCOPE_EXIT({ impl->httpLogFile.close(); });
 
-    // Make the request body for the selected API protocol.
-    String body;
-    if (impl->settings.endPoint.protocol == Protocol::Completions) {
-        body = makeCompletionsRequestBody(impl);
-    } else if (impl->settings.endPoint.protocol == Protocol::Responses) {
-        body = makeResponsesRequestBody(impl);
-    } else {
-        PLY_ASSERT(0);
-    }
+    // Let the selected protocol translate the current transcript into a request body.
+    String body = impl->protocolHandler->makeRequestBody();
 
-    // Apply API key. It's sent as an Authorization header alongside Content-Type.
+    // Apply the protocol-specific authentication headers alongside Content-Type.
     Map<String, String> headers;
     *headers.insert("Content-Type").value = "application/json";
     {
@@ -953,7 +1219,12 @@ void performInferenceRequest(Agent::Impl* impl) {
                                          impl->settings.endPoint.apiKeyEnv));
             return;
         }
-        *headers.insert("Authorization").value = String::format("Bearer {}", apiKey);
+        if (impl->settings.endPoint.protocol == Protocol::Anthropic) {
+            *headers.insert("x-api-key").value = std::move(apiKey);
+            *headers.insert("anthropic-version").value = "2023-06-01";
+        } else {
+            *headers.insert("Authorization").value = String::format("Bearer {}", apiKey);
+        }
     }
 
     // State accumulated across curl callbacks (the callback runs on this same inference thread,
@@ -1246,6 +1517,18 @@ Agent::Agent(const Settings& settings) {
     this->settings = &impl->settings; // points to the internal copy of the settings
     impl->toolCtx.agentImpl = impl;
     impl->toolCtx.workingDirectory = impl->settings.toolSet.workingDirectory;
+
+    // Create the handler that owns this endpoint's protocol-specific behavior and state.
+    if (impl->settings.endPoint.protocol == Protocol::Completions) {
+        impl->protocolHandler = Heap::create<CompletionsProtocolHandler>(impl);
+    } else if (impl->settings.endPoint.protocol == Protocol::Responses) {
+        impl->protocolHandler = Heap::create<ResponsesProtocolHandler>(impl);
+    } else if (impl->settings.endPoint.protocol == Protocol::Anthropic) {
+        impl->protocolHandler = Heap::create<AnthropicProtocolHandler>(impl);
+    } else {
+        PLY_ASSERT(0);
+    }
+
     // The HTTPClient lives for the whole conversation and is reused across turns.
     impl->httpClient = HTTPClient::create();
 
