@@ -34,11 +34,11 @@ Destroying a valid `Thread` object implicitly detaches it if you have not alread
 `Atomic` provides atomic operations on integer types with explicit memory ordering via a `MemoryOrder` argument. Must be aligned to the size of its template argument.
 
 ```
-enum MemoryOrder {
+enum class MemoryOrder {
     Relaxed,
     Acquire,
     Release,
-    AcqRel
+    AcqRel,
 };
 ```
 

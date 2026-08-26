@@ -89,15 +89,15 @@ struct PipeWinsock : Pipe {
 
 #endif
 
-enum class IPResult : u8 {
-    UNKNOWN = 0,
-    OK,
-    NO_SOCKET,
-    UNREACHABLE,
-    REFUSED,
-    IN_USE,
-    NOT_LISTENING,
-    ACCESS_DENIED,
+enum class NetResult {
+    OK = 0,
+    NoSocket,
+    Unreachable,
+    Refused,
+    InUse,
+    NotListening,
+    AccessDenied,
+    Unknown,
 };
 
 class Network {
@@ -113,12 +113,12 @@ private:
 public:
     static bool IsInit;
     static bool HasIPv6;
-    static ThreadLocal<IPResult> lastResult_;
+    static ThreadLocal<NetResult> lastResult_;
 
     static void initialize(IPVersion ipVersion);
     static void shutdown();
     static IPAddress resolveHostName(StringView hostName, IPVersion ipVersion);
-    static IPResult lastResult() {
+    static NetResult lastResult() {
         return Network::lastResult_.load();
     }
 };

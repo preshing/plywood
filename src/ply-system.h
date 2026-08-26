@@ -693,7 +693,12 @@ inline Thread spawnThread(Functor<void()>&& entry) {
 template <typename T, int = sizeof(T)>
 class Atomic;
 
-enum MemoryOrder { Relaxed, Acquire, Release, AcqRel };
+enum class MemoryOrder {
+    Relaxed,
+    Acquire,
+    Release,
+    AcqRel,
+};
 
 #if defined(_MSC_VER)
 
@@ -707,24 +712,24 @@ protected:
 public:
     Atomic(T value = 0) : value{value} {
     }
-    Atomic(const Atomic<T, 1>& other) : value{other.load(Relaxed)} {
+    Atomic(const Atomic<T, 1>& other) : value{other.load(MemoryOrder::Relaxed)} {
     }
     // Hide operator=
     Atomic& operator=(T) = delete;
     // The copy assignment operator should only be called when there is no concurrent access to *this.
     Atomic& operator=(const Atomic& other) {
-        this->value = other.load(Relaxed);
+        this->value = other.load(MemoryOrder::Relaxed);
         return *this;
     }
     T load(MemoryOrder order) const {
         T result = *(volatile T*) &this->value;
-        if (order != Relaxed) {
+        if (order != MemoryOrder::Relaxed) {
             _ReadWriteBarrier();
         }
         return result;
     }
     void store(T value, MemoryOrder order) {
-        if (order != Relaxed) {
+        if (order != MemoryOrder::Relaxed) {
             _ReadWriteBarrier();
         }
         *(volatile T*) &this->value = value;
@@ -757,24 +762,24 @@ protected:
 public:
     Atomic(T value = 0) : value{value} {
     }
-    Atomic(const Atomic<T, 2>& other) : value{other.load(Relaxed)} {
+    Atomic(const Atomic<T, 2>& other) : value{other.load(MemoryOrder::Relaxed)} {
     }
     // Hide operator=
     Atomic& operator=(T) = delete;
     // The copy assignment operator should only be called when there is no concurrent access to *this.
     Atomic& operator=(const Atomic& other) {
-        this->value = other.load(Relaxed);
+        this->value = other.load(MemoryOrder::Relaxed);
         return *this;
     }
     T load(MemoryOrder order) const {
         T result = *(volatile T*) &this->value;
-        if (order != Relaxed) {
+        if (order != MemoryOrder::Relaxed) {
             _ReadWriteBarrier();
         }
         return result;
     }
     void store(T value, MemoryOrder order) {
-        if (order != Relaxed) {
+        if (order != MemoryOrder::Relaxed) {
             _ReadWriteBarrier();
         }
         *(volatile T*) &this->value = value;
@@ -807,24 +812,24 @@ protected:
 public:
     Atomic(T value = 0) : value{value} {
     }
-    Atomic(const Atomic<T, 4>& other) : value{other.load(Relaxed)} {
+    Atomic(const Atomic<T, 4>& other) : value{other.load(MemoryOrder::Relaxed)} {
     }
     // Hide operator=
     Atomic& operator=(T) = delete;
     // The copy assignment operator should only be called when there is no concurrent access to *this.
     Atomic& operator=(const Atomic& other) {
-        this->value = other.load(Relaxed);
+        this->value = other.load(MemoryOrder::Relaxed);
         return *this;
     }
     T load(MemoryOrder order) const {
         T result = *(volatile T*) &this->value;
-        if (order != Relaxed) {
+        if (order != MemoryOrder::Relaxed) {
             _ReadWriteBarrier();
         }
         return result;
     }
     void store(T value, MemoryOrder order) {
-        if (order != Relaxed) {
+        if (order != MemoryOrder::Relaxed) {
             _ReadWriteBarrier();
         }
         *(volatile T*) &this->value = value;
@@ -857,24 +862,24 @@ protected:
 public:
     Atomic(T value = 0) : value{value} {
     }
-    Atomic(const Atomic<T, 8>& other) : value{other.load(Relaxed)} {
+    Atomic(const Atomic<T, 8>& other) : value{other.load(MemoryOrder::Relaxed)} {
     }
     // Hide operator=
     Atomic& operator=(T) = delete;
     // The copy assignment operator should only be called when there is no concurrent access to *this.
     Atomic& operator=(const Atomic& other) {
-        this->value = other.load(Relaxed);
+        this->value = other.load(MemoryOrder::Relaxed);
         return *this;
     }
     T load(MemoryOrder order) const {
 #if PLY_PTR_SIZE == 8
         T result = *(volatile T*) &this->value;
-        if (order != Relaxed) {
+        if (order != MemoryOrder::Relaxed) {
             _ReadWriteBarrier();
         }
         return result;
 #else
-        if (order != Relaxed) {
+        if (order != MemoryOrder::Relaxed) {
             return _InterlockedCompareExchange64_acq((volatile __int64*) &this->value, 0, 0);
         }
         return *(volatile T*) &this->value;
@@ -882,12 +887,12 @@ public:
     }
     void store(T value, MemoryOrder order) {
 #if PLY_PTR_SIZE == 8
-        if (order != Relaxed) {
+        if (order != MemoryOrder::Relaxed) {
             _ReadWriteBarrier();
         }
         *(volatile T*) &this->value = value;
 #else
-        if (order != Relaxed) {
+        if (order != MemoryOrder::Relaxed) {
             _InterlockedExchange64_rel((volatile __int64*) &this->value, value);
         } else {
             *(volatile T*) &this->value = value;
@@ -921,14 +926,14 @@ public:
 // GCC/Clang implementation.
 constexpr int toGccOrder(MemoryOrder order) {
     switch (order) {
-        case Relaxed:
+        case MemoryOrder::Relaxed:
         default:
             return __ATOMIC_RELAXED;
-        case Acquire:
+        case MemoryOrder::Acquire:
             return __ATOMIC_ACQUIRE;
-        case Release:
+        case MemoryOrder::Release:
             return __ATOMIC_RELEASE;
-        case AcqRel:
+        case MemoryOrder::AcqRel:
             return __ATOMIC_ACQ_REL;
     }
 }
@@ -941,13 +946,13 @@ protected:
 public:
     Atomic(T value = 0) : value{value} {
     }
-    Atomic(const Atomic<T, 1>& other) : value{other.load(Relaxed)} {
+    Atomic(const Atomic<T, 1>& other) : value{other.load(MemoryOrder::Relaxed)} {
     }
     // Hide operator=
     Atomic& operator=(T) = delete;
     // The copy assignment operator should only be called when there is no concurrent access to *this.
     Atomic& operator=(const Atomic& other) {
-        this->value = other.load(Relaxed);
+        this->value = other.load(MemoryOrder::Relaxed);
         return *this;
     }
     T load(MemoryOrder order) const {
@@ -957,7 +962,7 @@ public:
         __atomic_store_n(&this->value, value, toGccOrder(order));
     }
     T compareExchange(T expected, T desired, MemoryOrder order) {
-        MemoryOrder failOrder = (order == AcqRel) ? Acquire : ((order == Release) ? Relaxed : order);
+        MemoryOrder failOrder = (order == MemoryOrder::AcqRel) ? MemoryOrder::Acquire : ((order == MemoryOrder::Release) ? MemoryOrder::Relaxed : order);
         __atomic_compare_exchange_n(&this->value, &expected, desired, false, toGccOrder(order), toGccOrder(failOrder));
         return expected;
     }
@@ -986,13 +991,13 @@ protected:
 public:
     Atomic(T value = 0) : value{value} {
     }
-    Atomic(const Atomic<T, 2>& other) : value{other.load(Relaxed)} {
+    Atomic(const Atomic<T, 2>& other) : value{other.load(MemoryOrder::Relaxed)} {
     }
     // Hide operator=
     Atomic& operator=(T) = delete;
     // The copy assignment operator should only be called when there is no concurrent access to *this.
     Atomic& operator=(const Atomic& other) {
-        this->value = other.load(Relaxed);
+        this->value = other.load(MemoryOrder::Relaxed);
         return *this;
     }
     T load(MemoryOrder order) const {
@@ -1002,7 +1007,7 @@ public:
         __atomic_store_n(&this->value, value, toGccOrder(order));
     }
     T compareExchange(T expected, T desired, MemoryOrder order) {
-        MemoryOrder failOrder = (order == AcqRel) ? Acquire : ((order == Release) ? Relaxed : order);
+        MemoryOrder failOrder = (order == MemoryOrder::AcqRel) ? MemoryOrder::Acquire : ((order == MemoryOrder::Release) ? MemoryOrder::Relaxed : order);
         __atomic_compare_exchange_n(&this->value, &expected, desired, false, toGccOrder(order), toGccOrder(failOrder));
         return expected;
     }
@@ -1031,13 +1036,13 @@ protected:
 public:
     Atomic(T value = 0) : value{value} {
     }
-    Atomic(const Atomic<T, 4>& other) : value{other.load(Relaxed)} {
+    Atomic(const Atomic<T, 4>& other) : value{other.load(MemoryOrder::Relaxed)} {
     }
     // Hide operator=
     Atomic& operator=(T) = delete;
     // The copy assignment operator should only be called when there is no concurrent access to *this.
     Atomic& operator=(const Atomic& other) {
-        this->value = other.load(Relaxed);
+        this->value = other.load(MemoryOrder::Relaxed);
         return *this;
     }
     T load(MemoryOrder order) const {
@@ -1047,7 +1052,7 @@ public:
         __atomic_store_n(&this->value, value, toGccOrder(order));
     }
     T compareExchange(T expected, T desired, MemoryOrder order) {
-        MemoryOrder failOrder = (order == AcqRel) ? Acquire : ((order == Release) ? Relaxed : order);
+        MemoryOrder failOrder = (order == MemoryOrder::AcqRel) ? MemoryOrder::Acquire : ((order == MemoryOrder::Release) ? MemoryOrder::Relaxed : order);
         __atomic_compare_exchange_n(&this->value, &expected, desired, false, toGccOrder(order), toGccOrder(failOrder));
         return expected;
     }
@@ -1076,13 +1081,13 @@ protected:
 public:
     Atomic(T value = 0) : value{value} {
     }
-    Atomic(const Atomic<T, 8>& other) : value{other.load(Relaxed)} {
+    Atomic(const Atomic<T, 8>& other) : value{other.load(MemoryOrder::Relaxed)} {
     }
     // Hide operator=
     Atomic& operator=(T) = delete;
     // The copy assignment operator should only be called when there is no concurrent access to *this.
     Atomic& operator=(const Atomic& other) {
-        this->value = other.load(Relaxed);
+        this->value = other.load(MemoryOrder::Relaxed);
         return *this;
     }
     T load(MemoryOrder order) const {
@@ -1092,7 +1097,7 @@ public:
         __atomic_store_n(&this->value, value, toGccOrder(order));
     }
     T compareExchange(T expected, T desired, MemoryOrder order) {
-        MemoryOrder failOrder = (order == AcqRel) ? Acquire : ((order == Release) ? Relaxed : order);
+        MemoryOrder failOrder = (order == MemoryOrder::AcqRel) ? MemoryOrder::Acquire : ((order == MemoryOrder::Release) ? MemoryOrder::Relaxed : order);
         __atomic_compare_exchange_n(&this->value, &expected, desired, false, toGccOrder(order), toGccOrder(failOrder));
         return expected;
     }
@@ -3526,19 +3531,19 @@ public:
     RefCounted(const RefCounted&) {
     }
     void incRefCount() {
-        u32 oldCount = this->refCount.fetchAdd(1, AcqRel);
+        u32 oldCount = this->refCount.fetchAdd(1, MemoryOrder::AcqRel);
         PLY_ASSERT(oldCount < 5000);
         PLY_UNUSED(oldCount);
     }
     void decRefCount() {
-        s32 oldCount = this->refCount.fetchSub(1, AcqRel);
+        s32 oldCount = this->refCount.fetchSub(1, MemoryOrder::AcqRel);
         PLY_ASSERT(oldCount < 5000);
         if (oldCount == 1) {
             static_cast<Subclass*>(this)->onRefCountZero();
         }
     }
     s32 getRefCount() const {
-        return this->refCount.load(Acquire);
+        return this->refCount.load(MemoryOrder::Acquire);
     }
     void onRefCountZero() {
         destroy(static_cast<Subclass*>(this));
@@ -3954,17 +3959,17 @@ void sort(Arr& arr, const IsLess& isLess = defaultLess<ArrayItemType<Arr>>) {
     sort(ArrayView<T>{arr}, isLess);
 }
 
-enum FindType {
-    FindGreaterThan,
-    FindGreaterThanOrEqual,
+enum class FindType {
+    GreaterThan,
+    GreaterThanOrEqual,
 };
 
 template <typename Key>
 bool meetsCondition(const Key& a, const Key& b, FindType findType) {
     switch (findType) {
-        case FindGreaterThan:
+        case FindType::GreaterThan:
             return a > b;
-        case FindGreaterThanOrEqual:
+        case FindType::GreaterThanOrEqual:
             return a >= b;
         default:
             return false;
@@ -4295,11 +4300,14 @@ Pipe* getStdInPipe();
 Pipe* getStdOutPipe();
 Pipe* getStdErrPipe();
 
-enum ConsoleMode { TEXT, BINARY };
+enum class ConsoleMode {
+    Text,
+    Binary,
+};
 
-Stream getStdIn(ConsoleMode mode = TEXT);
-Stream getStdOut(ConsoleMode mode = TEXT);
-Stream getStdErr(ConsoleMode mode = TEXT);
+Stream getStdIn(ConsoleMode mode = ConsoleMode::Text);
+Stream getStdOut(ConsoleMode mode = ConsoleMode::Text);
+Stream getStdErr(ConsoleMode mode = ConsoleMode::Text);
 
 //  ▄▄▄▄▄                    ▄▄ ▄▄                   ▄▄▄▄▄▄                ▄▄
 //  ██  ██  ▄▄▄▄   ▄▄▄▄   ▄▄▄██ ▄▄ ▄▄▄▄▄   ▄▄▄▄▄       ██    ▄▄▄▄  ▄▄  ▄▄ ▄██▄▄
@@ -4445,11 +4453,11 @@ inline String String::fromDateTime(StringView format, const DateTime& dateTime) 
 //  ▀█▄▄█▀ ██  ██ ██ ▀█▄▄▄ ▀█▄▄█▀ ▀█▄▄██ ▀█▄▄▄
 //
 
-enum UnicodeType {
-    NOT_UNICODE,
+enum class UnicodeType {
+    None,
     UTF8,
-    UTF16_LE,
-    UTF16_BE,
+    UTF16LE,
+    UTF16BE,
 };
 
 struct ExtendedTextParams {
@@ -4458,16 +4466,16 @@ struct ExtendedTextParams {
     s32 missingChar = 255; // If negative, missing characters are skipped.
 };
 
-enum DecodeStatus {
-    DS_OK,
-    DS_ILL_FORMED,      // Not at EOF.
-    DS_NOT_ENOUGH_DATA, // Can still decode an ill-formed codepoint.
+enum class DecodeStatus {
+    OK,
+    IllFormed,     // Not at EOF.
+    NotEnoughData, // Can still decode an ill-formed codepoint.
 };
 
 struct DecodeResult {
     s32 point = -1;
     u32 numBytes = 0;
-    DecodeStatus status = DS_OK;
+    DecodeStatus status = DecodeStatus::OK;
 };
 
 // Returns the number of bytes written to buf.
@@ -4489,7 +4497,7 @@ public:
     FixedArray<char, 4> shimStorage;
     StringView shimUsed;
 
-    InPipeConvertUnicode(Stream&& in, UnicodeType type = NOT_UNICODE) : in{std::move(in)}, srcType{type} {
+    InPipeConvertUnicode(Stream&& in, UnicodeType type = UnicodeType::None) : in{std::move(in)}, srcType{type} {
         PLY_ASSERT(this->in.hasReadPermission);
         this->flags = Pipe::HAS_READ_PERMISSION;
     }
@@ -4507,7 +4515,7 @@ public:
     char shimStorage[4];
     u32 shimUsed = false;
 
-    OutPipeConvertUnicode(Stream&& childOut, UnicodeType type = NOT_UNICODE)
+    OutPipeConvertUnicode(Stream&& childOut, UnicodeType type = UnicodeType::None)
         : childOut{std::move(childOut)}, dstType{type} {
         PLY_ASSERT(this->childOut.hasWritePermission);
         this->flags = Pipe::HAS_WRITE_PERMISSION;
@@ -4529,7 +4537,7 @@ struct TextFormat {
         CRLF,
     };
 
-    UnicodeType unicodeType = UTF8;
+    UnicodeType unicodeType = UnicodeType::UTF8;
     NewLine newLine = LF;
     bool bom = true;
 };
@@ -4543,29 +4551,29 @@ TextFormat autodetectTextFormat(Stream& in);
 //  ██    ██ ▄██▄ ▀█▄▄▄      ▀█▄▄█▀ ▀█▄▄██  ▄▄▄█▀  ▀█▄▄ ▀█▄▄▄  ██ ██ ██
 //                                   ▄▄▄█▀
 
-enum PathFormat {
-    WindowsPath,
-    POSIXPath,
+enum class PathFormat {
+    Windows,
+    POSIX,
 };
 
-enum FSResult {
-    FS_UNKNOWN = 0,
-    FS_NOT_FOUND,
-    FS_LOCKED,
-    FS_ACCESS_DENIED,
-    FS_OK,
-    FS_ALREADY_EXISTS,
-    FS_UNCHANGED,
+enum class FSResult {
+    OK = 0,
+    NotFound,
+    Locked,
+    AccessDenied,
+    AlreadyExists,
+    Unchanged,
+    Unknown,
 };
 
-enum ExistsResult {
-    ER_NOT_FOUND,
-    ER_FILE,
-    ER_DIRECTORY,
+enum class ExistsResult {
+    NotFound,
+    File,
+    Directory,
 };
 
 struct DirectoryEntry {
-    FSResult result = FS_UNKNOWN; // Result of getFileInfo()
+    FSResult result = FSResult::Unknown; // Result of getFileInfo()
     String name;
     bool isDir = false;
     u64 fileSize = 0;            // Size of the file in bytes
@@ -4634,7 +4642,7 @@ struct FileSystem {
 
 #if defined(PLY_WINDOWS)
     static constexpr PathFormat pathFormat() {
-        return WindowsPath;
+        return PathFormat::Windows;
     }
 
     // Read_Write_Lock used to mitigate data race issues with SetCurrentDirectoryW:
@@ -4647,7 +4655,7 @@ struct FileSystem {
     static DirectoryEntry getFileInfo(HANDLE handle);
 #elif defined(PLY_POSIX)
     static constexpr PathFormat pathFormat() {
-        return POSIXPath;
+        return PathFormat::POSIX;
     }
 
     static int openFdForRead(StringView path);
@@ -4668,7 +4676,7 @@ struct FileSystem {
 
     static FSResult copyFile(StringView srcPath, StringView dstPath);
     static bool isDir(StringView path) {
-        return FileSystem::exists(path) == ER_DIRECTORY;
+        return FileSystem::exists(path) == ExistsResult::Directory;
     }
     static DirectoryWalker walk(StringView top);
     static FSResult makeDirs(StringView path);
@@ -4703,10 +4711,10 @@ struct SplitExtension {
 
 // Generic path manipulation functions:
 constexpr char getPathSeparator(PathFormat fmt) {
-    return (fmt == PathFormat::WindowsPath) ? '\\' : '/';
+    return (fmt == PathFormat::Windows) ? '\\' : '/';
 }
 constexpr bool isPathSeparator(PathFormat fmt, char c) {
-    return (c == '/') || ((fmt == PathFormat::WindowsPath) && (c == '\\'));
+    return (c == '/') || ((fmt == PathFormat::Windows) && (c == '\\'));
 }
 StringView getDriveLetter(PathFormat fmt, StringView path);
 bool isAbsolutePath(PathFormat fmt, StringView path);
@@ -4822,16 +4830,16 @@ String getCurrentExecutablePath();
 String getEnvironmentVariable(StringView name);
 
 struct Subprocess {
-    enum PipeType {
-        PIPE_OPEN,
-        PIPE_REDIRECT, // This will redirect output to /dev/null if corresponding Out_Pipe
-                       // (stdOutPipe/stdErrPipe) is unopened
-        PIPE_STD_OUT,
+    enum class PipeType {
+        Open,
+        Redirect, // This will redirect output to /dev/null if corresponding Out_Pipe
+                  // (stdOutPipe/stdErrPipe) is unopened
+        StdOut,
     };
 
     struct Output {
-        PipeType stdOut = PIPE_REDIRECT;
-        PipeType stdErr = PIPE_REDIRECT;
+        PipeType stdOut = PipeType::Redirect;
+        PipeType stdErr = PipeType::Redirect;
         Pipe* stdOutPipe = nullptr;
         Pipe* stdErrPipe = nullptr;
 
@@ -4846,35 +4854,35 @@ struct Subprocess {
         }
         static Output openSeparate() {
             Output h;
-            h.stdOut = PIPE_OPEN;
-            h.stdErr = PIPE_OPEN;
+            h.stdOut = PipeType::Open;
+            h.stdErr = PipeType::Open;
             return h;
         }
         static Output openMerged() {
             Output h;
-            h.stdOut = PIPE_OPEN;
-            h.stdErr = PIPE_STD_OUT;
+            h.stdOut = PipeType::Open;
+            h.stdErr = PipeType::StdOut;
             return h;
         }
         static Output openStdOutOnly() {
             Output h;
-            h.stdOut = PIPE_OPEN;
+            h.stdOut = PipeType::Open;
             return h;
         }
     };
 
     struct Input {
-        PipeType stdIn = PIPE_REDIRECT;
+        PipeType stdIn = PipeType::Redirect;
         Pipe* stdInPipe = nullptr;
 
         static Input ignore() {
             return {};
         }
         static Input inherit() {
-            return {PIPE_REDIRECT, getStdInPipe()};
+            return {PipeType::Redirect, getStdInPipe()};
         }
         static Input open() {
-            return {PIPE_OPEN, nullptr};
+            return {PipeType::Open, nullptr};
         }
     };
 

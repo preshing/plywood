@@ -44,7 +44,7 @@ void servePlywoodDocumentation(HTTPServer::Request& request) {
     if (parts.numItems() > 0) {
         if (parts[0] == "static") {
             String localPath = joinPath(docsFolder, StringView{'/'}.join(parts));
-            if (!FileSystem::exists(localPath)) {
+            if (FileSystem::exists(localPath) == ExistsResult::NotFound) {
                 request.sendGenericResponse(HTTPServer::Response::NotFound);
                 return;
             }
@@ -95,7 +95,7 @@ void servePlywoodDocumentation(HTTPServer::Request& request) {
                 localPath += ".html";
             }
 
-            if (!FileSystem::exists(localPath)) {
+            if (FileSystem::exists(localPath) == ExistsResult::NotFound) {
                 request.sendGenericResponse(HTTPServer::Response::NotFound);
                 return;
             }

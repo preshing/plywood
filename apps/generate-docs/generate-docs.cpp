@@ -50,7 +50,7 @@ void writeFileIfChanged(StringView path, StringView contents) {
     stats.generatedPaths.insert(path);
 
     // Retain an existing file when its bytes already match the generated contents.
-    if ((FileSystem::exists(path) == ER_FILE) && (FileSystem::loadBinary(path) == contents)) {
+    if ((FileSystem::exists(path) == ExistsResult::File) && (FileSystem::loadBinary(path) == contents)) {
         stats.numUnchanged++;
         return;
     }
@@ -58,7 +58,7 @@ void writeFileIfChanged(StringView path, StringView contents) {
     // Create the parent directory and write the new contents.
     FileSystem::makeDirs(splitPath(path).directory);
     FSResult result = FileSystem::saveBinary(path, contents);
-    PLY_ASSERT(result == FS_OK);
+    PLY_ASSERT(result == FSResult::OK);
     PLY_UNUSED(result);
     stats.numUpdated++;
 }
@@ -665,7 +665,7 @@ bool validatePages(ArrayView<const ContentsPage*> pages) {
         }
 
         String markdownPath = joinPath(PLYWOOD_ROOT_DIR, docsPath.substr(1));
-        if (FileSystem::exists(markdownPath) != ER_FILE) {
+        if (FileSystem::exists(markdownPath) != ExistsResult::File) {
             getStdErr().format("Documentation source does not exist: {}\n", docsPath);
             isValid = false;
         }
@@ -825,7 +825,7 @@ bool generateWholeSite() {
                 String path = joinPath(triple.dirPath, entry.name);
                 if (!stats.generatedPaths.find(path)) {
                     FSResult result = FileSystem::deleteFile(path);
-                    PLY_ASSERT(result == FS_OK);
+                    PLY_ASSERT(result == FSResult::OK);
                     PLY_UNUSED(result);
                     stats.numOrphanedFilesRemoved++;
                 }
@@ -837,7 +837,7 @@ bool generateWholeSite() {
     for (u32 i = existingDirs.numItems(); i-- > 1;) {
         if (FileSystem::listDir(existingDirs[i]).isEmpty()) {
             FSResult result = FileSystem::removeDirTree(existingDirs[i]);
-            PLY_ASSERT(result == FS_OK);
+            PLY_ASSERT(result == FSResult::OK);
             PLY_UNUSED(result);
             stats.numOrphanedDirsRemoved++;
         }
@@ -897,7 +897,7 @@ int main(int argc, const char* argv[]) {
         auto onChange = [&](StringView path, bool mustRecurse) {
             if (splitPathFull(path)[0] != "build") {
                 LockGuard<Mutex> lock{mutex};
-                changed.store(1, Release);
+                changed.store(1, MemoryOrder::Release);
                 cond.wakeOne();
             }
         };
@@ -908,14 +908,14 @@ int main(int argc, const char* argv[]) {
         for (;;) {
             {
                 LockGuard<Mutex> lock{mutex};
-                while (!changed.load(Acquire)) {
+                while (!changed.load(MemoryOrder::Acquire)) {
                     cond.wait(lock);
                 }
             }
 
             getStdOut().write("Change detected, regenerating...\n");
             sleepMillis(100);
-            changed.store(0, Release);
+            changed.store(0, MemoryOrder::Release);
             generateWholeSite();
         }
 #else

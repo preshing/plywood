@@ -19,7 +19,7 @@ NETWORK_TEST_CASE("TCPListener::stopListening unblocks accept") {
     Owned<TCPListener> listener = TCPListener::create(0);
     if (!listener) {
         // Some environments prohibit opening listening sockets; still reject other failures.
-        check(Network::lastResult() == IPResult::AccessDenied);
+        check(Network::lastResult() == NetResult::AccessDenied);
         Network::shutdown();
         return;
     }
@@ -31,18 +31,18 @@ NETWORK_TEST_CASE("TCPListener::stopListening unblocks accept") {
     Thread acceptThread{[&] {
         aboutToAccept.signal();
         Owned<TCPConnection> connection = listener->accept();
-        stoppedAccept.store(!connection && Network::lastResult() == IPResult::NOT_LISTENING, Release);
-        acceptReturned.store(true, Release);
+        stoppedAccept.store(!connection && Network::lastResult() == NetResult::NotListening, MemoryOrder::Release);
+        acceptReturned.store(true, MemoryOrder::Release);
     }};
     aboutToAccept.wait();
     sleepMillis(50);
-    check(!acceptReturned.load(Acquire));
+    check(!acceptReturned.load(MemoryOrder::Acquire));
 
     // The pending accept must return null with the stop-specific result.
     listener->stopListening();
     acceptThread.join();
-    check(acceptReturned.load(Acquire));
-    check(stoppedAccept.load(Acquire));
+    check(acceptReturned.load(MemoryOrder::Acquire));
+    check(stoppedAccept.load(MemoryOrder::Acquire));
     check(!listener->isListening());
 
     listener.clear();

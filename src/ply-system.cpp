@@ -429,7 +429,7 @@ void* VirtualMemory::reserveRegion(uptr numBytes) {
     void* addr = VirtualAlloc(0, (SIZE_T) numBytes, MEM_RESERVE, PAGE_READWRITE);
     if (addr == NULL)
         return nullptr;
-    VirtualMemory::totalReservedBytes.fetchAdd(numBytes, Relaxed);
+    VirtualMemory::totalReservedBytes.fetchAdd(numBytes, MemoryOrder::Relaxed);
     return addr;
 }
 
@@ -452,8 +452,8 @@ void VirtualMemory::unreserveRegion(void* addr, uptr numReservedBytes, uptr numC
     BOOL rc2 = VirtualFree(addr, 0, MEM_RELEASE);
     PLY_ASSERT(rc2);
     PLY_UNUSED(rc2);
-    VirtualMemory::totalReservedBytes.fetchSub(numReservedBytes, Relaxed);
-    VirtualMemory::totalCommittedBytes.fetchSub(numCommittedBytes, Relaxed);
+    VirtualMemory::totalReservedBytes.fetchSub(numReservedBytes, MemoryOrder::Relaxed);
+    VirtualMemory::totalCommittedBytes.fetchSub(numCommittedBytes, MemoryOrder::Relaxed);
 }
 
 void VirtualMemory::commitPages(void* addr, uptr numBytes) {
@@ -463,7 +463,7 @@ void VirtualMemory::commitPages(void* addr, uptr numBytes) {
     LPVOID result = VirtualAlloc(addr, (SIZE_T) numBytes, MEM_COMMIT, PAGE_READWRITE);
     PLY_ASSERT(result != NULL); // Failure is considered fatal
     PLY_UNUSED(result);
-    VirtualMemory::totalCommittedBytes.fetchAdd(numBytes, Relaxed);
+    VirtualMemory::totalCommittedBytes.fetchAdd(numBytes, MemoryOrder::Relaxed);
 }
 
 void VirtualMemory::decommitPages(void* addr, uptr numBytes) {
@@ -473,7 +473,7 @@ void VirtualMemory::decommitPages(void* addr, uptr numBytes) {
     BOOL rc = VirtualFree(addr, numBytes, MEM_DECOMMIT);
     PLY_ASSERT(rc);
     PLY_UNUSED(rc);
-    VirtualMemory::totalCommittedBytes.fetchSub(numBytes, Relaxed);
+    VirtualMemory::totalCommittedBytes.fetchSub(numBytes, MemoryOrder::Relaxed);
 }
 
 void* VirtualMemory::allocRegion(uptr numBytes) {
@@ -482,8 +482,8 @@ void* VirtualMemory::allocRegion(uptr numBytes) {
     void* addr = VirtualAlloc(0, (SIZE_T) numBytes, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
     if (addr == NULL)
         return nullptr;
-    VirtualMemory::totalReservedBytes.fetchAdd(numBytes, Relaxed);
-    VirtualMemory::totalCommittedBytes.fetchAdd(numBytes, Relaxed);
+    VirtualMemory::totalReservedBytes.fetchAdd(numBytes, MemoryOrder::Relaxed);
+    VirtualMemory::totalCommittedBytes.fetchAdd(numBytes, MemoryOrder::Relaxed);
     return addr;
 }
 
@@ -537,7 +537,7 @@ void* VirtualMemory::reserveRegion(uptr numBytes) {
     void* addr = mmap(0, numBytes, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     if (addr == MAP_FAILED)
         return nullptr;
-    VirtualMemory::totalReservedBytes.fetchAdd(numBytes, Relaxed);
+    VirtualMemory::totalReservedBytes.fetchAdd(numBytes, MemoryOrder::Relaxed);
     return addr;
 }
 
@@ -549,8 +549,8 @@ void VirtualMemory::unreserveRegion(void* addr, uptr numReservedBytes, uptr numC
     int rc = munmap(addr, numReservedBytes);
     PLY_ASSERT(rc == 0);
     PLY_UNUSED(rc);
-    VirtualMemory::totalReservedBytes.fetchSub(numReservedBytes, Relaxed);
-    VirtualMemory::totalCommittedBytes.fetchSub(numCommittedBytes, Relaxed);
+    VirtualMemory::totalReservedBytes.fetchSub(numReservedBytes, MemoryOrder::Relaxed);
+    VirtualMemory::totalCommittedBytes.fetchSub(numCommittedBytes, MemoryOrder::Relaxed);
 }
 
 void VirtualMemory::commitPages(void* addr, uptr numBytes) {
@@ -560,7 +560,7 @@ void VirtualMemory::commitPages(void* addr, uptr numBytes) {
     int rc = mprotect(addr, numBytes, PROT_READ | PROT_WRITE);
     PLY_ASSERT(rc == 0);
     PLY_UNUSED(rc);
-    VirtualMemory::totalCommittedBytes.fetchAdd(numBytes, Relaxed);
+    VirtualMemory::totalCommittedBytes.fetchAdd(numBytes, MemoryOrder::Relaxed);
 }
 
 void VirtualMemory::decommitPages(void* addr, uptr numBytes) {
@@ -572,7 +572,7 @@ void VirtualMemory::decommitPages(void* addr, uptr numBytes) {
     rc = mprotect(addr, numBytes, PROT_NONE);
     PLY_ASSERT(rc == 0);
     PLY_UNUSED(rc);
-    VirtualMemory::totalCommittedBytes.fetchSub(numBytes, Relaxed);
+    VirtualMemory::totalCommittedBytes.fetchSub(numBytes, MemoryOrder::Relaxed);
 }
 
 void* VirtualMemory::allocRegion(uptr numBytes) {
@@ -581,8 +581,8 @@ void* VirtualMemory::allocRegion(uptr numBytes) {
     void* addr = mmap(0, numBytes, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     if (addr == MAP_FAILED)
         return nullptr;
-    VirtualMemory::totalReservedBytes.fetchAdd(numBytes, Relaxed);
-    VirtualMemory::totalCommittedBytes.fetchAdd(numBytes, Relaxed);
+    VirtualMemory::totalReservedBytes.fetchAdd(numBytes, MemoryOrder::Relaxed);
+    VirtualMemory::totalCommittedBytes.fetchAdd(numBytes, MemoryOrder::Relaxed);
     return addr;
 }
 
@@ -3901,7 +3901,7 @@ String readQuotedString(Stream& in, QuotedStringType type, bool strict,
                             ok = profile.variableLengthHexEscape ? readVariableHexEscape(in, codepoint)
                                                                  : readHexEscape(in, 2, codepoint);
                         }
-                        if (!ok || !encodeUnicode(out, UTF8, codepoint)) {
+                        if (!ok || !encodeUnicode(out, UnicodeType::UTF8, codepoint)) {
                             if (strict) {
                                 handleError(QuotedStringError::BadEscapeSequence);
                                 goto endOfString;
@@ -3955,7 +3955,7 @@ String readQuotedString(Stream& in, QuotedStringType type, bool strict,
                             }
                         }
 
-                        if (ok && !encodeUnicode(out, UTF8, codepoint)) {
+                        if (ok && !encodeUnicode(out, UnicodeType::UTF8, codepoint)) {
                             ok = false;
                         }
 
@@ -3976,7 +3976,7 @@ String readQuotedString(Stream& in, QuotedStringType type, bool strict,
                         in.curByte++;
                         u32 codepoint = 0;
                         bool ok = (profile.allowBigUEscape || !strict) && readHexEscape(in, 8, codepoint) &&
-                                  encodeUnicode(out, UTF8, codepoint);
+                                  encodeUnicode(out, UnicodeType::UTF8, codepoint);
                         if (!ok) {
                             if (strict) {
                                 handleError(QuotedStringError::BadEscapeSequence);
@@ -4190,7 +4190,7 @@ void printEscapedString(Stream& out, StringView str) {
     ViewStream vin{str};
     while (vin.hasRemainingBytes()) {
         const char* start = vin.curByte;
-        DecodeResult decoded = decodeUnicode(vin, UTF8);
+        DecodeResult decoded = decodeUnicode(vin, UnicodeType::UTF8);
         switch (decoded.point) {
             case '"': {
                 out.write("\\\"");
@@ -4214,7 +4214,7 @@ void printEscapedString(Stream& out, StringView str) {
             }
             default: {
                 if (decoded.point >= 32) {
-                    // This will preserve badly encoded UTF8 characters exactly as they are in
+                    // This will preserve badly encoded UTF-8 characters exactly as they are in
                     // the source string:
                     out.write(StringView{start, vin.curByte});
                 } else {
@@ -4230,7 +4230,7 @@ void printXmlEscapedString(Stream& out, StringView str) {
     ViewStream vin{str};
     while (vin.hasRemainingBytes()) {
         const char* start = vin.curByte;
-        DecodeResult decoded = decodeUnicode(vin, UTF8);
+        DecodeResult decoded = decodeUnicode(vin, UnicodeType::UTF8);
         switch (decoded.point) {
             case '<': {
                 out.write("&lt;");
@@ -4249,7 +4249,7 @@ void printXmlEscapedString(Stream& out, StringView str) {
                 break;
             }
             default: {
-                // This will preserve badly encoded UTF8 characters exactly as they are in
+                // This will preserve badly encoded UTF-8 characters exactly as they are in
                 // the source string:
                 out.write(StringView{start, vin.curByte});
                 break;
@@ -4491,7 +4491,7 @@ Pipe* getStdErrPipe() {
 #endif
 
 Stream getStdIn(ConsoleMode mode) {
-    if (mode == ConsoleMode::TEXT) {
+    if (mode == ConsoleMode::Text) {
         Stream in{getStdInPipe(), false};
         // Always create a filter to make newlines consistent.
         return {Heap::create<InPipeNewLineFilter>(std::move(in)), true};
@@ -4541,7 +4541,7 @@ void logMessageInternal(StringView fmt, ArrayView<const FormatArg> args) {
 //
 
 u32 encodeUnicode(FixedArray<char, 4>& buf, UnicodeType unicodeType, u32 codepoint, ExtendedTextParams* extParams) {
-    if (unicodeType == NOT_UNICODE) {
+    if (unicodeType == UnicodeType::None) {
         s32 c;
         if (extParams) {
             // Use lookup table.
@@ -4559,7 +4559,7 @@ u32 encodeUnicode(FixedArray<char, 4>& buf, UnicodeType unicodeType, u32 codepoi
         buf[0] = (char) c;
         return 1;
 
-    } else if (unicodeType == UTF8) {
+    } else if (unicodeType == UnicodeType::UTF8) {
         if (codepoint < 0x80) {
             // 1-byte encoding: 0xxxxxxx
             buf[0] = char(codepoint);
@@ -4584,9 +4584,9 @@ u32 encodeUnicode(FixedArray<char, 4>& buf, UnicodeType unicodeType, u32 codepoi
             return 4;
         }
 #if PLY_IS_BIG_ENDIAN
-    } else if (unicodeType == UTF16_BE) {
+    } else if (unicodeType == UnicodeType::UTF16BE) {
 #else
-    } else if (unicodeType == UTF16_LE) {
+    } else if (unicodeType == UnicodeType::UTF16LE) {
 #endif
         if (codepoint < 0x10000) {
             // Note: 0xd800 to 0xd8ff are invalid Unicode codepoints reserved for UTF-16
@@ -4602,9 +4602,9 @@ u32 encodeUnicode(FixedArray<char, 4>& buf, UnicodeType unicodeType, u32 codepoi
             return 4;
         }
 #if PLY_IS_BIG_ENDIAN
-    } else if (unicodeType == UTF16_LE) {
+    } else if (unicodeType == UnicodeType::UTF16LE) {
 #else
-    } else if (unicodeType == UTF16_BE) {
+    } else if (unicodeType == UnicodeType::UTF16BE) {
 #endif
         if (codepoint < 0x10000) {
             // Note: 0xd800 to 0xd8ff are invalid Unicode codepoints reserved for UTF-16
@@ -4646,14 +4646,14 @@ bool encodeUnicode(Stream& out, UnicodeType unicodeType, u32 codepoint, Extended
 
 DecodeResult decodeUnicode(StringView str, UnicodeType unicodeType, ExtendedTextParams* extParams) {
     if (str.isEmpty())
-        return {-1, 0, DS_NOT_ENOUGH_DATA};
+        return {-1, 0, DecodeStatus::NotEnoughData};
 
-    if (unicodeType == NOT_UNICODE) {
+    if (unicodeType == UnicodeType::None) {
         u8 b = (u8) str.bytes()[0];
         if (extParams) // Use lookup table if available.
-            return {extParams->lut[b], 1, DS_OK};
-        return {b, 1, DS_OK};
-    } else if (unicodeType == UTF8) {
+            return {extParams->lut[b], 1, DecodeStatus::OK};
+        return {b, 1, DecodeStatus::OK};
+    } else if (unicodeType == UnicodeType::UTF8) {
         // (Note: Ill-formed encodings are interpreted as sequences of individual bytes.)
         s32 value = 0;
         u32 numContinuationBytes = 0;
@@ -4661,10 +4661,10 @@ DecodeResult decodeUnicode(StringView str, UnicodeType unicodeType, ExtendedText
 
         if (b < 0x80) {
             // 1-byte encoding: 0xxxxxxx
-            return {b, 1, DS_OK};
+            return {b, 1, DecodeStatus::OK};
         } else if (b < 0xc0) {
             // Unexpected continuation byte: 10xxxxxx
-            return {b, 1, DS_ILL_FORMED};
+            return {b, 1, DecodeStatus::IllFormed};
         } else if (b < 0xe0) {
             // 2-byte encoding: 110xxxxx 10xxxxxx
             value = b & 0x1f;
@@ -4679,29 +4679,29 @@ DecodeResult decodeUnicode(StringView str, UnicodeType unicodeType, ExtendedText
             numContinuationBytes = 3;
         } else {
             // Illegal byte.
-            return {b, 1, DS_ILL_FORMED};
+            return {b, 1, DecodeStatus::IllFormed};
         }
 
         if (str.numBytes() < numContinuationBytes + 1) {
             // Not enough bytes in buffer for continuation bytes.
-            return {b, 1, DS_NOT_ENOUGH_DATA};
+            return {b, 1, DecodeStatus::NotEnoughData};
         }
 
         for (u32 i = 0; i < numContinuationBytes; i++) {
             u8 c = (u8) str.bytes()[i + 1];
             if ((c >> 6) != 2) // Must be a continuation byte
-                return {b, 1, DS_ILL_FORMED};
+                return {b, 1, DecodeStatus::IllFormed};
             value = (value << 6) | ((u8) str.bytes()[i + 1] & 0x3f);
         }
 
-        return {value, numContinuationBytes + 1, DS_OK};
+        return {value, numContinuationBytes + 1, DecodeStatus::OK};
 #if PLY_IS_BIG_ENDIAN
-    } else if (unicodeType == UTF16_BE) {
+    } else if (unicodeType == UnicodeType::UTF16BE) {
 #else
-    } else if (unicodeType == UTF16_LE) {
+    } else if (unicodeType == UnicodeType::UTF16LE) {
 #endif
         if (str.numBytes() < 2) {
-            return {-1, 0, DS_NOT_ENOUGH_DATA};
+            return {-1, 0, DecodeStatus::NotEnoughData};
         }
 
         u16 first = *(const u16*) &str.bytes()[0];
@@ -4709,27 +4709,27 @@ DecodeResult decodeUnicode(StringView str, UnicodeType unicodeType, ExtendedText
         if (first >= 0xd800 && first < 0xdc00) {
             if (str.numBytes() < 4) {
                 // A second 16-bit surrogate is expected, but not enough data.
-                return {first, 2, DS_NOT_ENOUGH_DATA};
+                return {first, 2, DecodeStatus::NotEnoughData};
             }
             u16 second = *(const u16*) &str.bytes()[2];
             if (second >= 0xdc00 && second < 0xe000) {
                 // We got a valid pair of 16-bit surrogates.
-                return {0x10000 + ((first - 0xd800) << 10) + (second - 0xdc00), 4, DS_OK};
+                return {0x10000 + ((first - 0xd800) << 10) + (second - 0xdc00), 4, DecodeStatus::OK};
             }
 
             // Unpaired surrogate.
-            return {first, 2, DS_ILL_FORMED};
+            return {first, 2, DecodeStatus::IllFormed};
         }
 
         // It's a single 16-bit unit.
-        return {first, 2, DS_OK};
+        return {first, 2, DecodeStatus::OK};
 #if PLY_IS_BIG_ENDIAN
-    } else if (unicodeType == UTF16_LE) {
+    } else if (unicodeType == UnicodeType::UTF16LE) {
 #else
-    } else if (unicodeType == UTF16_BE) {
+    } else if (unicodeType == UnicodeType::UTF16BE) {
 #endif
         if (str.numBytes() < 2) {
-            return {-1, 0, DS_NOT_ENOUGH_DATA};
+            return {-1, 0, DecodeStatus::NotEnoughData};
         }
 
         u16 first = reverseBytes(*(const u16*) &str.bytes()[0]);
@@ -4737,31 +4737,31 @@ DecodeResult decodeUnicode(StringView str, UnicodeType unicodeType, ExtendedText
         if (first >= 0xd800 && first < 0xdc00) {
             if (str.numBytes() < 4) {
                 // A second 16-bit surrogate is expected, but not enough data.
-                return {first, 2, DS_NOT_ENOUGH_DATA};
+                return {first, 2, DecodeStatus::NotEnoughData};
             }
             u16 second = reverseBytes(*(const u16*) &str.bytes()[2]);
             if (second >= 0xdc00 && second < 0xe000) {
                 // We got a valid pair of 16-bit surrogates.
-                return {0x10000 + ((first - 0xd800) << 10) + (second - 0xdc00), 4, DS_OK};
+                return {0x10000 + ((first - 0xd800) << 10) + (second - 0xdc00), 4, DecodeStatus::OK};
             }
 
             // Unpaired surrogate.
-            return {first, 2, DS_ILL_FORMED};
+            return {first, 2, DecodeStatus::IllFormed};
         }
 
         // It's a single 16-bit unit.
-        return {first, 2, DS_OK};
+        return {first, 2, DecodeStatus::OK};
     }
 
     PLY_ASSERT(0); // Shouldn't get here.
-    return {-1, 0, DS_NOT_ENOUGH_DATA};
+    return {-1, 0, DecodeStatus::NotEnoughData};
 }
 
 DecodeResult decodeUnicode(Stream& in, UnicodeType unicodeType, ExtendedTextParams* extParams) {
     // Try to get at least four bytes to read.
     in.makeReadable(4);
     if (!in.hasRemainingBytes())
-        return {-1, 0, DS_NOT_ENOUGH_DATA};
+        return {-1, 0, DecodeStatus::NotEnoughData};
 
     DecodeResult result = decodeUnicode(in.viewRemainingBytes(), unicodeType, extParams);
     in.curByte += result.numBytes;
@@ -4799,11 +4799,11 @@ u32 InPipeConvertUnicode::read(MutStringView dstBuf) {
         // Convert codepoint to UTF-8.
         u32 w = dstOut.numRemainingBytes();
         if (w >= 4) {
-            encodeUnicode(dstOut, UTF8, codepoint);
+            encodeUnicode(dstOut, UnicodeType::UTF8, codepoint);
         } else {
             // Use shim as an intermediate buffer.
             ViewStream s{this->shimStorage.mutStringView()};
-            encodeUnicode(s, UTF8, codepoint);
+            encodeUnicode(s, UnicodeType::UTF8, codepoint);
             this->shimUsed =
                 StringView{this->shimStorage.items(), numericCast<u32>(s.curByte - this->shimStorage.items())};
             if (copyFromShim(dstOut, this->shimUsed))
@@ -4826,8 +4826,8 @@ bool OutPipeConvertUnicode::write(StringView srcBuf) {
 
         // Decode a codepoint from the shim using UTF-8.
         ViewStream s{StringView{this->shimStorage, this->shimUsed}};
-        DecodeResult decoded = decodeUnicode(s, UTF8, nullptr);
-        if (decoded.status == DS_NOT_ENOUGH_DATA) {
+        DecodeResult decoded = decodeUnicode(s, UnicodeType::UTF8, nullptr);
+        if (decoded.status == DecodeStatus::NotEnoughData) {
             PLY_ASSERT(numBytesAppended == srcBuf.numBytes());
             return true; // Not enough data available in shim.
         }
@@ -4842,8 +4842,8 @@ bool OutPipeConvertUnicode::write(StringView srcBuf) {
 
     while (!this->childOut.atEof) {
         // Decode a codepoint from the source buffer using UTF-8.
-        DecodeResult decoded = decodeUnicode(srcIn, UTF8, nullptr);
-        if (decoded.status == DS_NOT_ENOUGH_DATA) {
+        DecodeResult decoded = decodeUnicode(srcIn, UnicodeType::UTF8, nullptr);
+        if (decoded.status == DecodeStatus::NotEnoughData) {
             // Not enough data available. Copy the rest of the source buffer to shim,
             // including the previous byte consumed by decode().
             this->shimUsed = srcIn.numRemainingBytes() + 1;
@@ -4923,7 +4923,7 @@ u32 scanTextFile(TextFileStats* stats, Stream& in, UnicodeType unicodeType, u32 
         if (decoded.point < 0)
             break; // EOF/error
         stats->numPoints++;
-        if (decoded.status == DS_OK) {
+        if (decoded.status == DecodeStatus::OK) {
             stats->numValidPoints++;
             stats->totalPointValue += decoded.point;
             if (decoded.point < 32) {
@@ -4967,26 +4967,26 @@ static constexpr u32 NumBytesForTextFormatDetection = 100000;
 TextFormat guessFileEncoding(Stream& in) {
     TextFileStats stats8;
 
-    // Try UTF8 first:
-    u32 numBytesRead = scanTextFile(&stats8, in, UTF8, NumBytesForTextFormatDetection);
+    // Try UTF-8 first:
+    u32 numBytesRead = scanTextFile(&stats8, in, UnicodeType::UTF8, NumBytesForTextFormatDetection);
     if (numBytesRead == 0) {
         // Empty file
-        return {UTF8, TextFormat::NewLine::LF, false};
+        return {UnicodeType::UTF8, TextFormat::NewLine::LF, false};
     }
     in.seekTo(0);
     if (stats8.numInvalidPoints() == 0 && stats8.numControl == 0) {
         // No UTF-8 encoding errors, and no weird control characters/nulls. Pick UTF-8.
-        return {UTF8, stats8.getNewLineType(), false};
+        return {UnicodeType::UTF8, stats8.getNewLineType(), false};
     }
 
     // If more than 20% of the high bytes in UTF-8 are encoding errors, reinterpret
     // UTF-8 as just bytes.
-    UnicodeType encoding8 = UTF8;
+    UnicodeType encoding8 = UnicodeType::UTF8;
     {
         u32 numHighBytes = numBytesRead - stats8.numPlainAscii - stats8.numControl;
         if (stats8.numInvalidPoints() >= numHighBytes * 0.2f) {
             // Too many UTF-8 errors. Consider it bytes.
-            encoding8 = NOT_UNICODE;
+            encoding8 = UnicodeType::None;
             stats8.numPoints = numBytesRead;
             stats8.numValidPoints = numBytesRead;
         }
@@ -4994,19 +4994,19 @@ TextFormat guessFileEncoding(Stream& in) {
 
     // Examine both UTF16 endianness:
     TextFileStats stats16_le;
-    scanTextFile(&stats16_le, in, UTF16_LE, NumBytesForTextFormatDetection);
+    scanTextFile(&stats16_le, in, UnicodeType::UTF16LE, NumBytesForTextFormatDetection);
     in.seekTo(0);
 
     TextFileStats stats16_be;
-    scanTextFile(&stats16_be, in, UTF16_BE, NumBytesForTextFormatDetection);
+    scanTextFile(&stats16_be, in, UnicodeType::UTF16BE, NumBytesForTextFormatDetection);
     in.seekTo(0);
 
     // Choose the better UTF16 candidate:
     TextFileStats* stats = &stats16_le;
-    UnicodeType encoding = UTF16_LE;
+    UnicodeType encoding = UnicodeType::UTF16LE;
     if (stats16_be.getScore() > stats16_le.getScore()) {
         stats = &stats16_be;
-        encoding = UTF16_BE;
+        encoding = UnicodeType::UTF16BE;
     }
 
     // Choose between the UTF16 and 8-bit encoding:
@@ -5025,15 +5025,15 @@ TextFormat autodetectTextFormat(Stream& in) {
     in.makeReadable(3);
     if (in.viewRemainingBytes().left(3) == "\xef\xbb\xbf") {
         in.curByte += 3;
-        tff.unicodeType = UTF8;
+        tff.unicodeType = UnicodeType::UTF8;
         tff.bom = true;
     } else if (in.viewRemainingBytes().left(2) == "\xff\xfe") {
         in.curByte += 2;
-        tff.unicodeType = UTF16_LE;
+        tff.unicodeType = UnicodeType::UTF16LE;
         tff.bom = true;
     } else if (in.viewRemainingBytes().left(2) == "\xfe\xff") {
         in.curByte += 2;
-        tff.unicodeType = UTF16_BE;
+        tff.unicodeType = UnicodeType::UTF16BE;
         tff.bom = true;
     }
     if (!tff.bom) {
@@ -5053,15 +5053,15 @@ TextFormat autodetectTextFormat(Stream& in) {
 Owned<Pipe> createImporter(Stream&& in, const TextFormat& enc) {
     if (enc.bom) {
         in.makeReadable(3);
-        if (enc.unicodeType == UTF8) {
+        if (enc.unicodeType == UnicodeType::UTF8) {
             if (in.viewRemainingBytes().left(3) == "\xef\xbb\xbf") {
                 in.curByte += 3;
             }
-        } else if (enc.unicodeType == UTF16_LE) {
+        } else if (enc.unicodeType == UnicodeType::UTF16LE) {
             if (in.viewRemainingBytes().left(2) == "\xff\xfe") {
                 in.curByte += 2;
             }
-        } else if (enc.unicodeType == UTF16_BE) {
+        } else if (enc.unicodeType == UnicodeType::UTF16BE) {
             if (in.viewRemainingBytes().left(2) == "\xfe\xff") {
                 in.curByte += 2;
             }
@@ -5072,7 +5072,7 @@ Owned<Pipe> createImporter(Stream&& in, const TextFormat& enc) {
 
     // Install converter from UTF-16 if needed
     Stream importer;
-    if (enc.unicodeType == UTF8) {
+    if (enc.unicodeType == UnicodeType::UTF8) {
         importer = std::move(in);
     } else {
         importer = Stream{Heap::create<InPipeConvertUnicode>(std::move(in), enc.unicodeType), true};
@@ -5086,30 +5086,30 @@ Owned<OutPipeNewLineFilter> createExporter(Stream&& out, const TextFormat& enc) 
     Stream exporter = std::move(out);
 
     switch (enc.unicodeType) {
-        case NOT_UNICODE: { // FIXME: Bytes needs to be converted
+        case UnicodeType::None: { // FIXME: Bytes needs to be converted
             break;
         }
 
-        case UTF8: {
+        case UnicodeType::UTF8: {
             if (enc.bom) {
                 exporter.write({"\xef\xbb\xbf", 3});
             }
             break;
         }
 
-        case UTF16_LE: {
+        case UnicodeType::UTF16LE: {
             if (enc.bom) {
                 exporter.write({"\xff\xfe", 2});
             }
-            exporter = Stream{Heap::create<OutPipeConvertUnicode>(std::move(exporter), UTF16_LE), true};
+            exporter = Stream{Heap::create<OutPipeConvertUnicode>(std::move(exporter), UnicodeType::UTF16LE), true};
             break;
         }
 
-        case UTF16_BE: {
+        case UnicodeType::UTF16BE: {
             if (enc.bom) {
                 exporter.write({"\xfe\xff", 2});
             }
-            exporter = Stream{Heap::create<OutPipeConvertUnicode>(std::move(exporter), UTF16_BE), true};
+            exporter = Stream{Heap::create<OutPipeConvertUnicode>(std::move(exporter), UnicodeType::UTF16BE), true};
             break;
         }
     }
@@ -5190,7 +5190,7 @@ struct WString {
 WString toWstring(StringView str) {
     ViewStream string{str};
     MemStream origMemOut;
-    OutPipeConvertUnicode encoder{std::move(origMemOut), UTF16_LE};
+    OutPipeConvertUnicode encoder{std::move(origMemOut), UnicodeType::UTF16LE};
     encoder.write(str);
     encoder.flush(false);
     MemStream* memOut = static_cast<MemStream*>(&encoder.childOut);
@@ -5199,7 +5199,7 @@ WString toWstring(StringView str) {
 }
 
 String fromWstring(WStringView str) {
-    InPipeConvertUnicode decoder{ViewStream{str.rawBytes()}, UTF16_LE};
+    InPipeConvertUnicode decoder{ViewStream{str.rawBytes()}, UnicodeType::UTF16LE};
     MemStream out;
     while (out.makeWritable()) {
         MutStringView buf{out.curByte, out.endByte};
@@ -5294,11 +5294,11 @@ String getCurrentExecutablePath() {
 #endif
 
 inline bool isSepByte(PathFormat fmt, char c) {
-    return c == '/' || (fmt == WindowsPath && c == '\\');
+    return c == '/' || (fmt == PathFormat::Windows && c == '\\');
 }
 
 StringView getDriveLetter(PathFormat fmt, StringView path) {
-    if (fmt != WindowsPath)
+    if (fmt != PathFormat::Windows)
         return {};
     if (path.numBytes() < 2)
         return {};
@@ -5311,7 +5311,7 @@ StringView getDriveLetter(PathFormat fmt, StringView path) {
 }
 
 bool isAbsolutePath(PathFormat fmt, StringView path) {
-    if (fmt == WindowsPath) {
+    if (fmt == PathFormat::Windows) {
         return (path.numBytes() >= 3) && getDriveLetter(fmt, path) && isSepByte(fmt, path[2]);
     } else {
         return (path.numBytes() >= 1) && isSepByte(fmt, path[0]);
@@ -5620,7 +5620,7 @@ bool isEscaped(StringView str, u32 pos) {
 bool matchGlobPattern(StringView str, StringView pattern) {
     // Advance by one UTF-8 encoded character.
     auto nextUTF8Char = [](StringView str, u32 pos) -> u32 {
-        return pos + decodeUnicode(str.substr(pos), UTF8).numBytes;
+        return pos + decodeUnicode(str.substr(pos), UnicodeType::UTF8).numBytes;
     };
 
     // Scan both strings from the beginning of the current string views.
@@ -5820,17 +5820,17 @@ bool matchGitIgnorePattern(StringView relativePath, bool isDir, StringView patte
 WString win32_path_arg(StringView path, bool allowExtended = true) {
     ViewStream pathIn{path};
     MemStream out;
-    if (allowExtended && isAbsolutePath(WindowsPath, path)) {
+    if (allowExtended && isAbsolutePath(PathFormat::Windows, path)) {
         out.write(ArrayView<const char16_t>{u"\\\\?\\", 4}.stringView());
     }
     while (true) {
-        s32 codepoint = decodeUnicode(pathIn, UTF8).point;
+        s32 codepoint = decodeUnicode(pathIn, UnicodeType::UTF8).point;
         if (codepoint < 0)
             break;
         if (codepoint == '/') {
             codepoint = '\\'; // Fix slashes.
         }
-        encodeUnicode(out, UTF16_LE, codepoint);
+        encodeUnicode(out, UnicodeType::UTF16LE, codepoint);
     }
     nativeWrite(out, (u16) 0); // Null terminator.
     return WString::moveFromString(out.moveToString());
@@ -5877,12 +5877,12 @@ void DirectoryWalker::Iterator::operator++() {
 
 FSResult FileSystem::copyFile(StringView srcPath, StringView dstPath) {
     Owned<Pipe> in = FileSystem::openPipeForRead(srcPath);
-    if (FileSystem::lastResult() != FS_OK)
+    if (FileSystem::lastResult() != FSResult::OK)
         return FileSystem::lastResult();
     PLY_ASSERT(in);
 
     Stream out = FileSystem::openBinaryForWrite(dstPath);
-    if (FileSystem::lastResult() != FS_OK)
+    if (FileSystem::lastResult() != FSResult::OK)
         return FileSystem::lastResult();
     PLY_ASSERT(out.isOpen());
 
@@ -5895,7 +5895,7 @@ FSResult FileSystem::copyFile(StringView srcPath, StringView dstPath) {
     }
 
     // FIXME: More robust, detect bad copies
-    return FS_OK;
+    return FSResult::OK;
 }
 
 DirectoryWalker FileSystem::walk(StringView top) {
@@ -5906,18 +5906,18 @@ DirectoryWalker FileSystem::walk(StringView top) {
 
 FSResult FileSystem::makeDirs(StringView path) {
     if (path == getDriveLetter(path)) {
-        return FileSystem::setLastResult(FS_OK);
+        return FileSystem::setLastResult(FSResult::OK);
     }
     ExistsResult er = FileSystem::exists(path);
-    if (er == ER_DIRECTORY) {
-        return FileSystem::setLastResult(FS_ALREADY_EXISTS);
-    } else if (er == ER_FILE) {
-        return FileSystem::setLastResult(FS_ACCESS_DENIED);
+    if (er == ExistsResult::Directory) {
+        return FileSystem::setLastResult(FSResult::AlreadyExists);
+    } else if (er == ExistsResult::File) {
+        return FileSystem::setLastResult(FSResult::AccessDenied);
     } else {
         SplitPath split = splitPath(path);
         if (!split.directory.isEmpty() && !split.filename.isEmpty()) {
             FSResult r = makeDirs(split.directory);
-            if (r != FS_OK && r != FS_ALREADY_EXISTS)
+            if (r != FSResult::OK && r != FSResult::AlreadyExists)
                 return r;
         }
         return FileSystem::makeDir(path);
@@ -6004,7 +6004,7 @@ FSResult FileSystem::saveBinary(StringView path, StringView view) {
     // FIXME: Write to temporary file first, then rename atomically
     Owned<Pipe> outPipe = FileSystem::openPipeForWrite(path);
     FSResult result = FileSystem::lastResult();
-    if (result != FS_OK) {
+    if (result != FSResult::OK) {
         return result;
     }
     outPipe->write(view);
@@ -6047,7 +6047,7 @@ Array<DirectoryEntry> FileSystem::listDir(StringView path) {
     HANDLE hfind = INVALID_HANDLE_VALUE;
     WIN32_FIND_DATAW findData;
 
-    String pattern = joinPath(WindowsPath, path, "*");
+    String pattern = joinPath(PathFormat::Windows, path, "*");
     hfind = FindFirstFileW(win32_path_arg(pattern), &findData);
     if (hfind == INVALID_HANDLE_VALUE) {
         DWORD err = GetLastError();
@@ -6055,16 +6055,16 @@ Array<DirectoryEntry> FileSystem::listDir(StringView path) {
             case ERROR_FILE_NOT_FOUND:
             case ERROR_PATH_NOT_FOUND:
             case ERROR_INVALID_NAME: {
-                FileSystem::setLastResult(FS_NOT_FOUND);
+                FileSystem::setLastResult(FSResult::NotFound);
                 return result;
             }
             case ERROR_ACCESS_DENIED: {
-                FileSystem::setLastResult(FS_ACCESS_DENIED);
+                FileSystem::setLastResult(FSResult::AccessDenied);
                 return result;
             }
             default: {
                 PLY_ASSERT(PLY_FSWIN32_ALLOW_UNKNOWN_ERRORS);
-                FileSystem::setLastResult(FS_UNKNOWN);
+                FileSystem::setLastResult(FSResult::Unknown);
                 return result;
             }
         }
@@ -6082,16 +6082,16 @@ Array<DirectoryEntry> FileSystem::listDir(StringView path) {
             DWORD err = GetLastError();
             switch (err) {
                 case ERROR_NO_MORE_FILES: {
-                    FileSystem::setLastResult(FS_OK);
+                    FileSystem::setLastResult(FSResult::OK);
                     return result;
                 }
                 case ERROR_FILE_INVALID: {
-                    FileSystem::setLastResult(FS_NOT_FOUND);
+                    FileSystem::setLastResult(FSResult::NotFound);
                     return result;
                 }
                 default: {
                     PLY_ASSERT(PLY_FSWIN32_ALLOW_UNKNOWN_ERRORS);
-                    FileSystem::setLastResult(FS_UNKNOWN);
+                    FileSystem::setLastResult(FSResult::Unknown);
                     return result;
                 }
             }
@@ -6102,19 +6102,19 @@ Array<DirectoryEntry> FileSystem::listDir(StringView path) {
 FSResult FileSystem::makeDir(StringView path) {
     BOOL rc = CreateDirectoryW(win32_path_arg(path), NULL);
     if (rc) {
-        return FileSystem::setLastResult(FS_OK);
+        return FileSystem::setLastResult(FSResult::OK);
     } else {
         DWORD err = GetLastError();
         switch (err) {
             case ERROR_ALREADY_EXISTS:
-                return FileSystem::setLastResult(FS_ALREADY_EXISTS);
+                return FileSystem::setLastResult(FSResult::AlreadyExists);
             case ERROR_ACCESS_DENIED:
-                return FileSystem::setLastResult(FS_ACCESS_DENIED);
+                return FileSystem::setLastResult(FSResult::AccessDenied);
             case ERROR_INVALID_NAME:
-                return FileSystem::setLastResult(FS_NOT_FOUND);
+                return FileSystem::setLastResult(FSResult::NotFound);
             default: {
                 PLY_ASSERT(PLY_FSWIN32_ALLOW_UNKNOWN_ERRORS);
-                return FileSystem::setLastResult(FS_UNKNOWN);
+                return FileSystem::setLastResult(FSResult::Unknown);
             }
         }
     }
@@ -6131,15 +6131,15 @@ FSResult FileSystem::setWorkingDirectory(StringView path) {
         FileSystem::workingDirLock.unlockExclusive();
     }
     if (rc) {
-        return FileSystem::setLastResult(FS_OK);
+        return FileSystem::setLastResult(FSResult::OK);
     } else {
         DWORD err = GetLastError();
         switch (err) {
             case ERROR_PATH_NOT_FOUND:
-                return FileSystem::setLastResult(FS_NOT_FOUND);
+                return FileSystem::setLastResult(FSResult::NotFound);
             default: {
                 PLY_ASSERT(PLY_FSWIN32_ALLOW_UNKNOWN_ERRORS);
-                return FileSystem::setLastResult(FS_UNKNOWN);
+                return FileSystem::setLastResult(FSResult::Unknown);
             }
         }
     }
@@ -6160,7 +6160,7 @@ String FileSystem::getWorkingDirectory() {
         }
         if (rc == 0) {
             PLY_ASSERT(PLY_FSWIN32_ALLOW_UNKNOWN_ERRORS);
-            FileSystem::setLastResult(FS_UNKNOWN);
+            FileSystem::setLastResult(FSResult::Unknown);
             return {};
         }
         PLY_ASSERT(rc != numUnitsWithNullTerm);
@@ -6175,7 +6175,7 @@ String FileSystem::getWorkingDirectory() {
                 truncated_win32_path.units += 4;
                 truncated_win32_path.numUnits -= 4;
             }
-            FileSystem::setLastResult(FS_OK);
+            FileSystem::setLastResult(FSResult::OK);
             return fromWstring(truncated_win32_path);
         }
         // GetCurrentDirectoryW: If the buffer that is pointed to by lpBuffer is not
@@ -6194,19 +6194,19 @@ ExistsResult FileSystem::exists(StringView path) {
             case ERROR_FILE_NOT_FOUND:
             case ERROR_PATH_NOT_FOUND:
             case ERROR_INVALID_NAME: {
-                return ER_NOT_FOUND;
+                return ExistsResult::NotFound;
             }
             default: {
 #if defined(PLY_WITH_ASSERTS)
                 PLY_FORCE_CRASH(); // Unrecognized error
 #endif
-                return ER_NOT_FOUND;
+                return ExistsResult::NotFound;
             }
         }
     } else if ((attribs & FILE_ATTRIBUTE_DIRECTORY) != 0) {
-        return ER_DIRECTORY;
+        return ExistsResult::Directory;
     } else {
-        return ER_FILE;
+        return ExistsResult::File;
     }
 }
 
@@ -6215,27 +6215,27 @@ HANDLE FileSystem::openHandleForRead(StringView path) {
     HANDLE handle = CreateFileW(win32_path_arg(path), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING,
                                 FILE_ATTRIBUTE_NORMAL, NULL);
     if (handle != INVALID_HANDLE_VALUE) {
-        FileSystem::setLastResult(FS_OK);
+        FileSystem::setLastResult(FSResult::OK);
     } else {
         DWORD error = GetLastError();
         switch (error) {
             case ERROR_FILE_NOT_FOUND:
             case ERROR_PATH_NOT_FOUND:
             case ERROR_INVALID_NAME:
-                FileSystem::setLastResult(FS_NOT_FOUND);
+                FileSystem::setLastResult(FSResult::NotFound);
                 break;
 
             case ERROR_SHARING_VIOLATION:
-                FileSystem::setLastResult(FS_LOCKED);
+                FileSystem::setLastResult(FSResult::Locked);
                 break;
 
             case ERROR_ACCESS_DENIED:
-                FileSystem::setLastResult(FS_ACCESS_DENIED);
+                FileSystem::setLastResult(FSResult::AccessDenied);
                 break;
 
             default:
                 PLY_ASSERT(PLY_FSWIN32_ALLOW_UNKNOWN_ERRORS);
-                FileSystem::setLastResult(FS_UNKNOWN);
+                FileSystem::setLastResult(FSResult::Unknown);
                 break;
         }
     }
@@ -6255,27 +6255,27 @@ HANDLE FileSystem::openHandleForWrite(StringView path) {
     HANDLE handle =
         CreateFileW(win32_path_arg(path), GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
     if (handle != INVALID_HANDLE_VALUE) {
-        FileSystem::setLastResult(FS_OK);
+        FileSystem::setLastResult(FSResult::OK);
     } else {
         DWORD error = GetLastError();
         switch (error) {
             case ERROR_FILE_NOT_FOUND:
             case ERROR_PATH_NOT_FOUND:
             case ERROR_INVALID_NAME:
-                FileSystem::setLastResult(FS_NOT_FOUND);
+                FileSystem::setLastResult(FSResult::NotFound);
                 break;
 
             case ERROR_SHARING_VIOLATION:
-                FileSystem::setLastResult(FS_LOCKED);
+                FileSystem::setLastResult(FSResult::Locked);
                 break;
 
             case ERROR_ACCESS_DENIED:
-                FileSystem::setLastResult(FS_ACCESS_DENIED);
+                FileSystem::setLastResult(FSResult::AccessDenied);
                 break;
 
             default:
                 PLY_ASSERT(PLY_FSWIN32_ALLOW_UNKNOWN_ERRORS);
-                FileSystem::setLastResult(FS_UNKNOWN);
+                FileSystem::setLastResult(FSResult::Unknown);
                 break;
         }
     }
@@ -6292,31 +6292,31 @@ Owned<Pipe> FileSystem::openPipeForWrite(StringView path) {
 FSResult FileSystem::moveFile(StringView srcPath, StringView dstPath) {
     BOOL rc = MoveFileExW(win32_path_arg(srcPath), win32_path_arg(dstPath), MOVEFILE_REPLACE_EXISTING);
     if (rc) {
-        return FileSystem::setLastResult(FS_OK);
+        return FileSystem::setLastResult(FSResult::OK);
     } else {
         DWORD error = GetLastError();
         PLY_ASSERT(PLY_FSWIN32_ALLOW_UNKNOWN_ERRORS);
-        return FileSystem::setLastResult(FS_UNKNOWN);
+        return FileSystem::setLastResult(FSResult::Unknown);
     }
 }
 
 FSResult FileSystem::deleteFile(StringView path) {
     BOOL rc = DeleteFileW(win32_path_arg(path));
     if (rc) {
-        return FileSystem::setLastResult(FS_OK);
+        return FileSystem::setLastResult(FSResult::OK);
     } else {
         DWORD err = GetLastError();
         PLY_ASSERT(PLY_FSWIN32_ALLOW_UNKNOWN_ERRORS);
-        return FileSystem::setLastResult(FS_UNKNOWN);
+        return FileSystem::setLastResult(FSResult::Unknown);
     }
 }
 
 FSResult FileSystem::removeDirTree(StringView dirPath) {
     String absPath = dirPath;
-    if (!isAbsolutePath(WindowsPath, dirPath)) {
-        absPath = joinPath(WindowsPath, FileSystem::getWorkingDirectory(), dirPath);
+    if (!isAbsolutePath(PathFormat::Windows, dirPath)) {
+        absPath = joinPath(PathFormat::Windows, FileSystem::getWorkingDirectory(), dirPath);
     }
-    OutPipeConvertUnicode out{MemStream{}, UTF16_LE};
+    OutPipeConvertUnicode out{MemStream{}, UnicodeType::UTF16LE};
     out.write(absPath);
     out.childOut.write({"\0\0\0\0", 4}); // double null terminated
     MemStream* memOut = static_cast<MemStream*>(&out.childOut);
@@ -6332,7 +6332,7 @@ FSResult FileSystem::removeDirTree(StringView dirPath) {
     shfo.hNameMappings = NULL;
     shfo.lpszProgressTitle = NULL;
     int rc = SHFileOperationW(&shfo);
-    return (rc == 0) ? FS_OK : FS_ACCESS_DENIED;
+    return (rc == 0) ? FSResult::OK : FSResult::AccessDenied;
 }
 
 DirectoryEntry FileSystem::getFileInfo(HANDLE handle) {
@@ -6347,7 +6347,7 @@ DirectoryEntry FileSystem::getFileInfo(HANDLE handle) {
         entry.modificationTime = windowsToPosixTime(lastWriteTime);
     } else {
         PLY_ASSERT(PLY_FSWIN32_ALLOW_UNKNOWN_ERRORS);
-        entry.result = FS_UNKNOWN;
+        entry.result = FSResult::Unknown;
     }
 
     LARGE_INTEGER fileSize;
@@ -6356,11 +6356,11 @@ DirectoryEntry FileSystem::getFileInfo(HANDLE handle) {
         entry.fileSize = fileSize.QuadPart;
     } else {
         PLY_ASSERT(PLY_FSWIN32_ALLOW_UNKNOWN_ERRORS);
-        entry.result = FS_UNKNOWN;
+        entry.result = FSResult::Unknown;
     }
 
-    entry.result = FS_OK;
-    FileSystem::setLastResult(FS_OK);
+    entry.result = FSResult::OK;
+    FileSystem::setLastResult(FSResult::OK);
     return entry;
 }
 
@@ -6392,16 +6392,16 @@ Array<DirectoryEntry> FileSystem::listDir(StringView path) {
     if (!dir) {
         switch (errno) {
             case ENOENT: {
-                FileSystem::setLastResult(FS_NOT_FOUND);
+                FileSystem::setLastResult(FSResult::NotFound);
                 return result;
             }
             case EACCES: {
-                FileSystem::setLastResult(FS_ACCESS_DENIED);
+                FileSystem::setLastResult(FSResult::AccessDenied);
                 return result;
             }
             default: {
                 PLY_ASSERT(PLY_FSPOSIX_ALLOW_UNKNOWN_ERRORS);
-                FileSystem::setLastResult(FS_UNKNOWN);
+                FileSystem::setLastResult(FSResult::Unknown);
                 return result;
             }
         }
@@ -6412,10 +6412,10 @@ Array<DirectoryEntry> FileSystem::listDir(StringView path) {
         struct dirent* rde = readdir(dir);
         if (!rde) {
             if (errno == 0) {
-                FileSystem::setLastResult(FS_OK);
+                FileSystem::setLastResult(FSResult::OK);
             } else {
                 PLY_ASSERT(PLY_FSPOSIX_ALLOW_UNKNOWN_ERRORS);
-                FileSystem::setLastResult(FS_UNKNOWN);
+                FileSystem::setLastResult(FSResult::Unknown);
             }
             break;
         }
@@ -6435,14 +6435,14 @@ Array<DirectoryEntry> FileSystem::listDir(StringView path) {
         }
 
         // Get additional file information
-        String joinedPath = joinPath(POSIXPath, path, entry.name);
+        String joinedPath = joinPath(PathFormat::POSIX, path, entry.name);
         struct stat buf;
         int rc = stat((joinedPath + '\0').bytes(), &buf);
         if (rc != 0) {
             if (errno == ENOENT)
                 continue;
             PLY_ASSERT(PLY_FSPOSIX_ALLOW_UNKNOWN_ERRORS);
-            FileSystem::setLastResult(FS_UNKNOWN);
+            FileSystem::setLastResult(FSResult::Unknown);
             break;
         }
 
@@ -6463,16 +6463,16 @@ Array<DirectoryEntry> FileSystem::listDir(StringView path) {
 FSResult FileSystem::makeDir(StringView path) {
     int rc = mkdir((path + '\0').bytes(), mode_t(0755));
     if (rc == 0) {
-        return FileSystem::setLastResult(FS_OK);
+        return FileSystem::setLastResult(FSResult::OK);
     } else {
         switch (errno) {
             case EEXIST:
             case EISDIR: {
-                return FileSystem::setLastResult(FS_ALREADY_EXISTS);
+                return FileSystem::setLastResult(FSResult::AlreadyExists);
             }
             default: {
                 PLY_ASSERT(PLY_FSPOSIX_ALLOW_UNKNOWN_ERRORS);
-                return FileSystem::setLastResult(FS_UNKNOWN);
+                return FileSystem::setLastResult(FSResult::Unknown);
             }
         }
     }
@@ -6481,14 +6481,14 @@ FSResult FileSystem::makeDir(StringView path) {
 FSResult FileSystem::setWorkingDirectory(StringView path) {
     int rc = chdir((path + '\0').bytes());
     if (rc == 0) {
-        return FileSystem::setLastResult(FS_OK);
+        return FileSystem::setLastResult(FSResult::OK);
     } else {
         switch (errno) {
             case ENOENT:
-                return FileSystem::setLastResult(FS_NOT_FOUND);
+                return FileSystem::setLastResult(FSResult::NotFound);
             default: {
                 PLY_ASSERT(PLY_FSPOSIX_ALLOW_UNKNOWN_ERRORS);
-                return FileSystem::setLastResult(FS_UNKNOWN);
+                return FileSystem::setLastResult(FSResult::Unknown);
             }
         }
     }
@@ -6503,7 +6503,7 @@ String FileSystem::getWorkingDirectory() {
             s32 len = path.find('\0');
             PLY_ASSERT(len >= 0);
             path.resize(len);
-            FileSystem::setLastResult(FS_OK);
+            FileSystem::setLastResult(FSResult::OK);
             return path;
         } else {
             switch (errno) {
@@ -6514,7 +6514,7 @@ String FileSystem::getWorkingDirectory() {
                 }
                 default: {
                     PLY_ASSERT(PLY_FSPOSIX_ALLOW_UNKNOWN_ERRORS);
-                    FileSystem::setLastResult(FS_UNKNOWN);
+                    FileSystem::setLastResult(FSResult::Unknown);
                     return {};
                 }
             }
@@ -6526,30 +6526,30 @@ ExistsResult FileSystem::exists(StringView path) {
     struct stat buf;
     int rc = stat((path + '\0').bytes(), &buf);
     if (rc == 0)
-        return (buf.st_mode & S_IFMT) == S_IFDIR ? ER_DIRECTORY : ER_FILE;
+        return (buf.st_mode & S_IFMT) == S_IFDIR ? ExistsResult::Directory : ExistsResult::File;
     if (errno != ENOENT) {
         PLY_ASSERT(PLY_FSPOSIX_ALLOW_UNKNOWN_ERRORS);
     }
-    return ER_NOT_FOUND;
+    return ExistsResult::NotFound;
 }
 
 int FileSystem::openFdForRead(StringView path) {
     int fd = open((path + '\0').bytes(), O_RDONLY | O_CLOEXEC);
     if (fd != -1) {
-        FileSystem::setLastResult(FS_OK);
+        FileSystem::setLastResult(FSResult::OK);
     } else {
         switch (errno) {
             case ENOENT:
-                FileSystem::setLastResult(FS_NOT_FOUND);
+                FileSystem::setLastResult(FSResult::NotFound);
                 break;
 
             case EACCES:
-                FileSystem::setLastResult(FS_ACCESS_DENIED);
+                FileSystem::setLastResult(FSResult::AccessDenied);
                 break;
 
             default:
                 PLY_ASSERT(PLY_FSPOSIX_ALLOW_UNKNOWN_ERRORS);
-                FileSystem::setLastResult(FS_UNKNOWN);
+                FileSystem::setLastResult(FSResult::Unknown);
                 break;
         }
     }
@@ -6566,20 +6566,20 @@ Owned<Pipe> FileSystem::openPipeForRead(StringView path) {
 int FileSystem::openFdForWrite(StringView path) {
     int fd = open((path + '\0').bytes(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, mode_t(0644));
     if (fd != -1) {
-        FileSystem::setLastResult(FS_OK);
+        FileSystem::setLastResult(FSResult::OK);
     } else {
         switch (errno) {
             case ENOENT:
-                FileSystem::setLastResult(FS_NOT_FOUND);
+                FileSystem::setLastResult(FSResult::NotFound);
                 break;
 
             case EACCES:
-                FileSystem::setLastResult(FS_ACCESS_DENIED);
+                FileSystem::setLastResult(FSResult::AccessDenied);
                 break;
 
             default:
                 PLY_ASSERT(PLY_FSPOSIX_ALLOW_UNKNOWN_ERRORS);
-                FileSystem::setLastResult(FS_UNKNOWN);
+                FileSystem::setLastResult(FSResult::Unknown);
                 break;
         }
     }
@@ -6597,42 +6597,42 @@ FSResult FileSystem::moveFile(StringView srcPath, StringView dstPath) {
     int rc = rename((srcPath + '\0').bytes(), (dstPath + '\0').bytes());
     if (rc != 0) {
         PLY_ASSERT(PLY_FSPOSIX_ALLOW_UNKNOWN_ERRORS);
-        return FileSystem::setLastResult(FS_UNKNOWN);
+        return FileSystem::setLastResult(FSResult::Unknown);
     }
-    return FileSystem::setLastResult(FS_OK);
+    return FileSystem::setLastResult(FSResult::OK);
 }
 
 FSResult FileSystem::deleteFile(StringView path) {
     int rc = unlink((path + '\0').bytes());
     if (rc != 0) {
         PLY_ASSERT(PLY_FSPOSIX_ALLOW_UNKNOWN_ERRORS);
-        return FileSystem::setLastResult(FS_UNKNOWN);
+        return FileSystem::setLastResult(FSResult::Unknown);
     }
-    return FileSystem::setLastResult(FS_OK);
+    return FileSystem::setLastResult(FSResult::OK);
 }
 
 FSResult FileSystem::removeDirTree(StringView dirPath) {
     for (const DirectoryEntry& entry : FileSystem::listDir(dirPath)) {
-        String joined = joinPath(POSIXPath, dirPath, entry.name);
+        String joined = joinPath(PathFormat::POSIX, dirPath, entry.name);
         if (entry.isDir) {
             FSResult fsResult = FileSystem::removeDirTree(joined);
-            if (fsResult != FS_OK) {
+            if (fsResult != FSResult::OK) {
                 return fsResult;
             }
         } else {
             int rc = unlink((joined + '\0').bytes());
             if (rc != 0) {
                 PLY_ASSERT(PLY_FSPOSIX_ALLOW_UNKNOWN_ERRORS);
-                return FileSystem::setLastResult(FS_UNKNOWN);
+                return FileSystem::setLastResult(FSResult::Unknown);
             }
         }
     }
     int rc = rmdir((dirPath + '\0').bytes());
     if (rc != 0) {
         PLY_ASSERT(PLY_FSPOSIX_ALLOW_UNKNOWN_ERRORS);
-        return FileSystem::setLastResult(FS_UNKNOWN);
+        return FileSystem::setLastResult(FSResult::Unknown);
     }
-    return FileSystem::setLastResult(FS_OK);
+    return FileSystem::setLastResult(FSResult::OK);
 }
 
 DirectoryEntry FileSystem::getFileInfo(StringView path) {
@@ -6642,17 +6642,17 @@ DirectoryEntry FileSystem::getFileInfo(StringView path) {
     if (rc != 0) {
         switch (errno) {
             case ENOENT: {
-                entry.result = FileSystem::setLastResult(FS_NOT_FOUND);
+                entry.result = FileSystem::setLastResult(FSResult::NotFound);
                 break;
             }
             default: {
                 PLY_ASSERT(PLY_FSPOSIX_ALLOW_UNKNOWN_ERRORS);
-                FileSystem::setLastResult(FS_UNKNOWN);
+                FileSystem::setLastResult(FSResult::Unknown);
                 break;
             }
         }
     } else {
-        entry.result = FileSystem::setLastResult(FS_OK);
+        entry.result = FileSystem::setLastResult(FSResult::OK);
         entry.fileSize = buf.st_size;
         entry.creationTime = buf.st_ctime;
         entry.accessTime = buf.st_atime;
@@ -6707,7 +6707,7 @@ void DirectoryWatcher::runWatcher() {
             DWORD attribs;
             {
                 // FIXME: Avoid some of the UTF-8 <--> UTF-16 conversions done here
-                String fullPath = joinPath(WindowsPath, this->root, path);
+                String fullPath = joinPath(PathFormat::Windows, this->root, path);
                 attribs = GetFileAttributesW(win32_path_arg(fullPath));
             }
             if (attribs != INVALID_FILE_ATTRIBUTES) {

@@ -7,13 +7,13 @@ Plywood provides a composable I/O system built around `Stream` and `Pipe` classe
 
 These functions provide access to the standard input, output, and error streams.
 
-`Stream getStdIn(ConsoleMode mode = TEXT)`
-> Returns a stream for reading from standard input. Pass `BINARY` for binary mode.
+`Stream getStdIn(ConsoleMode mode = ConsoleMode::Text)`
+> Returns a stream for reading from standard input. Pass `ConsoleMode::Binary` for binary mode.
 
-`Stream getStdOut(ConsoleMode mode = TEXT)`
-> Returns a stream for writing to standard output. Pass `BINARY` for binary mode.
+`Stream getStdOut(ConsoleMode mode = ConsoleMode::Text)`
+> Returns a stream for writing to standard output. Pass `ConsoleMode::Binary` for binary mode.
 
-`Stream getStdErr(ConsoleMode mode = TEXT)`
+`Stream getStdErr(ConsoleMode mode = ConsoleMode::Text)`
 > Returns a stream for writing to standard error.
 
 `Pipe* getStdInPipe()`

@@ -75,7 +75,7 @@ struct ColumnTrackingReader {
     u32 nextAdvance = 0;
 
     void prefetch() {
-        DecodeResult result = decodeUnicode({this->curByte, this->endByte}, UTF8);
+        DecodeResult result = decodeUnicode({this->curByte, this->endByte}, UnicodeType::UTF8);
         this->point = result.point;
         this->nextAdvance = result.numBytes;
     }
@@ -1095,7 +1095,7 @@ inline bool isAscPunc(char c) {
 s32 getInlineCodepoint(StringView text, u32 bytePos) {
     if (bytePos >= text.numBytes())
         return -1;
-    return decodeUnicode(text.substr(bytePos), UTF8).point;
+    return decodeUnicode(text.substr(bytePos), UnicodeType::UTF8).point;
 }
 
 // Returns the UTF-8 codepoint immediately before bytePos, or the sentinel at the start of the input.
@@ -1106,7 +1106,7 @@ s32 getPreviousInlineCodepoint(StringView text, u32 bytePos) {
     while (codepointPos > 0 && (u8(text[codepointPos]) & 0xc0) == 0x80) {
         codepointPos--;
     }
-    return decodeUnicode(text.substr(codepointPos, bytePos - codepointPos), UTF8).point;
+    return decodeUnicode(text.substr(codepointPos, bytePos - codepointPos), UnicodeType::UTF8).point;
 }
 
 // Returns true for the Unicode whitespace characters used by CommonMark delimiter classification.
@@ -1282,9 +1282,9 @@ String normalizeReferenceLabel(StringView label) {
     MemStream out;
     bool pendingSpace = false;
     for (u32 i = 0; i < label.numBytes();) {
-        DecodeResult decoded = decodeUnicode(label.substr(i), UTF8);
+        DecodeResult decoded = decodeUnicode(label.substr(i), UnicodeType::UTF8);
         s32 point = decoded.point;
-        u32 numBytes = decoded.status == DS_OK ? decoded.numBytes : 1;
+        u32 numBytes = decoded.status == DecodeStatus::OK ? decoded.numBytes : 1;
 
         // Unicode case folding maps both forms of German sharp S to "ss".
         if (point == 0xdf || point == 0x1e9e) {
@@ -1316,7 +1316,7 @@ String normalizeReferenceLabel(StringView label) {
         } else if (point >= 0x410 && point <= 0x42f) {
             point += 0x20;
         }
-        encodeUnicode(out, UTF8, point);
+        encodeUnicode(out, UnicodeType::UTF8, point);
         i += numBytes;
     }
     return out.moveToString();
@@ -1400,7 +1400,7 @@ bool decodeCharacterReference(MemStream& out, StringView src, u32* numBytes) {
         }
         if (digits == 0 || pos >= src.numBytes() || src[pos] != ';')
             return false;
-        encodeUnicode(out, UTF8, normalizeNumericCharacterReference(point));
+        encodeUnicode(out, UnicodeType::UTF8, normalizeNumericCharacterReference(point));
         *numBytes = pos + 1;
         return true;
     }

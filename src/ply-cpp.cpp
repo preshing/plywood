@@ -187,7 +187,7 @@ struct RestorePoint {
 //---------------------------------------------------------------------------
 
 FileLocation getFileLocation(const Preprocessor* pp, u32 inputOffset) {
-    s32 inputRangeIndex = binarySearch(pp->inputRanges, inputOffset, FindGreaterThan) - 1;
+    s32 inputRangeIndex = binarySearch(pp->inputRanges, inputOffset, FindType::GreaterThan) - 1;
     PLY_ASSERT(inputRangeIndex >= 0);
     const Preprocessor::InputRange* inputRange = &pp->inputRanges[inputRangeIndex];
     while (inputRange->isMacroExpansion) {
@@ -249,7 +249,7 @@ inline void ParserImpl::error(ErrorType type, u32 inputOffset, StringView messag
 // Helpers
 //---------------------------------------------------------
 StringView getTextAtOffset(const Preprocessor* pp, u32 inputOffset, u32 numBytes) {
-    s32 inputRangeIndex = binarySearch(pp->inputRanges, inputOffset, FindGreaterThan) - 1;
+    s32 inputRangeIndex = binarySearch(pp->inputRanges, inputOffset, FindType::GreaterThan) - 1;
     PLY_ASSERT(inputRangeIndex >= 0);
     const Preprocessor::InputRange* inputRange = &pp->inputRanges[inputRangeIndex];
     if (inputRange->isMacroExpansion) {
@@ -264,7 +264,7 @@ StringView getTextAtOffset(const Preprocessor* pp, u32 inputOffset, u32 numBytes
 void includeFile(ParserImpl* parser, StringView filename, u32 inputOffset) {
     for (StringView includePath : parser->includePaths) {
         String fullPath = joinPath(includePath, filename);
-        if (FileSystem::exists(fullPath) == ER_FILE) {
+        if (FileSystem::exists(fullPath) == ExistsResult::File) {
             u32 fileIndex = parser->pp.files.numItems();
             Preprocessor::File& file = parser->pp.files.append();
             file.absPath = fullPath;

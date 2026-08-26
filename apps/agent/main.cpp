@@ -1109,7 +1109,7 @@ static bool loadSettings() {
         String searchDir = FileSystem::getWorkingDirectory();
         while (true) {
             settingsPath = joinPath(searchDir, "agent.json");
-            if (FileSystem::exists(settingsPath) == ER_FILE)
+            if (FileSystem::exists(settingsPath) == ExistsResult::File)
                 break;
 
             String parentDir = splitPath(searchDir).directory;
@@ -1144,7 +1144,7 @@ static bool loadSettings() {
 
 int main(int argc, const char* argv[]) {
 #if defined(PLY_WINDOWS)
-    // Configure terminal window for UTF8 output.
+    // Configure terminal window for UTF-8 output.
     SetConsoleOutputCP(CP_UTF8);
 #endif
 

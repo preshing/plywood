@@ -63,7 +63,7 @@ void readToolHandler(ToolContext* toolCtx, Transcript::Message* toolCall, const 
 
     // Open file.
     Stream in = FileSystem::openTextForReadAutodetect(fp.absPath);
-    if (FileSystem::lastResult() != FS_OK) {
+    if (FileSystem::lastResult() != FSResult::OK) {
         toolCtx->appendResponse(toolCall, String::format("Error: Could not read file '{}'.", path));
         return;
     }
@@ -159,7 +159,7 @@ void writeToolHandler(ToolContext* toolCtx, Transcript::Message* toolCall, const
     // Save file.
     StringView content = contentArg.text();
     FSResult fsResult = FileSystem::saveText(fp.absPath, content);
-    if (fsResult == FS_OK) {
+    if (fsResult == FSResult::OK) {
         toolCtx->appendResponse(toolCall,
                                 String::format("Successfully wrote {} bytes to '{}'.", content.numBytes(), path));
     } else {
@@ -210,7 +210,7 @@ void listDirToolHandler(ToolContext* toolCtx, Transcript::Message* toolCall, con
 
     // List directory.
     Array<DirectoryEntry> entries = FileSystem::listDir(fp.absPath);
-    if (FileSystem::lastResult() != FS_OK) {
+    if (FileSystem::lastResult() != FSResult::OK) {
         toolCtx->appendResponse(toolCall, String::format("Error: Could not list '{}'.", path));
         return;
     }
@@ -483,7 +483,7 @@ void findInFilesToolHandler(ToolContext* toolCtx, Transcript::Message* toolCall,
     }
 
     // Check that the search path exists.
-    if (FileSystem::exists(fp.absPath) == ER_NOT_FOUND) {
+    if (FileSystem::exists(fp.absPath) == ExistsResult::NotFound) {
         toolCtx->appendResponse(toolCall, String::format("Error: Path '{}' does not exist.", path));
         return;
     }
@@ -558,7 +558,7 @@ void editToolHandler(ToolContext* toolCtx, Transcript::Message* toolCall, const 
 
     // Load file contents.
     String text = FileSystem::loadTextAutodetect(fp.absPath);
-    if (FileSystem::lastResult() != FS_OK) {
+    if (FileSystem::lastResult() != FSResult::OK) {
         toolCtx->appendResponse(toolCall, String::format("Error: Could not read file '{}'.", path));
         return;
     }
@@ -627,7 +627,7 @@ void editToolHandler(ToolContext* toolCtx, Transcript::Message* toolCall, const 
 
     // Save file.
     FSResult fsResult = FileSystem::saveText(fp.absPath, mutableText);
-    if (fsResult == FS_OK) {
+    if (fsResult == FSResult::OK) {
         toolCtx->appendResponse(
             toolCall,
             String::format("Successfully edited '{}' with {} replacement(s).", path, editPositions.numItems()));

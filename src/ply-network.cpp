@@ -67,7 +67,7 @@ PLY_STATIC_ASSERT(sizeof(struct sockaddr_in) <= sizeof(struct sockaddr_in6));
 
 bool Network::IsInit = false;
 bool Network::HasIPv6 = false;
-ThreadLocal<IPResult> Network::lastResult_;
+ThreadLocal<NetResult> Network::lastResult_;
 
 #if defined(PLY_WINDOWS)
 //----------------------------------------------------------
@@ -155,14 +155,14 @@ void TCPListener::destroy() {
 
 bool TCPListener::isListening() {
     TCPListenerImpl* impl = static_cast<TCPListenerImpl*>(this);
-    return !impl->stopRequested.load(Acquire);
+    return !impl->stopRequested.load(MemoryOrder::Acquire);
 }
 
 void TCPListener::stopListening() {
     TCPListenerImpl* impl = static_cast<TCPListenerImpl*>(this);
     // Serialize the complete stop operation so every caller waits for the listener to close.
     LockGuard<Mutex> guard{impl->listenSocketMutex};
-    if (!impl->stopRequested.exchange(true, Release)) {
+    if (!impl->stopRequested.exchange(true, MemoryOrder::Release)) {
         PLY_ASSERT(impl->listenSocket != INVALID_SOCKET);
         SOCKET listenSocket = impl->listenSocket;
         impl->listenSocket = INVALID_SOCKET;
@@ -177,8 +177,8 @@ void TCPListener::stopListening() {
 
 Owned<TCPConnection> TCPListener::accept() {
     TCPListenerImpl* impl = static_cast<TCPListenerImpl*>(this);
-    if (impl->stopRequested.load(Acquire)) {
-        Network::lastResult_.store(IPResult::NOT_LISTENING);
+    if (impl->stopRequested.load(MemoryOrder::Acquire)) {
+        Network::lastResult_.store(NetResult::NotListening);
         return nullptr;
     }
 
@@ -191,31 +191,31 @@ Owned<TCPConnection> TCPListener::accept() {
     socklen_t passedAddrLen = remoteAddrLen;
     SOCKET hostSocket = INVALID_SOCKET;
     while (hostSocket == INVALID_SOCKET) {
-        if (impl->stopRequested.load(Acquire)) {
-            Network::lastResult_.store(IPResult::NOT_LISTENING);
+        if (impl->stopRequested.load(MemoryOrder::Acquire)) {
+            Network::lastResult_.store(NetResult::NotListening);
             return nullptr;
         }
         DWORD waitResult = WSAWaitForMultipleEvents(1, &impl->acceptEvent, FALSE, WSA_INFINITE, FALSE);
-        if (impl->stopRequested.load(Acquire)) {
-            Network::lastResult_.store(IPResult::NOT_LISTENING);
+        if (impl->stopRequested.load(MemoryOrder::Acquire)) {
+            Network::lastResult_.store(NetResult::NotListening);
             return nullptr;
         }
         if (waitResult != WSA_WAIT_EVENT_0) {
-            Network::lastResult_.store(IPResult::UNKNOWN);
+            Network::lastResult_.store(NetResult::Unknown);
             return nullptr;
         }
 
         {
             // Keep the listener handle valid until its pending event and connection are consumed.
             LockGuard<Mutex> guard{impl->listenSocketMutex};
-            if (impl->stopRequested.load(Acquire)) {
-                Network::lastResult_.store(IPResult::NOT_LISTENING);
+            if (impl->stopRequested.load(MemoryOrder::Acquire)) {
+                Network::lastResult_.store(NetResult::NotListening);
                 return nullptr;
             }
             WSANETWORKEVENTS networkEvents = {};
             int rc = WSAEnumNetworkEvents(impl->listenSocket, impl->acceptEvent, &networkEvents);
             if (rc == SOCKET_ERROR || networkEvents.iErrorCode[FD_ACCEPT_BIT] != 0) {
-                Network::lastResult_.store(IPResult::UNKNOWN);
+                Network::lastResult_.store(NetResult::Unknown);
                 return nullptr;
             }
             if ((networkEvents.lNetworkEvents & FD_ACCEPT) == 0) {
@@ -225,16 +225,16 @@ Owned<TCPConnection> TCPListener::accept() {
             remoteAddrLen = passedAddrLen;
             hostSocket = ::accept(impl->listenSocket, (struct sockaddr*) &remoteAddr, &remoteAddrLen);
             if (hostSocket == INVALID_SOCKET && WSAGetLastError() != WSAEWOULDBLOCK) {
-                Network::lastResult_.store(IPResult::UNKNOWN);
+                Network::lastResult_.store(NetResult::Unknown);
                 return nullptr;
             }
         }
     }
 
     // Discard a connection that raced with the stop request.
-    if (impl->stopRequested.load(Acquire)) {
+    if (impl->stopRequested.load(MemoryOrder::Acquire)) {
         closesocket(hostSocket);
-        Network::lastResult_.store(IPResult::NOT_LISTENING);
+        Network::lastResult_.store(NetResult::NotListening);
         return nullptr;
     }
 
@@ -243,7 +243,7 @@ Owned<TCPConnection> TCPListener::accept() {
     u_long nonBlocking = 0;
     if (rc == SOCKET_ERROR || ioctlsocket(hostSocket, FIONBIO, &nonBlocking) == SOCKET_ERROR) {
         closesocket(hostSocket);
-        Network::lastResult_.store(IPResult::UNKNOWN);
+        Network::lastResult_.store(NetResult::Unknown);
         return nullptr;
     }
 
@@ -263,7 +263,7 @@ Owned<TCPConnection> TCPListener::accept() {
     tcpConn->remotePort = convertBigEndian(remoteAddr.sin6_port);
     tcpConn->inPipe = Heap::create<PipeWinsock>(hostSocket, Pipe::HAS_READ_PERMISSION);
     tcpConn->outPipe = Heap::create<PipeWinsock>(hostSocket, Pipe::HAS_WRITE_PERMISSION);
-    Network::lastResult_.store(IPResult::OK);
+    Network::lastResult_.store(NetResult::OK);
     return tcpConn;
 }
 
@@ -277,12 +277,12 @@ SOCKET createSocket(int type) {
         int err = WSAGetLastError();
         switch (err) {
             case WSAEACCES: {
-                Network::lastResult_.store(IPResult::ACCESS_DENIED);
+                Network::lastResult_.store(NetResult::AccessDenied);
                 break;
             }
             default: {
                 PLY_ASSERT(PLY_IPWINSOCK_ALLOW_UNKNOWN_ERRORS); // FIXME: Recognize this code
-                Network::lastResult_.store(IPResult::UNKNOWN);
+                Network::lastResult_.store(NetResult::Unknown);
                 break;
             }
         }
@@ -299,7 +299,7 @@ Owned<TCPListener> TCPListener::create(u16 port) {
     BOOL reuseAddr = TRUE;
     int rc = setsockopt(listenSocket, SOL_SOCKET, SO_REUSEADDR, (const char*) &reuseAddr, sizeof(reuseAddr));
     if (rc != 0 && WSAGetLastError() == WSAEACCES) {
-        Network::lastResult_.store(IPResult::ACCESS_DENIED);
+        Network::lastResult_.store(NetResult::AccessDenied);
         ::closesocket(listenSocket);
         return {};
     }
@@ -338,7 +338,7 @@ Owned<TCPListener> TCPListener::create(u16 port) {
         // Use an event so accept can wait without making a blocking Winsock call.
         WSAEVENT acceptEvent = WSACreateEvent();
         if (acceptEvent != WSA_INVALID_EVENT && WSAEventSelect(listenSocket, acceptEvent, FD_ACCEPT) != SOCKET_ERROR) {
-            Network::lastResult_.store(IPResult::OK);
+            Network::lastResult_.store(NetResult::OK);
             TCPListenerImpl* listener = Heap::create<TCPListenerImpl>();
             listener->listenSocket = listenSocket;
             listener->acceptEvent = acceptEvent;
@@ -347,18 +347,18 @@ Owned<TCPListener> TCPListener::create(u16 port) {
         if (acceptEvent != WSA_INVALID_EVENT) {
             WSACloseEvent(acceptEvent);
         }
-        Network::lastResult_.store(IPResult::UNKNOWN);
+        Network::lastResult_.store(NetResult::Unknown);
     } else {
         int err = WSAGetLastError();
         switch (err) {
             case WSAEACCES: {
-                Network::lastResult_.store(IPResult::ACCESS_DENIED);
+                Network::lastResult_.store(NetResult::AccessDenied);
                 break;
             }
             default: {
                 // FIXME: Recognize this error code
                 PLY_ASSERT(PLY_IPWINSOCK_ALLOW_UNKNOWN_ERRORS);
-                Network::lastResult_.store(IPResult::UNKNOWN);
+                Network::lastResult_.store(NetResult::Unknown);
                 break;
             }
         }
@@ -410,23 +410,23 @@ Owned<TCPConnection> TCPConnection::connectTo(const IPAddress& address, u16 port
         tcpConn->remotePort = port;
         tcpConn->inPipe = Heap::create<PipeWinsock>(connectSocket, Pipe::HAS_READ_PERMISSION);
         tcpConn->outPipe = Heap::create<PipeWinsock>(connectSocket, Pipe::HAS_WRITE_PERMISSION);
-        Network::lastResult_.store(IPResult::OK);
+        Network::lastResult_.store(NetResult::OK);
         return tcpConn;
     }
 
     int err = WSAGetLastError();
     switch (err) {
         case WSAEACCES: {
-            Network::lastResult_.store(IPResult::ACCESS_DENIED);
+            Network::lastResult_.store(NetResult::AccessDenied);
             break;
         }
         case WSAECONNREFUSED: {
-            Network::lastResult_.store(IPResult::REFUSED);
+            Network::lastResult_.store(NetResult::Refused);
             break;
         }
         default: {
             PLY_ASSERT(PLY_IPWINSOCK_ALLOW_UNKNOWN_ERRORS); // FIXME: Recognize this error ode
-            Network::lastResult_.store(IPResult::UNKNOWN);
+            Network::lastResult_.store(NetResult::Unknown);
             break;
         }
     }
@@ -548,7 +548,7 @@ Owned<TCPConnection> createAcceptedTCPConnection(int hostSocket,
     }
     tcpConn->inPipe = Heap::create<PipeFD>(hostSocket, Pipe::HAS_READ_PERMISSION);
     tcpConn->outPipe = Heap::create<PipeFD>(hostSocket, Pipe::HAS_WRITE_PERMISSION);
-    Network::lastResult_.store(IPResult::OK);
+    Network::lastResult_.store(NetResult::OK);
     return tcpConn;
 }
 
@@ -566,7 +566,7 @@ struct TCPListenerImpl : TCPListener {
 
 void TCPListener::destroy() {
     TCPListenerImpl* impl = static_cast<TCPListenerImpl*>(this);
-    PLY_ASSERT(impl->listenSocket >= 0 || impl->stopRequested.load(Acquire));
+    PLY_ASSERT(impl->listenSocket >= 0 || impl->stopRequested.load(MemoryOrder::Acquire));
     PLY_ASSERT(impl->acceptKQueue >= 0);
     if (impl->listenSocket >= 0) {
         ::close(impl->listenSocket);
@@ -578,13 +578,13 @@ void TCPListener::destroy() {
 bool TCPListener::isListening() {
     TCPListenerImpl* impl = static_cast<TCPListenerImpl*>(this);
     PLY_ASSERT(impl->acceptKQueue >= 0);
-    return !impl->stopRequested.load(Acquire);
+    return !impl->stopRequested.load(MemoryOrder::Acquire);
 }
 
 void TCPListener::stopListening() {
     TCPListenerImpl* impl = static_cast<TCPListenerImpl*>(this);
     PLY_ASSERT(impl->acceptKQueue >= 0);
-    if (!impl->stopRequested.exchange(true, Release)) {
+    if (!impl->stopRequested.exchange(true, MemoryOrder::Release)) {
         // Wake accept before taking the socket mutex, which it holds while waiting.
         struct kevent change;
         EV_SET(&change, 0, EVFILT_USER, 0, NOTE_TRIGGER, 0, nullptr);
@@ -608,8 +608,8 @@ void TCPListener::stopListening() {
 Owned<TCPConnection> TCPListener::accept() {
     TCPListenerImpl* impl = static_cast<TCPListenerImpl*>(this);
     PLY_ASSERT(impl->acceptKQueue >= 0);
-    if (impl->stopRequested.load(Acquire)) {
-        Network::lastResult_.store(IPResult::NOT_LISTENING);
+    if (impl->stopRequested.load(MemoryOrder::Acquire)) {
+        Network::lastResult_.store(NetResult::NotListening);
         return nullptr;
     }
 
@@ -621,8 +621,8 @@ Owned<TCPConnection> TCPListener::accept() {
     while (true) {
         // Serialize access so stopListening can't close and recycle the descriptor while it's used.
         LockGuard<Mutex> lock{impl->listenSocketMutex};
-        if (impl->stopRequested.load(Acquire)) {
-            Network::lastResult_.store(IPResult::NOT_LISTENING);
+        if (impl->stopRequested.load(MemoryOrder::Acquire)) {
+            Network::lastResult_.store(NetResult::NotListening);
             return nullptr;
         }
         PLY_ASSERT(impl->listenSocket >= 0);
@@ -634,16 +634,16 @@ Owned<TCPConnection> TCPListener::accept() {
             numEvents = ::kevent(impl->acceptKQueue, nullptr, 0, &event, 1, nullptr);
         } while (numEvents < 0 && errno == EINTR);
         if (numEvents == 1 && event.filter == EVFILT_USER) {
-            PLY_ASSERT(impl->stopRequested.load(Acquire));
-            Network::lastResult_.store(IPResult::NOT_LISTENING);
+            PLY_ASSERT(impl->stopRequested.load(MemoryOrder::Acquire));
+            Network::lastResult_.store(NetResult::NotListening);
             return nullptr;
         }
-        if (impl->stopRequested.load(Acquire)) {
-            Network::lastResult_.store(IPResult::NOT_LISTENING);
+        if (impl->stopRequested.load(MemoryOrder::Acquire)) {
+            Network::lastResult_.store(NetResult::NotListening);
             return nullptr;
         }
         if (numEvents != 1 || event.filter != EVFILT_READ || event.ident != (uintptr_t) impl->listenSocket) {
-            Network::lastResult_.store(IPResult::UNKNOWN);
+            Network::lastResult_.store(NetResult::Unknown);
             return nullptr;
         }
 
@@ -656,14 +656,14 @@ Owned<TCPConnection> TCPListener::accept() {
         if (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK)
             continue;
         PLY_ASSERT(PLY_IPPOSIX_ALLOW_UNKNOWN_ERRORS); // FIXME: Recognize this errno
-        Network::lastResult_.store(IPResult::UNKNOWN);
+        Network::lastResult_.store(NetResult::Unknown);
         return nullptr;
     }
 
     // Discard a connection that raced with the stop request.
-    if (impl->stopRequested.load(Acquire)) {
+    if (impl->stopRequested.load(MemoryOrder::Acquire)) {
         ::close(hostSocket);
-        Network::lastResult_.store(IPResult::NOT_LISTENING);
+        Network::lastResult_.store(NetResult::NotListening);
         return nullptr;
     }
 
@@ -672,7 +672,7 @@ Owned<TCPConnection> TCPListener::accept() {
     if (hostSocketFlags < 0 ||
         ((hostSocketFlags & O_NONBLOCK) && ::fcntl(hostSocket, F_SETFL, hostSocketFlags & ~O_NONBLOCK) < 0)) {
         ::close(hostSocket);
-        Network::lastResult_.store(IPResult::UNKNOWN);
+        Network::lastResult_.store(NetResult::Unknown);
         return nullptr;
     }
     return createAcceptedTCPConnection(hostSocket, remoteAddr, remoteAddrLen, passedAddrLen);
@@ -699,7 +699,7 @@ void TCPListener::destroy() {
 bool TCPListener::isListening() {
     TCPListenerImpl* impl = static_cast<TCPListenerImpl*>(this);
     PLY_ASSERT(impl->listenSocket >= 0);
-    return !impl->stopRequested.load(Acquire);
+    return !impl->stopRequested.load(MemoryOrder::Acquire);
 }
 
 void TCPListener::stopListening() {
@@ -707,7 +707,7 @@ void TCPListener::stopListening() {
     PLY_ASSERT(impl->listenSocket >= 0);
     // Serialize the complete stop operation so every caller waits for shutdown to finish.
     LockGuard<Mutex> lock{impl->stopMutex};
-    if (!impl->stopRequested.exchange(true, Release)) {
+    if (!impl->stopRequested.exchange(true, MemoryOrder::Release)) {
         ::shutdown(impl->listenSocket, SHUT_RDWR);
     }
 }
@@ -715,8 +715,8 @@ void TCPListener::stopListening() {
 Owned<TCPConnection> TCPListener::accept() {
     TCPListenerImpl* impl = static_cast<TCPListenerImpl*>(this);
     PLY_ASSERT(impl->listenSocket >= 0);
-    if (impl->stopRequested.load(Acquire)) {
-        Network::lastResult_.store(IPResult::NOT_LISTENING);
+    if (impl->stopRequested.load(MemoryOrder::Acquire)) {
+        Network::lastResult_.store(NetResult::NotListening);
         return nullptr;
     }
 
@@ -729,20 +729,20 @@ Owned<TCPConnection> TCPListener::accept() {
     // `accept` returns -1 on failure; descriptor 0 is a valid accepted socket.
     if (hostSocket < 0) {
         // A concurrent stop request interrupts the blocking accept call.
-        if (impl->stopRequested.load(Acquire)) {
-            Network::lastResult_.store(IPResult::NOT_LISTENING);
+        if (impl->stopRequested.load(MemoryOrder::Acquire)) {
+            Network::lastResult_.store(NetResult::NotListening);
             return nullptr;
         }
         // FIXME: Check errno
         PLY_ASSERT(PLY_IPPOSIX_ALLOW_UNKNOWN_ERRORS);
-        Network::lastResult_.store(IPResult::UNKNOWN);
+        Network::lastResult_.store(NetResult::Unknown);
         return nullptr;
     }
 
     // Discard a connection that raced with the stop request.
-    if (impl->stopRequested.load(Acquire)) {
+    if (impl->stopRequested.load(MemoryOrder::Acquire)) {
         ::close(hostSocket);
-        Network::lastResult_.store(IPResult::NOT_LISTENING);
+        Network::lastResult_.store(NetResult::NotListening);
         return nullptr;
     }
     return createAcceptedTCPConnection(hostSocket, remoteAddr, remoteAddrLen, passedAddrLen);
@@ -760,14 +760,14 @@ int createSocket(int type) {
         switch (errno) {
             case EACCES:
             case EPERM: {
-                Network::lastResult_.store(IPResult::ACCESS_DENIED);
+                Network::lastResult_.store(NetResult::AccessDenied);
                 break;
             }
             case ENOBUFS:
             case ENOMEM:
             case ENFILE:
             case EMFILE: {
-                Network::lastResult_.store(IPResult::NO_SOCKET);
+                Network::lastResult_.store(NetResult::NoSocket);
                 break;
             }
             case EAFNOSUPPORT:
@@ -776,7 +776,7 @@ int createSocket(int type) {
                 // Maybe fall back to IPv4 if this happens for IPv6?
             default: {
                 PLY_ASSERT(PLY_IPPOSIX_ALLOW_UNKNOWN_ERRORS); // FIXME: Recognize this code
-                Network::lastResult_.store(IPResult::UNKNOWN);
+                Network::lastResult_.store(NetResult::Unknown);
                 break;
             }
         }
@@ -793,7 +793,7 @@ Owned<TCPListener> TCPListener::create(u16 port) {
     int reuseAddr = 1;
     int rc = setsockopt(listenSocket, SOL_SOCKET, SO_REUSEADDR, &reuseAddr, sizeof(reuseAddr));
     if (rc != 0 && (errno == EACCES || errno == EPERM)) {
-        Network::lastResult_.store(IPResult::ACCESS_DENIED);
+        Network::lastResult_.store(NetResult::AccessDenied);
         ::close(listenSocket);
         return {};
     }
@@ -843,7 +843,7 @@ Owned<TCPListener> TCPListener::create(u16 port) {
             } while (registerResult < 0 && errno == EINTR);
         }
         if (registerResult == 0) {
-            Network::lastResult_.store(IPResult::OK);
+            Network::lastResult_.store(NetResult::OK);
             TCPListenerImpl* listener = Heap::create<TCPListenerImpl>();
             listener->listenSocket = listenSocket;
             listener->acceptKQueue = acceptKQueue;
@@ -852,9 +852,9 @@ Owned<TCPListener> TCPListener::create(u16 port) {
         if (acceptKQueue >= 0) {
             ::close(acceptKQueue);
         }
-        Network::lastResult_.store(IPResult::NO_SOCKET);
+        Network::lastResult_.store(NetResult::NoSocket);
 #else
-        Network::lastResult_.store(IPResult::OK);
+        Network::lastResult_.store(NetResult::OK);
         TCPListenerImpl* listener = Heap::create<TCPListenerImpl>();
         listener->listenSocket = listenSocket;
         return Owned<TCPListener>::adopt(listener);
@@ -863,17 +863,17 @@ Owned<TCPListener> TCPListener::create(u16 port) {
         switch (errno) {
             case EACCES:
             case EPERM: {
-                Network::lastResult_.store(IPResult::ACCESS_DENIED);
+                Network::lastResult_.store(NetResult::AccessDenied);
                 break;
             }
             case EADDRINUSE: {
-                Network::lastResult_.store(IPResult::IN_USE);
+                Network::lastResult_.store(NetResult::InUse);
                 break;
             }
             default: {
                 // FIXME: Recognize this errno
                 PLY_ASSERT(PLY_IPPOSIX_ALLOW_UNKNOWN_ERRORS);
-                Network::lastResult_.store(IPResult::UNKNOWN);
+                Network::lastResult_.store(NetResult::Unknown);
                 break;
             }
         }
@@ -925,27 +925,27 @@ Owned<TCPConnection> TCPConnection::connectTo(const IPAddress& address, u16 port
         tcpConn->remotePort = port;
         tcpConn->inPipe = Heap::create<PipeFD>(connectSocket, Pipe::HAS_READ_PERMISSION);
         tcpConn->outPipe = Heap::create<PipeFD>(connectSocket, Pipe::HAS_WRITE_PERMISSION);
-        Network::lastResult_.store(IPResult::OK);
+        Network::lastResult_.store(NetResult::OK);
         return tcpConn;
     }
 
     switch (errno) {
         case EACCES:
         case EPERM: {
-            Network::lastResult_.store(IPResult::ACCESS_DENIED);
+            Network::lastResult_.store(NetResult::AccessDenied);
             break;
         }
         case ECONNREFUSED: {
-            Network::lastResult_.store(IPResult::REFUSED);
+            Network::lastResult_.store(NetResult::Refused);
             break;
         }
         case ENETUNREACH: {
-            Network::lastResult_.store(IPResult::UNREACHABLE);
+            Network::lastResult_.store(NetResult::Unreachable);
             break;
         }
         default: {
             PLY_ASSERT(PLY_IPPOSIX_ALLOW_UNKNOWN_ERRORS); // FIXME: Recognize this code
-            Network::lastResult_.store(IPResult::UNKNOWN);
+            Network::lastResult_.store(NetResult::Unknown);
             break;
         }
     }

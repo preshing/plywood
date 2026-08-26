@@ -42,7 +42,7 @@ TokenLocationMap TokenLocationMap::createFromString(StringView src) {
     u32 nextChunkOfs = 256;
     result.table.append({1, 0, 1, 0});
     for (;;) {
-        DecodeResult decoded = decodeUnicode(in, UTF8);
+        DecodeResult decoded = decodeUnicode(in, UnicodeType::UTF8);
         if (decoded.numBytes == 0)
             break;
 
@@ -82,7 +82,7 @@ TokenLocation TokenLocationMap::getLocationFromOffset(u32 fileOffset) const {
             return {lineNumber, numericCast<u32>(target - lineStart), columnNumber, nb};
         }
 
-        DecodeResult decoded = decodeUnicode(src, UTF8);
+        DecodeResult decoded = decodeUnicode(src, UnicodeType::UTF8);
         src = src.substr(decoded.numBytes);
 
         updateLineAndColumn(lineNumber, columnNumber, decoded.point);

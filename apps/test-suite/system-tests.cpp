@@ -545,108 +545,108 @@ TEST_CASE("Thread join") {
 
 TEST_CASE("Atomic 8-bit operations") {
     Atomic<u8> value = 7;
-    check(value.load(Relaxed) == 7);
+    check(value.load(MemoryOrder::Relaxed) == 7);
 
-    value.store(9, Release);
-    check(value.load(Acquire) == 9);
+    value.store(9, MemoryOrder::Release);
+    check(value.load(MemoryOrder::Acquire) == 9);
 
-    check(value.compareExchange(9, 12, AcqRel) == 9);
-    check(value.load(Relaxed) == 12);
-    check(value.compareExchange(9, 1, AcqRel) == 12);
-    check(value.load(Relaxed) == 12);
+    check(value.compareExchange(9, 12, MemoryOrder::AcqRel) == 9);
+    check(value.load(MemoryOrder::Relaxed) == 12);
+    check(value.compareExchange(9, 1, MemoryOrder::AcqRel) == 12);
+    check(value.load(MemoryOrder::Relaxed) == 12);
 
-    check(value.exchange(3, AcqRel) == 12);
-    check(value.load(Relaxed) == 3);
+    check(value.exchange(3, MemoryOrder::AcqRel) == 12);
+    check(value.load(MemoryOrder::Relaxed) == 3);
 
-    check(value.fetchAdd(4, AcqRel) == 3);
-    check(value.load(Relaxed) == 7);
-    check(value.fetchSub(2, AcqRel) == 7);
-    check(value.load(Relaxed) == 5);
+    check(value.fetchAdd(4, MemoryOrder::AcqRel) == 3);
+    check(value.load(MemoryOrder::Relaxed) == 7);
+    check(value.fetchSub(2, MemoryOrder::AcqRel) == 7);
+    check(value.load(MemoryOrder::Relaxed) == 5);
 
-    check(value.fetchAnd(6, AcqRel) == 5);
-    check(value.load(Relaxed) == 4);
-    check(value.fetchOr(3, AcqRel) == 4);
-    check(value.load(Relaxed) == 7);
+    check(value.fetchAnd(6, MemoryOrder::AcqRel) == 5);
+    check(value.load(MemoryOrder::Relaxed) == 4);
+    check(value.fetchOr(3, MemoryOrder::AcqRel) == 4);
+    check(value.load(MemoryOrder::Relaxed) == 7);
 }
 
 TEST_CASE("Atomic 16-bit operations") {
     Atomic<u16> value = 0x1200;
-    check(value.load(Relaxed) == 0x1200);
+    check(value.load(MemoryOrder::Relaxed) == 0x1200);
 
-    value.store(0x1234, Release);
-    check(value.load(Acquire) == 0x1234);
+    value.store(0x1234, MemoryOrder::Release);
+    check(value.load(MemoryOrder::Acquire) == 0x1234);
 
-    check(value.compareExchange(0x1234, 0x4321, AcqRel) == 0x1234);
-    check(value.load(Relaxed) == 0x4321);
-    check(value.compareExchange(0x1234, 0xFFFF, AcqRel) == 0x4321);
-    check(value.load(Relaxed) == 0x4321);
+    check(value.compareExchange(0x1234, 0x4321, MemoryOrder::AcqRel) == 0x1234);
+    check(value.load(MemoryOrder::Relaxed) == 0x4321);
+    check(value.compareExchange(0x1234, 0xFFFF, MemoryOrder::AcqRel) == 0x4321);
+    check(value.load(MemoryOrder::Relaxed) == 0x4321);
 
-    check(value.exchange(0x0102, AcqRel) == 0x4321);
-    check(value.load(Relaxed) == 0x0102);
+    check(value.exchange(0x0102, MemoryOrder::AcqRel) == 0x4321);
+    check(value.load(MemoryOrder::Relaxed) == 0x0102);
 
-    check(value.fetchAdd(0x0010, AcqRel) == 0x0102);
-    check(value.load(Relaxed) == 0x0112);
-    check(value.fetchSub(0x0003, AcqRel) == 0x0112);
-    check(value.load(Relaxed) == 0x010F);
+    check(value.fetchAdd(0x0010, MemoryOrder::AcqRel) == 0x0102);
+    check(value.load(MemoryOrder::Relaxed) == 0x0112);
+    check(value.fetchSub(0x0003, MemoryOrder::AcqRel) == 0x0112);
+    check(value.load(MemoryOrder::Relaxed) == 0x010F);
 
-    check(value.fetchAnd(0x00FF, AcqRel) == 0x010F);
-    check(value.load(Relaxed) == 0x000F);
-    check(value.fetchOr(0x0F00, AcqRel) == 0x000F);
-    check(value.load(Relaxed) == 0x0F0F);
+    check(value.fetchAnd(0x00FF, MemoryOrder::AcqRel) == 0x010F);
+    check(value.load(MemoryOrder::Relaxed) == 0x000F);
+    check(value.fetchOr(0x0F00, MemoryOrder::AcqRel) == 0x000F);
+    check(value.load(MemoryOrder::Relaxed) == 0x0F0F);
 }
 
 TEST_CASE("Atomic 32-bit operations") {
     Atomic<u32> value = 0x12000000;
-    check(value.load(Relaxed) == 0x12000000);
+    check(value.load(MemoryOrder::Relaxed) == 0x12000000);
 
-    value.store(0x12345678, Release);
-    check(value.load(Acquire) == 0x12345678);
+    value.store(0x12345678, MemoryOrder::Release);
+    check(value.load(MemoryOrder::Acquire) == 0x12345678);
 
-    check(value.compareExchange(0x12345678, 0x87654321, AcqRel) == 0x12345678);
-    check(value.load(Relaxed) == 0x87654321);
-    check(value.compareExchange(0x12345678, 0xFFFFFFFF, AcqRel) == 0x87654321);
-    check(value.load(Relaxed) == 0x87654321);
+    check(value.compareExchange(0x12345678, 0x87654321, MemoryOrder::AcqRel) == 0x12345678);
+    check(value.load(MemoryOrder::Relaxed) == 0x87654321);
+    check(value.compareExchange(0x12345678, 0xFFFFFFFF, MemoryOrder::AcqRel) == 0x87654321);
+    check(value.load(MemoryOrder::Relaxed) == 0x87654321);
 
-    check(value.exchange(0x01020304, AcqRel) == 0x87654321);
-    check(value.load(Relaxed) == 0x01020304);
+    check(value.exchange(0x01020304, MemoryOrder::AcqRel) == 0x87654321);
+    check(value.load(MemoryOrder::Relaxed) == 0x01020304);
 
-    check(value.fetchAdd(0x00010010, AcqRel) == 0x01020304);
-    check(value.load(Relaxed) == 0x01030314);
-    check(value.fetchSub(0x00000024, AcqRel) == 0x01030314);
-    check(value.load(Relaxed) == 0x010302F0);
+    check(value.fetchAdd(0x00010010, MemoryOrder::AcqRel) == 0x01020304);
+    check(value.load(MemoryOrder::Relaxed) == 0x01030314);
+    check(value.fetchSub(0x00000024, MemoryOrder::AcqRel) == 0x01030314);
+    check(value.load(MemoryOrder::Relaxed) == 0x010302F0);
 
-    check(value.fetchAnd(0x00FF00FF, AcqRel) == 0x010302F0);
-    check(value.load(Relaxed) == 0x000300F0);
-    check(value.fetchOr(0x0F00000F, AcqRel) == 0x000300F0);
-    check(value.load(Relaxed) == 0x0F0300FF);
+    check(value.fetchAnd(0x00FF00FF, MemoryOrder::AcqRel) == 0x010302F0);
+    check(value.load(MemoryOrder::Relaxed) == 0x000300F0);
+    check(value.fetchOr(0x0F00000F, MemoryOrder::AcqRel) == 0x000300F0);
+    check(value.load(MemoryOrder::Relaxed) == 0x0F0300FF);
 }
 
 TEST_CASE("Atomic 64-bit operations") {
     Atomic<u64> value = u64(0x1200000000000000ull);
-    check(value.load(Relaxed) == u64(0x1200000000000000ull));
+    check(value.load(MemoryOrder::Relaxed) == u64(0x1200000000000000ull));
 
-    value.store(u64(0x123456789ABCDEF0ull), Release);
-    check(value.load(Acquire) == u64(0x123456789ABCDEF0ull));
+    value.store(u64(0x123456789ABCDEF0ull), MemoryOrder::Release);
+    check(value.load(MemoryOrder::Acquire) == u64(0x123456789ABCDEF0ull));
 
-    check(value.compareExchange(u64(0x123456789ABCDEF0ull), u64(0x0FEDCBA987654321ull), AcqRel) ==
+    check(value.compareExchange(u64(0x123456789ABCDEF0ull), u64(0x0FEDCBA987654321ull), MemoryOrder::AcqRel) ==
           u64(0x123456789ABCDEF0ull));
-    check(value.load(Relaxed) == u64(0x0FEDCBA987654321ull));
-    check(value.compareExchange(u64(0x123456789ABCDEF0ull), u64(0xFFFFFFFFFFFFFFFFull), AcqRel) ==
+    check(value.load(MemoryOrder::Relaxed) == u64(0x0FEDCBA987654321ull));
+    check(value.compareExchange(u64(0x123456789ABCDEF0ull), u64(0xFFFFFFFFFFFFFFFFull), MemoryOrder::AcqRel) ==
           u64(0x0FEDCBA987654321ull));
-    check(value.load(Relaxed) == u64(0x0FEDCBA987654321ull));
+    check(value.load(MemoryOrder::Relaxed) == u64(0x0FEDCBA987654321ull));
 
-    check(value.exchange(u64(0x0102030405060708ull), AcqRel) == u64(0x0FEDCBA987654321ull));
-    check(value.load(Relaxed) == u64(0x0102030405060708ull));
+    check(value.exchange(u64(0x0102030405060708ull), MemoryOrder::AcqRel) == u64(0x0FEDCBA987654321ull));
+    check(value.load(MemoryOrder::Relaxed) == u64(0x0102030405060708ull));
 
-    check(value.fetchAdd(u64(0x0001001000010010ull), AcqRel) == u64(0x0102030405060708ull));
-    check(value.load(Relaxed) == u64(0x0103031405070718ull));
-    check(value.fetchSub(u64(0x0000000000000028ull), AcqRel) == u64(0x0103031405070718ull));
-    check(value.load(Relaxed) == u64(0x01030314050706F0ull));
+    check(value.fetchAdd(u64(0x0001001000010010ull), MemoryOrder::AcqRel) == u64(0x0102030405060708ull));
+    check(value.load(MemoryOrder::Relaxed) == u64(0x0103031405070718ull));
+    check(value.fetchSub(u64(0x0000000000000028ull), MemoryOrder::AcqRel) == u64(0x0103031405070718ull));
+    check(value.load(MemoryOrder::Relaxed) == u64(0x01030314050706F0ull));
 
-    check(value.fetchAnd(u64(0x00FF00FF00FF00FFull), AcqRel) == u64(0x01030314050706F0ull));
-    check(value.load(Relaxed) == u64(0x00030014000700F0ull));
-    check(value.fetchOr(u64(0x0F0000000000000Full), AcqRel) == u64(0x00030014000700F0ull));
-    check(value.load(Relaxed) == u64(0x0F030014000700FFull));
+    check(value.fetchAnd(u64(0x00FF00FF00FF00FFull), MemoryOrder::AcqRel) == u64(0x01030314050706F0ull));
+    check(value.load(MemoryOrder::Relaxed) == u64(0x00030014000700F0ull));
+    check(value.fetchOr(u64(0x0F0000000000000Full), MemoryOrder::AcqRel) == u64(0x00030014000700F0ull));
+    check(value.load(MemoryOrder::Relaxed) == u64(0x0F030014000700FFull));
 }
 
 //  ▄▄  ▄▄
@@ -832,7 +832,7 @@ TEST_CASE("Heap multithread smoke") {
                     if (ptr) {
                         ptrs.append(ptr);
                     } else {
-                        failures.fetchAdd(1, AcqRel);
+                        failures.fetchAdd(1, MemoryOrder::AcqRel);
                     }
                 } else {
                     u32 index = rand.generateU32() % ptrs.numItems();
@@ -849,7 +849,7 @@ TEST_CASE("Heap multithread smoke") {
         threads[t].join();
     }
 
-    check(failures.load(Acquire) == 0);
+    check(failures.load(MemoryOrder::Acquire) == 0);
     Heap::validate();
 }
 
@@ -1919,84 +1919,84 @@ TEST_CASE("binarySearch() basic functionality") {
     Array<u32> arr = {1, 3, 5, 7, 9, 11, 13, 15};
 
     // Test finding existing elements with Find_Greater_Than_Or_Equal
-    check(binarySearch(arr, 5, FindGreaterThanOrEqual) == 2);
-    check(binarySearch(arr, 7, FindGreaterThanOrEqual) == 3);
-    check(binarySearch(arr, 1, FindGreaterThanOrEqual) == 0);
-    check(binarySearch(arr, 15, FindGreaterThanOrEqual) == 7);
+    check(binarySearch(arr, 5, FindType::GreaterThanOrEqual) == 2);
+    check(binarySearch(arr, 7, FindType::GreaterThanOrEqual) == 3);
+    check(binarySearch(arr, 1, FindType::GreaterThanOrEqual) == 0);
+    check(binarySearch(arr, 15, FindType::GreaterThanOrEqual) == 7);
 
     // Test finding non-existing elements with Find_Greater_Than_Or_Equal
-    check(binarySearch(arr, 4, FindGreaterThanOrEqual) == 2);
-    check(binarySearch(arr, 6, FindGreaterThanOrEqual) == 3);
-    check(binarySearch(arr, 0, FindGreaterThanOrEqual) == 0);
-    check(binarySearch(arr, 20, FindGreaterThanOrEqual) == 8);
+    check(binarySearch(arr, 4, FindType::GreaterThanOrEqual) == 2);
+    check(binarySearch(arr, 6, FindType::GreaterThanOrEqual) == 3);
+    check(binarySearch(arr, 0, FindType::GreaterThanOrEqual) == 0);
+    check(binarySearch(arr, 20, FindType::GreaterThanOrEqual) == 8);
 }
 
-TEST_CASE("binarySearch() with FindGreaterThan condition") {
+TEST_CASE("binarySearch() with FindType::GreaterThan condition") {
     Array<u32> arr = {1, 3, 5, 7, 9, 11, 13, 15};
 
     // Test finding existing elements with Find_Greater_Than
-    check(binarySearch(arr, 5, FindGreaterThan) == 3);
-    check(binarySearch(arr, 7, FindGreaterThan) == 4);
-    check(binarySearch(arr, 1, FindGreaterThan) == 1);
-    check(binarySearch(arr, 15, FindGreaterThan) == 8);
+    check(binarySearch(arr, 5, FindType::GreaterThan) == 3);
+    check(binarySearch(arr, 7, FindType::GreaterThan) == 4);
+    check(binarySearch(arr, 1, FindType::GreaterThan) == 1);
+    check(binarySearch(arr, 15, FindType::GreaterThan) == 8);
 
     // Test finding non-existing elements with Find_Greater_Than
-    check(binarySearch(arr, 4, FindGreaterThan) == 2);
-    check(binarySearch(arr, 6, FindGreaterThan) == 3);
-    check(binarySearch(arr, 0, FindGreaterThan) == 0);
-    check(binarySearch(arr, 20, FindGreaterThan) == 8);
+    check(binarySearch(arr, 4, FindType::GreaterThan) == 2);
+    check(binarySearch(arr, 6, FindType::GreaterThan) == 3);
+    check(binarySearch(arr, 0, FindType::GreaterThan) == 0);
+    check(binarySearch(arr, 20, FindType::GreaterThan) == 8);
 }
 
 TEST_CASE("binarySearch() empty array") {
     Array<u32> emptyArr;
 
     // Empty array should always return 0 for any search
-    check(binarySearch(emptyArr, 5, FindGreaterThanOrEqual) == 0);
-    check(binarySearch(emptyArr, 5, FindGreaterThan) == 0);
-    check(binarySearch(emptyArr, 0, FindGreaterThanOrEqual) == 0);
-    check(binarySearch(emptyArr, 100, FindGreaterThan) == 0);
+    check(binarySearch(emptyArr, 5, FindType::GreaterThanOrEqual) == 0);
+    check(binarySearch(emptyArr, 5, FindType::GreaterThan) == 0);
+    check(binarySearch(emptyArr, 0, FindType::GreaterThanOrEqual) == 0);
+    check(binarySearch(emptyArr, 100, FindType::GreaterThan) == 0);
 }
 
 TEST_CASE("binarySearch() single element") {
     Array<u32> singleArr = {42};
 
     // Test with single element array
-    check(binarySearch(singleArr, 42, FindGreaterThanOrEqual) == 0);
-    check(binarySearch(singleArr, 42, FindGreaterThan) == 1);
-    check(binarySearch(singleArr, 40, FindGreaterThanOrEqual) == 0);
-    check(binarySearch(singleArr, 40, FindGreaterThan) == 0);
-    check(binarySearch(singleArr, 50, FindGreaterThanOrEqual) == 1);
-    check(binarySearch(singleArr, 50, FindGreaterThan) == 1);
+    check(binarySearch(singleArr, 42, FindType::GreaterThanOrEqual) == 0);
+    check(binarySearch(singleArr, 42, FindType::GreaterThan) == 1);
+    check(binarySearch(singleArr, 40, FindType::GreaterThanOrEqual) == 0);
+    check(binarySearch(singleArr, 40, FindType::GreaterThan) == 0);
+    check(binarySearch(singleArr, 50, FindType::GreaterThanOrEqual) == 1);
+    check(binarySearch(singleArr, 50, FindType::GreaterThan) == 1);
 }
 
 TEST_CASE("binarySearch() with duplicates") {
     Array<u32> arr = {1, 3, 3, 3, 5, 7, 7, 9};
 
     // Test finding duplicates with Find_Greater_Than_Or_Equal (should find first occurrence)
-    check(binarySearch(arr, 3, FindGreaterThanOrEqual) == 1);
-    check(binarySearch(arr, 7, FindGreaterThanOrEqual) == 5);
+    check(binarySearch(arr, 3, FindType::GreaterThanOrEqual) == 1);
+    check(binarySearch(arr, 7, FindType::GreaterThanOrEqual) == 5);
 
     // Test finding duplicates with Find_Greater_Than (should find first element after duplicates)
-    check(binarySearch(arr, 3, FindGreaterThan) == 4);
-    check(binarySearch(arr, 7, FindGreaterThan) == 7);
+    check(binarySearch(arr, 3, FindType::GreaterThan) == 4);
+    check(binarySearch(arr, 7, FindType::GreaterThan) == 7);
 
     // Test finding elements between duplicates
-    check(binarySearch(arr, 4, FindGreaterThanOrEqual) == 4);
-    check(binarySearch(arr, 4, FindGreaterThan) == 4);
-    check(binarySearch(arr, 6, FindGreaterThanOrEqual) == 5);
-    check(binarySearch(arr, 6, FindGreaterThan) == 5);
+    check(binarySearch(arr, 4, FindType::GreaterThanOrEqual) == 4);
+    check(binarySearch(arr, 4, FindType::GreaterThan) == 4);
+    check(binarySearch(arr, 6, FindType::GreaterThanOrEqual) == 5);
+    check(binarySearch(arr, 6, FindType::GreaterThan) == 5);
 }
 
 TEST_CASE("binarySearch() all same elements") {
     Array<u32> arr = {5, 5, 5, 5, 5};
 
     // Test with all same elements
-    check(binarySearch(arr, 5, FindGreaterThanOrEqual) == 0);
-    check(binarySearch(arr, 5, FindGreaterThan) == 5);
-    check(binarySearch(arr, 3, FindGreaterThanOrEqual) == 0);
-    check(binarySearch(arr, 3, FindGreaterThan) == 0);
-    check(binarySearch(arr, 7, FindGreaterThanOrEqual) == 5);
-    check(binarySearch(arr, 7, FindGreaterThan) == 5);
+    check(binarySearch(arr, 5, FindType::GreaterThanOrEqual) == 0);
+    check(binarySearch(arr, 5, FindType::GreaterThan) == 5);
+    check(binarySearch(arr, 3, FindType::GreaterThanOrEqual) == 0);
+    check(binarySearch(arr, 3, FindType::GreaterThan) == 0);
+    check(binarySearch(arr, 7, FindType::GreaterThanOrEqual) == 5);
+    check(binarySearch(arr, 7, FindType::GreaterThan) == 5);
 }
 
 TEST_CASE("binarySearch() with custom type") {
@@ -2012,79 +2012,79 @@ TEST_CASE("binarySearch() with custom type") {
     Array<TestItem> arr = {{10, "ten"}, {20, "twenty"}, {30, "thirty"}, {40, "forty"}, {50, "fifty"}};
 
     // Test finding existing elements with Find_Greater_Than_Or_Equal
-    check(binarySearch(arr, 30, FindGreaterThanOrEqual) == 2);
-    check(binarySearch(arr, 40, FindGreaterThanOrEqual) == 3);
-    check(binarySearch(arr, 10, FindGreaterThanOrEqual) == 0);
-    check(binarySearch(arr, 50, FindGreaterThanOrEqual) == 4);
+    check(binarySearch(arr, 30, FindType::GreaterThanOrEqual) == 2);
+    check(binarySearch(arr, 40, FindType::GreaterThanOrEqual) == 3);
+    check(binarySearch(arr, 10, FindType::GreaterThanOrEqual) == 0);
+    check(binarySearch(arr, 50, FindType::GreaterThanOrEqual) == 4);
 
     // Test finding non-existing elements with Find_Greater_Than_Or_Equal
-    check(binarySearch(arr, 25, FindGreaterThanOrEqual) == 2);
-    check(binarySearch(arr, 35, FindGreaterThanOrEqual) == 3);
-    check(binarySearch(arr, 5, FindGreaterThanOrEqual) == 0);
-    check(binarySearch(arr, 60, FindGreaterThanOrEqual) == 5);
+    check(binarySearch(arr, 25, FindType::GreaterThanOrEqual) == 2);
+    check(binarySearch(arr, 35, FindType::GreaterThanOrEqual) == 3);
+    check(binarySearch(arr, 5, FindType::GreaterThanOrEqual) == 0);
+    check(binarySearch(arr, 60, FindType::GreaterThanOrEqual) == 5);
 
     // Test finding existing elements with Find_Greater_Than
-    check(binarySearch(arr, 30, FindGreaterThan) == 3);
-    check(binarySearch(arr, 40, FindGreaterThan) == 4);
-    check(binarySearch(arr, 10, FindGreaterThan) == 1);
-    check(binarySearch(arr, 50, FindGreaterThan) == 5);
+    check(binarySearch(arr, 30, FindType::GreaterThan) == 3);
+    check(binarySearch(arr, 40, FindType::GreaterThan) == 4);
+    check(binarySearch(arr, 10, FindType::GreaterThan) == 1);
+    check(binarySearch(arr, 50, FindType::GreaterThan) == 5);
 
     // Test finding non-existing elements with Find_Greater_Than
-    check(binarySearch(arr, 25, FindGreaterThan) == 2);
-    check(binarySearch(arr, 35, FindGreaterThan) == 3);
-    check(binarySearch(arr, 5, FindGreaterThan) == 0);
-    check(binarySearch(arr, 60, FindGreaterThan) == 5);
+    check(binarySearch(arr, 25, FindType::GreaterThan) == 2);
+    check(binarySearch(arr, 35, FindType::GreaterThan) == 3);
+    check(binarySearch(arr, 5, FindType::GreaterThan) == 0);
+    check(binarySearch(arr, 60, FindType::GreaterThan) == 5);
 }
 
 TEST_CASE("binarySearch() with String type") {
     Array<String> arr = {"apple", "banana", "cherry", "date", "elderberry"};
 
     // Test finding existing elements with Find_Greater_Than_Or_Equal
-    check(binarySearch(arr, "cherry", FindGreaterThanOrEqual) == 2);
-    check(binarySearch(arr, "date", FindGreaterThanOrEqual) == 3);
-    check(binarySearch(arr, "apple", FindGreaterThanOrEqual) == 0);
-    check(binarySearch(arr, "elderberry", FindGreaterThanOrEqual) == 4);
+    check(binarySearch(arr, "cherry", FindType::GreaterThanOrEqual) == 2);
+    check(binarySearch(arr, "date", FindType::GreaterThanOrEqual) == 3);
+    check(binarySearch(arr, "apple", FindType::GreaterThanOrEqual) == 0);
+    check(binarySearch(arr, "elderberry", FindType::GreaterThanOrEqual) == 4);
 
     // Test finding non-existing elements with Find_Greater_Than_Or_Equal
-    check(binarySearch(arr, "blueberry", FindGreaterThanOrEqual) == 2);
-    check(binarySearch(arr, "coconut", FindGreaterThanOrEqual) == 3);
-    check(binarySearch(arr, "apricot", FindGreaterThanOrEqual) == 1);
-    check(binarySearch(arr, "fig", FindGreaterThanOrEqual) == 5);
+    check(binarySearch(arr, "blueberry", FindType::GreaterThanOrEqual) == 2);
+    check(binarySearch(arr, "coconut", FindType::GreaterThanOrEqual) == 3);
+    check(binarySearch(arr, "apricot", FindType::GreaterThanOrEqual) == 1);
+    check(binarySearch(arr, "fig", FindType::GreaterThanOrEqual) == 5);
 
     // Test finding existing elements with Find_Greater_Than
-    check(binarySearch(arr, "cherry", FindGreaterThan) == 3);
-    check(binarySearch(arr, "date", FindGreaterThan) == 4);
-    check(binarySearch(arr, "apple", FindGreaterThan) == 1);
-    check(binarySearch(arr, "elderberry", FindGreaterThan) == 5);
+    check(binarySearch(arr, "cherry", FindType::GreaterThan) == 3);
+    check(binarySearch(arr, "date", FindType::GreaterThan) == 4);
+    check(binarySearch(arr, "apple", FindType::GreaterThan) == 1);
+    check(binarySearch(arr, "elderberry", FindType::GreaterThan) == 5);
 
     // Test finding non-existing elements with Find_Greater_Than
-    check(binarySearch(arr, "blueberry", FindGreaterThan) == 2);
-    check(binarySearch(arr, "coconut", FindGreaterThan) == 3);
-    check(binarySearch(arr, "apricot", FindGreaterThan) == 1);
-    check(binarySearch(arr, "fig", FindGreaterThan) == 5);
+    check(binarySearch(arr, "blueberry", FindType::GreaterThan) == 2);
+    check(binarySearch(arr, "coconut", FindType::GreaterThan) == 3);
+    check(binarySearch(arr, "apricot", FindType::GreaterThan) == 1);
+    check(binarySearch(arr, "fig", FindType::GreaterThan) == 5);
 }
 
 TEST_CASE("binarySearch() with different numeric types") {
     // Test with float array
     Array<float> floatArr = {1.1f, 2.2f, 3.3f, 4.4f, 5.5f};
-    check(binarySearch(floatArr, 3.3f, FindGreaterThanOrEqual) == 2);
-    check(binarySearch(floatArr, 3.0f, FindGreaterThanOrEqual) == 2);
-    check(binarySearch(floatArr, 3.3f, FindGreaterThan) == 3);
-    check(binarySearch(floatArr, 6.0f, FindGreaterThanOrEqual) == 5);
+    check(binarySearch(floatArr, 3.3f, FindType::GreaterThanOrEqual) == 2);
+    check(binarySearch(floatArr, 3.0f, FindType::GreaterThanOrEqual) == 2);
+    check(binarySearch(floatArr, 3.3f, FindType::GreaterThan) == 3);
+    check(binarySearch(floatArr, 6.0f, FindType::GreaterThanOrEqual) == 5);
 
     // Test with double array
     Array<double> doubleArr = {1.1, 2.2, 3.3, 4.4, 5.5};
-    check(binarySearch(doubleArr, 3.3, FindGreaterThanOrEqual) == 2);
-    check(binarySearch(doubleArr, 3.0, FindGreaterThanOrEqual) == 2);
-    check(binarySearch(doubleArr, 3.3, FindGreaterThan) == 3);
-    check(binarySearch(doubleArr, 6.0, FindGreaterThanOrEqual) == 5);
+    check(binarySearch(doubleArr, 3.3, FindType::GreaterThanOrEqual) == 2);
+    check(binarySearch(doubleArr, 3.0, FindType::GreaterThanOrEqual) == 2);
+    check(binarySearch(doubleArr, 3.3, FindType::GreaterThan) == 3);
+    check(binarySearch(doubleArr, 6.0, FindType::GreaterThanOrEqual) == 5);
 
     // Test with s32 array
     Array<s32> s32_arr = {-5, -3, -1, 1, 3, 5};
-    check(binarySearch(s32_arr, -1, FindGreaterThanOrEqual) == 2);
-    check(binarySearch(s32_arr, 0, FindGreaterThanOrEqual) == 3);
-    check(binarySearch(s32_arr, -1, FindGreaterThan) == 3);
-    check(binarySearch(s32_arr, 10, FindGreaterThanOrEqual) == 6);
+    check(binarySearch(s32_arr, -1, FindType::GreaterThanOrEqual) == 2);
+    check(binarySearch(s32_arr, 0, FindType::GreaterThanOrEqual) == 3);
+    check(binarySearch(s32_arr, -1, FindType::GreaterThan) == 3);
+    check(binarySearch(s32_arr, 10, FindType::GreaterThanOrEqual) == 6);
 }
 
 //  ▄▄  ▄▄        ▄▄                  ▄▄
@@ -2100,7 +2100,7 @@ TEST_CASE("Decode truncated UTF-8") {
     // e3 80 82 is the valid UTF-8 encoding of U+3002
     // e3 80 is the truncated version of it
     // As such, it should be decoded as two 8-bit characters
-    OutPipeConvertUnicode conv{MemStream{}, UTF16_LE};
+    OutPipeConvertUnicode conv{MemStream{}, UnicodeType::UTF16LE};
     conv.write("\xe3\x80");
     conv.flush(false);
     String result = static_cast<MemStream&>(conv.childOut).moveToString();
@@ -2129,13 +2129,13 @@ ExtractedFormat extractFormatFromName(StringView name) {
         return {false, {}};
 
     if (components[1] == "utf8") {
-        tf.unicodeType = UTF8;
+        tf.unicodeType = UnicodeType::UTF8;
     } else if (components[1] == "utf16le") {
-        tf.unicodeType = UTF16_LE;
+        tf.unicodeType = UnicodeType::UTF16LE;
     } else if (components[1] == "utf16be") {
-        tf.unicodeType = UTF16_BE;
+        tf.unicodeType = UnicodeType::UTF16BE;
     } else if (components[1] == "win1252") {
-        tf.unicodeType = NOT_UNICODE;
+        tf.unicodeType = UnicodeType::None;
     } else {
         return {false, {}};
     }
@@ -2367,48 +2367,48 @@ TEST_CASE("Usage stats with reserve/commit/decommit/unreserve") {
     VirtualMemory::Properties props = VirtualMemory::getProperties();
     uptr regionSize = max(props.pageSize * 4, props.regionAlignment);
 
-    uptr initialReserved = VirtualMemory::totalReservedBytes.load(Relaxed);
-    uptr initialCommitted = VirtualMemory::totalCommittedBytes.load(Relaxed);
+    uptr initialReserved = VirtualMemory::totalReservedBytes.load(MemoryOrder::Relaxed);
+    uptr initialCommitted = VirtualMemory::totalCommittedBytes.load(MemoryOrder::Relaxed);
 
     // Reserve region
     void* addr = VirtualMemory::reserveRegion(regionSize);
     check(addr != nullptr);
-    check(VirtualMemory::totalReservedBytes.load(Relaxed) == initialReserved + regionSize);
-    check(VirtualMemory::totalCommittedBytes.load(Relaxed) == initialCommitted);
+    check(VirtualMemory::totalReservedBytes.load(MemoryOrder::Relaxed) == initialReserved + regionSize);
+    check(VirtualMemory::totalCommittedBytes.load(MemoryOrder::Relaxed) == initialCommitted);
 
     // Commit 3 pages
     VirtualMemory::commitPages(addr, props.pageSize * 3);
-    check(VirtualMemory::totalReservedBytes.load(Relaxed) == initialReserved + regionSize);
-    check(VirtualMemory::totalCommittedBytes.load(Relaxed) == initialCommitted + props.pageSize * 3);
+    check(VirtualMemory::totalReservedBytes.load(MemoryOrder::Relaxed) == initialReserved + regionSize);
+    check(VirtualMemory::totalCommittedBytes.load(MemoryOrder::Relaxed) == initialCommitted + props.pageSize * 3);
 
     // Decommit 1 page
     VirtualMemory::decommitPages(addr, props.pageSize);
-    check(VirtualMemory::totalReservedBytes.load(Relaxed) == initialReserved + regionSize);
-    check(VirtualMemory::totalCommittedBytes.load(Relaxed) == initialCommitted + props.pageSize * 2);
+    check(VirtualMemory::totalReservedBytes.load(MemoryOrder::Relaxed) == initialReserved + regionSize);
+    check(VirtualMemory::totalCommittedBytes.load(MemoryOrder::Relaxed) == initialCommitted + props.pageSize * 2);
 
     // Unreserve region (with 2 pages still committed)
     VirtualMemory::unreserveRegion(addr, regionSize, props.pageSize * 2);
-    check(VirtualMemory::totalReservedBytes.load(Relaxed) == initialReserved);
-    check(VirtualMemory::totalCommittedBytes.load(Relaxed) == initialCommitted);
+    check(VirtualMemory::totalReservedBytes.load(MemoryOrder::Relaxed) == initialReserved);
+    check(VirtualMemory::totalCommittedBytes.load(MemoryOrder::Relaxed) == initialCommitted);
 }
 
 TEST_CASE("Usage stats with alloc/free") {
     VirtualMemory::Properties props = VirtualMemory::getProperties();
     uptr regionSize = props.regionAlignment * 2;
 
-    uptr initialReserved = VirtualMemory::totalReservedBytes.load(Relaxed);
-    uptr initialCommitted = VirtualMemory::totalCommittedBytes.load(Relaxed);
+    uptr initialReserved = VirtualMemory::totalReservedBytes.load(MemoryOrder::Relaxed);
+    uptr initialCommitted = VirtualMemory::totalCommittedBytes.load(MemoryOrder::Relaxed);
 
     // Alloc region (reserves and commits)
     void* addr = VirtualMemory::allocRegion(regionSize);
     check(addr != nullptr);
-    check(VirtualMemory::totalReservedBytes.load(Relaxed) == initialReserved + regionSize);
-    check(VirtualMemory::totalCommittedBytes.load(Relaxed) == initialCommitted + regionSize);
+    check(VirtualMemory::totalReservedBytes.load(MemoryOrder::Relaxed) == initialReserved + regionSize);
+    check(VirtualMemory::totalCommittedBytes.load(MemoryOrder::Relaxed) == initialCommitted + regionSize);
 
     // Free region (decommits and unreserves)
     VirtualMemory::freeRegion(addr, regionSize);
-    check(VirtualMemory::totalReservedBytes.load(Relaxed) == initialReserved);
-    check(VirtualMemory::totalCommittedBytes.load(Relaxed) == initialCommitted);
+    check(VirtualMemory::totalReservedBytes.load(MemoryOrder::Relaxed) == initialReserved);
+    check(VirtualMemory::totalCommittedBytes.load(MemoryOrder::Relaxed) == initialCommitted);
 }
 
 //  ▄▄▄▄▄          ▄▄   ▄▄

@@ -17,8 +17,8 @@ Plywood provides generic algorithms that work with any array-like container. The
 
 | | |
 | --- | --- |
-| `FindGreaterThan` | Returns the first item strictly greater than `key` |
-| `FindGreaterThanOrEqual` | Returns the first item greater than or equal to `key` |
+| `FindType::GreaterThan` | Returns the first item strictly greater than `key` |
+| `FindType::GreaterThanOrEqual` | Returns the first item greater than or equal to `key` |
 
 ```
 Array<int> numbers = {8, 6, 4, 2};
@@ -26,5 +26,5 @@ sort(numbers);  // The array is now {2, 4, 6, 8}.
 
 find(numbers, 2);  // Returns 0.
 find(numbers, 1);  // Returns -1.
-binarySearch(numbers, 5, FindGreaterThan);  // Returns 2.
+binarySearch(numbers, 5, FindType::GreaterThan);  // Returns 2.
 ```

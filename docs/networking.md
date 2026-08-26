@@ -25,21 +25,21 @@ The `Network` class provides static methods for network initialization and hostn
 `static IPAddress resolveHostName(StringView hostName, IPVersion ipVersion)`
 > Resolves a hostname (e.g., "example.com") to an IP address using DNS.
 
-`static IPResult lastResult()`
+`static NetResult lastResult()`
 > Returns the result code from the most recent network operation.
 
-`IPResult` can take on any of the following values:
+`NetResult` can take on any of the following values:
 
 | Value | Description |
 | --- | --- |
-| `UNKNOWN` | An unrecognized or unexpected networking error occurred. |
 | `OK` | The operation completed successfully. |
-| `NO_SOCKET` | A socket could not be created because a system resource limit was reached. |
-| `UNREACHABLE` | The destination network could not be reached. |
-| `REFUSED` | The remote host refused the connection. |
-| `IN_USE` | The requested local address or port is already in use. |
-| `NOT_LISTENING` | `TCPListener::stopListening()` was called. |
-| `ACCESS_DENIED` | The operation was denied by an operating system security policy. |
+| `NoSocket` | A socket could not be created because a system resource limit was reached. |
+| `Unreachable` | The destination network could not be reached. |
+| `Refused` | The remote host refused the connection. |
+| `InUse` | The requested local address or port is already in use. |
+| `NotListening` | `TCPListener::stopListening()` was called. |
+| `AccessDenied` | The operation was denied by an operating system security policy. |
+| `Unknown` | An unrecognized or unexpected networking error occurred. |
 
 ## `IPAddress`
 
