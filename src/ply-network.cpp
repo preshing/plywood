@@ -134,27 +134,42 @@ TCPConnection::~TCPConnection() {
 struct TCPListenerImpl : TCPListener {
     SOCKET listenSocket = INVALID_SOCKET;
     WSAEVENT acceptEvent = WSA_INVALID_EVENT;
+    Mutex listenSocketMutex;
     Atomic<bool> stopRequested = false;
 };
 
 void TCPListener::destroy() {
     TCPListenerImpl* impl = static_cast<TCPListenerImpl*>(this);
-    closesocket(impl->listenSocket);
+    {
+        // Prevent a listener handle from being reused while an accept operation still references it.
+        LockGuard<Mutex> guard{impl->listenSocketMutex};
+        if (impl->listenSocket != INVALID_SOCKET) {
+            SOCKET listenSocket = impl->listenSocket;
+            impl->listenSocket = INVALID_SOCKET;
+            closesocket(listenSocket);
+        }
+    }
     WSACloseEvent(impl->acceptEvent);
     Heap::destroy(impl);
 }
 
 bool TCPListener::isListening() {
     TCPListenerImpl* impl = static_cast<TCPListenerImpl*>(this);
-    PLY_ASSERT(impl->listenSocket != INVALID_SOCKET);
     return !impl->stopRequested.load(Acquire);
 }
 
 void TCPListener::stopListening() {
     TCPListenerImpl* impl = static_cast<TCPListenerImpl*>(this);
-    PLY_ASSERT(impl->listenSocket != INVALID_SOCKET);
+    // Serialize the complete stop operation so every caller waits for the listener to close.
+    LockGuard<Mutex> guard{impl->listenSocketMutex};
     if (!impl->stopRequested.exchange(true, Release)) {
-        BOOL rc = WSASetEvent(impl->acceptEvent);
+        PLY_ASSERT(impl->listenSocket != INVALID_SOCKET);
+        SOCKET listenSocket = impl->listenSocket;
+        impl->listenSocket = INVALID_SOCKET;
+        closesocket(listenSocket);
+
+        // Use the native system event API so the stop wakeup doesn't depend on Winsock's state.
+        BOOL rc = SetEvent(impl->acceptEvent);
         PLY_ASSERT(rc);
         PLY_UNUSED(rc);
     }
@@ -162,7 +177,6 @@ void TCPListener::stopListening() {
 
 Owned<TCPConnection> TCPListener::accept() {
     TCPListenerImpl* impl = static_cast<TCPListenerImpl*>(this);
-    PLY_ASSERT(impl->listenSocket != INVALID_SOCKET);
     if (impl->stopRequested.load(Acquire)) {
         Network::lastResult_.store(IPResult::NOT_LISTENING);
         return nullptr;
@@ -191,22 +205,29 @@ Owned<TCPConnection> TCPListener::accept() {
             return nullptr;
         }
 
-        // Atomically reset the event and retrieve the pending socket events.
-        WSANETWORKEVENTS networkEvents = {};
-        int rc = WSAEnumNetworkEvents(impl->listenSocket, impl->acceptEvent, &networkEvents);
-        if (rc == SOCKET_ERROR || networkEvents.iErrorCode[FD_ACCEPT_BIT] != 0) {
-            Network::lastResult_.store(IPResult::UNKNOWN);
-            return nullptr;
-        }
-        if ((networkEvents.lNetworkEvents & FD_ACCEPT) == 0) {
-            continue;
-        }
+        {
+            // Keep the listener handle valid until its pending event and connection are consumed.
+            LockGuard<Mutex> guard{impl->listenSocketMutex};
+            if (impl->stopRequested.load(Acquire)) {
+                Network::lastResult_.store(IPResult::NOT_LISTENING);
+                return nullptr;
+            }
+            WSANETWORKEVENTS networkEvents = {};
+            int rc = WSAEnumNetworkEvents(impl->listenSocket, impl->acceptEvent, &networkEvents);
+            if (rc == SOCKET_ERROR || networkEvents.iErrorCode[FD_ACCEPT_BIT] != 0) {
+                Network::lastResult_.store(IPResult::UNKNOWN);
+                return nullptr;
+            }
+            if ((networkEvents.lNetworkEvents & FD_ACCEPT) == 0) {
+                continue;
+            }
 
-        remoteAddrLen = passedAddrLen;
-        hostSocket = ::accept(impl->listenSocket, (struct sockaddr*) &remoteAddr, &remoteAddrLen);
-        if (hostSocket == INVALID_SOCKET && WSAGetLastError() != WSAEWOULDBLOCK) {
-            Network::lastResult_.store(IPResult::UNKNOWN);
-            return nullptr;
+            remoteAddrLen = passedAddrLen;
+            hostSocket = ::accept(impl->listenSocket, (struct sockaddr*) &remoteAddr, &remoteAddrLen);
+            if (hostSocket == INVALID_SOCKET && WSAGetLastError() != WSAEWOULDBLOCK) {
+                Network::lastResult_.store(IPResult::UNKNOWN);
+                return nullptr;
+            }
         }
     }
 
@@ -664,6 +685,7 @@ Owned<TCPConnection> TCPListener::accept() {
 
 struct TCPListenerImpl : TCPListener {
     int listenSocket = -1;
+    Mutex stopMutex;
     Atomic<bool> stopRequested = false;
 };
 
@@ -683,6 +705,8 @@ bool TCPListener::isListening() {
 void TCPListener::stopListening() {
     TCPListenerImpl* impl = static_cast<TCPListenerImpl*>(this);
     PLY_ASSERT(impl->listenSocket >= 0);
+    // Serialize the complete stop operation so every caller waits for shutdown to finish.
+    LockGuard<Mutex> lock{impl->stopMutex};
     if (!impl->stopRequested.exchange(true, Release)) {
         ::shutdown(impl->listenSocket, SHUT_RDWR);
     }
