@@ -4,13 +4,13 @@
 If CMake is installed, the following command will build and run the `agent` sample application. On Windows, use `share\build-app.bat` instead.
 
 ```
-$ share/build-app.sh agent --run [-c <settings-path>] [-l] [-s] [prompt]
+$ share/build-app.sh agent --run [-c <settings-path>] [-p <provider>] [-m <model>] [-l] [-s] [prompt]
 ```
 
 Or, if the app is already built:
 
 ```
-$ bin/agent [-c <settings-path>] [-l] [-s] [prompt]
+$ bin/agent [-c <settings-path>] [-p <provider>] [-m <model>] [-l] [-s] [prompt]
 ```
 
 Available command-line options:
@@ -18,9 +18,22 @@ Available command-line options:
 | Short | Long | Description |
 |---|---|---|
 | `-c` | `--config` | Path to a JSON settings file. |
+| `-p` | `--provider` | Select a preset inference provider. |
+| `-m` | `--model` | The name of the model to use. |
 | `-l` | `--http-log` | Write a raw HTTP log. |
-| `-s` | `--serve` | Create a webserver on port 8081. |
+| `-s` | `--serve` | Serve a web UI on port 8081. |
 | `-h` | `--help` | Print the available options. |
+
+The `-p/--provider` option set the endpoint to one of the following presets. The choice of model can be overridden using `-m/--model`.
+
+| Provider | URL | Protocol | API key environment variable | Model |
+|---|---|---|---|---|
+| `openai` | `https://api.openai.com/v1/responses` | `responses` | `OPENAI_API_KEY` | `gpt-5.6-luna` |
+| `anthropic` | `https://api.anthropic.com/v1/messages` | `anthropic` | `ANTHROPIC_API_KEY` | `claude-haiku-4.5` |
+| `ollama-cloud` | `https://ollama.com/v1/chat/completions` | `completions` | `OLLAMA_API_KEY` | `deepseek-v4-flash` |
+| `dwarfstar` | `http://127.0.0.1:8000/v1/chat/completions` | `completions` | (none) | `deepseek-v4-flash` |
+
+The agent always reads its API key from the environment variable named by the endpoint's `apiKeyEnv` property.
 
 If `-c/--config` is specified, the app loads settings directly from the specified file. Otherwise, the app searches for a file named `agent.json` in the current working directory. If none is found, it checks each ancestor directory and loads the first `agent.json` file it finds.
 

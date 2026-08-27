@@ -25,6 +25,8 @@ using namespace ply;
 
 struct CommandLineOptions {
     String settingsPath;
+    String provider;
+    String model;
     bool enableHttpLog = false;
     bool runWebServer = false;
     String userPrompt;
@@ -1138,6 +1140,40 @@ static bool loadSettings() {
     return true;
 }
 
+// Overrides the loaded endpoint settings with sensible defaults for the provider
+// specified on the command line, if any.
+static bool applyProviderOverride() {
+    if (!options.provider)
+        return true;
+
+    // Set endpoint defaults for the selected provider.
+    if (options.provider == "openai") {
+        agentSettings.endPoint.url = "https://api.openai.com/v1/responses";
+        agentSettings.endPoint.apiKeyEnv = "OPENAI_API_KEY";
+        agentSettings.endPoint.protocol = Protocol::Responses;
+        agentSettings.endPoint.model = "gpt-5.6-luna";
+    } else if (options.provider == "anthropic") {
+        agentSettings.endPoint.url = "https://api.anthropic.com/v1/messages";
+        agentSettings.endPoint.apiKeyEnv = "ANTHROPIC_API_KEY";
+        agentSettings.endPoint.protocol = Protocol::Anthropic;
+        agentSettings.endPoint.model = "claude-haiku-4.5";
+    } else if (options.provider == "ollama-cloud") {
+        agentSettings.endPoint.url = "https://ollama.com/v1/chat/completions";
+        agentSettings.endPoint.apiKeyEnv = "OLLAMA_API_KEY";
+        agentSettings.endPoint.protocol = Protocol::Completions;
+        agentSettings.endPoint.model = "deepseek-v4-flash";
+    } else if (options.provider == "dwarfstar") {
+        agentSettings.endPoint.url = "http://127.0.0.1:8000/v1/chat/completions";
+        agentSettings.endPoint.apiKeyEnv = "NONE";
+        agentSettings.endPoint.protocol = Protocol::Completions;
+        agentSettings.endPoint.model = "deepseek-v4-flash";
+    } else {
+        getStdErr().format("Unknown provider: {}\n", options.provider);
+        return false;
+    }
+    return true;
+}
+
 // Prints the command-line syntax and registered options.
 static void printUsage(Stream& out, StringView executablePath, const CommandLineParser& parser) {
     out.format("Usage: {} [options] [prompt]\n", executablePath);
@@ -1159,6 +1195,8 @@ int main(int argc, const char* argv[]) {
     // Parse command line options.
     CommandLineParser parser({
         {"-c", "--config", PLY_LOOKUP_MEMBER(CommandLineOptions, settingsPath), "Path to JSON settings file"},
+        {"-p", "--provider", PLY_LOOKUP_MEMBER(CommandLineOptions, provider), "Select a preset inference provider"},
+        {"-m", "--model", PLY_LOOKUP_MEMBER(CommandLineOptions, model), "Model name to use"},
         {"-l", "--http-log", PLY_LOOKUP_MEMBER(CommandLineOptions, enableHttpLog), "Write raw HTTP log"},
         {"-s", "--serve", PLY_LOOKUP_MEMBER(CommandLineOptions, runWebServer), "Create a webserver on port 8081"},
         {"-h", "--help", PLY_LOOKUP_MEMBER(CommandLineOptions, printUsage), "Print this help"},
@@ -1188,6 +1226,14 @@ int main(int argc, const char* argv[]) {
     // Load agent settings.
     if (!loadSettings())
         return 1;
+
+    // Apply command-line overrides. -m/--model takes precedence over both the
+    // settings file and the model default of -p/--provider.
+    if (!applyProviderOverride())
+        return 1;
+    if (options.model) {
+        agentSettings.endPoint.model = options.model;
+    }
 
     // Ensure a prompt was specified on the command line or in the JSON settings.
     if (!options.userPrompt) {
@@ -1258,6 +1304,8 @@ int main(int argc, const char* argv[]) {
 
 PLY_STRUCT_BEGIN(CommandLineOptions)
 PLY_STRUCT_MEMBER(settingsPath)
+PLY_STRUCT_MEMBER(provider)
+PLY_STRUCT_MEMBER(model)
 PLY_STRUCT_MEMBER(enableHttpLog)
 PLY_STRUCT_MEMBER(runWebServer)
 PLY_STRUCT_MEMBER(printUsage)

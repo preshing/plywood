@@ -1158,7 +1158,7 @@ void onError(Agent::Impl* impl, StringView message) {
 // When authentication is rejected, identify the environment variable that supplied the key.
 static String makeHTTPErrorMessage(u32 statusCode, StringView responseBody, StringView apiKeyEnv) {
     MemStream httpMessage;
-    if ((statusCode == 401) && apiKeyEnv) {
+    if ((statusCode == 401) && apiKeyEnv && (apiKeyEnv != "NONE")) {
         httpMessage.format("The API key stored in {} was rejected by the server.\n", apiKeyEnv);
     }
     httpMessage.format("HTTP response code {}", statusCode);
@@ -1212,12 +1212,17 @@ void performInferenceRequest(Agent::Impl* impl) {
     Map<String, String> headers;
     *headers.insert("Content-Type").value = "application/json";
     {
-        String apiKey = getEnvironmentVariable(impl->settings.endPoint.apiKeyEnv);
-        if (!apiKey) {
-            LockGuard<Mutex> guard{impl->toolCtx.mutex};
-            onError(impl, String::format("Missing API key: environment variable {} is not set",
-                                         impl->settings.endPoint.apiKeyEnv));
-            return;
+        StringView apiKeyEnv = impl->settings.endPoint.apiKeyEnv;
+        String apiKey;
+        if (apiKeyEnv == "NONE") {
+            apiKey = "NONE";
+        } else {
+            apiKey = getEnvironmentVariable(apiKeyEnv);
+            if (!apiKey) {
+                LockGuard<Mutex> guard{impl->toolCtx.mutex};
+                onError(impl, String::format("Missing API key: environment variable {} is not set", apiKeyEnv));
+                return;
+            }
         }
         if (impl->settings.endPoint.protocol == Protocol::Anthropic) {
             *headers.insert("x-api-key").value = std::move(apiKey);
@@ -1330,8 +1335,8 @@ void performInferenceRequest(Agent::Impl* impl) {
 
     // Replace the generic HTTP failure with the provider's JSON error message when available.
     if (state.statusCode != 0 && state.statusCode != 200) {
-        state.errorMessage = makeHTTPErrorMessage(state.statusCode, state.errorBody.moveToString(),
-                                                  impl->settings.endPoint.apiKeyEnv);
+        state.errorMessage =
+            makeHTTPErrorMessage(state.statusCode, state.errorBody.moveToString(), impl->settings.endPoint.apiKeyEnv);
     }
 
     // Report any error that occurred during the request.
