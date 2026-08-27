@@ -1,19 +1,18 @@
 Plywood C++ Runtime Library
 ===========================
 
-Plywood is a cross-platform C++ runtime library that can be used as an alternative to the C and C++ Standard Libraries. It aims to deliver everything you need from a runtime library in a small amount of code with an easy-to-use API. Several higher-level libraries are also available.
+Plywood is a cross-platform C++ runtime library that can be used as an alternative to the C and C++ Standard Libraries. It aims to deliver everything you need from a runtime library in a small amount of code with an easy-to-use API. Several higher-level libraries are also included.
 
-For a more complete overview of the project, see [Project Overview](docs/project-overview.md).
+Full documentation is available in the `docs/` folder. Start with [Introduction](docs/introduction.md) and [Project Overview](docs/project-overview.md). Also hosted online at: https://plywood.dev/docs
 
-Official website: https://plywood.dev
 GitHub repository: https://github.com/preshing/plywood
 
 ## Coding Style
 
-- C++14 language features only.
-- Use the provided `.clang-format` rules for formatting.
-- Type names in `PascalCase`; variable and function names in `camelCase`.
-- Every signiciant code block should begin with a brief comment to explain what it does.
+- Use C++14 language features only.
+- Use the provided `.clang-format` for formatting.
+- Type and enumerator names in `PascalCase`; variable and function names in `camelCase`.
+- Every significant code block should begin with a brief comment to explain what it does.
 - Use the fewest line of code possible without sacrificing readability.
-- Use `this->` to refer to other function and data members within each member function.
-- The body of every `if`, `else`, `do`, `while` and `for` statement must be surrounded by curly braces, except when it consists of exactly one `continue`, `return`, or `break` statement. In those three single-statement cases, curly braces must be omitted.
+- Always use `this->` to refer to member functions and member variables inside the same class.
+- The body of every `if`, `else`, `do`, `while` and `for` statement must be surrounded by `{` curly braces `}`, unless it consists of a single `continue`, `return`, or `break` statement, in which case curly braces must be omitted.

@@ -1,9 +1,9 @@
 Project Overview
 ================
 
-The Plywood runtime library consists of four main components and several higher-level libraries. Each component can be integrated separately depending on the needs of your project. Several sample applications are also included.
+The Plywood runtime library consists of four main modules and several higher-level libraries, each consisting of a single pair of `.h` and `.cpp` files. Each module can be integrated separately depending on the needs of your project. Several sample applications are also included.
 
-**Main Runtime Library:**
+**Main Modules:**
 
 - [System (`ply-system.h`)](/docs/system/index.md): Memory, timers, file systems, threads and processes.
 - [Math (`ply-math.h`)](/docs/math.md): Scalar and vector math suitable for games and UI layouts.
@@ -30,7 +30,7 @@ Whenever a Plywood `.h` file is included in a project, its corresponding `.cpp` 
 
 ## Directory Structure
 
-The Plywood repository has the following directory structure. The `build` and `bin` folders aren't stored in Git.
+The Plywood repository has the following directory structure. The `build` and `bin` folders are excluded from source control.
 
 ```
 plywood/
@@ -66,7 +66,7 @@ plywood/
 
 ## The `ply` Namespace
 
-All Plywood functions and types are defined in the `ply` namespace. Some higher-level libraries create nested namespaces, such as `ply::markdown`. If possible, importing `ply` directly into the global namespace is a convenient way to simplify name lookup.
+All Plywood functions and types are defined in the `ply` namespace. Some higher-level libraries create nested namespaces, such as `ply::markdown`. Importing `ply` directly into the global namespace is a convenient way to simplify name lookup, when possible.
 
 ```
 #include <ply-markdown.h>
