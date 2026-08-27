@@ -553,7 +553,9 @@ void CompletionsProtocolHandler::receiveLine(StringView line) {
         const json::Node& jDelta = jChoice.get("delta");
         if (!jDelta.isValid())
             continue;
-        if (jDelta.get("role").text() != "assistant")
+        // Some providers identify the role on the first delta only.
+        StringView role = jDelta.get("role").text();
+        if (role && role != "assistant")
             continue;
         const json::Node& jReasoning = jDelta.get("reasoning");
         if (jReasoning.text()) {
