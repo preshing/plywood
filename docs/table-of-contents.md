@@ -30,6 +30,7 @@
     - [`ply-tokenizer.h`: Tokenizer](/docs/high-level/tokenizer.md)
 - [Sample Applications](/docs/apps/index.md)
     - [`agent`](/docs/apps/agent.md)
+    - [`agent-proxy`](/docs/apps/agent-proxy.md)
     - [`banner-comment`](/docs/apps/banner-comment.md)
     - [`generate-docs`](/docs/apps/generate-docs.md)
     - [`serve-docs`](/docs/apps/serve-docs.md)

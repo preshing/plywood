@@ -11,6 +11,10 @@
 #include <ply-reflect.h>
 #include "test-suite.h"
 
+#if WITH_NETWORK_TESTS
+#include <ply-network.h>
+#endif
+
 #if WITH_SYSTEM_TESTS || WITH_NETWORK_TESTS || WITH_UNICODE_LOADING_TESTS
 #include "run-system-tests.h"
 #endif
@@ -287,6 +291,11 @@ int main(int argc, const char* argv[]) {
         return 1;
     }
 
+#if WITH_NETWORK_TESTS
+    // Keep networking initialized across all selected test suites.
+    Network::initialize(IPv4);
+#endif
+
     // Continue through every suite while retaining any earlier failure.
     bool success = true;
     for (TestSuite suite : suites) {
@@ -296,6 +305,10 @@ int main(int argc, const char* argv[]) {
             success = false;
         }
     }
+#if WITH_NETWORK_TESTS
+    // Release process-wide networking resources after the final suite.
+    Network::shutdown();
+#endif
     return success ? 0 : 1;
 }
 

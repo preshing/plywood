@@ -1159,7 +1159,7 @@ static bool applyProviderOverride() {
         agentSettings.endPoint.url = "https://api.anthropic.com/v1/messages";
         agentSettings.endPoint.apiKeyEnv = "ANTHROPIC_API_KEY";
         agentSettings.endPoint.protocol = Protocol::Anthropic;
-        agentSettings.endPoint.model = "claude-haiku-4.5";
+        agentSettings.endPoint.model = "claude-haiku-4-5";
     } else if (options.provider == "ollama-cloud") {
         agentSettings.endPoint.url = "https://ollama.com/v1/chat/completions";
         agentSettings.endPoint.apiKeyEnv = "OLLAMA_API_KEY";
@@ -1254,7 +1254,7 @@ int main(int argc, const char* argv[]) {
     Thread webServerThread;
     if (options.runWebServer) {
         Network::initialize(IPv4);
-        webServerThread.run([] { HTTPServer::run(8081, serveWebTranscript); });
+        webServerThread.run([] { HTTPServer::run({}, 8081, serveWebTranscript); });
     }
 
     // Create a transcript with the user's prompt as the first turn.

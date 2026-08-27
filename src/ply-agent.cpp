@@ -1208,25 +1208,22 @@ void performInferenceRequest(Agent::Impl* impl) {
     // Let the selected protocol translate the current transcript into a request body.
     String body = impl->protocolHandler->makeRequestBody();
 
-    // Apply the protocol-specific authentication headers alongside Content-Type.
+    // Apply the protocol-specific headers alongside Content-Type.
     Map<String, String> headers;
     *headers.insert("Content-Type").value = "application/json";
-    {
-        StringView apiKeyEnv = impl->settings.endPoint.apiKeyEnv;
-        String apiKey;
-        if (apiKeyEnv == "NONE") {
-            apiKey = "NONE";
-        } else {
-            apiKey = getEnvironmentVariable(apiKeyEnv);
-            if (!apiKey) {
-                LockGuard<Mutex> guard{impl->toolCtx.mutex};
-                onError(impl, String::format("Missing API key: environment variable {} is not set", apiKeyEnv));
-                return;
-            }
+    if (impl->settings.endPoint.protocol == Protocol::Anthropic) {
+        *headers.insert("anthropic-version").value = "2023-06-01";
+    }
+    StringView apiKeyEnv = impl->settings.endPoint.apiKeyEnv;
+    if (apiKeyEnv != "NONE") {
+        String apiKey = getEnvironmentVariable(apiKeyEnv);
+        if (!apiKey) {
+            LockGuard<Mutex> guard{impl->toolCtx.mutex};
+            onError(impl, String::format("Missing API key: environment variable {} is not set", apiKeyEnv));
+            return;
         }
         if (impl->settings.endPoint.protocol == Protocol::Anthropic) {
             *headers.insert("x-api-key").value = std::move(apiKey);
-            *headers.insert("anthropic-version").value = "2023-06-01";
         } else {
             *headers.insert("Authorization").value = String::format("Bearer {}", apiKey);
         }

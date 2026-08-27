@@ -153,7 +153,8 @@ struct TCPConnection {
 //
 
 struct TCPListener {
-    static Owned<TCPListener> create(u16 port);
+    // A null bindAddress listens on every local interface.
+    static Owned<TCPListener> create(const IPAddress& bindAddress, u16 port);
     void destroy();
 
     bool isListening();
@@ -243,19 +244,28 @@ private:
 struct HTTPServer {
     // Argument type used when the callback invokes a server response function.
     struct Response {
-        enum Code {
-            OK = 200,
-            PermanentRedirect = 301,
-            TemporaryRedirect = 302,
-            BadRequest = 400,
-            NotFound = 404,
-            InternalError = 500,
-        };
+        // Common HTTP status codes.
+        static const u32 OK = 200;
+        static const u32 PermanentRedirect = 301;
+        static const u32 TemporaryRedirect = 302;
+        static const u32 BadRequest = 400;
+        static const u32 Unauthorized = 401;
+        static const u32 Forbidden = 403;
+        static const u32 NotFound = 404;
+        static const u32 MethodNotAllowed = 405;
+        static const u32 RequestTimeout = 408;
+        static const u32 Conflict = 409;
+        static const u32 UnprocessableContent = 422;
+        static const u32 TooManyRequests = 429;
+        static const u32 InternalError = 500;
+        static const u32 BadGateway = 502;
+        static const u32 ServiceUnavailable = 503;
+        static const u32 GatewayTimeout = 504;
 
-        Code code = InternalError;
+        u32 code = InternalError;
         // Header keys are stored in all lowercase.
         Map<String, String> headers;
-        explicit Response(Code code) : code{code} {
+        explicit Response(u32 code) : code{code} {
         }
     };
 
@@ -276,12 +286,12 @@ struct HTTPServer {
         // The connection will be closed when the Stream is destroyed.
         Stream beginStreamingResponse(Response&& response);
         // Send a basic HTML error page with the given HTTP status code.
-        void sendGenericResponse(Response::Code responseCode);
+        void sendGenericResponse(u32 responseCode);
     };
 
     // Bind to the given port and run an HTTP server that dispatches incoming requests to the given callback function.
     // This function never returns.
-    static void run(u16 port, const Functor<void(Request& request)>& requestHandler);
+    static void run(const IPAddress& bindAddress, u16 port, const Functor<void(Request& request)>& requestHandler);
 
     // Sample request handler for testing purposes.
     static void echoPage(Request& request);

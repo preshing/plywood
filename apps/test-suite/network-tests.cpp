@@ -15,12 +15,10 @@
 #define TEST_CASE_PREFIX Network_
 
 NETWORK_TEST_CASE("TCPListener::stopListening unblocks accept") {
-    Network::initialize(IPv4);
-    Owned<TCPListener> listener = TCPListener::create(0);
+    Owned<TCPListener> listener = TCPListener::create({}, 0);
     if (!listener) {
         // Some environments prohibit opening listening sockets; still reject other failures.
         check(Network::lastResult() == NetResult::AccessDenied);
-        Network::shutdown();
         return;
     }
 
@@ -46,5 +44,19 @@ NETWORK_TEST_CASE("TCPListener::stopListening unblocks accept") {
     check(!listener->isListening());
 
     listener.clear();
-    Network::shutdown();
+}
+
+NETWORK_TEST_CASE("TCPListener accepts an explicit bind address") {
+    Owned<TCPListener> listener = TCPListener::create(IPAddress::localHost(IPv4), 0);
+    if (!listener) {
+        // Some environments prohibit opening listening sockets; still reject other failures.
+        check(Network::lastResult() == NetResult::AccessDenied);
+        return;
+    }
+
+    // A loopback-specific listener should start and stop through the normal API.
+    check(listener->isListening());
+    listener->stopListening();
+    check(!listener->isListening());
+    listener.clear();
 }

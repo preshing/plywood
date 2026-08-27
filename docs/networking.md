@@ -97,8 +97,8 @@ A `TCPListener` listens for incoming TCP connections on a specific port.
 
 {context class=TCPListener}
 
-`static Owned<TCPListener> create(u16 port)`
-> Creates a TCP listener bound to the specified port. The listener can accept incoming connections.
+`static Owned<TCPListener> create(const IPAddress& bindAddress, u16 port)`
+> Creates a TCP listener bound to the specified address and port. A null `bindAddress` listens on every local interface.
 
 `bool isListening()`
 > Returns `true` if `stopListening()` has not been called.
@@ -112,7 +112,7 @@ A `TCPListener` listens for incoming TCP connections on a specific port.
 ```
 // Simple echo server
 Network::initialize(IPVersion::V4);
-Owned<TCPListener> listener = TCPListener::create(8080);
+Owned<TCPListener> listener = TCPListener::create({}, 8080);
 
 while (true) {
     Owned<TCPConnection> conn = listener->accept();
@@ -250,7 +250,7 @@ int main() {
     Network::initialize(IPv4);
 
     // Run a webserver.
-    HTTPServer::run(8080, serverCallback);
+    HTTPServer::run({}, 8080, serverCallback);
 
     // Shut down the network.
     Network::shutdown();
@@ -258,10 +258,11 @@ int main() {
 }
 ```
 
-`static void HTTPServer::run(u16 port, const Functor<void(Request& request)>& requestHandler)`
+`static void HTTPServer::run(const IPAddress& bindAddress, u16 port, const Functor<void(Request& request)>& requestHandler)`
 > When this function is called, the calling thread is blocked for as long as the server keeps running.
 > `Network::initialize()` must be called first.
 > `requestHandler` is a user-provided callback function that handles individual HTTP requests.
+> A null `bindAddress` listens on every local interface.
 
 ### `HTTPServer::Request`
 
@@ -289,7 +290,7 @@ which exposes the following public data members and member functions:
 > Sends response headers only and returns a TCP stream for writing the body.
 > The connection is closed when the caller destroys the stream.
 
-`void sendGenericResponse(HTTPServer::Response::Code responseCode)`
+`void sendGenericResponse(u32 responseCode)`
 > Writes a generic HTML error page with the given status code.
 
 ### `HTTPServer::Response`
@@ -298,16 +299,26 @@ which exposes the following public data members and member functions:
 
 > | | |
 > | --- | --- |
-> | `Code code` | The HTTP status code to emit. Default is InternalError. |
+> | `u32 code` | The HTTP status code to emit. Default is 500 (InternalError). |
 > | `Map<String, String> headers` | Response headers to emit. |
 
-`HTTPServer::Response::Code` is an enum type with the following values:
+`HTTPServer::Response` exposes constants for the following status codes:
 
 | | |
 | --- | --- |
-| `Code::OK` | 200 |
-| `Code::PermanentRedirect` | 301 |
-| `Code::TemporaryRedirect` | 302 |
-| `Code::BadRequest` | 400 |
-| `Code::NotFound` | 404 |
-| `Code::InternalError` | 500 |
+| `Response::OK` | 200 |
+| `Response::PermanentRedirect` | 301 |
+| `Response::TemporaryRedirect` | 302 |
+| `Response::BadRequest` | 400 |
+| `Response::Unauthorized` | 401 |
+| `Response::Forbidden` | 403 |
+| `Response::NotFound` | 404 |
+| `Response::MethodNotAllowed` | 405 |
+| `Response::RequestTimeout` | 408 |
+| `Response::Conflict` | 409 |
+| `Response::UnprocessableContent` | 422 |
+| `Response::TooManyRequests` | 429 |
+| `Response::InternalError` | 500 |
+| `Response::BadGateway` | 502 |
+| `Response::ServiceUnavailable` | 503 |
+| `Response::GatewayTimeout` | 504 |

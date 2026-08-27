@@ -24,16 +24,17 @@ Available command-line options:
 | `-s` | `--serve` | Serve a web UI on port 8081. |
 | `-h` | `--help` | Print the available options. |
 
-The `-p/--provider` option set the endpoint to one of the following presets. The choice of model can be overridden using `-m/--model`.
+The `-p/--provider` option sets the endpoint to one of the following presets. The choice of model can be overridden using `-m/--model`.
 
 | Provider | URL | Protocol | API key environment variable | Model |
 |---|---|---|---|---|
 | `openai` | `https://api.openai.com/v1/responses` | `responses` | `OPENAI_API_KEY` | `gpt-5.6-luna` |
-| `anthropic` | `https://api.anthropic.com/v1/messages` | `anthropic` | `ANTHROPIC_API_KEY` | `claude-haiku-4.5` |
+| `anthropic` | `https://api.anthropic.com/v1/messages` | `anthropic` | `ANTHROPIC_API_KEY` | `claude-haiku-4-5` |
 | `ollama-cloud` | `https://ollama.com/v1/chat/completions` | `completions` | `OLLAMA_API_KEY` | `deepseek-v4-flash` |
 | `dwarfstar` | `http://127.0.0.1:8000/v1/chat/completions` | `completions` | (none) | `deepseek-v4-flash` |
 
-The agent always reads its API key from the environment variable named by the endpoint's `apiKeyEnv` property.
+The agent reads its API key from the environment variable named by the endpoint's `apiKeyEnv` property. If this
+property is `NONE`, authentication is omitted.
 
 If `-c/--config` is specified, the app loads settings directly from the specified path. If the specified path is a directory, the app tries to load `agent.json` from that directory. If `-c/--config` is not specified, the app searches for a file named `agent.json` in the current working directory; if none is found, it checks each ancestor directory, loading the first `agent.json` file it finds.
 
@@ -42,7 +43,7 @@ The settings file must contain a single JSON object with any of the following pr
 - `endPoint`: A subobject with four required properties:
     - `url`: The URL of an inference server.
     - `protocol`: Must be one of "completions", "responses" or "anthropic".
-    - `apiKeyEnv`: The name of an environment variable containing an API key.
+    - `apiKeyEnv`: The name of an environment variable containing an API key, or `NONE` to omit authentication.
     - `model`: The name of the model to use.
 - `systemPrompt`: A system prompt message.
 - `userPrompt`: The user prompt. Can be overridden by passing a prompt on the command line.

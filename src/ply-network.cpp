@@ -290,7 +290,7 @@ SOCKET createSocket(int type) {
     return s;
 }
 
-Owned<TCPListener> TCPListener::create(u16 port) {
+Owned<TCPListener> TCPListener::create(const IPAddress& bindAddress, u16 port) {
     SOCKET listenSocket = createSocket(SOCK_STREAM);
     if (listenSocket == INVALID_SOCKET) { // lastResult_ is already set
         return {};
@@ -315,7 +315,12 @@ Owned<TCPListener> TCPListener::create(u16 port) {
         serverAddr.sin6_len = serverAddrLen;
 #endif
         serverAddr.sin6_family = AF_INET6;
-        serverAddr.sin6_addr = IN6ADDR_ANY_INIT;
+        if (bindAddress.isNull()) {
+            serverAddr.sin6_addr = IN6ADDR_ANY_INIT;
+        } else {
+            PLY_ASSERT(bindAddress.version() == IPv6);
+            memcpy(&serverAddr.sin6_addr, bindAddress.netOrdered, sizeof(serverAddr.sin6_addr));
+        }
         serverAddr.sin6_port = convertBigEndian(port);
     } else
 #endif
@@ -326,7 +331,8 @@ Owned<TCPListener> TCPListener::create(u16 port) {
         serverAddr.sin_len = serverAddrLen;
 #endif
         serverAddrV4->sin_family = AF_INET;
-        serverAddrV4->sin_addr.s_addr = INADDR_ANY;
+        PLY_ASSERT(bindAddress.isNull() || bindAddress.version() == IPv4);
+        serverAddrV4->sin_addr.s_addr = bindAddress.isNull() ? INADDR_ANY : bindAddress.netOrdered[3];
         serverAddrV4->sin_port = convertBigEndian(port);
     }
 
@@ -784,7 +790,7 @@ int createSocket(int type) {
     return s;
 }
 
-Owned<TCPListener> TCPListener::create(u16 port) {
+Owned<TCPListener> TCPListener::create(const IPAddress& bindAddress, u16 port) {
     int listenSocket = createSocket(SOCK_STREAM);
     if (listenSocket < 0) { // lastResult_ is already set
         return {};
@@ -809,7 +815,12 @@ Owned<TCPListener> TCPListener::create(u16 port) {
         serverAddr.sin6_len = serverAddrLen;
 #endif
         serverAddr.sin6_family = AF_INET6;
-        serverAddr.sin6_addr = IN6ADDR_ANY_INIT;
+        if (bindAddress.isNull()) {
+            serverAddr.sin6_addr = IN6ADDR_ANY_INIT;
+        } else {
+            PLY_ASSERT(bindAddress.version() == IPv6);
+            memcpy(&serverAddr.sin6_addr, bindAddress.netOrdered, sizeof(serverAddr.sin6_addr));
+        }
         serverAddr.sin6_port = convertBigEndian(port);
     } else
 #endif
@@ -820,7 +831,8 @@ Owned<TCPListener> TCPListener::create(u16 port) {
         serverAddr.sin_len = serverAddrLen;
 #endif
         serverAddrV4->sin_family = AF_INET;
-        serverAddrV4->sin_addr.s_addr = INADDR_ANY;
+        PLY_ASSERT(bindAddress.isNull() || bindAddress.version() == IPv4);
+        serverAddrV4->sin_addr.s_addr = bindAddress.isNull() ? INADDR_ANY : bindAddress.netOrdered[3];
         serverAddrV4->sin_port = convertBigEndian(port);
     }
 
@@ -1331,7 +1343,7 @@ bool readChunkedBody(Stream& in, String* body) {
 }
 
 // Map HTTP status code to standard reason phrase
-StringView getResponseDescription(HTTPServer::Response::Code responseCode) {
+StringView getResponseDescription(u32 responseCode) {
     switch (responseCode) {
         case HTTPServer::Response::OK:
             return "OK";
@@ -1341,11 +1353,32 @@ StringView getResponseDescription(HTTPServer::Response::Code responseCode) {
             return "Found";
         case HTTPServer::Response::BadRequest:
             return "Bad Request";
+        case HTTPServer::Response::Unauthorized:
+            return "Unauthorized";
+        case HTTPServer::Response::Forbidden:
+            return "Forbidden";
         case HTTPServer::Response::NotFound:
             return "Not Found";
+        case HTTPServer::Response::MethodNotAllowed:
+            return "Method Not Allowed";
+        case HTTPServer::Response::RequestTimeout:
+            return "Request Timeout";
+        case HTTPServer::Response::Conflict:
+            return "Conflict";
+        case HTTPServer::Response::UnprocessableContent:
+            return "Unprocessable Content";
+        case HTTPServer::Response::TooManyRequests:
+            return "Too Many Requests";
         case HTTPServer::Response::InternalError:
-        default:
             return "Internal Server Error";
+        case HTTPServer::Response::BadGateway:
+            return "Bad Gateway";
+        case HTTPServer::Response::ServiceUnavailable:
+            return "Service Unavailable";
+        case HTTPServer::Response::GatewayTimeout:
+            return "Gateway Timeout";
+        default:
+            return "Unknown";
     }
 }
 
@@ -1405,7 +1438,7 @@ Stream HTTPServer::Request::beginStreamingResponse(Response&& response) {
 }
 
 // Write a minimal HTML error page with the given status code
-void HTTPServer::Request::sendGenericResponse(Response::Code responseCode) {
+void HTTPServer::Request::sendGenericResponse(u32 responseCode) {
     HTTPServerRequestImpl* req = static_cast<HTTPServerRequestImpl*>(this);
     Response response{responseCode};
     *response.headers.insert("content-type").value = "text/html";
@@ -1568,8 +1601,8 @@ void handleRequest(TCPConnection* tcpConn, const Functor<void(HTTPServer::Reques
 }
 
 // Accept connections on a port and handle each request in a new thread
-void HTTPServer::run(u16 port, const Functor<void(Request& request)>& requestHandler) {
-    Owned<TCPListener> listener = TCPListener::create(port);
+void HTTPServer::run(const IPAddress& bindAddress, u16 port, const Functor<void(Request& request)>& requestHandler) {
+    Owned<TCPListener> listener = TCPListener::create(bindAddress, port);
     if (!listener) {
         getStdErr().format("Error: Can't bind to port {}\n", port);
         return;
