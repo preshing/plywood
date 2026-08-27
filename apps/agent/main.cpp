@@ -1108,6 +1108,9 @@ static bool loadSettings() {
     if (options.settingsPath) {
         // Use the settings file specified on the command line, if any.
         settingsPath = makeAbsolutePath(options.settingsPath);
+        if (FileSystem::exists(settingsPath) == ExistsResult::Directory) {
+            settingsPath = joinPath(settingsPath, "agent.json");
+        }
     } else {
         // Otherwise, search the working directory and each of its ancestors up to the file system root.
         String searchDir = FileSystem::getWorkingDirectory();
@@ -1194,7 +1197,8 @@ int main(int argc, const char* argv[]) {
 
     // Parse command line options.
     CommandLineParser parser({
-        {"-c", "--config", PLY_LOOKUP_MEMBER(CommandLineOptions, settingsPath), "Path to JSON settings file"},
+        {"-c", "--config", PLY_LOOKUP_MEMBER(CommandLineOptions, settingsPath),
+         "Path to JSON settings file or directory"},
         {"-p", "--provider", PLY_LOOKUP_MEMBER(CommandLineOptions, provider), "Select a preset inference provider"},
         {"-m", "--model", PLY_LOOKUP_MEMBER(CommandLineOptions, model), "Model name to use"},
         {"-l", "--http-log", PLY_LOOKUP_MEMBER(CommandLineOptions, enableHttpLog), "Write raw HTTP log"},

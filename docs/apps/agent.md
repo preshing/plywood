@@ -17,7 +17,7 @@ Available command-line options:
 
 | Short | Long | Description |
 |---|---|---|
-| `-c` | `--config` | Path to a JSON settings file. |
+| `-c` | `--config` | Path to a JSON settings file or a directory. |
 | `-p` | `--provider` | Select a preset inference provider. |
 | `-m` | `--model` | The name of the model to use. |
 | `-l` | `--http-log` | Write a raw HTTP log. |
@@ -35,7 +35,7 @@ The `-p/--provider` option set the endpoint to one of the following presets. The
 
 The agent always reads its API key from the environment variable named by the endpoint's `apiKeyEnv` property.
 
-If `-c/--config` is specified, the app loads settings directly from the specified file. Otherwise, the app searches for a file named `agent.json` in the current working directory. If none is found, it checks each ancestor directory and loads the first `agent.json` file it finds.
+If `-c/--config` is specified, the app loads settings directly from the specified path. If the specified path is a directory, the app tries to load `agent.json` from that directory. If `-c/--config` is not specified, the app searches for a file named `agent.json` in the current working directory; if none is found, it checks each ancestor directory, loading the first `agent.json` file it finds.
 
 The settings file must contain a single JSON object with any of the following properties:
 
