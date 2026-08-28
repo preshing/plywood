@@ -21,6 +21,7 @@
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <sys/wait.h>
 #include <dirent.h>
 #include <fcntl.h>
 #if defined(PLY_APPLE)
@@ -6820,5 +6821,615 @@ void DirectoryWatcher::stop() {
 
 #endif
 #endif // PLY_WITH_DIRECTORY_WATCHER
+
+//   ▄▄▄▄         ▄▄
+//  ██  ▀▀ ▄▄  ▄▄ ██▄▄▄  ▄▄▄▄▄  ▄▄▄▄▄   ▄▄▄▄   ▄▄▄▄  ▄▄▄▄   ▄▄▄▄   ▄▄▄▄
+//   ▀▀▀█▄ ██  ██ ██  ██ ██  ██ ██  ▀▀ ██  ██ ██    ██▄▄██ ▀█▄▄▄  ▀█▄▄▄
+//  ▀█▄▄█▀ ▀█▄▄██ ██▄▄█▀ ██▄▄█▀ ██     ▀█▄▄█▀ ▀█▄▄▄ ▀█▄▄▄   ▄▄▄█▀  ▄▄▄█▀
+//                       ██
+
+#if defined(PLY_WINDOWS)
+
+Subprocess::~Subprocess() {
+    PLY_ASSERT(this->childProcess != INVALID_HANDLE_VALUE);
+    CloseHandle(this->childProcess);
+    CloseHandle(this->childMainThread);
+}
+
+s32 Subprocess::join() {
+    PLY_ASSERT(this->childProcess != INVALID_HANDLE_VALUE);
+    DWORD rc = WaitForSingleObject(this->childProcess, INFINITE);
+    PLY_ASSERT(rc == WAIT_OBJECT_0);
+    PLY_UNUSED(rc);
+    // FIXME: Add an assert here to ensure that readFromStdOut & readFromStdErr have been drained (?).
+    DWORD exitCode;
+    BOOL rc2 = GetExitCodeProcess(this->childProcess, &exitCode);
+    PLY_ASSERT(rc2 != 0);
+    PLY_UNUSED(rc2);
+    return (s32) exitCode;
+}
+
+//--------------------------------
+// NULL input/output
+//--------------------------------
+PLY_NO_INLINE HANDLE getNullInHandleWin32() {
+    struct NullInPipe {
+        HANDLE handle = INVALID_HANDLE_VALUE;
+
+        PLY_NO_INLINE NullInPipe() {
+            this->handle =
+                CreateFileW(L"nul", GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+            PLY_ASSERT(this->handle != INVALID_HANDLE_VALUE);
+            BOOL rc = SetHandleInformation(this->handle, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT);
+            PLY_ASSERT(rc != 0);
+        }
+
+        PLY_NO_INLINE ~NullInPipe() {
+            PLY_ASSERT(this->handle != INVALID_HANDLE_VALUE);
+            CloseHandle(this->handle);
+        }
+    };
+
+    static NullInPipe nullInPipe;
+    return nullInPipe.handle;
+}
+
+PLY_NO_INLINE HANDLE getNullOutHandleWin32() {
+    struct NullOutPipe {
+        HANDLE handle = INVALID_HANDLE_VALUE;
+
+        PLY_NO_INLINE NullOutPipe() {
+            this->handle =
+                CreateFileW(L"nul", GENERIC_WRITE, FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+            PLY_ASSERT(this->handle != INVALID_HANDLE_VALUE);
+            BOOL rc = SetHandleInformation(this->handle, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT);
+            PLY_ASSERT(rc != 0);
+        }
+
+        PLY_NO_INLINE ~NullOutPipe() {
+            PLY_ASSERT(this->handle != INVALID_HANDLE_VALUE);
+            CloseHandle(this->handle);
+        }
+    };
+
+    static NullOutPipe nullOutPipe;
+    return nullOutPipe.handle;
+}
+
+PLY_NO_INLINE HANDLE createInheritableHandle(HANDLE origHandle) {
+    HANDLE currentProcess = GetCurrentProcess();
+    HANDLE dupHandle = INVALID_HANDLE_VALUE;
+    BOOL rc = DuplicateHandle(currentProcess, origHandle, currentProcess, &dupHandle, 0, TRUE, DUPLICATE_SAME_ACCESS);
+    PLY_ASSERT(rc != 0);
+    PLY_ASSERT(dupHandle != INVALID_HANDLE_VALUE);
+    return dupHandle;
+}
+
+// Writes an argument using the quoting rules recognized by the Microsoft C runtime.
+PLY_NO_INLINE void writeWinCrtArg(Stream& out, StringView arg) {
+    bool needsQuotes = arg.isEmpty();
+    for (char c : arg) {
+        if (c == ' ' || c == '\t' || c == '"') {
+            needsQuotes = true;
+            break;
+        }
+    }
+    if (!needsQuotes) {
+        out.write(arg);
+        return;
+    }
+
+    // Backslashes must be doubled immediately before a quote or the closing quote.
+    out.write('"');
+    u32 numBackslashes = 0;
+    for (char c : arg) {
+        if (c == '\\') {
+            numBackslashes++;
+        } else {
+            u32 numToWrite = c == '"' ? numBackslashes * 2 + 1 : numBackslashes;
+            for (u32 i = 0; i < numToWrite; i++) {
+                out.write('\\');
+            }
+            out.write(c);
+            numBackslashes = 0;
+        }
+    }
+    for (u32 i = 0; i < numBackslashes * 2; i++) {
+        out.write('\\');
+    }
+    out.write('"');
+}
+
+Owned<Subprocess> Subprocess::exec(StringView exePath, ArrayView<const StringView> args, StringView initialDir,
+                                   const Output& output, const Input& input) {
+    // These are temporary handles meant for the subprocess to inherit. They're manually closed below after the call
+    // to CreateProcessW.
+    HANDLE childStdInRead = INVALID_HANDLE_VALUE;
+    HANDLE childStdOutWrite = INVALID_HANDLE_VALUE;
+    HANDLE childStdErrWrite = INVALID_HANDLE_VALUE;
+
+    // These are the pipes that will be used to communicate with the subprocess. They'll be moved to the Subprocess
+    // object on success or automatically closed on failure.
+    Owned<Pipe> writeToChildStdIn;
+    Owned<Pipe> readFromChildStdOut;
+    Owned<Pipe> readFromChildStdErr;
+
+    // Set the default security attributes for any Win32 pipes created here.
+    SECURITY_ATTRIBUTES saAttr;
+    ZeroMemory(&saAttr, sizeof(saAttr));
+    saAttr.nLength = sizeof(saAttr);
+    saAttr.bInheritHandle = TRUE;
+    saAttr.lpSecurityDescriptor = NULL;
+
+    // Prepare startup information.
+    STARTUPINFOEXW startupInfoEx;
+    ZeroMemory(&startupInfoEx, sizeof(startupInfoEx));
+    STARTUPINFOW& startupInfo = startupInfoEx.StartupInfo;
+    startupInfo.cb = sizeof(startupInfoEx);
+    startupInfo.dwFlags = STARTF_USESTDHANDLES;
+    startupInfo.hStdError = INVALID_HANDLE_VALUE;
+    startupInfo.hStdOutput = INVALID_HANDLE_VALUE;
+    startupInfo.hStdInput = INVALID_HANDLE_VALUE;
+
+    //-----------------------------------------------------------
+    // Configure child process's stdin
+    //-----------------------------------------------------------
+    if (input.stdIn == PipeType::Redirect) {
+        if (input.stdInPipe) {
+            // input.stdInPipe MUST be a valid PipeHandle. Will fail here otherwise.
+            childStdInRead = createInheritableHandle(static_cast<PipeHandle*>(input.stdInPipe)->handle);
+            startupInfo.hStdInput = childStdInRead;
+        } else {
+            // Ignore the input.
+            startupInfo.hStdInput = getNullInHandleWin32();
+        }
+    } else {
+        PLY_ASSERT(input.stdIn == PipeType::Open);
+
+        // Create a pipe for the child process's stdin.
+        HANDLE childStdInWrite = INVALID_HANDLE_VALUE;
+        BOOL rc = CreatePipe(&childStdInRead, &childStdInWrite, &saAttr, 0);
+        PLY_ASSERT(rc != 0);
+        PLY_ASSERT(childStdInRead != INVALID_HANDLE_VALUE);
+        PLY_ASSERT(childStdInWrite != INVALID_HANDLE_VALUE);
+        // Ensure the write handle to the pipe for stdin is not inherited.
+        rc = SetHandleInformation(childStdInWrite, HANDLE_FLAG_INHERIT, 0);
+        PLY_ASSERT(rc != 0);
+        startupInfo.hStdInput = childStdInRead;
+        writeToChildStdIn = Heap::create<PipeHandle>(childStdInWrite, Pipe::HAS_WRITE_PERMISSION);
+    }
+
+    //-----------------------------------------------------------
+    // Configure child process's stdout
+    //-----------------------------------------------------------
+    if (output.stdOut == PipeType::Redirect) {
+        if (output.stdOutPipe) {
+            // output.stdOutPipe MUST be a valid PipeHandle. Will fail here otherwise.
+            childStdOutWrite = createInheritableHandle(static_cast<PipeHandle*>(output.stdOutPipe)->handle);
+            startupInfo.hStdOutput = childStdOutWrite;
+        } else {
+            // Ignore the output.
+            startupInfo.hStdOutput = getNullOutHandleWin32();
+        }
+    } else {
+        PLY_ASSERT(output.stdOut == PipeType::Open); // Only output.stdErr can be set to PipeType::StdOut.
+
+        // Create a pipe for the child process's stdout.
+        HANDLE childStdOutRead = INVALID_HANDLE_VALUE;
+        BOOL rc = CreatePipe(&childStdOutRead, &childStdOutWrite, &saAttr, 0);
+        PLY_ASSERT(rc != 0);
+        PLY_ASSERT(childStdOutRead != INVALID_HANDLE_VALUE);
+        PLY_ASSERT(childStdOutWrite != INVALID_HANDLE_VALUE);
+        // Ensure the read handle to the pipe for stdout is not inherited.
+        rc = SetHandleInformation(childStdOutRead, HANDLE_FLAG_INHERIT, 0);
+        PLY_ASSERT(rc != 0);
+        startupInfo.hStdOutput = childStdOutWrite;
+        readFromChildStdOut = Heap::create<PipeHandle>(childStdOutRead, Pipe::HAS_READ_PERMISSION);
+    }
+
+    //-----------------------------------------------------------
+    // Configure child process's stderr
+    //-----------------------------------------------------------
+    if (output.stdErr == PipeType::Redirect) {
+        if (output.stdErrPipe) {
+            // output.stdErrPipe MUST be a valid PipeHandle. Will fail here otherwise.
+            childStdErrWrite = createInheritableHandle(static_cast<PipeHandle*>(output.stdErrPipe)->handle);
+            startupInfo.hStdError = childStdErrWrite;
+        } else {
+            // Ignore the output.
+            startupInfo.hStdError = getNullOutHandleWin32();
+        }
+    } else if (output.stdErr == PipeType::StdOut) {
+        startupInfo.hStdError = startupInfo.hStdOutput;
+    } else {
+        PLY_ASSERT(output.stdErr == PipeType::Open);
+
+        // Create a pipe for the child process's stderr.
+        HANDLE childStdErrRead = INVALID_HANDLE_VALUE;
+        BOOL rc = CreatePipe(&childStdErrRead, &childStdErrWrite, &saAttr, 0);
+        PLY_ASSERT(childStdErrRead != INVALID_HANDLE_VALUE);
+        PLY_ASSERT(childStdErrWrite != INVALID_HANDLE_VALUE);
+        PLY_ASSERT(rc != 0);
+        // Ensure the read handle to the pipe for stderr is not inherited.
+        rc = SetHandleInformation(childStdErrRead, HANDLE_FLAG_INHERIT, 0);
+        PLY_ASSERT(rc != 0);
+        startupInfo.hStdError = childStdErrWrite;
+        readFromChildStdErr = Heap::create<PipeHandle>(childStdErrRead, Pipe::HAS_READ_PERMISSION);
+    }
+
+    // Create the command line.
+    MemStream cmdLine;
+    writeWinCrtArg(cmdLine, exePath);
+    for (StringView arg : args) {
+        cmdLine.write(' ');
+        writeWinCrtArg(cmdLine, arg);
+    }
+    WString wCmdLine = toWstring(cmdLine.moveToString());
+
+    // Create the child process.
+    WString win32Dir;
+    if (!initialDir.isEmpty()) {
+        win32Dir = win32_path_arg(initialDir, false);
+    }
+
+    // Restrict inheritance to the three handles used as the child's standard streams.
+    HANDLE handlesToInherit[3];
+    u32 numHandlesToInherit = 0;
+    auto addHandleToInherit = [&](HANDLE handle) {
+        for (u32 i = 0; i < numHandlesToInherit; i++) {
+            if (handlesToInherit[i] == handle)
+                return;
+        }
+        handlesToInherit[numHandlesToInherit++] = handle;
+    };
+    addHandleToInherit(startupInfo.hStdInput);
+    addHandleToInherit(startupInfo.hStdOutput);
+    addHandleToInherit(startupInfo.hStdError);
+    SIZE_T attributeListSize = 0;
+    InitializeProcThreadAttributeList(nullptr, 1, 0, &attributeListSize);
+    Array<u8> attributeListStorage;
+    attributeListStorage.resize(numericCast<u32>(attributeListSize));
+    startupInfoEx.lpAttributeList = reinterpret_cast<LPPROC_THREAD_ATTRIBUTE_LIST>(attributeListStorage.items());
+    BOOL rc = InitializeProcThreadAttributeList(startupInfoEx.lpAttributeList, 1, 0, &attributeListSize);
+    PLY_ASSERT(rc != 0);
+    rc = UpdateProcThreadAttribute(startupInfoEx.lpAttributeList, 0, PROC_THREAD_ATTRIBUTE_HANDLE_LIST,
+                                   handlesToInherit, sizeof(HANDLE) * numHandlesToInherit, nullptr, nullptr);
+    PLY_ASSERT(rc != 0);
+
+    // Create the child process using only the handles in the explicit inheritance list.
+    PROCESS_INFORMATION procInfo;
+    rc = CreateProcessW(NULL, wCmdLine, NULL, NULL,
+                        TRUE,                         // Inherit handles from the explicit list.
+                        EXTENDED_STARTUPINFO_PRESENT, // Use startupInfoEx.
+                        NULL, initialDir.isEmpty() ? NULL : (LPCWSTR) win32Dir, &startupInfo, &procInfo);
+    DeleteProcThreadAttributeList(startupInfoEx.lpAttributeList);
+
+    // Manually close any temporary handles that were passed to the subprocess.
+    if (childStdInRead != INVALID_HANDLE_VALUE) {
+        CloseHandle(childStdInRead);
+    }
+    if (childStdOutWrite != INVALID_HANDLE_VALUE) {
+        CloseHandle(childStdOutWrite);
+    }
+    if (childStdErrWrite != INVALID_HANDLE_VALUE) {
+        CloseHandle(childStdErrWrite);
+    }
+
+    if (!rc) {
+        // The subprocess could not be created.
+        return nullptr;
+    }
+
+    // Create the Subprocess object and return it.
+    Subprocess* subprocess = Heap::create<Subprocess>();
+    PLY_ASSERT(procInfo.hProcess != INVALID_HANDLE_VALUE);
+    PLY_ASSERT(procInfo.hThread != INVALID_HANDLE_VALUE);
+    subprocess->childProcess = procInfo.hProcess;
+    subprocess->childMainThread = procInfo.hThread;
+    subprocess->writeToStdIn = std::move(writeToChildStdIn);
+    subprocess->readFromStdOut = std::move(readFromChildStdOut);
+    subprocess->readFromStdErr = std::move(readFromChildStdErr);
+    return subprocess;
+}
+
+#elif defined(PLY_POSIX) && !defined(PLY_IOS)
+
+Subprocess::~Subprocess() {
+    if (this->childPid != -1) {
+        // If the child had already exited, a non-blocking (WNOHANG) wait cleans it up.
+        // If the child hasn't already exited, it will enter a "zombie" state when it exits later,
+        // but the system will clean it up when the parent process exits.
+        int status;
+        int rc = waitpid(this->childPid, &status, WNOHANG);
+        PLY_ASSERT(rc == this->childPid || rc == 0);
+        PLY_UNUSED(rc);
+    }
+}
+
+s32 Subprocess::join() {
+    PLY_ASSERT(this->childPid != -1);
+    int status;
+    int rc;
+    // Loop to ignore signals sent by the debugger on macOS.
+    do {
+        rc = waitpid(this->childPid, &status, 0);
+    } while (rc == -1 && errno == EINTR);
+    PLY_ASSERT(rc == this->childPid);
+    PLY_UNUSED(rc);
+    this->childPid = -1;
+    // FIXME: Add an assert here to ensure that readFromStdOut & readFromStdErr have been drained (?).
+    if (WIFEXITED(status)) {
+        return WEXITSTATUS(status);
+    } else {
+        return -1;
+    }
+}
+
+//--------------------------------
+// Null input/output descriptors
+//--------------------------------
+PLY_NO_INLINE int getNullInFdPosix() {
+    static int fd = [] {
+        int fd = open("/dev/null", O_RDONLY | O_CLOEXEC);
+        PLY_ASSERT(fd != -1);
+        return fd;
+    }();
+    int fd2 = fcntl(fd, F_DUPFD_CLOEXEC, 0);
+    PLY_ASSERT(fd2 != -1);
+    return fd2;
+}
+
+PLY_NO_INLINE int getNullOutFdPosix() {
+    static int fd = [] {
+        int fd = open("/dev/null", O_WRONLY | O_CLOEXEC);
+        PLY_ASSERT(fd != -1);
+        return fd;
+    }();
+    int fd2 = fcntl(fd, F_DUPFD_CLOEXEC, 0);
+    PLY_ASSERT(fd2 != -1);
+    return fd2;
+}
+
+Owned<Subprocess> Subprocess::exec(StringView exePath, ArrayView<const StringView> args, StringView initialDir,
+                                   const Output& output, const Input& input) {
+#if defined(PLY_APPLE)
+    // Use a mutex to avoid accidentally inheriting unwanted handles across concurrent calls to Subprocess::exec.
+    static Mutex execMutex;
+    LockGuard<Mutex> execGuard{execMutex};
+    auto createPipeCloseOnExecPosix = [](int fds[2]) {
+        // Create a pipe whose descriptors won't leak into concurrently executed programs.
+        int rc = pipe(fds);
+        if (rc == 0) {
+            rc = fcntl(fds[0], F_SETFD, FD_CLOEXEC);
+        }
+        if (rc == 0) {
+            rc = fcntl(fds[1], F_SETFD, FD_CLOEXEC);
+        }
+        return rc;
+    };
+#else
+    auto createPipeCloseOnExecPosix = [](int fds[2]) {
+        return pipe2(fds, O_CLOEXEC);
+    };
+#endif
+
+    int childStdInFD[2] = {-1, -1};
+    int childStdOutFD[2] = {-1, -1};
+    int childStdErrFD[2] = {-1, -1};
+
+    //-----------------------------------------------------------
+    // Configure child process's stdin
+    //-----------------------------------------------------------
+    if (input.stdIn == PipeType::Redirect) {
+        if (input.stdInPipe) {
+            // input.stdInPipe MUST be a valid PipeFD. Will fail here otherwise.
+            childStdInFD[0] = fcntl(static_cast<PipeFD*>(input.stdInPipe)->fd, F_DUPFD_CLOEXEC, 0);
+            PLY_ASSERT(childStdInFD[0] != -1);
+        } else {
+            // Ignore the input.
+            childStdInFD[0] = getNullInFdPosix();
+            PLY_ASSERT(childStdInFD[0] != -1);
+        }
+    } else {
+        PLY_ASSERT(input.stdIn == PipeType::Open);
+
+        // Create a pipe for the child process's stdin.
+        int rc = createPipeCloseOnExecPosix(childStdInFD);
+        PLY_ASSERT(rc == 0);
+        PLY_UNUSED(rc);
+    }
+
+    //-----------------------------------------------------------
+    // Configure child process's stdout
+    //-----------------------------------------------------------
+    if (output.stdOut == PipeType::Redirect) {
+        if (output.stdOutPipe) {
+            // output.stdOutPipe MUST be a valid PipeFD. Will fail here otherwise.
+            childStdOutFD[1] = fcntl(static_cast<PipeFD*>(output.stdOutPipe)->fd, F_DUPFD_CLOEXEC, 0);
+            PLY_ASSERT(childStdOutFD[1] != -1);
+        } else {
+            // Ignore the output.
+            childStdOutFD[1] = getNullOutFdPosix();
+            PLY_ASSERT(childStdOutFD[1] != -1);
+        }
+    } else {
+        PLY_ASSERT(output.stdOut == PipeType::Open); // Only output.stdErr can be set to PipeType::StdOut.
+
+        // Create a pipe for the child process's stdout.
+        int rc = createPipeCloseOnExecPosix(childStdOutFD);
+        PLY_ASSERT(rc == 0);
+        PLY_UNUSED(rc);
+    }
+
+    //-----------------------------------------------------------
+    // Configure child process's stderr
+    //-----------------------------------------------------------
+    if (output.stdErr == PipeType::Redirect) {
+        if (output.stdErrPipe) {
+            // output.stdErrPipe MUST be a valid PipeFD. Will fail here otherwise.
+            childStdErrFD[1] = fcntl(static_cast<PipeFD*>(output.stdErrPipe)->fd, F_DUPFD_CLOEXEC, 0);
+            PLY_ASSERT(childStdErrFD[1] != -1);
+        } else {
+            // Ignore the output.
+            childStdErrFD[1] = getNullOutFdPosix();
+            PLY_ASSERT(childStdErrFD[1] != -1);
+        }
+    } else if (output.stdErr == PipeType::StdOut) {
+        PLY_ASSERT(childStdOutFD[1] != -1);
+        childStdErrFD[1] = childStdOutFD[1];
+    } else {
+        PLY_ASSERT(output.stdErr == PipeType::Open);
+
+        // Create a pipe for the child process's stderr.
+        int rc = createPipeCloseOnExecPosix(childStdErrFD);
+        PLY_ASSERT(rc == 0);
+        PLY_UNUSED(rc);
+    }
+
+    //-----------------------------------------------------------
+    // Prepare args to execv
+    //-----------------------------------------------------------
+    // FIXME: Optimize for fewer memory allocations.
+    String nullTerminatedExePath = exePath + '\0';
+    String nullTerminatedInitialDir;
+    if (initialDir) {
+        nullTerminatedInitialDir = initialDir + '\0';
+    }
+    Array<String> nullTerminatedArgs;
+    Array<char*> argsToExecv;
+    nullTerminatedArgs.resize(args.numItems());
+    argsToExecv.resize(args.numItems() + 2);
+    argsToExecv[0] = nullTerminatedExePath.bytes();
+    for (u32 i = 0; i < args.numItems(); i++) {
+        nullTerminatedArgs[i] = args[i] + '\0';
+        argsToExecv[i + 1] = nullTerminatedArgs[i].bytes();
+    }
+    argsToExecv[args.numItems() + 1] = nullptr;
+
+    //-----------------------------------------------------------
+    // Create a pipe that reports child setup errors to the parent
+    //-----------------------------------------------------------
+    int childErrorFD[2];
+    int rc = createPipeCloseOnExecPosix(childErrorFD);
+    PLY_ASSERT(rc == 0);
+    PLY_UNUSED(rc);
+
+    int childPid = fork();
+    if (childPid == 0) {
+        //-----------------------------------------------------------
+        // Child process
+        //-----------------------------------------------------------
+
+        // Close the parent's end of the child error pipe.
+        rc = close(childErrorFD[0]);
+        PLY_ASSERT(rc == 0);
+
+        // Redirect stdin and close temporary file descriptors in the child process.
+        rc = dup2(childStdInFD[0], STDIN_FILENO);
+        PLY_ASSERT(rc == STDIN_FILENO);
+        rc = close(childStdInFD[0]);
+        PLY_ASSERT(rc == 0);
+
+        // Redirect stdout and close temporary file descriptors.
+        rc = dup2(childStdOutFD[1], STDOUT_FILENO);
+        PLY_ASSERT(rc == STDOUT_FILENO);
+        if (childStdOutFD[1] != childStdErrFD[1]) {
+            rc = close(childStdOutFD[1]);
+            PLY_ASSERT(rc == 0);
+        }
+
+        // Redirect stderr and close temporary file descriptors.
+        rc = dup2(childStdErrFD[1], STDERR_FILENO);
+        PLY_ASSERT(rc == STDERR_FILENO);
+        rc = close(childStdErrFD[1]);
+        PLY_ASSERT(rc == 0);
+
+        // Execute the new process.
+        rc = 0;
+        if (nullTerminatedInitialDir) {
+            rc = chdir(nullTerminatedInitialDir.bytes());
+        }
+        // Only attempt to run if chdir was was successful.
+        if (rc == 0) {
+            execvp(nullTerminatedExePath.bytes(), argsToExecv.items());
+            // If execvp returns, that indicates an error.
+        }
+
+        // An error occurred spawning the subprocess.
+        // Report the error to the parent process and exit.
+        u8 failureMarker = 1;
+        ssize_t writeRC;
+        do {
+            writeRC = write(childErrorFD[1], &failureMarker, sizeof(failureMarker));
+        } while (writeRC == -1 && errno == EINTR);
+        PLY_ASSERT(writeRC == sizeof(failureMarker));
+        PLY_UNUSED(writeRC);
+        _exit(127);
+    }
+
+    //-----------------------------------------------------------
+    // Parent process
+    //-----------------------------------------------------------
+
+    // Close the child's pipe handles and expose the appropriate handles to the caller.
+    rc = close(childErrorFD[1]);
+    PLY_ASSERT(rc == 0);
+    rc = close(childStdInFD[0]);
+    PLY_ASSERT(rc == 0);
+    Owned<Pipe> writeToChildStdIn;
+    if (childStdInFD[1] >= 0) {
+        writeToChildStdIn = Heap::create<PipeFD>(childStdInFD[1], Pipe::HAS_WRITE_PERMISSION);
+    }
+    rc = close(childStdOutFD[1]);
+    PLY_ASSERT(rc == 0);
+    Owned<Pipe> readFromChildStdOut;
+    if (childStdOutFD[0] >= 0) {
+        readFromChildStdOut = Heap::create<PipeFD>(childStdOutFD[0], Pipe::HAS_READ_PERMISSION);
+    }
+    if (childStdOutFD[1] != childStdErrFD[1]) {
+        rc = close(childStdErrFD[1]);
+    }
+    PLY_ASSERT(rc == 0);
+    PLY_UNUSED(rc);
+    Owned<Pipe> readFromChildStdErr;
+    if (childStdErrFD[0] >= 0) {
+        readFromChildStdErr = Heap::create<PipeFD>(childStdErrFD[0], Pipe::HAS_READ_PERMISSION);
+    }
+
+    // Return immediately if fork failed, after closing every pipe created for this attempt.
+    if (childPid == -1) {
+        rc = close(childErrorFD[0]);
+        PLY_ASSERT(rc == 0);
+        return nullptr;
+    }
+
+    // Wait until exec closes the error pipe, or read the marker reported by failed child setup.
+    u8 failureMarker = 0;
+    ssize_t numErrorBytes;
+    do {
+        numErrorBytes = read(childErrorFD[0], &failureMarker, sizeof(failureMarker));
+    } while (numErrorBytes == -1 && errno == EINTR);
+    PLY_ASSERT(numErrorBytes == 0 || (numErrorBytes == sizeof(failureMarker) && failureMarker == 1));
+    rc = close(childErrorFD[0]);
+    PLY_ASSERT(rc == 0);
+    if (numErrorBytes != 0) {
+        int status;
+        do {
+            rc = waitpid(childPid, &status, 0);
+        } while (rc == -1 && errno == EINTR);
+        PLY_ASSERT(rc == childPid);
+        return nullptr;
+    }
+
+    // Create the Subprocess object after the child has successfully executed the requested program.
+    Subprocess* subprocess = Heap::create<Subprocess>();
+    subprocess->childPid = childPid;
+    subprocess->writeToStdIn = std::move(writeToChildStdIn);
+    subprocess->readFromStdOut = std::move(readFromChildStdOut);
+    subprocess->readFromStdErr = std::move(readFromChildStdErr);
+    return subprocess;
+}
+
+#endif // defined(PLY_POSIX) && !defined(PLY_IOS)
 
 } // namespace ply

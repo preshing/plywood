@@ -21,7 +21,7 @@ The Plywood runtime library consists of four main modules and several higher-lev
 **Sample Applications:**
 
 - [`agent`](/docs/apps/agent.md): Command-line agent with built-in web UI.
-- [`agent-proxy`](/docs/apps/agent-proxy.md): To protect API keys while working on `agent`.
+- [`agent-proxy`](/docs/apps/agent-proxy.md): Protects API keys while working on `agent`.
 - [`test-suite`](/docs/apps/test-suite.md): Automated tests to validate Plywood's API-correctness.
 - [`generate-docs`](/docs/apps/generate-docs.md): Generate the HTML version of Plywood's documentation.
 - [`serve-docs`](/docs/apps/serve-docs.md): Serve the HTML documentation locally.

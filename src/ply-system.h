@@ -4829,6 +4829,9 @@ String getCurrentExecutablePath();
 // Returns the value of the specified environment variable, or an empty string if the variable is unset.
 String getEnvironmentVariable(StringView name);
 
+// Not supported on iOS.
+#if !defined(PLY_IOS)
+
 struct Subprocess {
     enum class PipeType {
         Open,
@@ -4899,12 +4902,13 @@ struct Subprocess {
 #endif
 
     Subprocess() = default;
+    ~Subprocess();
 
     static Owned<Subprocess> exec(StringView exePath, ArrayView<const StringView> args, StringView initialDir,
                                   const Output& output, const Input& input = Input::open());
-    static Owned<Subprocess> execArgStr(StringView exePath, StringView argStr, StringView initialDir,
-                                        const Output& output, const Input& input = Input::open());
     s32 join();
 };
+
+#endif // !PLY_IOS
 
 } // namespace ply

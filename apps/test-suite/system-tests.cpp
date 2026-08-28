@@ -2441,6 +2441,77 @@ TEST_CASE("Usage stats with alloc/free") {
     check(VirtualMemory::totalCommittedBytes.load(MemoryOrder::Relaxed) == initialCommitted);
 }
 
+//   ▄▄▄▄         ▄▄
+//  ██  ▀▀ ▄▄  ▄▄ ██▄▄▄  ▄▄▄▄▄  ▄▄▄▄▄   ▄▄▄▄   ▄▄▄▄  ▄▄▄▄   ▄▄▄▄   ▄▄▄▄
+//   ▀▀▀█▄ ██  ██ ██  ██ ██  ██ ██  ▀▀ ██  ██ ██    ██▄▄██ ▀█▄▄▄  ▀█▄▄▄
+//  ▀█▄▄█▀ ▀█▄▄██ ██▄▄█▀ ██▄▄█▀ ██     ▀█▄▄█▀ ▀█▄▄▄ ▀█▄▄▄   ▄▄▄█▀  ▄▄▄█▀
+//                       ██
+
+#if !defined(PLY_IOS)
+
+#undef TEST_CASE_PREFIX
+#define TEST_CASE_PREFIX Subprocess_
+
+TEST_CASE("exec() with merged output") {
+    // Select a platform shell and a command with a nonzero exit status.
+    String shellPath;
+    Array<StringView> args;
+#if defined(PLY_WINDOWS)
+    shellPath = getEnvironmentVariable("COMSPEC");
+    if (!shellPath) {
+        shellPath = "cmd.exe";
+    }
+    args = {"/d", "/s", "/c", "echo stdout&echo stderr>&2&exit /b 7"};
+    StringView expectedOutput = "stdout\r\nstderr\r\n";
+#else
+    shellPath = "/bin/sh";
+    args = {"-c", "printf stdout; printf stderr >&2; exit 7"};
+    StringView expectedOutput = "stdoutstderr";
+#endif
+
+    // Capture the merged stream through Plywood's process pipes.
+    Owned<Subprocess> process =
+        Subprocess::exec(shellPath, args, {}, Subprocess::Output::openMerged(), Subprocess::Input::ignore());
+    check(process);
+    if (!process)
+        return;
+    MemStream output;
+    while (output.makeWritable()) {
+        u32 numBytes = process->readFromStdOut->read({output.curByte, output.endByte});
+        if (numBytes == 0)
+            break;
+        output.curByte += numBytes;
+    }
+    check(output.moveToString() == expectedOutput);
+    check(process->join() == 7);
+}
+
+TEST_CASE("exec() reports child setup errors") {
+    // Select a path that is guaranteed not to exist on the current platform.
+#if defined(PLY_WINDOWS)
+    StringView nonexistentPath = "?:/plywood-nonexistent";
+#else
+    StringView nonexistentPath = "/dev/null/nonexistent";
+#endif
+
+    // A successful spawn returns the running subprocess.
+    Owned<Subprocess> success = Subprocess::exec(getCurrentExecutablePath(), {"--help"}, {},
+                                                 Subprocess::Output::ignore(), Subprocess::Input::ignore());
+    check(success && success->join() == 0);
+
+    // A working directory error is reported without running the executable in the parent directory.
+    Owned<Subprocess> badDir = Subprocess::exec(getCurrentExecutablePath(), {"--help"}, nonexistentPath,
+                                                Subprocess::Output::ignore(), Subprocess::Input::ignore());
+    check(!badDir);
+
+    // An executable lookup error is reported to the parent as a failed spawn.
+    Owned<Subprocess> badExe = Subprocess::exec(nonexistentPath, {}, {}, Subprocess::Output::ignore(),
+                                                Subprocess::Input::ignore());
+    check(!badExe);
+}
+
+#endif // !defined(PLY_IOS)
+
 //  ▄▄▄▄▄          ▄▄   ▄▄
 //  ██  ██  ▄▄▄▄  ▄██▄▄ ██▄▄▄
 //  ██▀▀▀   ▄▄▄██  ██   ██  ██
