@@ -1087,10 +1087,12 @@ static bool loadSettingsWithIncludes(StringView settingsPath, Array<String>& inc
                 // Register the tool on first encounter.
                 Owned<ToolSet::Handler>* found = agentSettings.toolSet.handlers.find(toolName);
                 if (!found) {
-                    if (toolName == "shell") {
-                        addShellTool(&agentSettings.toolSet);
-                    } else if (toolName == "read") {
+                    if (toolName == "read") {
                         addReadTool(&agentSettings.toolSet);
+#if !defined(PLY_IOS)
+                    } else if (toolName == "shell") {
+                        addShellTool(&agentSettings.toolSet);
+#endif // !defined(PLY_IOS)
                     } else if (toolName == "write") {
                         addWriteTool(&agentSettings.toolSet);
                     } else if (toolName == "list_dir") {

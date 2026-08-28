@@ -45,28 +45,13 @@ FilteredPath filterPath(ToolContext* toolCtx, StringView relPath) {
 //   ▄▄▄█▀ ██  ██ ▀█▄▄▄  ▄██▄ ▄██▄
 //
 
+#if !defined(PLY_IOS)
+
 void shellToolHandler(ToolContext* toolCtx, Transcript::Message* toolCall, const json::Node& arguments) {
     // Validate arguments.
     const json::Node& commandArg = arguments.get("command");
     if (!commandArg.isText()) {
         toolCtx->appendResponse(toolCall, "Error: 'command' argument is required.");
-        return;
-    }
-    const json::Node& pathArg = arguments.get("path");
-    if (!pathArg.isText()) {
-        toolCtx->appendResponse(toolCall, "Error: 'path' argument is required.");
-        return;
-    }
-
-    // Check permissions and make sure the working directory exists.
-    StringView path = pathArg.text();
-    FilteredPath fp = filterPath(toolCtx, path);
-    if (!fp.ok) {
-        toolCtx->appendResponse(toolCall, "Error: Permission denied.");
-        return;
-    }
-    if (!FileSystem::isDir(fp.absPath)) {
-        toolCtx->appendResponse(toolCall, String::format("Error: '{}' is not a directory.", path));
         return;
     }
 
@@ -86,8 +71,8 @@ void shellToolHandler(ToolContext* toolCtx, Transcript::Message* toolCall, const
     shellArgs.append("-c");
 #endif
     shellArgs.append(commandArg.text());
-    Owned<Subprocess> process = Subprocess::exec(shellPath, shellArgs, fp.absPath, Subprocess::Output::openMerged(),
-                                                 Subprocess::Input::ignore());
+    Owned<Subprocess> process = Subprocess::exec(shellPath, shellArgs, toolCtx->workingDirectory,
+                                                 Subprocess::Output::openMerged(), Subprocess::Input::ignore());
     if (!process) {
         toolCtx->appendResponse(toolCall, "Error: Could not start shell command.");
         return;
@@ -129,22 +114,18 @@ void shellToolHandler(ToolContext* toolCtx, Transcript::Message* toolCall, const
 void addShellTool(ToolSet* toolSet) {
     Owned<ToolSet::Handler> shellTool = Heap::create<ToolSet::Handler>();
     shellTool->name = "shell";
-    shellTool->description = "Execute a command using the system shell in a permitted working directory. "
+    shellTool->description = "Execute a command using the system shell in the current working directory. "
                              "Returns merged stdout/stderr, truncated to 5KB, followed by the exit code.";
     shellTool->parameters.append();
     shellTool->parameters.back().name = "command";
     shellTool->parameters.back().description = "Shell command to execute";
     shellTool->parameters.back().type = "string";
     shellTool->parameters.back().required = true;
-    shellTool->parameters.append();
-    shellTool->parameters.back().name = "path";
-    shellTool->parameters.back().description =
-        "Working directory for the command (relative or absolute path inside an allowed directory root)";
-    shellTool->parameters.back().type = "string";
-    shellTool->parameters.back().required = true;
     shellTool->handler = shellToolHandler;
     toolSet->handlers.insertItem(std::move(shellTool));
 }
+
+#endif // !defined(PLY_IOS)
 
 //                           ▄▄
 //  ▄▄▄▄▄   ▄▄▄▄   ▄▄▄▄   ▄▄▄██

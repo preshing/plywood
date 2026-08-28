@@ -231,7 +231,9 @@ struct ToolContext {
 };
 
 // Individual tool registration functions. Each adds a single tool to the ToolSet.
+#if !defined(PLY_IOS)
 void addShellTool(ToolSet* toolSet);
+#endif // !defined(PLY_IOS)
 void addReadTool(ToolSet* toolSet);
 void addWriteTool(ToolSet* toolSet);
 void addListDirTool(ToolSet* toolSet);
