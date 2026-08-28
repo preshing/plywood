@@ -231,6 +231,7 @@ struct ToolContext {
 };
 
 // Individual tool registration functions. Each adds a single tool to the ToolSet.
+void addShellTool(ToolSet* toolSet);
 void addReadTool(ToolSet* toolSet);
 void addWriteTool(ToolSet* toolSet);
 void addListDirTool(ToolSet* toolSet);

@@ -39,6 +39,113 @@ FilteredPath filterPath(ToolContext* toolCtx, StringView relPath) {
     return {false, {}};
 }
 
+//         ▄▄            ▄▄▄  ▄▄▄
+//   ▄▄▄▄  ██▄▄▄   ▄▄▄▄   ██   ██
+//  ▀█▄▄▄  ██  ██ ██▄▄██  ██   ██
+//   ▄▄▄█▀ ██  ██ ▀█▄▄▄  ▄██▄ ▄██▄
+//
+
+void shellToolHandler(ToolContext* toolCtx, Transcript::Message* toolCall, const json::Node& arguments) {
+    // Validate arguments.
+    const json::Node& commandArg = arguments.get("command");
+    if (!commandArg.isText()) {
+        toolCtx->appendResponse(toolCall, "Error: 'command' argument is required.");
+        return;
+    }
+    const json::Node& pathArg = arguments.get("path");
+    if (!pathArg.isText()) {
+        toolCtx->appendResponse(toolCall, "Error: 'path' argument is required.");
+        return;
+    }
+
+    // Check permissions and make sure the working directory exists.
+    StringView path = pathArg.text();
+    FilteredPath fp = filterPath(toolCtx, path);
+    if (!fp.ok) {
+        toolCtx->appendResponse(toolCall, "Error: Permission denied.");
+        return;
+    }
+    if (!FileSystem::isDir(fp.absPath)) {
+        toolCtx->appendResponse(toolCall, String::format("Error: '{}' is not a directory.", path));
+        return;
+    }
+
+    // Run the command through the default shell with closed stdin and merged stdout/stderr.
+    String shellPath;
+    Array<StringView> shellArgs;
+#if defined(PLY_WINDOWS)
+    shellPath = getEnvironmentVariable("COMSPEC");
+    if (!shellPath) {
+        shellPath = "cmd.exe";
+    }
+    shellArgs.append("/d");
+    shellArgs.append("/s");
+    shellArgs.append("/c");
+#else
+    shellPath = "/bin/sh";
+    shellArgs.append("-c");
+#endif
+    shellArgs.append(commandArg.text());
+    Owned<Subprocess> process = Subprocess::exec(shellPath, shellArgs, fp.absPath, Subprocess::Output::openMerged(),
+                                                 Subprocess::Input::ignore());
+    if (!process) {
+        toolCtx->appendResponse(toolCall, "Error: Could not start shell command.");
+        return;
+    }
+
+    // Stream up to 5 KB of output while continuing to drain the pipe after the limit.
+    constexpr u32 OutputLimit = 5000;
+    char buffer[4096];
+    u32 outputBytes = 0;
+    char lastOutputByte = 0;
+    bool outputTruncated = false;
+    while (u32 numBytes = process->readFromStdOut->read({buffer, sizeof(buffer)})) {
+        u32 numBytesToAppend = min(numBytes, OutputLimit - outputBytes);
+        if (numBytesToAppend > 0) {
+            toolCtx->appendResponse(toolCall, StringView{buffer, numBytesToAppend});
+            outputBytes += numBytesToAppend;
+            lastOutputByte = buffer[numBytesToAppend - 1];
+        }
+        outputTruncated |= numBytesToAppend < numBytes;
+    }
+    s32 exitCode = process->join();
+
+    // Report truncation and command status after all output has been consumed.
+    MemStream response;
+    if (outputBytes > 0 && lastOutputByte != '\n') {
+        response.write('\n');
+    }
+    if (outputTruncated) {
+        response.write("[Output truncated at 5000 bytes.]\n");
+    }
+    if (exitCode >= 0) {
+        response.format("Process exited with code {}.", exitCode);
+    } else {
+        response.write("Error: Could not obtain shell command exit status.");
+    }
+    toolCtx->appendResponse(toolCall, response.moveToString());
+}
+
+void addShellTool(ToolSet* toolSet) {
+    Owned<ToolSet::Handler> shellTool = Heap::create<ToolSet::Handler>();
+    shellTool->name = "shell";
+    shellTool->description = "Execute a command using the system shell in a permitted working directory. "
+                             "Returns merged stdout/stderr, truncated to 5KB, followed by the exit code.";
+    shellTool->parameters.append();
+    shellTool->parameters.back().name = "command";
+    shellTool->parameters.back().description = "Shell command to execute";
+    shellTool->parameters.back().type = "string";
+    shellTool->parameters.back().required = true;
+    shellTool->parameters.append();
+    shellTool->parameters.back().name = "path";
+    shellTool->parameters.back().description =
+        "Working directory for the command (relative or absolute path inside an allowed directory root)";
+    shellTool->parameters.back().type = "string";
+    shellTool->parameters.back().required = true;
+    shellTool->handler = shellToolHandler;
+    toolSet->handlers.insertItem(std::move(shellTool));
+}
+
 //                           ▄▄
 //  ▄▄▄▄▄   ▄▄▄▄   ▄▄▄▄   ▄▄▄██
 //  ██  ▀▀ ██▄▄██  ▄▄▄██ ██  ██
