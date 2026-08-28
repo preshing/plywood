@@ -516,8 +516,12 @@ struct TranscriptPrinter {
     s64 sectionStartTime = 0;
     uptr openOutputBytes = 0;
     bool openLastWasNewline = true; // ensures the timing line starts on its own line
-    u32 openToolCallID = 0;
     String openToolCallText; // accumulated raw text for a ToolCall section
+
+    // The tool call IDs used by the underlying protocol are local to each turn.
+    // Map them to displayed indices that increase across the entire transcript.
+    u32 nextDisplayedToolCallIndex = 1;
+    Map<u32, u32> displayedToolCallIndices;  // Reset at the end of each turn.
 
     // Incremental Markdown state for the currently open browser message.
     Owned<markdown::Parser> markdownParser;
@@ -536,6 +540,7 @@ struct TranscriptPrinter {
     void openSection(Transcript::Role role, u32 toolCallID, s64 timeStamp);
     void closeOpen(s64 endMicros);
     void flushToolResponses(s64 timeStamp);
+    u32 getDisplayedToolCallIndex(u32 toolCallID);
     void beginMarkdownMessage();
     void appendMarkdown(StringView text);
     void appendMarkdownBlockHtml(MemStream* html, Owned<markdown::Block>&& block);
@@ -631,6 +636,15 @@ void TranscriptPrinter::endMarkdownMessage(StringView footer) {
     webEndMessage(footer);
 }
 
+// Returns the transcript-wide displayed index corresponding to a turn-local tool call ID.
+u32 TranscriptPrinter::getDisplayedToolCallIndex(u32 toolCallID) {
+    auto ins = this->displayedToolCallIndices.insert(toolCallID);
+    if (!ins.wasFound) {
+        *ins.value = this->nextDisplayedToolCallIndex++;
+    }
+    return *ins.value;
+}
+
 void TranscriptPrinter::printStartup(StringView userPrompt) {
     s64 now = getUnixTimestamp();
 
@@ -709,7 +723,6 @@ void TranscriptPrinter::openSection(Transcript::Role role, u32 toolCallID, s64 t
     this->sectionStartTime = timeStamp;
     this->openOutputBytes = 0;
     this->openLastWasNewline = true;
-    this->openToolCallID = toolCallID;
     this->openToolCallText = {};
 
     Stream out = getStdOut();
@@ -737,13 +750,15 @@ void TranscriptPrinter::openSection(Transcript::Role role, u32 toolCallID, s64 t
             }
             this->openIsTextMsg = true;
             break;
-        case Transcript::Role::ToolCall:
-            out.format("{} [Tool Call #{}]\n", formatTimeStamp(timeStamp), toolCallID);
+        case Transcript::Role::ToolCall: {
+            u32 displayedToolCallIndex = this->getDisplayedToolCallIndex(toolCallID);
+            out.format("{} [Tool Call #{}]\n", formatTimeStamp(timeStamp), displayedToolCallIndex);
             if (options.runWebServer) {
-                webBeginMessage("ToolCall", formatTimeStamp(timeStamp), {}, toolCallID);
+                webBeginMessage("ToolCall", formatTimeStamp(timeStamp), {}, displayedToolCallIndex);
             }
             this->openIsTextMsg = false;
             break;
+        }
         default:
             this->openIsTextMsg = false;
             break;
@@ -810,7 +825,8 @@ void TranscriptPrinter::flushToolResponses(s64 timeStamp) {
             continue;
         response->flush();
         // Write tool response to stdout.
-        out.format("{} [Tool Response #{}]\n", formatTimeStamp(timeStamp), id);
+        u32 displayedToolCallIndex = this->getDisplayedToolCallIndex(id);
+        out.format("{} [Tool Response #{}]\n", formatTimeStamp(timeStamp), displayedToolCallIndex);
         for (const String& line : response->lines) {
             out.write(line);
         }
@@ -818,7 +834,7 @@ void TranscriptPrinter::flushToolResponses(s64 timeStamp) {
         out.format("{}\n", Separator);
         if (options.runWebServer) {
             // Display the response after all of its streamed chunks have arrived.
-            webEndToolResponse(id, formatTimeStamp(timeStamp));
+            webEndToolResponse(displayedToolCallIndex, formatTimeStamp(timeStamp));
         }
     }
     this->pendingResponses.clear();
@@ -860,7 +876,7 @@ void TranscriptPrinter::handleEvent(const TranscriptEvent& event) {
             }
             ins.value->append(event.text);
             if (options.runWebServer) {
-                webAppendToolResponse(event.toolCallID, event.text);
+                webAppendToolResponse(this->getDisplayedToolCallIndex(event.toolCallID), event.text);
             }
             break;
         }
@@ -874,6 +890,7 @@ void TranscriptPrinter::handleEvent(const TranscriptEvent& event) {
                 this->closeOpen(event.timeStamp);
             }
             this->flushToolResponses(event.timeStamp);
+            this->displayedToolCallIndices.clear();
             break;
         default:
             break;
