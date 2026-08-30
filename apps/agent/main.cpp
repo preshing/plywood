@@ -29,6 +29,7 @@ struct CommandLineOptions {
     String model;
     bool enableHttpLog = false;
     bool runWebServer = false;
+    bool openBrowser = false;
     String userPrompt;
     bool printUsage = false;
     PLY_DECLARE_TYPE_INFO(CommandLineOptions)
@@ -1224,6 +1225,9 @@ int main(int argc, const char* argv[]) {
         {"-m", "--model", PLY_LOOKUP_MEMBER(CommandLineOptions, model), "Model name to use"},
         {"-l", "--http-log", PLY_LOOKUP_MEMBER(CommandLineOptions, enableHttpLog), "Write raw HTTP log"},
         {"-s", "--serve", PLY_LOOKUP_MEMBER(CommandLineOptions, runWebServer), "Create a webserver on port 8081"},
+#if !defined(PLY_IOS)
+        {"-o", "--open", PLY_LOOKUP_MEMBER(CommandLineOptions, openBrowser), "Open the web UI"},
+#endif
         {"-h", "--help", PLY_LOOKUP_MEMBER(CommandLineOptions, printUsage), "Print this help"},
     });
     u32 numUserPrompts = 0;
@@ -1246,6 +1250,11 @@ int main(int argc, const char* argv[]) {
     if (numUserPrompts > 1) {
         getStdErr().write("Only one prompt may be specified on the command line.\n");
         return 1;
+    }
+
+    // Opening the web UI also enables the server that provides it.
+    if (options.openBrowser) {
+        options.runWebServer = true;
     }
 
     // Load agent settings.
@@ -1293,6 +1302,24 @@ int main(int argc, const char* argv[]) {
     TranscriptPrinter printer;
     printer.printStartup(options.userPrompt);
 
+#if !defined(PLY_IOS)
+    // Open the web UI in the default browser.
+    if (options.openBrowser) {
+#if defined(PLY_WINDOWS)
+        StringView launcher = "explorer.exe";
+#elif defined(PLY_APPLE)
+        StringView launcher = "/usr/bin/open";
+#else
+        StringView launcher = "xdg-open";
+#endif
+        Owned<Subprocess> browser = Subprocess::exec(launcher, {"http://localhost:8081"}, {}, Subprocess::Output::ignore(),
+                                                 Subprocess::Input::ignore());
+        if (!browser) {
+            getStdErr().write("Warning: Could not open the default web browser.\n");
+        }
+    }
+#endif
+
     // Start the agent.
     agentSettings.initialTranscript = transcript;
     agentSettings.enableHttpLog = options.enableHttpLog;
@@ -1333,5 +1360,6 @@ PLY_STRUCT_MEMBER(provider)
 PLY_STRUCT_MEMBER(model)
 PLY_STRUCT_MEMBER(enableHttpLog)
 PLY_STRUCT_MEMBER(runWebServer)
+PLY_STRUCT_MEMBER(openBrowser)
 PLY_STRUCT_MEMBER(printUsage)
 PLY_STRUCT_END()

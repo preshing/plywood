@@ -4,13 +4,13 @@
 If CMake is installed, the following command will build and run the `agent` sample application. On Windows, use `share\build-app.bat` instead.
 
 ```
-$ share/build-app.sh agent --run [-c <settings-path>] [-p <provider>] [-m <model>] [-l] [-s] [prompt]
+$ share/build-app.sh agent --run [-c <settings-path>] [-p <provider>] [-m <model>] [-l] [-s] [-o] [prompt]
 ```
 
 Or, if the app is already built:
 
 ```
-$ bin/agent [-c <settings-path>] [-p <provider>] [-m <model>] [-l] [-s] [prompt]
+$ bin/agent [-c <settings-path>] [-p <provider>] [-m <model>] [-l] [-s] [-o] [prompt]
 ```
 
 Available command-line options:
@@ -22,6 +22,7 @@ Available command-line options:
 | `-m` | `--model` | The name of the model to use. |
 | `-l` | `--http-log` | Write a raw HTTP log. |
 | `-s` | `--serve` | Serve a web UI on port 8081. |
+| `-o` | `--open` | Open the web UI in the default browser. |
 | `-h` | `--help` | Print the available options. |
 
 The `-p/--provider` option sets the endpoint to one of the following presets. The choice of model can be overridden using `-m/--model`.
