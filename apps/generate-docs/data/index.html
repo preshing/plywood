@@ -1,69 +1,35 @@
 <!DOCTYPE html>
 
-<html>
+<html data-theme="dark">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Plywood C++ Runtime Library</title>
 <link rel="stylesheet" href="/static/common.css">
 <link rel="stylesheet" href="/static/front.css">
-<script>
-  // Apply saved theme immediately to prevent flash
-  (function() {
-    var theme = localStorage.getItem('theme');
-    if (theme === 'dark' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-      document.documentElement.setAttribute('data-theme', 'dark');
-    }
-  })();
-</script>
 </head>
 <body>
-  <div class="front-banner">
-    <div class="inner">
-        <div class="right">
-          <div id="nav-links"><a href="/docs"><span class="nav-link">DOCS</span></a><a href="https://github.com/preshing/plywood" target="_blank"><span class="nav-link">GITHUB</span></a>
-            <span class="theme-toggle-parent"><button class="theme-toggle" id="theme-toggle" aria-label="Toggle dark mode" title="Toggle dark/light mode"></button></span>
+  <div class="front-page">
+    <div class="front-hero">
+      <div class="front-hero-inner">
+        <div class="front-banner">
+          <div id="nav-links">
+            <a href="/docs"><span class="nav-link">DOCS</span></a><a href="https://github.com/preshing/plywood" target="_blank"><span class="nav-link">GITHUB</span></a>
           </div>
-            <span id="hamburger" class="button"></span>
-          </div>
-        <img class="logo" src="/static/plywood-house.png" srcset="/static/plywood-house.png 1x, /static/plywood-house@2x.png 2x" alt="Plywood logo" style="position: absolute; left: 20px; top: 12px; height: 66px;">
-        <span style="color: #ffffff; font-size: 36px; position: absolute; left: 122px; top: 16px;">Plywood</span>
-        <span style="font-size: 15px; color: #e7e79a; position: absolute; left: 170px; top: 53px;">C++ RUNTIME LIBRARY</span>
-    </div>
-  </div>
-  <div class="directory" id="popup-menu">
-    <div class="scroller">
-      <div class="inner">
-        <div class="mobile-nav">
-          <a href="/docs"><span class="nav-link">DOCS</span></a>
-          <a href="https://github.com/preshing/plywood" target="_blank"><span class="nav-link">GITHUB</span></a>
-          <button class="theme-toggle" id="popup-theme-toggle" aria-label="Toggle dark mode" title="Toggle dark/light mode"></button>
         </div>
-        <div class="toc-heading">CONTENTS</div>
-        <ul>
-{%toc%}
-        </ul>
+        <div class="hero-title">
+          <h1 class="title">Plywood</h1>
+          <p class="subtitle">C++ RUNTIME LIBRARY</p>
+        </div>
+        <div class="tagline"><p>It doesn't have<br>to be complicated.</p>
+        <p class="subtag">An easy-to-use C++ runtime library<br>in a small amount of code.</p></div>
       </div>
     </div>
+    <div class="inner-body front-contents">
+      <p class="center-text platforms"><img src="/static/platforms.png" srcset="/static/platforms.png 1x, /static/platforms@2x.png 2x" alt="Platforms"></p>
+      <p class="center-text"><a class="front-button" href="/docs">Read the docs</a></p>
+      <p class="center-text"><a class="front-button" href="https://github.com/preshing/plywood" target="_blank">View on GitHub</a></p>
+    </div>
   </div>
-  <div class="inner-body content front-contents">
-  <p class="tagline center-text">A lightweight, durable, versatile<br>runtime library for C++</p>
-  <p class="center-text wip">This project is a work in progress.<br>Feel free to look around or check back later for updates.</p>
-  <p class="center-text modules-included">Modules Included</p>
-  <table class="grid"><tbody>
-    <tr><td><code class="type">&lt;ply-system.h&gt;</code></td><td>The System Library</td></tr>
-    <tr><td><code class="type">&lt;ply-math.h&gt;</code></td><td>Math</td></tr>
-    <tr><td><code class="type">&lt;ply-network.h&gt;</code></td><td>Networking</td></tr>
-    <tr><td><code class="type">&lt;ply-tokenizer.h&gt;</code></td><td>Tokenizer</td></tr>
-    <tr><td><code class="type">&lt;ply-json.h&gt;</code></td><td>JSON</td></tr>
-    <tr><td><code class="type">&lt;ply-markdown.h&gt;</code></td><td>Markdown</td></tr>
-    <tr><td><code class="type">&lt;ply-cpp.h&gt;</code></td><td>C++ Parser</td></tr>
-  </tbody></table>
-  <p class="center-text runs-on">Supported platforms</p>
-  <p class="center-text platforms"><img src="/static/platforms.png" srcset="/static/platforms.png 1x, /static/platforms@2x.png 2x" alt="Platforms"></p>
-  <p class="center-text"><span class="button"><a href="/docs">VIEW DOCUMENTATION</a></span></p>
-  <p class="center-text"><span class="button"><a href="https://github.com/preshing/plywood" target="_blank">GET THE SOURCE CODE</a></span></p>
-</div>
-  <script src="/static/common.js"></script>
 </body>
 </html>

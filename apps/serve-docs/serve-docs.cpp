@@ -63,6 +63,8 @@ void servePlywoodDocumentation(HTTPServer::Request& request) {
                 *response.headers.insert("content-type").value = "font/woff2";
             } else if (localPath.endsWith(".png")) {
                 *response.headers.insert("content-type").value = "image/png";
+            } else if (localPath.endsWith(".jpg")) {
+                *response.headers.insert("content-type").value = "image/jpeg";
             } else {
                 PLY_ASSERT(0);
             }
