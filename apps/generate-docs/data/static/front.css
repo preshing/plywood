@@ -2,24 +2,52 @@
    Front page
 ------------------------------------------------*/
 
+/* Center short pages with colors that extend the hero and content backgrounds. */
+body {
+    --front-top-background: #2372d5;
+    --front-background: #5c840c;
+    --hero-title-shadow: #394860;
+    display: grid;
+    grid-template-rows: minmax(0, 1fr) auto minmax(0, 2fr);
+    min-height: 100vh;
+    min-height: 100dvh;
+    background: var(--bg-page);
+}
+
+body::before,
+body::after {
+    content: "";
+    width: 100%;
+    max-width: 2560px;
+    justify-self: center;
+}
+
+body::before {
+    background-color: var(--front-top-background);
+}
+
+body::after {
+    background-color: var(--front-background);
+}
+
 .front-page {
-    --front-accent: #4c7c25;
-    --front-background: #658f23;
+    --front-accent: #e0f0e0;
     --front-button-hover-accent: #e7e79a;
-    --front-button-hover-border: #c1cc84;
-    --front-button-hover: #799e34;
-    --hero-height: clamp(319.1667px, 63.8333vw, 766px);
+    --front-button-hover-border: #e7e79a;
+    --front-button-hover: #a9c975;
+    --hero-height: clamp(325.8333px, 65.1667vw, 782px);
     --hero-fade-height: clamp(24.1667px, 4.8333vw, 58px);
     width: 100%;
     min-width: 500px;
     max-width: 2560px;
-    min-height: 100vh;
+    min-height: var(--hero-height);
     margin: 0 auto;
     background-color: var(--front-background);
 }
 
 .front-hero {
     min-height: var(--hero-height);
+    background-color: var(--front-top-background);
     background-image:
         linear-gradient(to bottom, rgba(101, 143, 35, 0) calc(100% - var(--hero-fade-height)), var(--front-background) 100%),
         url("front-page-bg.jpg");
@@ -39,36 +67,6 @@
     margin: 0 auto;
 }
 
-.front-banner {
-    position: relative;
-    width: 100%;
-    height: 88px;
-    font-family: "robotobold", sans-serif;
-}
-
-#nav-links {
-    position: absolute;
-    right: 32px;
-    bottom: 0;
-    font-size: 18px;
-    height: 48px;
-    line-height: 42px;
-}
-.front-banner .nav-link {
-    display: inline-block;
-    padding: 0px 20px;
-    vertical-align: top;
-    border-bottom: 6px solid transparent;
-    transition: border-bottom-color 0.2s ease;
-}
-.front-banner .nav-link:hover {
-    border-bottom-color: #e8e8e8c0;
-}
-
-.front-banner a {
-    color: #e8e8e8;
-}
-
 .center-text {
     text-align: center;
     margin-left: auto;
@@ -76,57 +74,58 @@
 }
 
 .front-contents {
-    margin-top: clamp(-28.3px, calc(10px - 3.1917vw), -5.9583px);
+    margin-top: clamp(-247px, calc(148px - 32.9vw), -17px);
     padding-bottom: 26px;
 }
 
 .hero-title {
     position: absolute;
     top: 5%;
-    left: 5%;
+    left: 37%;
+    font-size: clamp(48px, calc(40.8571px + 1.4286vw), 58px);
+    width: max-content;
+    transform: translateX(-50%);
+    text-align: center;
+    text-shadow: 1px 1px 0 var(--hero-title-shadow);
 }
 
 .title {
-    font-size: clamp(27px, calc(12px + 3vw), 48px);
     font-family: "robotobold", sans-serif;
-    line-height: 1.1;
     color: #e8e8e8;
+    position: relative;
+    left: -18%;
+    font-size: 96%;
 }
 
 .subtitle {
     font-family: "robotobold", sans-serif;
-    font-size: clamp(12.15px, calc(5.4px + 1.35vw), 21.6px);
-    line-height: 1.1;
+    font-size: 38%;
     color: #e7e79a;
     position: relative;
-    left: clamp(36.5625px, calc(16.25px + 4.0625vw), 65px);
-    top: clamp(-7px, calc(-1.75px - 0.4375vw), -3.9375px);
+    left: 18%;
 }
 
 .tagline {
-    top: 35%;
-    font-size: clamp(24px, calc(12.5714px + 2.2857vw), 40px);
+    top: 29%;
+    font-size: 32px;
     position: absolute;
-    left: 44%;
+    left: 43%;
     font-family: "robotobold", sans-serif;
     line-height: 1.1;
+    text-align: center;
     color: #e8e8e8;
 }
 
 .tagline .subtag {
     font-family: 'Inter', sans-serif;
-    font-weight: 500;
-    font-size: clamp(13.2px, calc(6.9143px + 1.2571vw), 22px);
-    color: #1d87b2;
-    margin-top: clamp(9px, calc(4.7143px + 0.8571vw), 15px);
+    font-weight: 600;
+    font-size: 24px;
+    color: #3268bc;
+    margin-top: 44px;
 }
 
 .front-contents p {
     margin-bottom: 20px;
-}
-
-.front-contents .platforms {
-    margin-bottom: 24px;
 }
 
 .front-button {
@@ -137,13 +136,14 @@
     width: 256px;
     height: 67px;
     padding: 10px 34px 11px 26px;
-    border: 1px solid var(--front-accent);
+    border: 2px solid var(--front-accent);
     border-radius: 10px;
     font-family: "source_sans_3", sans-serif;
     font-size: 19px;
     text-align: left;
-    color: #255525;
-    background-color: #77a23b;
+    color: #003d00;
+    background-color: #94bc6e;
+    box-shadow: 4px 4px 8px rgba(0, 0, 0, 0.33);
     user-select: none;
 }
 
@@ -160,7 +160,7 @@
     top: 50%;
     right: 16px;
     transform: translateY(-58%);
-    font-size: 30px;
+    font-size: 44px;
     line-height: 1;
     color: #327032;
 }
