@@ -1165,35 +1165,79 @@ static bool loadSettings() {
     return true;
 }
 
-// Overrides the loaded endpoint settings with sensible defaults for the provider
-// specified on the command line, if any.
+// Overrides the loaded endpoint settings using the route for the provider specified
+// on the command line, if any.
 static bool applyProviderOverride() {
     if (!options.provider)
         return true;
 
-    // Set endpoint defaults for the selected provider.
-    if (options.provider == "openai") {
-        agentSettings.endPoint.url = "https://api.openai.com/v1/responses";
-        agentSettings.endPoint.apiKeyEnv = "OPENAI_API_KEY";
-        agentSettings.endPoint.protocol = Protocol::Responses;
-        agentSettings.endPoint.model = "gpt-5.6-luna";
-    } else if (options.provider == "anthropic") {
-        agentSettings.endPoint.url = "https://api.anthropic.com/v1/messages";
-        agentSettings.endPoint.apiKeyEnv = "ANTHROPIC_API_KEY";
-        agentSettings.endPoint.protocol = Protocol::Anthropic;
-        agentSettings.endPoint.model = "claude-haiku-4-5";
-    } else if (options.provider == "ollama-cloud") {
-        agentSettings.endPoint.url = "https://ollama.com/v1/chat/completions";
-        agentSettings.endPoint.apiKeyEnv = "OLLAMA_API_KEY";
-        agentSettings.endPoint.protocol = Protocol::Completions;
-        agentSettings.endPoint.model = "deepseek-v4-flash";
-    } else if (options.provider == "dwarfstar") {
-        agentSettings.endPoint.url = "http://127.0.0.1:8000/v1/chat/completions";
-        agentSettings.endPoint.apiKeyEnv = "NONE";
-        agentSettings.endPoint.protocol = Protocol::Completions;
-        agentSettings.endPoint.model = "deepseek-v4-flash";
-    } else {
-        getStdErr().format("Unknown provider: {}\n", options.provider);
+    // Load the route table installed beside the executable.
+    String routesPath = joinPath(getCurrentExecutablePath(), "../known-providers.json");
+    String jsonText = FileSystem::loadText(routesPath);
+    if (!jsonText) {
+        getStdErr().format("Could not load provider routes: {}\n", routesPath);
+        return false;
+    }
+    json::Parser parser;
+    json::Parser::Result result = parser.parse(routesPath, jsonText);
+    if (parser.anyError() || !result.root.isArray()) {
+        getStdErr().format("Failed to parse provider routes: {}\n", routesPath);
+        return false;
+    }
+
+    // Find the selected provider and import its endpoint fields.
+    for (const json::Node& route : result.root.arrayView()) {
+        if (!route.isObject() || !route.get("provider").isText() || route.get("provider").text() != options.provider)
+            continue;
+        const json::Node& jUrl = route.get("url");
+        const json::Node& jProtocol = route.get("protocol");
+        const json::Node& jApiKeyEnv = route.get("apiKeyEnv");
+        const json::Node& jDefaultModel = route.get("defaultModel");
+        if (!jUrl.isText() || !jProtocol.isText() || !jApiKeyEnv.isText() || !jDefaultModel.isText()) {
+            getStdErr().format("Invalid route for provider '{}': {}\n", options.provider, routesPath);
+            return false;
+        }
+        agentSettings.endPoint.url = jUrl.text();
+        agentSettings.endPoint.apiKeyEnv = jApiKeyEnv.text();
+        agentSettings.endPoint.model = jDefaultModel.text();
+        if (jProtocol.text() == "completions") {
+            agentSettings.endPoint.protocol = Protocol::Completions;
+        } else if (jProtocol.text() == "responses") {
+            agentSettings.endPoint.protocol = Protocol::Responses;
+        } else if (jProtocol.text() == "anthropic") {
+            agentSettings.endPoint.protocol = Protocol::Anthropic;
+        } else {
+            getStdErr().format("Unknown protocol '{}' for provider '{}': {}\n", jProtocol.text(), options.provider,
+                               routesPath);
+            return false;
+        }
+        return true;
+    }
+    getStdErr().format("Unknown provider: {}\n", options.provider);
+    return false;
+}
+
+// Validates endpoint settings that must be usable before an Agent is created.
+static bool validateEndPoint() {
+    if (!agentSettings.endPoint.url) {
+        getStdErr().write(
+            "No inference endpoint selected. Pass -p/--provider or define `endpoint` in a settings file.\n");
+        return false;
+    }
+    if (!agentSettings.endPoint.apiKeyEnv) {
+        getStdErr().write("No API key source is configured. Define `endPoint.apiKeyEnv` in a settings file, using "
+                          "`NONE` for no authentication, or pass -p/--provider.\n");
+        return false;
+    }
+    if (agentSettings.endPoint.apiKeyEnv != "NONE" &&
+        !getEnvironmentVariable(agentSettings.endPoint.apiKeyEnv)) {
+        getStdErr().format("Missing API key: environment variable {} is not set\n",
+                           agentSettings.endPoint.apiKeyEnv);
+        return false;
+    }
+    if (!agentSettings.endPoint.model) {
+        getStdErr().write("No inference model is configured. Define `endPoint.model` in a settings file, pass "
+                          "-p/--provider or pass -m/--model.\n");
         return false;
     }
     return true;
@@ -1268,6 +1312,10 @@ int main(int argc, const char* argv[]) {
     if (options.model) {
         agentSettings.endPoint.model = options.model;
     }
+
+    // Validate the endpoint before creating the transcript or agent.
+    if (!validateEndPoint())
+        return 1;
 
     // Ensure a prompt was specified on the command line or in the JSON settings.
     if (!options.userPrompt) {

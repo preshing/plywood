@@ -25,14 +25,15 @@ Available command-line options:
 | `-o` | `--open` | Open the web UI in the default browser. |
 | `-h` | `--help` | Print the available options. |
 
-The `-p/--provider` option sets the endpoint to one of the following presets. The choice of model can be overridden using `-m/--model`.
+The `-p/--provider` option selects an endpoint from a list of known providers.
+The known provider list is loaded from `known-providers.json`.
+The choice of model can be overridden using `-m/--model`.
 
-| Provider | URL | Protocol | API key environment variable | Model |
+| Provider | URL | Protocol | API key environment variable | Default model |
 |---|---|---|---|---|
 | `openai` | `https://api.openai.com/v1/responses` | `responses` | `OPENAI_API_KEY` | `gpt-5.6-luna` |
 | `anthropic` | `https://api.anthropic.com/v1/messages` | `anthropic` | `ANTHROPIC_API_KEY` | `claude-haiku-4-5` |
 | `ollama-cloud` | `https://ollama.com/v1/chat/completions` | `completions` | `OLLAMA_API_KEY` | `deepseek-v4-flash` |
-| `dwarfstar` | `http://127.0.0.1:8000/v1/chat/completions` | `completions` | (none) | `deepseek-v4-flash` |
 
 The agent reads its API key from the environment variable named by the endpoint's `apiKeyEnv` property. If this
 property is `NONE`, authentication is omitted.
@@ -54,10 +55,4 @@ The settings file must contain a single JSON object with any of the following pr
     - `tools`: An array of strings listing the tools the agent is allowed to use in the specified directory.
 - `include`: The path to another file containing JSON settings to inherit. Can be absolute or relative to the directory containing the JSON file itself.
 
-When the `include` property is used by file A to inherit from another file B, the settings in file B are loaded first, then the settings in file A are merged according to the following rules:
-
-- An `endPoint` object in file A fully replaces the `endPoint` from file B. None of B's `endPoint` properties are inherited.
-- A `systemPrompt` property in file A is appended to the `systemPrompt` property from file B, effectively combining both system prompts.
-- A `userPrompt` property in file A replaces the `userPrompt` property from file B.
-- `workingDirectory` is not inherited from file B.
-- `permissions` are combined, effectively giving the agent all tool permissions from every loaded settings file.
+When the `include` property is used by file A to inherit from another file B, file B is loaded first, then file A's settings are merged in. When merging, the `endPoint` and `userPrompt` properties are fully replaced, while the `systemPrompt` and `permissions` properties are combined additively.

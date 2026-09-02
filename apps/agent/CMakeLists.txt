@@ -27,3 +27,9 @@ if(WIN32)
     target_link_libraries(agent PRIVATE ws2_32.lib)
 endif()
 add_curl_dll_post_build_step(agent)
+
+# Copy the known provider list next to the executable.
+set_property(TARGET agent APPEND PROPERTY LINK_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/known-providers.json")
+add_custom_command(TARGET agent POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                   "${CMAKE_CURRENT_LIST_DIR}/known-providers.json"
+                   "$<TARGET_FILE_DIR:agent>/known-providers.json")
