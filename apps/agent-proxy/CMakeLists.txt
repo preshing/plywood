@@ -28,8 +28,9 @@ if(WIN32)
 endif()
 add_curl_dll_post_build_step(agent-proxy)
 
-# Copy the default route configuration next to the executable.
-set_property(TARGET agent-proxy APPEND PROPERTY LINK_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/agent-proxy.json")
+# Copy the shared known provider configuration next to the executable.
+set(KNOWN_PROVIDERS_PATH "${CMAKE_CURRENT_LIST_DIR}/../agent/known-providers.json")
+set_property(TARGET agent-proxy APPEND PROPERTY LINK_DEPENDS "${KNOWN_PROVIDERS_PATH}")
 add_custom_command(TARGET agent-proxy POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                   "${CMAKE_CURRENT_LIST_DIR}/agent-proxy.json"
-                   "$<TARGET_FILE_DIR:agent-proxy>/agent-proxy.json")
+                   "${KNOWN_PROVIDERS_PATH}"
+                   "$<TARGET_FILE_DIR:agent-proxy>/known-providers.json")

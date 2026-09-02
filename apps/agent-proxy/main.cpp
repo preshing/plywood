@@ -16,7 +16,7 @@
 using namespace ply;
 
 struct CommandLineOptions {
-    String settingsPath;
+    String port;
     bool printUsage = false;
     PLY_DECLARE_TYPE_INFO(CommandLineOptions)
 };
@@ -66,63 +66,44 @@ static bool isSafeHeaderText(StringView text) {
     return text.find('\r') < 0 && text.find('\n') < 0;
 }
 
-// Read and validate the proxy's complete route table before opening the listener.
+// Read and validate the known provider table before opening the listener.
 static bool loadSettings() {
-    String settingsPath = options.settingsPath ? makeAbsolutePath(options.settingsPath)
-                                               : joinPath(getCurrentExecutablePath(), "../agent-proxy.json");
-    if (FileSystem::exists(settingsPath) == ExistsResult::Directory) {
-        settingsPath = joinPath(settingsPath, "agent-proxy.json");
-    }
+    String providersPath = joinPath(getCurrentExecutablePath(), "../known-providers.json");
 
-    // Parse the configuration root object.
-    String jsonText = FileSystem::loadText(settingsPath);
+    // Parse the provider array installed beside the executable.
+    String jsonText = FileSystem::loadText(providersPath);
     if (!jsonText) {
-        getStdErr().format("Could not load configuration file: {}\n", settingsPath);
+        getStdErr().format("Could not load known providers: {}\n", providersPath);
         return false;
     }
     json::Parser parser;
-    json::Parser::Result result = parser.parse(settingsPath, jsonText);
-    if (parser.anyError() || !result.root.isObject()) {
-        getStdErr().format("Failed to parse configuration file: {}\n", settingsPath);
+    json::Parser::Result result = parser.parse(providersPath, jsonText);
+    if (parser.anyError() || !result.root.isArray() || result.root.arrayView().isEmpty()) {
+        getStdErr().format("Failed to parse known providers: {}\n", providersPath);
         return false;
     }
 
-    // Import the optional listening port.
-    if (const json::Node& jPort = result.root.get("port")) {
-        double portNumber = jPort.getNumber();
-        if (!jPort.isNumber() || portNumber < 1 || portNumber > 65535 || portNumber != u32(portNumber)) {
-            getStdErr().format("port must be an integer from 1 to 65535 in: {}\n", settingsPath);
-            return false;
-        }
-        settings.port = numericCast<u16>(u32(portNumber));
-    }
-
-    // Import each exact path-to-upstream mapping.
-    const json::Node& jRoutes = result.root.get("routes");
-    if (!jRoutes.isArray() || jRoutes.arrayView().isEmpty()) {
-        getStdErr().format("routes must be a non-empty array in: {}\n", settingsPath);
-        return false;
-    }
-    for (const json::Node& jRoute : jRoutes.arrayView()) {
+    // Import each provider's exact proxy path-to-upstream mapping.
+    for (const json::Node& jRoute : result.root.arrayView()) {
         if (!jRoute.isObject()) {
-            getStdErr().format("Every route must be an object in: {}\n", settingsPath);
+            getStdErr().format("Every provider must be an object in: {}\n", providersPath);
             return false;
         }
 
-        // Require every route field.
-        const json::Node& jPath = jRoute.get("path");
-        const json::Node& jUpstreamUrl = jRoute.get("upstreamUrl");
+        // Require every field used by the proxy.
+        const json::Node& jPath = jRoute.get("proxyPath");
+        const json::Node& jUpstreamUrl = jRoute.get("url");
         const json::Node& jProtocol = jRoute.get("protocol");
         const json::Node& jApiKeyEnv = jRoute.get("apiKeyEnv");
         if (!jPath.isText() || !jUpstreamUrl.isText() || !jProtocol.isText() || !jApiKeyEnv.isText()) {
-            getStdErr().format("Invalid or missing route property in: {}\n", settingsPath);
+            getStdErr().format("Invalid or missing proxy provider property in: {}\n", providersPath);
             return false;
         }
 
         // Validate the route destination and protocol.
         if (!jPath.text().startsWith('/') || jPath.text().find('?') >= 0 || !jApiKeyEnv.text() ||
             (!jUpstreamUrl.text().startsWith("https://") && !jUpstreamUrl.text().startsWith("http://"))) {
-            getStdErr().format("Invalid route path, URL or API key environment variable in: {}\n", settingsPath);
+            getStdErr().format("Invalid route path, URL or API key environment variable in: {}\n", providersPath);
             return false;
         }
         Protocol protocol;
@@ -133,12 +114,12 @@ static bool loadSettings() {
         } else if (jProtocol.text() == "anthropic") {
             protocol = Protocol::Anthropic;
         } else {
-            getStdErr().format("Unknown protocol '{}' in: {}\n", jProtocol.text(), settingsPath);
+            getStdErr().format("Unknown protocol '{}' in: {}\n", jProtocol.text(), providersPath);
             return false;
         }
         for (const Route& route : settings.routes) {
             if (route.path == jPath.text()) {
-                getStdErr().format("Duplicate route path '{}': {}\n", jPath.text(), settingsPath);
+                getStdErr().format("Duplicate route path '{}': {}\n", jPath.text(), providersPath);
                 return false;
             }
         }
@@ -253,15 +234,14 @@ static void proxyRequest(HTTPServer::Request& request) {
 
 // Print the command-line syntax and registered options.
 static void printUsage(Stream& out, StringView executablePath, const CommandLineParser& parser) {
-    out.format("Usage: {} [-c <settings-path>]\n", executablePath);
+    out.format("Usage: {} [options]\n", executablePath);
     parser.printAvailableOptions(out);
 }
 
 int main(int argc, const char* argv[]) {
     // Parse command-line options.
     CommandLineParser parser({
-        {"-c", "--config", PLY_LOOKUP_MEMBER(CommandLineOptions, settingsPath),
-         "Path to JSON settings file or directory"},
+        {"-p", "--port", PLY_LOOKUP_MEMBER(CommandLineOptions, port), "TCP port to listen on"},
         {"-h", "--help", PLY_LOOKUP_MEMBER(CommandLineOptions, printUsage), "Print this help"},
     });
     if (!parser.apply(argc, argv, &options)) {
@@ -274,6 +254,15 @@ int main(int argc, const char* argv[]) {
         Stream out = getStdOut();
         printUsage(out, argv[0], parser);
         return 0;
+    }
+    // Validate the optional listening port before loading provider settings.
+    if (options.port) {
+        u64 parsedPort = 0;
+        if (!options.port.match("%d$", &parsedPort) || parsedPort < 1 || parsedPort > 65535) {
+            getStdErr().format("Invalid port '{}': expected an integer from 1 to 65535.\n", options.port);
+            return 1;
+        }
+        settings.port = numericCast<u16>(parsedPort);
     }
     if (!loadSettings())
         return 1;
@@ -291,6 +280,6 @@ int main(int argc, const char* argv[]) {
 }
 
 PLY_STRUCT_BEGIN(CommandLineOptions)
-PLY_STRUCT_MEMBER(settingsPath)
+PLY_STRUCT_MEMBER(port)
 PLY_STRUCT_MEMBER(printUsage)
 PLY_STRUCT_END()

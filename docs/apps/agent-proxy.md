@@ -23,46 +23,30 @@ Available command-line options:
 
 | Short | Long | Description |
 |---|---|---|
-| `-c` | `--config` | Path to a JSON settings file or directory. |
+| `-p` | `--port` | TCP port to listen on. Defaults to 8082. |
 | `-h` | `--help` | Print the available options. |
-
-If `-c/--config` specifies a directory, the app loads `agent-proxy.json` from that directory. Without the option, it
-loads `agent-proxy.json` from the executable's directory.
 
 ## Proxy configuration
 
-The settings file contains a listening `port` and one or more exact `routes`:
+The proxy loads `known-providers.json` from the executable's directory. This is the same provider list used by
+[`agent`](/docs/apps/agent.md). Each entry supplies an exact local route and its upstream authentication settings:
 
 ```
-{
-    "port": 8082,
-    "routes": [
-        {
-            "path": "/openai/v1/responses",
-            "upstreamUrl": "https://api.openai.com/v1/responses",
-            "protocol": "responses",
-            "apiKeyEnv": "OPENAI_API_KEY"
-        },
-        {
-            "path": "/anthropic/v1/messages",
-            "upstreamUrl": "https://api.anthropic.com/v1/messages",
-            "protocol": "anthropic",
-            "apiKeyEnv": "ANTHROPIC_API_KEY"
-        },
-        {
-            "path": "/ollama-cloud/v1/chat/completions",
-            "upstreamUrl": "https://ollama.com/v1/chat/completions",
-            "protocol": "completions",
-            "apiKeyEnv": "OLLAMA_API_KEY"
-        }
-    ]
-}
+[
+    {
+        "provider": "openai",
+        "proxyPath": "/openai/v1/responses",
+        "url": "https://api.openai.com/v1/responses",
+        "protocol": "responses",
+        "apiKeyEnv": "OPENAI_API_KEY",
+        "defaultModel": "gpt-5.6-luna"
+    }
+]
 ```
 
-- `port`: The TCP port to listen on.
-- `routes`: A required non-empty array. Each route has the following properties:
-    - `path`: Exact local request URI.
-    - `upstreamUrl`: Remote inference endpoint.
+- The root is a required non-empty array. Each provider has the following proxy properties:
+    - `proxyPath`: Exact local request URI.
+    - `url`: Remote inference endpoint.
     - `protocol`: One of `completions`, `responses` or `anthropic`. The `completions` and `responses` protocols use
       bearer authentication; `anthropic` uses the `x-api-key` header.
     - `apiKeyEnv`: Environment variable available to the proxy process that contains the key.
