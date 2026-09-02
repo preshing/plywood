@@ -67,7 +67,7 @@ plywood/
 
 ## The `ply` Namespace
 
-All Plywood functions and types are defined in the `ply` namespace. Some higher-level libraries create nested namespaces, such as `ply::markdown`. Importing `ply` directly into the global namespace is a convenient way to simplify name lookup, when possible.
+All Plywood functions and types are defined in the `ply` namespace. Some higher-level libraries define nested namespaces, such as `ply::markdown`. When possible, importing `ply` into the global namespace is a convenient way to simplify name lookup.
 
 ```
 #include <ply-markdown.h>

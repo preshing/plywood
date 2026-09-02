@@ -5,7 +5,7 @@ Plywood is a cross-platform C++ runtime library that can be used as an alternati
 
 Plywood comes bundled with several higher-level C++ libraries, including a full [agent harness](/docs/high-level/agent-harness.md), providing an easy way to add agentic AI capabilities to existing C++ programs.
 
-Plywood requires no dependencies other than your target platform's native SDK. It can coexist alongside other runtime libraries in the same application, so you can adopt it incrementally. CMake support is provided for the [sample applications](/docs/apps/index.md), but any build system can be used simply by adding a few Plywood source/header files and setting configuration options.
+Plywood requires no dependencies other than your target platform's native SDK. It can coexist alongside other runtime libraries in the same application, so you can adopt it incrementally. CMake support is provided for the [sample applications](/docs/apps/index.md), but any build system can be used just by adding a few Plywood source/header files and setting configuration options.
 
 ## Getting Started
 

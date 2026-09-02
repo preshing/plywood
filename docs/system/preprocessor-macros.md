@@ -3,7 +3,7 @@ Preprocessor Macros (`ply-system.h`)
 
 ## Platform Detection
 
-Provided for convenience when building platform-specific features in user code.
+Can be used to enable platform-specific features in user code.
 
 `PLY_WINDOWS`
 > Defined as 1 when compiling for Windows; otherwise undefined.
@@ -24,7 +24,7 @@ Provided for convenience when building platform-specific features in user code.
 > Defined as 1 when compiling for iOS; otherwise undefined.
 
 `PLY_POSIX`
-> Defined as 1 when compiling for Linux, macOS, Android or iOS; otherwise undefined. Indicates that POSIX API is available.
+> Indicates that a POSIX-compatible API is available. Defined as 1 when compiling for Linux, macOS, Android or iOS; otherwise undefined.
 
 `PLY_MINGW`
 > Defined as 1 when compiling for [MinGW](https://www.mingw-w64.org/); otherwise undefined.
@@ -34,7 +34,7 @@ Provided for convenience when building platform-specific features in user code.
 
 ## Compiler-Specific Wrappers
 
-These macros are wrappers around compiler-specific extensions. They're mainly used to hide differences between MSVC and GCC/Clang.
+Wrappers around compiler-specific extensions. Mainly used to hide differences between MSVC and GCC/Clang.
 
 `PLY_NO_INLINE`
 > Prevents inline class methods from being considered as inlining candidates.
@@ -55,6 +55,8 @@ These macros are wrappers around compiler-specific extensions. They're mainly us
 > Equivalent to C++17's `nodiscard` keyword.
 
 ## General-Purpose Macros
+
+Plywood versions of commonly-used C++ macros.
 
 `PLY_STRINGIFY(arg)`
 > Converts its argument to a string literal.
@@ -94,6 +96,10 @@ These macros are wrappers around compiler-specific extensions. They're mainly us
 
 ## Assertions
 
-PLY_ASSERT(cond)
+Plywood assertions are extremely simple: If the condition fails, they immediately force a crash using a single CPU instruction. This is enough to see which assertion failed when a debugger is attached, including when a crash dump is loaded.
 
-PLY_STATIC_ASSERT(cond)
+`PLY_ASSERT(cond)`
+> If the condition fails, immediately forces a crash. Only enabled when [`PLY_WITH_ASSERTS=1`](system/index.md#configuration-options).
+
+`PLY_STATIC_ASSERT(cond)`
+> Single-argument wrapper around C++'s [`static_assert`](https://en.cppreference.com/cpp/language/static_assert) that works with C++14 compilers.

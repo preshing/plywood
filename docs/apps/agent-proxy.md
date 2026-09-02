@@ -1,8 +1,10 @@
 `agent-proxy`
 =============
 
-`agent-proxy` is a proxy server that injects API keys into inference requests. It's designed to keep API keys secret from
-[`agent`](/docs/apps/agent.md) for additional security during development.
+`agent-proxy` is a proxy server that injects API keys into inference requests. When `agent-proxy`
+is running, it creates a tunnel that [`agent`](/docs/apps/agent.md) can use when its `-x/--proxy` option is specified.
+This allows agents to spawn and debug `agent` processes that can connect to inference providers without using any credentials.
+It's meant to help avoid leaking API keys into transcripts when using agents to work on `agent` itself.
 
 If CMake is installed, the following command builds and runs the proxy. On Windows, use `share\build-app.bat`
 instead.
