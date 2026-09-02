@@ -40,7 +40,7 @@ property is `NONE`, authentication is omitted.
 
 If `-c/--config` is specified, the app loads settings directly from the specified path. If the specified path is a directory, the app tries to load `agent.json` from that directory. If `-c/--config` is not specified, the app searches for a file named `agent.json` in the current working directory; if none is found, it checks each ancestor directory, loading the first `agent.json` file it finds.
 
-The settings file must contain a single JSON object with any of the following properties:
+The settings file must contain a single JSON object with any of the following optional properties:
 
 - `endPoint`: A subobject with four required properties:
     - `url`: The URL of an inference server.

@@ -1,7 +1,7 @@
 Project Overview
 ================
 
-The Plywood runtime library consists of four main modules and several higher-level libraries, each consisting of a single pair of `.h` and `.cpp` files. Each module can be integrated separately depending on the needs of your project. Several sample applications are also included.
+The Plywood runtime library consists of four main modules and several higher-level libraries, each consisting of a single pair of `.h` and `.cpp` files. Whenever a Plywood `.h` file is included in a project, its corresponding `.cpp` file should also be compiled and linked in. Each module can be integrated separately depending on the needs of your project. Several sample applications are also included.
 
 **Main Modules:**
 
@@ -26,8 +26,6 @@ The Plywood runtime library consists of four main modules and several higher-lev
 - [`generate-docs`](/docs/apps/generate-docs.md): Generate the HTML version of Plywood's documentation.
 - [`serve-docs`](/docs/apps/serve-docs.md): Serve the HTML documentation locally.
 - [`banner-comment`](/docs/apps/banner-comment.md): Generate banner comments.
-
-Whenever a Plywood `.h` file is included in a project, its corresponding `.cpp` file should also be compiled and linked in.
 
 ## Directory Structure
 

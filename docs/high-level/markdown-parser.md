@@ -4,11 +4,6 @@
 The Markdown parser converts Markdown text into a tree of block and span objects. All functions and types in this
 module are defined in the `ply::markdown` namespace.
 
-| | | |
-| --- | --- | --- |
-| `ply-markdown.h` | ~300 lines | Interface |
-| `ply-markdown.cpp` | ~3,400 lines | Implementation |
-
 ## Parsing options
 
 `ParseOptions` independently controls recognition of each supported Markdown construct. CommonMark constructs are

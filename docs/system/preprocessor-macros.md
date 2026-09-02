@@ -3,7 +3,7 @@ Preprocessor Macros (`ply-system.h`)
 
 ## Platform Detection
 
-Can be used to enable platform-specific features in user code.
+These macros can be used to implement platform-specific features.
 
 `PLY_WINDOWS`
 > Defined as 1 when compiling for Windows; otherwise undefined.

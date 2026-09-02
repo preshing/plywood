@@ -3,11 +3,6 @@
 
 Scalar and vector math suitable for games and UI layouts.
 
-| | | |
-| --- | --- | --- |
-| `ply-math.h` | ~1,900 lines | Interface |
-| `ply-math.cpp` | ~2,900 lines | Implementation |
-
 Basic Functions
 ---------------
 

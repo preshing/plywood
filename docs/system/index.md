@@ -1,16 +1,11 @@
 ﻿`ply-system.h`: System
 ======================
 
-The System module provides cross-platform access to basic operating system services such as memory management, timers, file systems, threads and processes.
+`ply-system.h` provides provides cross-platform support for essential operating system services including memory management, timers, filesystems, threads and processes in a single header file of less than 5,000 lines.
 
-| | | |
-| --- | --- | --- |
-| `ply-system.h` | ~4,900 lines | Interface |
-| `ply-system.cpp` | ~6,800 lines | Implementation |
+Features are organized into the following categories:
 
-This module is organized into the following categories:
-
-- [Preprocessor Macros](/docs/system/preprocessor-macros.md): Identifies the target platform; defines assertions and other macros.
+- [Preprocessor Macros](/docs/system/preprocessor-macros.md): Platform identification, assertions and other macros.
 - [Numeric Functions and Types](/docs/system/numeric.md): Fixed-sized integers and primitive functions.
 - [Memory Management](/docs/system/memory/index.md): Primitive data structures with a built-in heap.
 - [Functors](/docs/system/functors.md): Class template for dynamic callback functions.
@@ -24,7 +19,7 @@ This module is organized into the following categories:
 
 ## Configuration Options
 
-You can customize this module by defining any of the following preprocessor macros in your project's build settings.
+You can customize this module by defining any of the following preprocessor macros in your project's build settings:
 
 | Name               | Description        | Default |
 | ------------------ | ------------------ | ------- |
