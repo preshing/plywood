@@ -12,6 +12,3 @@ Available command-line options:
 
 Without the watch option, the app generates the documentation once and exits. Watch mode is available on platforms
 that support directory watching.
-
-Each page entry must contain a unique `/docs/*.md` path that resolves to an existing Markdown file. If any page path
-is malformed, duplicated or missing, generation stops before changing the last successful output.

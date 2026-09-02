@@ -3,8 +3,8 @@
 
 `agent-proxy` is a proxy server that handles authentication on behalf of [`agent`](/docs/apps/agent.md).
 It's meant to help avoid leaking API keys while using agents to work on `agent` itself.
-`agent` sends requests to `agent-proxy`; `agent-proxy` injects API keys, forwards the request to an upstream
-inference provider and sends the response back. 
+`agent` sends requests to `agent-proxy`; `agent-proxy` injects API keys, forwards requests to an upstream
+provider and sends responses back. 
 
 If CMake is installed, the following command builds and runs the proxy. On Windows, use `share\build-app.bat`
 instead.
@@ -26,10 +26,9 @@ Available command-line options:
 | `-p` | `--port` | TCP port to listen on. Defaults to 8082. |
 | `-h` | `--help` | Print the available options. |
 
-## Proxy configuration
-
 The proxy loads `known-providers.json` from the executable's directory. This is the same provider list used by
-[`agent`](/docs/apps/agent.md). Each entry supplies an exact local route and its upstream authentication settings:
+[`agent`](/docs/apps/agent.md). To enable a provider, the environment variable named by `apiKeyEnv` must
+be defined before running the proxy.
 
 ```
 [

@@ -31,8 +31,6 @@ Numeric Functions and Types (`ply-system.h`)
 > Clamps an integer or floating-point value to lie within a lower and upper bound.
 > ```
 > clamp(1, 2, 4);  // Returns 2.
-> clamp(3, 2, 4);  // Returns 3.
-> clamp(5, 2, 4);  // Returns 4.
 > ```
 
 ### Alignment
