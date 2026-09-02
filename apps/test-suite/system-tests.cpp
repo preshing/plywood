@@ -2676,3 +2676,67 @@ TEST_CASE("DirectoryWatcher") {
     FileSystem::removeDirTree(tempDir);
 }
 #endif
+
+//   ▄▄▄▄                                             ▄▄     ▄▄▄  ▄▄
+//  ██  ▀▀  ▄▄▄▄  ▄▄▄▄▄▄▄  ▄▄▄▄▄▄▄   ▄▄▄▄  ▄▄▄▄▄   ▄▄▄██      ██  ▄▄ ▄▄▄▄▄   ▄▄▄▄
+//  ██     ██  ██ ██ ██ ██ ██ ██ ██  ▄▄▄██ ██  ██ ██  ██      ██  ██ ██  ██ ██▄▄██
+//  ▀█▄▄█▀ ▀█▄▄█▀ ██ ██ ██ ██ ██ ██ ▀█▄▄██ ██  ██ ▀█▄▄██     ▄██▄ ██ ██  ██ ▀█▄▄▄
+//
+
+// Stores values populated by focused CommandLineParser tests.
+struct CommandLineParserTestOptions {
+    bool useProxy = false;
+    String proxyPort;
+    String prompt;
+    PLY_DECLARE_TYPE_INFO(CommandLineParserTestOptions)
+};
+
+PLY_STRUCT_BEGIN(CommandLineParserTestOptions)
+PLY_STRUCT_MEMBER(useProxy)
+PLY_STRUCT_MEMBER(proxyPort)
+PLY_STRUCT_MEMBER(prompt)
+PLY_STRUCT_END()
+
+#undef TEST_CASE_PREFIX
+#define TEST_CASE_PREFIX CommandLine_
+
+TEST_CASE("Optional inline value") {
+    // A bare option sets its boolean while leaving the following prompt untouched.
+    {
+        CommandLineParserTestOptions parsed;
+        CommandLineParser parser({
+            {"-x", "--proxy", PLY_LOOKUP_MEMBER(CommandLineParserTestOptions, useProxy), "Use proxy",
+             PLY_LOOKUP_MEMBER(CommandLineParserTestOptions, proxyPort)},
+        });
+        parser.defaultHandler = [&](ArrayView<const char*> args, u32 index) { parsed.prompt = args[index]; };
+        const char* argv[] = {"test", "-x", "hello"};
+        check(parser.apply(3, argv, &parsed));
+        check(parsed.useProxy);
+        check(!parsed.proxyPort);
+        check(parsed.prompt == "hello");
+    }
+
+    // Both option spellings accept an inline value after '='.
+    {
+        CommandLineParserTestOptions parsed;
+        CommandLineParser parser({
+            {"-x", "--proxy", PLY_LOOKUP_MEMBER(CommandLineParserTestOptions, useProxy), "Use proxy",
+             PLY_LOOKUP_MEMBER(CommandLineParserTestOptions, proxyPort)},
+        });
+        const char* argv[] = {"test", "-x=8088"};
+        check(parser.apply(2, argv, &parsed));
+        check(parsed.useProxy);
+        check(parsed.proxyPort == "8088");
+    }
+    {
+        CommandLineParserTestOptions parsed;
+        CommandLineParser parser({
+            {"-x", "--proxy", PLY_LOOKUP_MEMBER(CommandLineParserTestOptions, useProxy), "Use proxy",
+             PLY_LOOKUP_MEMBER(CommandLineParserTestOptions, proxyPort)},
+        });
+        const char* argv[] = {"test", "--proxy=9090"};
+        check(parser.apply(2, argv, &parsed));
+        check(parsed.useProxy);
+        check(parsed.proxyPort == "9090");
+    }
+}

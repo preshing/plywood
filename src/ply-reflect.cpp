@@ -1233,6 +1233,8 @@ CommandLineParser::CommandLineParser(Array<CmdLineArgHandler>&& handlers) : hand
         StringView argName;
         PLY_ASSERT(handler.shortArg.match("-%i", &argName));
         PLY_ASSERT(handler.longArg.match("--%i", &argName));
+        PLY_ASSERT(!handler.inlineValueMember || (handler.dataMember->type->key == TypeKey::Bool &&
+                                                  handler.inlineValueMember->type->key == TypeKey::String));
         PLY_UNUSED(argName);
     }
 }
@@ -1243,6 +1245,8 @@ void CommandLineParser::printAvailableOptions(Stream& out) const {
         out.format("  {}, {}", handler.shortArg, handler.longArg);
         if (handler.dataMember->type->key == TypeKey::String) {
             out.write(" <value>");
+        } else if (handler.inlineValueMember) {
+            out.format("[=<{}>]", handler.inlineValueName);
         }
         out.format(": {}\n", handler.description);
     }
@@ -1319,9 +1323,22 @@ bool CommandLineParser::apply(int argc, const char* argv[], AnyObject obj) {
         const StructTypeInfo::Member* m = matched->dataMember;
         void* memberPtr = PLY_PTR_OFFSET(obj.data, m->offset);
         if (m->type->key == TypeKey::Bool) {
-            if (hasInlineValue) {
+            if (hasInlineValue && !matched->inlineValueMember) {
                 getStdErr().format("Option {} does not accept a value\n", namePart);
                 return false;
+            }
+            // Store an optional inline value in its secondary string member.
+            if (hasInlineValue) {
+                StringView valueView = inlineValue;
+                if (valueView.numBytes() >= 2 && valueView[0] == '"' && valueView[valueView.numBytes() - 1] == '"') {
+                    valueView = valueView.substr(1, valueView.numBytes() - 2);
+                }
+                if (!valueView) {
+                    getStdErr().format("Option {} requires a value after '='\n", namePart);
+                    return false;
+                }
+                void* valueMemberPtr = PLY_PTR_OFFSET(obj.data, matched->inlineValueMember->offset);
+                *reinterpret_cast<String*>(valueMemberPtr) = String{valueView};
             }
             *reinterpret_cast<bool*>(memberPtr) = true;
         } else if (m->type->key == TypeKey::String) {

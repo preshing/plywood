@@ -1,16 +1,21 @@
 ﻿`agent`
 =======
 
+`agent` is primitive command-line agent harness.
+It provides scaffolding around the [Agent Harness library](/docs/high-level/agent-harness.md) in the form of command-line options
+and JSON settings.
+Agent transcripts are streamed to standard output and can also be streamed to a web browser with Markdown converted to HTML.
+
 If CMake is installed, the following command will build and run the `agent` sample application. On Windows, use `share\build-app.bat` instead.
 
 ```
-$ share/build-app.sh agent --run [-c <settings-path>] [-p <provider>] [-m <model>] [-l] [-s] [-o] [prompt]
+$ share/build-app.sh agent --run [-c <settings-path>] [-p <provider>] [-m <model>] [-x[=<port>]] [-l] [-s] [-o] [prompt]
 ```
 
 Or, if the app is already built:
 
 ```
-$ bin/agent [-c <settings-path>] [-p <provider>] [-m <model>] [-l] [-s] [-o] [prompt]
+$ bin/agent [-c <settings-path>] [-p <provider>] [-m <model>] [-x[=<port>]] [-l] [-s] [-o] [prompt]
 ```
 
 Available command-line options:
@@ -20,6 +25,7 @@ Available command-line options:
 | `-c` | `--config` | Path to a JSON settings file or a directory. |
 | `-p` | `--provider` | Select a preset inference provider. |
 | `-m` | `--model` | The name of the model to use. |
+| `-x[=<port>]` | `--proxy[=<port>]` | Connect through `agent-proxy`. Requires `-p/--provider`. |
 | `-l` | `--http-log` | Write a raw HTTP log. |
 | `-s` | `--serve` | Serve a web UI on port 8081. |
 | `-o` | `--open` | Open the web UI in the default browser. |
@@ -38,7 +44,9 @@ The choice of model can be overridden using `-m/--model`.
 The agent reads its API key from the environment variable named by the endpoint's `apiKeyEnv` property. If this
 property is `NONE`, authentication is omitted.
 
-If `-c/--config` is specified, the app loads settings directly from the specified path. If the specified path is a directory, the app tries to load `agent.json` from that directory. If `-c/--config` is not specified, the app searches for a file named `agent.json` in the current working directory; if none is found, it checks each ancestor directory, loading the first `agent.json` file it finds.
+When `-x/--proxy` is specified, the agent connects to [`agent-proxy`](/docs/apps/agent-proxy.md) on IPv4 loopback, skips the environment variable lookup and omits authentication. The default port is 8082; pass an inline value such as `--proxy=8088` to select a different port.
+
+If `-c/--config` is specified, the app loads settings from the specified path. If the specified path is a directory, the app tries to load `agent.json` from that directory. By default, if `-c/--config` is not specified, the app searches for a file named `agent.json` in the current working directory; if none is found, it checks each ancestor directory, loading the first `agent.json` file it finds.
 
 The settings file must contain a single JSON object with any of the following optional properties:
 

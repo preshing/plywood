@@ -448,6 +448,8 @@ struct CmdLineArgHandler {
     String longArg;
     const StructTypeInfo::Member* dataMember;
     String description;
+    const StructTypeInfo::Member* inlineValueMember = nullptr;
+    String inlineValueName = "value";
 
     bool matches(StringView arg) const {
         return arg == this->shortArg || arg == this->longArg;
@@ -457,6 +459,7 @@ struct CmdLineArgHandler {
 struct CommandLineParser {
     // These members must be initialized before calling apply.
     // - When dataMember is a bool, the argument sets it to true and must not have a value.
+    //   If inlineValueMember names a String, an optional value can be passed using `=<value>`.
     // - When dataMember is a String, the command line argument must be followed by a string.
     //   Multiple formats are accepted: -foo bar, -foo"bar", -foo=bar, -foo="bar"
     Array<CmdLineArgHandler> handlers;

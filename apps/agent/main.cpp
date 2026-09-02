@@ -27,6 +27,8 @@ struct CommandLineOptions {
     String settingsPath;
     String provider;
     String model;
+    bool useProxy = false;
+    String proxyPort;
     bool enableHttpLog = false;
     bool runWebServer = false;
     bool openBrowser = false;
@@ -39,6 +41,7 @@ CommandLineOptions options;
 Agent::Settings agentSettings;
 String tempUserPrompt; // Will remove later
 Reference<Transcript> transcript;
+u16 agentProxyPort = 8082;
 
 //---------------------------------------------------
 // Helpers for formatting the transcript output.
@@ -1189,16 +1192,32 @@ static bool applyProviderOverride() {
     for (const json::Node& route : result.root.arrayView()) {
         if (!route.isObject() || !route.get("provider").isText() || route.get("provider").text() != options.provider)
             continue;
-        const json::Node& jUrl = route.get("url");
         const json::Node& jProtocol = route.get("protocol");
-        const json::Node& jApiKeyEnv = route.get("apiKeyEnv");
         const json::Node& jDefaultModel = route.get("defaultModel");
-        if (!jUrl.isText() || !jProtocol.isText() || !jApiKeyEnv.isText() || !jDefaultModel.isText()) {
+        if (!jProtocol.isText() || !jDefaultModel.isText()) {
             getStdErr().format("Invalid route for provider '{}': {}\n", options.provider, routesPath);
             return false;
         }
-        agentSettings.endPoint.url = jUrl.text();
-        agentSettings.endPoint.apiKeyEnv = jApiKeyEnv.text();
+
+        // Select either the remote provider endpoint or its local proxy route.
+        if (options.useProxy) {
+            const json::Node& jProxyPath = route.get("proxyPath");
+            if (!jProxyPath.isText() || !jProxyPath.text().startsWith('/') || jProxyPath.text().find('?') >= 0) {
+                getStdErr().format("Invalid proxy path for provider '{}': {}\n", options.provider, routesPath);
+                return false;
+            }
+            agentSettings.endPoint.url = String::format("http://127.0.0.1:{}{}", agentProxyPort, jProxyPath.text());
+            agentSettings.endPoint.apiKeyEnv = "NONE";
+        } else {
+            const json::Node& jUrl = route.get("url");
+            const json::Node& jApiKeyEnv = route.get("apiKeyEnv");
+            if (!jUrl.isText() || !jApiKeyEnv.isText()) {
+                getStdErr().format("Invalid route for provider '{}': {}\n", options.provider, routesPath);
+                return false;
+            }
+            agentSettings.endPoint.url = jUrl.text();
+            agentSettings.endPoint.apiKeyEnv = jApiKeyEnv.text();
+        }
         agentSettings.endPoint.model = jDefaultModel.text();
         if (jProtocol.text() == "completions") {
             agentSettings.endPoint.protocol = Protocol::Completions;
@@ -1267,6 +1286,8 @@ int main(int argc, const char* argv[]) {
          "Path to JSON settings file or directory"},
         {"-p", "--provider", PLY_LOOKUP_MEMBER(CommandLineOptions, provider), "Select a preset inference provider"},
         {"-m", "--model", PLY_LOOKUP_MEMBER(CommandLineOptions, model), "Model name to use"},
+        {"-x", "--proxy", PLY_LOOKUP_MEMBER(CommandLineOptions, useProxy), "Connect through agent-proxy",
+         PLY_LOOKUP_MEMBER(CommandLineOptions, proxyPort), "port"},
         {"-l", "--http-log", PLY_LOOKUP_MEMBER(CommandLineOptions, enableHttpLog), "Write raw HTTP log"},
         {"-s", "--serve", PLY_LOOKUP_MEMBER(CommandLineOptions, runWebServer), "Create a webserver on port 8081"},
 #if !defined(PLY_IOS)
@@ -1294,6 +1315,20 @@ int main(int argc, const char* argv[]) {
     if (numUserPrompts > 1) {
         getStdErr().write("Only one prompt may be specified on the command line.\n");
         return 1;
+    }
+    // Proxy mode needs a known-provider route to select its path.
+    if (options.useProxy && !options.provider) {
+        getStdErr().write("The -x/--proxy option requires -p/--provider.\n");
+        return 1;
+    }
+    // Validate an optional proxy port before loading any settings.
+    if (options.proxyPort) {
+        u64 parsedPort = 0;
+        if (!options.proxyPort.match("%d$", &parsedPort) || parsedPort < 1 || parsedPort > 65535) {
+            getStdErr().format("Invalid proxy port '{}': expected an integer from 1 to 65535.\n", options.proxyPort);
+            return 1;
+        }
+        agentProxyPort = numericCast<u16>(parsedPort);
     }
 
     // Opening the web UI also enables the server that provides it.
@@ -1406,6 +1441,8 @@ PLY_STRUCT_BEGIN(CommandLineOptions)
 PLY_STRUCT_MEMBER(settingsPath)
 PLY_STRUCT_MEMBER(provider)
 PLY_STRUCT_MEMBER(model)
+PLY_STRUCT_MEMBER(useProxy)
+PLY_STRUCT_MEMBER(proxyPort)
 PLY_STRUCT_MEMBER(enableHttpLog)
 PLY_STRUCT_MEMBER(runWebServer)
 PLY_STRUCT_MEMBER(openBrowser)

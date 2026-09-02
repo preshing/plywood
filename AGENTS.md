@@ -14,3 +14,4 @@ Full documentation is available in the `docs/` folder. An online version is host
 - Use the fewest line of code possible without sacrificing readability.
 - Always use `this->` to refer to member functions and member variables inside the same class.
 - The body of every `if`, `else`, `do`, `while` and `for` statement must be surrounded by `{` curly braces `}`, unless it consists of a single `continue`, `return`, or `break` statement, in which case curly braces must be omitted.
+- Use the `banner-comment` sample application to generate banner comments that label significant source file sections.

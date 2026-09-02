@@ -69,19 +69,3 @@ The settings file contains a listening `port` and one or more exact `routes`:
 
 For each matched `POST` request, the proxy looks up that route's environment variable and inserts API key credentials
 into the request header. Otherwise, communication data is forwarded as-is.
-
-## Agent configuration
-
-Point the agent at the route's local URL, retain the remote provider's protocol and model, and set `apiKeyEnv` to
-`NONE`:
-
-```
-{
-    "endPoint": {
-        "url": "http://127.0.0.1:8082/openai/v1/responses",
-        "protocol": "responses",
-        "apiKeyEnv": "NONE",
-        "model": "gpt-5.6-luna"
-    }
-}
-```
