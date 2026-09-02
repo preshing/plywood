@@ -104,11 +104,12 @@ The settings file must contain a single JSON object with any of the following op
     - `apiKeyEnv`: The name of an environment variable containing an API key, or `NONE` to omit authentication.
     - `model`: The name of the model to use.
 - `systemPrompt`: A system prompt message.
+- `useAgentsMD`: If `true` and the working directory contains an `AGENTS.md` file, the contents of this file are appended to the system prompt.
 - `userPrompt`: The user prompt. Can be overridden by passing a prompt on the command line.
-- `workingDirectory`: The working directory used by the agent and as the base for relative permission paths. The default is the directory containing the settings file itself. Can be absolute or relative to directory containing the settings file.
+- `workingDirectory`: The working directory for this settings file. Used as the agent's working directory and as the base for relative permission paths in this settings file. Default is the directory containing the settings file itself. Relative paths are interpreted as relative to the directory containing the settings file.
 - `permissions`: An array of subobjects describing the directories the agent can access. Each subobject has the following properties:
     - `path`: The path to a directory. Can be absolute or relative to `workingDirectory`.
-    - `tools`: An array of strings listing the tools the agent is allowed to use in the specified directory.
-- `include`: The path to another file containing JSON settings to inherit. Can be absolute or relative to the directory containing the JSON file itself.
+    - `tools`: An array of strings listing the tools that the agent is allowed to use in the specified directory.
+- `include`: The path to another file containing JSON settings to inherit. Can also be an array of paths for multiple includes. Relative paths are interpreted as relative to the directory containing the JSON file itself.
 
-When the `include` property is used by file A to inherit from another file B, file B is loaded first, then file A's settings are merged in. When merging, the `endPoint` and `userPrompt` properties are fully replaced, while the `systemPrompt` and `permissions` properties are combined additively.
+When the `include` property is used by file A to inherit from another file B, file B is loaded first, then file A's settings are merged in. Any `endPoint` and `userPrompt` properties are fully replaced, while the `systemPrompt` and `permissions` properties are combined additively. All `AGENTS.md` files in the include tree are appended to the system prompt, with leaf files being appended first.

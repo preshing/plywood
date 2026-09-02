@@ -41,6 +41,7 @@ struct CommandLineOptions {
 CommandLineOptions options;
 Agent::Settings agentSettings;
 String tempUserPrompt; // Will remove later
+Array<String> agentsMDSections;
 Reference<Transcript> transcript;
 u16 agentProxyPort = 8082;
 u16 webServerPort = 8081;
@@ -944,15 +945,26 @@ static bool loadSettingsWithIncludes(StringView settingsPath, Array<String>& inc
     }
     const json::Node& root = result.root;
 
-    // Load included settings file (if any).
+    // Load included settings files in their listed order, if any.
     if (const json::Node& jInclude = root.get("include")) {
-        if (!jInclude.isText()) {
-            getStdErr().format("The 'include' property must be a string in: {}\n", settingsPath);
+        if (jInclude.isText()) {
+            String parentPath = joinPath(splitPath(settingsPath).directory, jInclude.text());
+            if (!loadSettingsWithIncludes(parentPath, includedPaths))
+                return false;
+        } else if (jInclude.isArray()) {
+            for (const json::Node& jPath : jInclude.arrayView()) {
+                if (!jPath.isText()) {
+                    getStdErr().format("Each 'include' array entry must be a string in: {}\n", settingsPath);
+                    return false;
+                }
+                String parentPath = joinPath(splitPath(settingsPath).directory, jPath.text());
+                if (!loadSettingsWithIncludes(parentPath, includedPaths))
+                    return false;
+            }
+        } else {
+            getStdErr().format("The 'include' property must be a string or array in: {}\n", settingsPath);
             return false;
         }
-        String parentPath = joinPath(splitPath(settingsPath).directory, jInclude.text());
-        if (!loadSettingsWithIncludes(parentPath, includedPaths))
-            return false;
     }
 
     // Import workingDirectory.
@@ -966,6 +978,28 @@ static bool loadSettingsWithIncludes(StringView settingsPath, Array<String>& inc
     }
     // The agent's working directory is determined by the innermost settings file.
     agentSettings.toolSet.workingDirectory = workingDir;
+
+    // Collect this settings file's AGENTS.md for later addition to the system prompt.
+    if (const auto& jUseAgentsMD = root.get("useAgentsMD")) {
+        if (!jUseAgentsMD.isBool()) {
+            getStdErr().format("useAgentsMD must be a boolean in: {}\n", settingsPath);
+            return false;
+        }
+        if (jUseAgentsMD.getBool()) {
+            String agentsMDPath = joinPath(workingDir, "AGENTS.md");
+            if (FileSystem::exists(agentsMDPath) == ExistsResult::File) {
+                String content = FileSystem::loadText(agentsMDPath);
+                if (FileSystem::lastResult() != FSResult::OK) {
+                    getStdErr().format("Could not load AGENTS.md file: {}\n", agentsMDPath);
+                    return false;
+                }
+                agentsMDSections.append(String::format(
+                    "\n\n--------------------------------------------------------------------\n"
+                    "[Contents of {}]\n\n{}",
+                    agentsMDPath, content));
+            }
+        }
+    }
 
     // Import endPoint.
     if (const auto& jEndPoint = root.get("endPoint")) {
@@ -1165,7 +1199,12 @@ static bool loadSettings() {
 
     // Augment the system prompt.
     agentSettings.toolSet.systemPrompt +=
-        String::format("\nThe current working directory is: {}\n", agentSettings.toolSet.workingDirectory);
+        String::format("\n\nThe current working directory is: {}", agentSettings.toolSet.workingDirectory);
+
+    // Append collected AGENTS.md sections after the current working directory.
+    for (const String& section : agentsMDSections) {
+        agentSettings.toolSet.systemPrompt += section;
+    }
 
     return true;
 }

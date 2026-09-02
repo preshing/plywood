@@ -1,15 +1,10 @@
 {
-    "endPoint": {
-        "url": "https://ollama.com/v1/chat/completions",
-        "protocol": "completions",
-        "apiKeyEnv": "OLLAMA_API_KEY",
-        "model": "glm-5.2"
-    },
-    "systemPrompt": "You are a helpful assistant.",
+    "systemPrompt": "You are a helpful assistant working in the Plywood repository.",
+    "useAgentsMD": true,
     "permissions": [
         {
             "path": ".",
-            "tools": ["read", "list_dir", "find_in_files", "write", "edit"]
+            "tools": ["read", "list_dir", "find_in_files", "write", "edit", "shell"]
         }
     ]
 }
