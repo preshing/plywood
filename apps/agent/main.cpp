@@ -31,6 +31,7 @@ struct CommandLineOptions {
     String proxyPort;
     bool enableHttpLog = false;
     bool runWebServer = false;
+    String webServerPort;
     bool openBrowser = false;
     String userPrompt;
     bool printUsage = false;
@@ -42,6 +43,7 @@ Agent::Settings agentSettings;
 String tempUserPrompt; // Will remove later
 Reference<Transcript> transcript;
 u16 agentProxyPort = 8082;
+u16 webServerPort = 8081;
 
 //---------------------------------------------------
 // Helpers for formatting the transcript output.
@@ -1284,9 +1286,10 @@ int main(int argc, const char* argv[]) {
         {"-x", "--proxy", PLY_LOOKUP_MEMBER(CommandLineOptions, useProxy), "Connect through agent-proxy",
          PLY_LOOKUP_MEMBER(CommandLineOptions, proxyPort), "port"},
         {"-l", "--http-log", PLY_LOOKUP_MEMBER(CommandLineOptions, enableHttpLog), "Write raw HTTP log"},
-        {"-s", "--serve", PLY_LOOKUP_MEMBER(CommandLineOptions, runWebServer), "Create a webserver on port 8081"},
+        {"-s", "--serve", PLY_LOOKUP_MEMBER(CommandLineOptions, runWebServer), "Serve a web UI (default port: 8081)",
+         PLY_LOOKUP_MEMBER(CommandLineOptions, webServerPort), "port"},
 #if !defined(PLY_IOS)
-        {"-o", "--open", PLY_LOOKUP_MEMBER(CommandLineOptions, openBrowser), "Open the web UI"},
+        {"-o", "--open", PLY_LOOKUP_MEMBER(CommandLineOptions, openBrowser), "Launch a web browser to view the web UI"},
 #endif
         {"-h", "--help", PLY_LOOKUP_MEMBER(CommandLineOptions, printUsage), "Print this help"},
     });
@@ -1326,6 +1329,17 @@ int main(int argc, const char* argv[]) {
         agentProxyPort = numericCast<u16>(parsedPort);
     }
 
+    // Validate an optional web server port before starting any worker threads.
+    if (options.webServerPort) {
+        u64 parsedPort = 0;
+        if (!options.webServerPort.match("%d$", &parsedPort) || parsedPort < 1 || parsedPort > 65535) {
+            getStdErr().format("Invalid server port '{}': expected an integer from 1 to 65535.\n",
+                               options.webServerPort);
+            return 1;
+        }
+        webServerPort = numericCast<u16>(parsedPort);
+    }
+
     // Opening the web UI also enables the server that provides it.
     if (options.openBrowser) {
         options.runWebServer = true;
@@ -1362,7 +1376,7 @@ int main(int argc, const char* argv[]) {
     Thread webServerThread;
     if (options.runWebServer) {
         Network::initialize(IPv4);
-        webServerThread.run([] { HTTPServer::run({}, 8081, serveWebTranscript); });
+        webServerThread.run([] { HTTPServer::run({}, webServerPort, serveWebTranscript); });
     }
 
     // Create a transcript with the user's prompt as the first turn.
@@ -1390,8 +1404,9 @@ int main(int argc, const char* argv[]) {
 #else
         StringView launcher = "xdg-open";
 #endif
-        Owned<Subprocess> browser = Subprocess::exec(launcher, {"http://localhost:8081"}, {}, Subprocess::Output::ignore(),
-                                                 Subprocess::Input::ignore());
+        String webURL = String::format("http://localhost:{}", webServerPort);
+        Owned<Subprocess> browser =
+            Subprocess::exec(launcher, {webURL}, {}, Subprocess::Output::ignore(), Subprocess::Input::ignore());
         if (!browser) {
             getStdErr().write("Warning: Could not open the default web browser.\n");
         }
@@ -1440,6 +1455,7 @@ PLY_STRUCT_MEMBER(useProxy)
 PLY_STRUCT_MEMBER(proxyPort)
 PLY_STRUCT_MEMBER(enableHttpLog)
 PLY_STRUCT_MEMBER(runWebServer)
+PLY_STRUCT_MEMBER(webServerPort)
 PLY_STRUCT_MEMBER(openBrowser)
 PLY_STRUCT_MEMBER(printUsage)
 PLY_STRUCT_END()

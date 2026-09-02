@@ -1,12 +1,12 @@
 ﻿`agent`
 =======
 
-`agent` is primitive command-line agent harness.
-It provides scaffolding around the [Agent Harness library](/docs/high-level/agent-harness.md) in the form of command-line options
+`agent` is an agent harness with a command-line interface.
+It provides rudimentary scaffolding around the [Agent Harness library](/docs/high-level/agent-harness.md) in the form of command-line options
 and JSON settings.
-Agent transcripts are streamed to standard output and can also be streamed to a web browser with Markdown converted to HTML.
+Agent transcripts are streamed to standard output and can also be streamed to a web browser with Markdown formatting applied.
 
-If CMake is installed, the following command will build and run the `agent` sample application. On Windows, use `share\build-app.bat` instead.
+If CMake is installed, the following command will build and run `agent`. On Windows, use `share\build-app.bat` instead.
 
 ```
 $ share/build-app.sh agent --run [-c <settings-path>] [-p <provider>] [-m <model>] [-x[=<port>]] [-l] [-s] [-o] [prompt]
@@ -22,13 +22,13 @@ Available command-line options:
 
 | Short | Long | Description |
 |---|---|---|
-| `-c` | `--config` | Path to a JSON settings file or a directory. |
-| `-p` | `--provider` | Select a preset inference provider. |
+| `-p` | `--provider` | Select from a list of known inference providers. |
 | `-m` | `--model` | The name of the model to use. |
-| `-x[=<port>]` | `--proxy[=<port>]` | Connect through `agent-proxy`. Requires `-p/--provider`. |
+| `-x[=<port>]` | `--proxy[=<port>]` | Connect through [`agent-proxy`](/docs/apps/agent-proxy.md). Requires `-p/--provider`. |
 | `-l` | `--http-log` | Write a raw HTTP log. |
-| `-s` | `--serve` | Serve a web UI on port 8081. |
-| `-o` | `--open` | Open the web UI in the default browser. |
+| `-c` | `--config` | Path to a JSON settings file or a directory. |
+| `-s[=<port>]` | `--serve[=<port>]` | Serve a web UI. Default port is 8081. |
+| `-o` | `--open` | Launch a web browser to view the web UI. |
 | `-h` | `--help` | Print the available options. |
 
 The `-p/--provider` option selects an endpoint from a list of known providers.
