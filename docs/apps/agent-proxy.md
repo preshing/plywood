@@ -35,7 +35,6 @@ The proxy loads `known-providers.json` from the executable's directory. This is 
 [
     {
         "provider": "openai",
-        "proxyPath": "/openai/v1/responses",
         "url": "https://api.openai.com/v1/responses",
         "protocol": "responses",
         "apiKeyEnv": "OPENAI_API_KEY",
@@ -43,13 +42,3 @@ The proxy loads `known-providers.json` from the executable's directory. This is 
     }
 ]
 ```
-
-- The root is a required non-empty array. Each provider has the following proxy properties:
-    - `proxyPath`: Exact local request URI.
-    - `url`: Remote inference endpoint.
-    - `protocol`: One of `completions`, `responses` or `anthropic`. The `completions` and `responses` protocols use
-      bearer authentication; `anthropic` uses the `x-api-key` header.
-    - `apiKeyEnv`: Environment variable available to the proxy process that contains the key.
-
-For each matched `POST` request, the proxy looks up that route's environment variable and inserts API key credentials
-into the request header. Otherwise, communication data is forwarded as-is.

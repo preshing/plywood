@@ -1201,12 +1201,7 @@ static bool applyProviderOverride() {
 
         // Select either the remote provider endpoint or its local proxy route.
         if (options.useProxy) {
-            const json::Node& jProxyPath = route.get("proxyPath");
-            if (!jProxyPath.isText() || !jProxyPath.text().startsWith('/') || jProxyPath.text().find('?') >= 0) {
-                getStdErr().format("Invalid proxy path for provider '{}': {}\n", options.provider, routesPath);
-                return false;
-            }
-            agentSettings.endPoint.url = String::format("http://127.0.0.1:{}{}", agentProxyPort, jProxyPath.text());
+            agentSettings.endPoint.url = String::format("http://127.0.0.1:{}/{}", agentProxyPort, options.provider);
             agentSettings.endPoint.apiKeyEnv = "NONE";
         } else {
             const json::Node& jUrl = route.get("url");

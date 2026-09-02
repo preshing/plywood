@@ -1,7 +1,6 @@
 [
     {
         "provider": "openai",
-        "proxyPath": "/openai/v1/responses",
         "url": "https://api.openai.com/v1/responses",
         "protocol": "responses",
         "apiKeyEnv": "OPENAI_API_KEY",
@@ -9,7 +8,6 @@
     },
     {
         "provider": "anthropic",
-        "proxyPath": "/anthropic/v1/messages",
         "url": "https://api.anthropic.com/v1/messages",
         "protocol": "anthropic",
         "apiKeyEnv": "ANTHROPIC_API_KEY",
@@ -17,7 +15,6 @@
     },
     {
         "provider": "ollama-cloud",
-        "proxyPath": "/ollama-cloud/v1/chat/completions",
         "url": "https://ollama.com/v1/chat/completions",
         "protocol": "completions",
         "apiKeyEnv": "OLLAMA_API_KEY",

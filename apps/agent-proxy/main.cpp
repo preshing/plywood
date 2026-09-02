@@ -91,17 +91,18 @@ static bool loadSettings() {
         }
 
         // Require every field used by the proxy.
-        const json::Node& jPath = jRoute.get("proxyPath");
+        const json::Node& jProvider = jRoute.get("provider");
         const json::Node& jUpstreamUrl = jRoute.get("url");
         const json::Node& jProtocol = jRoute.get("protocol");
         const json::Node& jApiKeyEnv = jRoute.get("apiKeyEnv");
-        if (!jPath.isText() || !jUpstreamUrl.isText() || !jProtocol.isText() || !jApiKeyEnv.isText()) {
+        if (!jProvider.isText() || !jUpstreamUrl.isText() || !jProtocol.isText() || !jApiKeyEnv.isText()) {
             getStdErr().format("Invalid or missing proxy provider property in: {}\n", providersPath);
             return false;
         }
 
         // Validate the route destination and protocol.
-        if (!jPath.text().startsWith('/') || jPath.text().find('?') >= 0 || !jApiKeyEnv.text() ||
+        String path = String::format("/{}", jProvider.text());
+        if (!jProvider.text() || path.find('?') >= 0 || !jApiKeyEnv.text() ||
             (!jUpstreamUrl.text().startsWith("https://") && !jUpstreamUrl.text().startsWith("http://"))) {
             getStdErr().format("Invalid route path, URL or API key environment variable in: {}\n", providersPath);
             return false;
@@ -118,14 +119,14 @@ static bool loadSettings() {
             return false;
         }
         for (const Route& route : settings.routes) {
-            if (route.path == jPath.text()) {
-                getStdErr().format("Duplicate route path '{}': {}\n", jPath.text(), providersPath);
+            if (route.path == path) {
+                getStdErr().format("Duplicate route path '{}': {}\n", path, providersPath);
                 return false;
             }
         }
 
         // Retain the environment variable name so the key can be resolved for each request.
-        settings.routes.append({jPath.text(), jUpstreamUrl.text(), protocol, jApiKeyEnv.text()});
+        settings.routes.append({std::move(path), jUpstreamUrl.text(), protocol, jApiKeyEnv.text()});
     }
     return true;
 }
