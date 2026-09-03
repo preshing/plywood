@@ -60,7 +60,7 @@ Available command-line options:
 | `-l` | `--http-log` | Write a raw HTTP log. |
 | `-c` | `--config` | Path to a JSON settings file or a directory. |
 | `-s[=<port>]` | `--serve[=<port>]` | Serve a web UI. Default port is 8081. |
-| `-o` | `--open` | Launch a web browser to view the web UI. |
+| `-b` | `--browser` | Launch a web browser to view the web UI. |
 | `-h` | `--help` | Print the available options. |
 
 The `-p/--provider` option selects an endpoint from a list of known providers.

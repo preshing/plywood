@@ -1328,7 +1328,8 @@ int main(int argc, const char* argv[]) {
         {"-s", "--serve", PLY_LOOKUP_MEMBER(CommandLineOptions, runWebServer), "Serve a web UI (default port: 8081)",
          PLY_LOOKUP_MEMBER(CommandLineOptions, webServerPort), "port"},
 #if !defined(PLY_IOS)
-        {"-o", "--open", PLY_LOOKUP_MEMBER(CommandLineOptions, openBrowser), "Launch a web browser to view the web UI"},
+        {"-b", "--browser", PLY_LOOKUP_MEMBER(CommandLineOptions, openBrowser),
+         "Launch a web browser to view the web UI"},
 #endif
         {"-h", "--help", PLY_LOOKUP_MEMBER(CommandLineOptions, printUsage), "Print this help"},
     });
