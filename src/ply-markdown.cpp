@@ -4,7 +4,7 @@
 │    ╱   ╱╲     https://plywood.dev/                                  │
 │   ╱___╱╭╮╲                                                          │
 │    └──┴┴┴┘    Markdown Parser                                       │
-│               Documentation: /docs/high-level/markdown-parser.md    │
+│               Documentation: docs/high-level/markdown-parser.md     │
 │                                                                     │
 └────────────────────────────────────────────────────────────────────*/
 

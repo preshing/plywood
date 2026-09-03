@@ -4,7 +4,7 @@
 │    ╱   ╱╲     https://plywood.dev/                       │
 │   ╱___╱╭╮╲                                               │
 │    └──┴┴┴┘    Math                                       │
-│               Documentation: /docs/math.md               │
+│               Documentation: docs/math.md                │
 │                                                          │
 └─────────────────────────────────────────────────────────*/
 

@@ -4,7 +4,7 @@
 │    ╱   ╱╲     https://plywood.dev/                       │
 │   ╱___╱╭╮╲                                               │
 │    └──┴┴┴┘    System                                     │
-│               Documentation: /docs/system/index.md       │
+│               Documentation: docs/system/index.md        │
 │                                                          │
 └─────────────────────────────────────────────────────────*/
 

@@ -4,7 +4,7 @@
 │    ╱   ╱╲     https://plywood.dev/                              │
 │   ╱___╱╭╮╲                                                      │
 │    └──┴┴┴┘    serve-docs                                        │
-│               Documentation: /docs/apps/serve-docs.md           │
+│               Documentation: docs/apps/serve-docs.md            │
 │                                                                 │
 └────────────────────────────────────────────────────────────────*/
 

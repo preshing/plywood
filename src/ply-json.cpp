@@ -4,7 +4,7 @@
 │    ╱   ╱╲     https://plywood.dev/                               │
 │   ╱___╱╭╮╲                                                       │
 │    └──┴┴┴┘    JSON Support                                       │
-│               Documentation: /docs/high-level/json-support.md    │
+│               Documentation: docs/high-level/json-support.md     │
 │                                                                  │
 └─────────────────────────────────────────────────────────────────*/
 

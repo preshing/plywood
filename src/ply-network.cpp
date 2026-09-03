@@ -4,7 +4,7 @@
 │    ╱   ╱╲     https://plywood.dev/                       │
 │   ╱___╱╭╮╲                                               │
 │    └──┴┴┴┘    Networking                                 │
-│               Documentation: /docs/networking.md         │
+│               Documentation: docs/networking.md          │
 │                                                          │
 └─────────────────────────────────────────────────────────*/
 

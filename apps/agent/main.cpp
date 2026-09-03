@@ -4,7 +4,7 @@
 │    ╱   ╱╲     https://plywood.dev/                         │
 │   ╱___╱╭╮╲                                                 │
 │    └──┴┴┴┘    agent                                        │
-│               Documentation: /docs/apps/agent.md           │
+│               Documentation: docs/apps/agent.md            │
 │                                                            │
 └───────────────────────────────────────────────────────────*/
 

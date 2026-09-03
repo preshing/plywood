@@ -4,7 +4,7 @@
 │    ╱   ╱╲     https://plywood.dev/                       │
 │   ╱___╱╭╮╲                                               │
 │    └──┴┴┴┘    Reflection                                 │
-│               Documentation: /docs/reflect.md            │
+│               Documentation: docs/reflect.md             │
 │                                                          │
 └─────────────────────────────────────────────────────────*/
 

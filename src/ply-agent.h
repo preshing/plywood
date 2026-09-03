@@ -4,7 +4,7 @@
 │    ╱   ╱╲     https://plywood.dev/                                  │
 │   ╱___╱╭╮╲                                                          │
 │    └──┴┴┴┘    Agent Harness                                         │
-│               Documentation: /docs/high-level/agent-harness.md      │
+│               Documentation: docs/high-level/agent-harness.md       │
 │                                                                     │
 └────────────────────────────────────────────────────────────────────*/
 

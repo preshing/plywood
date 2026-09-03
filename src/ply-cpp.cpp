@@ -4,7 +4,7 @@
 │    ╱   ╱╲     https://plywood.dev/                             │
 │   ╱___╱╭╮╲                                                     │
 │    └──┴┴┴┘    C++ Parser                                       │
-│               Documentation: /docs/high-level/cpp-parser.md    │
+│               Documentation: docs/high-level/cpp-parser.md     │
 │                                                                │
 └───────────────────────────────────────────────────────────────*/
 

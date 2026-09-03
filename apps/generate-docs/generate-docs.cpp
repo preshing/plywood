@@ -4,7 +4,7 @@
 │    ╱   ╱╲     https://plywood.dev/                                 │
 │   ╱___╱╭╮╲                                                         │
 │    └──┴┴┴┘    generate-docs                                        │
-│               Documentation: /docs/apps/generate-docs.md           │
+│               Documentation: docs/apps/generate-docs.md            │
 │                                                                    │
 └───────────────────────────────────────────────────────────────────*/
 

@@ -4,7 +4,7 @@
 │    ╱   ╱╲     https://plywood.dev/                              │
 │   ╱___╱╭╮╲                                                      │
 │    └──┴┴┴┘    test-suite                                        │
-│               Documentation: /docs/apps/test-suite.md           │
+│               Documentation: docs/apps/test-suite.md            │
 │                                                                 │
 └────────────────────────────────────────────────────────────────*/
 

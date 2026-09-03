@@ -4,7 +4,7 @@
 │    ╱   ╱╲     https://plywood.dev/                            │
 │   ╱___╱╭╮╲                                                    │
 │    └──┴┴┴┘    Tokenizer                                       │
-│               Documentation: /docs/high-level/tokenizer.md    │
+│               Documentation: docs/high-level/tokenizer.md     │
 │                                                               │
 └──────────────────────────────────────────────────────────────*/
 
