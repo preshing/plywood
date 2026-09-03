@@ -34,9 +34,9 @@ Every `Transcript` object holds a reference to a parent `Transcript` object, all
 
 ## `Agent`
 
-The `Agent` class represents an agent running in a background thread. As the agent runs, it generates `TranscriptEvent`s, which are buffered internally until the application calls `pollForEvents`, `waitForEvents` or `waitForCompletion`. Only one thread is allowed to call `pollForEvents`, `waitForEvents` or `waitForCompletion` at a time on a given `Agent`.
+The `Agent` class represents an agent running in a background thread. As the agent runs, it generates `TranscriptEvent`s, which are buffered internally until the application calls `pollForEvents`, `waitForEvents` or `waitForCompletion`. Only one thread is allowed to call `pollForEvents`, `waitForEvents` or `waitForCompletion` at a time.
 
-You can destroy an `Agent` at any time as long as no other threads are using it. If the agent is still running at destruction time, it's immediately canceled.
+You can destroy an `Agent` at any time as long as there are no racing member function calls from other threads. If the agent is still running at destruction time, it's immediately canceled.
 
 `Agent::Agent(const Agent::Settings& settings)`
 > Constructor. The agent starts running in a background thread. `Agent::Settings` has the following data members:

@@ -2,11 +2,17 @@
    Front page
 ------------------------------------------------*/
 
-/* Center short pages with colors that extend the hero and content backgrounds. */
-body {
+/* Extend the hero and content backgrounds across the mobile safe areas. */
+html {
     --front-top-background: #2372d5;
     --front-background: #5c840c;
     --hero-title-shadow: #394860;
+    background: linear-gradient(to bottom, var(--front-top-background) 50%,
+                                var(--front-background) 50%);
+}
+
+/* Center short pages with colors that extend above and below the page content. */
+body {
     display: grid;
     grid-template-rows: minmax(0, 1fr) auto minmax(0, 2fr);
     min-height: 100vh;

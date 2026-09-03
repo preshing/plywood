@@ -1,8 +1,6 @@
 ﻿Multithreading (`ply-system.h`)
 ==============================
 
-Multithreading is the co-ordination of multiple threads of execution within a single process. Access atomic operations, thread-local variables, mutexes, condition variables, semaphores and read-write locks.
-
 `TID getCurrentThreadId()`
 > Returns the operating system's thread ID for the current thread. See also `getCurrentProcessId`.
 
@@ -31,7 +29,7 @@ Destroying a valid `Thread` object implicitly detaches it if you have not alread
 
 ## `Atomic`
 
-`Atomic` provides atomic operations on integer types with explicit memory ordering via a `MemoryOrder` argument. Must be aligned to the size of its template argument.
+`Atomic` provides atomic operations on integer types with explicit memory ordering via a `MemoryOrder` argument.
 
 ```
 enum class MemoryOrder {
@@ -138,7 +136,7 @@ A `ConditionVariable` allows threads to wait for a condition to become true. Alw
 
 ## `ReadWriteLock`
 
-A `ReadWriteLock` allows multiple readers or a single writer. This is efficient when reads are much more common than writes.
+A `ReadWriteLock` allows multiple readers or a single writer.
 
 {context class=ReadWriteLock}
 

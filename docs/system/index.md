@@ -1,7 +1,7 @@
 ﻿`ply-system.h`: System
 ======================
 
-`ply-system.h` provides provides cross-platform support for essential operating system services including memory management, timers, filesystems, threads and processes in a single header file of less than 5,000 lines.
+`ply-system.h` provides cross-platform support for essential operating system services, including memory management, timers, filesystems, threads and processes, in a single header file.
 
 Features are organized into the following categories:
 

@@ -338,6 +338,9 @@ html {
 .content p {
     margin-bottom: 18px;
 }
+.content svg {
+    margin-bottom: 18px;
+}
 .content code {
     font-family: "jetbrains_mono", monospace;
     font-size: 14px;
