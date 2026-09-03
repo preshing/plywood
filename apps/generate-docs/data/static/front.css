@@ -37,7 +37,7 @@ body::after {
 }
 
 .front-page {
-    --front-accent: #e0f0e0;
+    --front-accent: #548254;
     --front-button-hover-accent: #e7e79a;
     --front-button-hover-border: #e7e79a;
     --front-button-hover: #a9c975;
@@ -80,7 +80,7 @@ body::after {
 }
 
 .front-contents {
-    margin-top: clamp(-247px, calc(148px - 32.9vw), -17px);
+    margin-top: clamp(-240px, calc(102.8571px - 28.5714vw), -40px);
     padding-bottom: 26px;
 }
 
@@ -88,7 +88,7 @@ body::after {
     position: absolute;
     top: 5%;
     left: 37%;
-    font-size: clamp(48px, calc(40.8571px + 1.4286vw), 58px);
+    font-size: clamp(37px, calc(22px + 3vw), 58px);
     width: max-content;
     transform: translateX(-50%);
     text-align: center;
@@ -113,21 +113,21 @@ body::after {
 
 .tagline {
     top: 29%;
-    font-size: 32px;
+    font-size: clamp(22px, calc(14.8571px + 1.4286vw), 32px);
     position: absolute;
     left: 43%;
     font-family: "robotobold", sans-serif;
     line-height: 1.1;
-    text-align: center;
+    white-space: nowrap;
     color: #e8e8e8;
 }
 
 .tagline .subtag {
     font-family: 'Inter', sans-serif;
     font-weight: 600;
-    font-size: 24px;
+    font-size: clamp(62%, calc(6.24px + 1.48vw), 75%);
     color: #3268bc;
-    margin-top: 44px;
+    margin-top: clamp(17.875px, calc(12.0714px + 1.1607vw), 26px);
 }
 
 .front-contents p {

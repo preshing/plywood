@@ -1,7 +1,7 @@
 ﻿`ply-agent.h`: Agent Harness
 ============================
 
-`ply-agent.h` defines a C++ API for interacting with AI agents. Applications create `Transcript` objects and pass them to `Agent` objects; the agent's job is to extend the transcript in a natural-sounding way. It does this by communicating with a remote inference server and running tools in the local filesystem.
+`ply-agent.h` defines a C++ API for interacting with AI agents. Applications create `Transcript` objects and pass them to `Agent` objects; the agent's job is to extend the transcript in a logically consistent way. It does this by communicating with a remote inference server and running tools in the local filesystem.
 
 The steps for interacting with agents are as follows:
 
