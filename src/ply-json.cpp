@@ -215,6 +215,7 @@ Parser::Token Parser::readToken(bool tokenizeNewLine) {
             case '"':
             case '\'': {
                 Token token = {Token::Text, this->readOfs, {}};
+                token.wasQuoted = true;
                 ViewStream in{this->srcView.substr(this->readOfs)};
                 token.text = readQuotedString(in, QuotedStringType::JSON, true,
                     [this, &in](QuotedStringError errorCode) {
@@ -416,6 +417,10 @@ Node Parser::readExpression(Token&& firstToken, const Token* afterToken) {
             return this->readArray(firstToken);
 
         case Token::Text: {
+            // Quoted tokens are always JSON strings, even when their contents look like primitives.
+            if (firstToken.wasQuoted) {
+                return Node{Node::Text{std::move(firstToken.text)}, firstToken.fileOfs};
+            }
             if (firstToken.text == "true") {
                 return Node{Node::Bool{true}, firstToken.fileOfs};
             }

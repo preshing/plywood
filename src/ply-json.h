@@ -237,6 +237,7 @@ private:
         Type type = Invalid;
         u32 fileOfs = 0;
         String text;
+        bool wasQuoted = false;
 
         bool isValid() const {
             return type != Type::Invalid;
