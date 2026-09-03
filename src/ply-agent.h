@@ -105,11 +105,8 @@ struct TranscriptEvent {
     PLY_DECLARE_TYPE_INFO(TranscriptEvent)
 };
 
-// TranscriptUpdater
-struct TranscriptUpdater;
-Owned<TranscriptUpdater> createTranscriptUpdater(Transcript* transcript);
-void destroy(TranscriptUpdater* updater);
-void applyTranscriptEvent(TranscriptUpdater* updater, const TranscriptEvent& event);
+// Applies a streamed event directly to the supplied transcript.
+void applyTranscriptEvent(Transcript* transcript, const TranscriptEvent& event);
 
 #if !PLY_AGENT_TRANSCRIPT_ONLY
 
@@ -146,16 +143,12 @@ struct ToolSet {
         bool required = false;
     };
 
-    struct Permission {
-        String absPath;
-    };
-
     struct Handler {
         String name;
         String description;
         Array<Parameter> parameters;
         Functor<void(ToolContext* toolCtx, Transcript::Message* toolCall, const json::Node& arguments)> handler;
-        Array<Permission> permissions;
+        Array<String> permittedDirectories;
 
         StringView getLookupKey() const {
             return this->name;
@@ -172,8 +165,8 @@ struct Agent {
     struct Impl;
 
     struct Settings {
-        // The agent doesn't modify initialTranscript; only uses it to initialize the HTTP request.
-        const Transcript* initialTranscript = nullptr;
+        // The agent doesn't modify startTranscript; only uses it to initialize the HTTP request.
+        const Transcript* startTranscript = nullptr;
         EndPoint endPoint;
         ToolSet toolSet;
         bool enableHttpLog = false;
@@ -221,8 +214,8 @@ struct ToolContext {
     // and serializes event buffering across the inference and tool threads.
     Mutex mutex;
     bool canceled = false; // Set by the client thread (via cancel or destruction) to request cancellation.
-    Agent::Impl* agentImpl = nullptr;
-    ArrayView<const ToolSet::Permission> permissions;
+    Agent::Impl* agentImpl = nullptr; // Used internally.
+    ArrayView<const String> permittedDirectories;
     StringView workingDirectory;
 
     // Main function used by tool handlers to add text to the response. It locks the mutex, appends response text
@@ -230,15 +223,15 @@ struct ToolContext {
     void appendResponse(Transcript::Message* toolCall, StringView text);
 };
 
-// Individual tool registration functions. Each adds a single tool to the ToolSet.
+// Individual tool registration functions. Each adds a single tool and returns its handler.
 #if !defined(PLY_IOS)
-void addShellTool(ToolSet* toolSet);
+ToolSet::Handler* addShellTool(ToolSet* toolSet);
 #endif // !defined(PLY_IOS)
-void addReadTool(ToolSet* toolSet);
-void addWriteTool(ToolSet* toolSet);
-void addListDirTool(ToolSet* toolSet);
-void addFindInFilesTool(ToolSet* toolSet);
-void addEditTool(ToolSet* toolSet);
+ToolSet::Handler* addReadTool(ToolSet* toolSet);
+ToolSet::Handler* addWriteTool(ToolSet* toolSet);
+ToolSet::Handler* addListDirTool(ToolSet* toolSet);
+ToolSet::Handler* addFindInFilesTool(ToolSet* toolSet);
+ToolSet::Handler* addEditTool(ToolSet* toolSet);
 
 #endif // !PLY_AGENT_TRANSCRIPT_ONLY
 

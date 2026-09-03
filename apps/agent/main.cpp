@@ -1125,33 +1125,33 @@ static bool loadSettingsWithIncludes(StringView settingsPath, Array<String>& inc
                 StringView toolName = t.text();
 
                 // Register the tool on first encounter.
-                Owned<ToolSet::Handler>* found = agentSettings.toolSet.handlers.find(toolName);
-                if (!found) {
+                ToolSet::Handler* tool = nullptr;
+                if (Owned<ToolSet::Handler>* found = agentSettings.toolSet.handlers.find(toolName)) {
+                    tool = *found;
+                }
+                if (!tool) {
                     if (toolName == "read") {
-                        addReadTool(&agentSettings.toolSet);
+                        tool = addReadTool(&agentSettings.toolSet);
 #if !defined(PLY_IOS)
                     } else if (toolName == "shell") {
-                        addShellTool(&agentSettings.toolSet);
+                        tool = addShellTool(&agentSettings.toolSet);
 #endif // !defined(PLY_IOS)
                     } else if (toolName == "write") {
-                        addWriteTool(&agentSettings.toolSet);
+                        tool = addWriteTool(&agentSettings.toolSet);
                     } else if (toolName == "list_dir") {
-                        addListDirTool(&agentSettings.toolSet);
+                        tool = addListDirTool(&agentSettings.toolSet);
                     } else if (toolName == "find_in_files") {
-                        addFindInFilesTool(&agentSettings.toolSet);
+                        tool = addFindInFilesTool(&agentSettings.toolSet);
                     } else if (toolName == "edit") {
-                        addEditTool(&agentSettings.toolSet);
+                        tool = addEditTool(&agentSettings.toolSet);
                     } else {
                         getStdErr().format("Unknown tool in configuration: {}\n", toolName);
                         return false;
                     }
-                    found = agentSettings.toolSet.handlers.find(toolName);
-                    PLY_ASSERT(found);
                 }
 
                 // Grant this directory to the tool handler.
-                ToolSet::Permission& granted = found->get()->permissions.append();
-                granted.absPath = absPath;
+                tool->permittedDirectories.append(absPath);
             }
         }
     }
@@ -1453,15 +1453,14 @@ int main(int argc, const char* argv[]) {
 #endif
 
     // Start the agent.
-    agentSettings.initialTranscript = transcript;
+    agentSettings.startTranscript = transcript;
     agentSettings.enableHttpLog = options.enableHttpLog;
     Owned<Agent> agent = Heap::create<Agent>(agentSettings);
 
     // Process streamed events until the agent stops working.
-    Owned<TranscriptUpdater> updater = createTranscriptUpdater(transcript);
     while (agent->isWorking()) {
         for (const TranscriptEvent& event : agent->waitForEvents()) {
-            applyTranscriptEvent(updater, event);
+            applyTranscriptEvent(transcript, event);
             printer.handleEvent(event);
         }
     }

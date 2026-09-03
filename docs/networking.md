@@ -175,7 +175,7 @@ int main() {
 > Creates a new `HTTPClient`.
 
 `void destroy(HTTPClient* httpClient)`
-> Destroys an `HTTPClient`. Any in-progress request is immediately cancelled.
+> Destroys an `HTTPClient`. Any in-progress request is immediately canceled.
 
 `void HTTPClient::beginRequest(Args&& args)`
 > Starts a new request. Must not be called while a request is already in progress.

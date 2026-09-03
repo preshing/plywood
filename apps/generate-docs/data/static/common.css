@@ -342,7 +342,7 @@ html {
     font-family: "jetbrains_mono", monospace;
     font-size: 14px;
 }
-.content p code, .content ul code, .content table code {
+.content p code, .content ul code, .content ol code, .content table code {
     color: var(--text-code-inline);
 }
 .content a code {
@@ -364,12 +364,17 @@ html {
 .content pre::-webkit-scrollbar-thumb {
     background: var(--scrollbar-thumb);
 }
-.content ul {
+.content ul, .content ol {
     margin-left: 40px;
     margin-bottom: 1.5em;
+}
+.content ul {
     list-style-type: disc;
 }
-.content li > ul {
+.content ol {
+    list-style-type: decimal;
+}
+.content li > ul, .content li > ol {
     margin-bottom: 0;
 }
 .content .type {

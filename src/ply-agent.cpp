@@ -20,10 +20,6 @@ namespace ply {
 //    ██   ██     ▀█▄▄██ ██  ██  ▄▄▄█▀ ▀█▄▄▄ ██     ██ ██▄▄█▀  ▀█▄▄
 //                                                     ██
 
-struct TranscriptUpdater {
-    Transcript* transcript = nullptr;
-};
-
 // Appends a streamed chunk while retaining each completed line as a separate string.
 void Transcript::Buffer::append(StringView text) {
     while (text) {
@@ -71,18 +67,8 @@ String Transcript::Buffer::toString() const {
     return result;
 }
 
-Owned<TranscriptUpdater> createTranscriptUpdater(Transcript* transcript) {
-    Owned<TranscriptUpdater> updater = Heap::create<TranscriptUpdater>();
-    updater->transcript = transcript;
-    return updater;
-}
-
-void destroy(TranscriptUpdater* updater) {
-    Heap::destroy(updater);
-}
-
-void applyTranscriptEvent(TranscriptUpdater* updater, const TranscriptEvent& event) {
-    Transcript* transcript = updater->transcript;
+// Applies a streamed event directly to the supplied transcript.
+void applyTranscriptEvent(Transcript* transcript, const TranscriptEvent& event) {
     switch (event.operation) {
         case TranscriptEvent::BeginMessage: {
             // Ensure there is a turn to append the message to.
@@ -219,12 +205,9 @@ struct Agent::Impl : RefCounted<Agent::Impl> {
     // Settings moved into the Agent when it's constructed.
     Agent::Settings settings;
 
-    // internalTranscript is a copy of settings.initialTranscript, but links to the same parent.
+    // internalTranscript is a copy of settings.startTranscript, but links to the same parent.
     // Modified internally, but only when toolCtx.mutex is held.
     Reference<Transcript> internalTranscript;
-    // TranscriptUpdater wraps internalTranscript and is used to apply TranscriptEvents
-    // to it. Used under toolCtx.mutex.
-    Owned<TranscriptUpdater> updater;
     // Tracks the role of the last message begun in the current turn, so the inference
     // thread only emits a BeginMessage event when the role changes. Reset to None at
     // the start of each turn. Protected by toolCtx.mutex.
@@ -277,7 +260,7 @@ static void bufferEvent(Agent::Impl* impl, TranscriptEvent&& event) {
 // section (via applyTranscriptEvent) and then buffers it for delivery to the client
 // thread.
 static void addEvent(Agent::Impl* impl, TranscriptEvent&& event) {
-    applyTranscriptEvent(impl->updater, event);
+    applyTranscriptEvent(impl->internalTranscript, event);
     bufferEvent(impl, std::move(event));
 }
 
@@ -1241,7 +1224,7 @@ void performInferenceRequest(Agent::Impl* impl) {
     } state;
 
     // The callback splits the incoming response stream into JSONL lines and dispatches each one.
-    // It remains owned by the HTTP request until that request completes or is cancelled.
+    // It remains owned by the HTTP request until that request completes or is canceled.
     Functor<void(const HTTPClient::Event&)> callback = [impl, &state](const HTTPClient::Event& event) {
         if (auto* headers = event.as<HTTPClient::Headers>()) {
             // Treat non-200 responses as agent request failures while still allowing HTTPClient to deliver the body.
@@ -1464,8 +1447,8 @@ void runToolThread(Agent::Impl* impl) {
         PLY_ASSERT(found);
         const ToolSet::Handler* toolDef = found->get();
         {
-            // Set the permissions for this tool call.
-            PLY_SET_IN_SCOPE(impl->toolCtx.permissions, toolDef->permissions);
+            // Set the permitted directories for this tool call.
+            PLY_SET_IN_SCOPE(impl->toolCtx.permittedDirectories, toolDef->permittedDirectories);
             toolDef->handler(&impl->toolCtx, toolCall, arguments);
         }
 
@@ -1511,8 +1494,8 @@ void ToolContext::appendResponse(Transcript::Message* toolCall, StringView text)
 //          ▄▄▄█▀
 
 Agent::Agent(const Settings& settings) {
-    PLY_ASSERT(settings.initialTranscript);
-    PLY_ASSERT(!settings.initialTranscript->turns.isEmpty());
+    PLY_ASSERT(settings.startTranscript);
+    PLY_ASSERT(!settings.startTranscript->turns.isEmpty());
 
     // Initialize new Agent.
     this->impl = Heap::create<Agent::Impl>();
@@ -1537,9 +1520,7 @@ Agent::Agent(const Settings& settings) {
     impl->httpClient = HTTPClient::create();
 
     // Make a copy of the transcript leaf, but link to the same parent.
-    impl->internalTranscript = Heap::create<Transcript>(*impl->settings.initialTranscript);
-    // Create the TranscriptUpdater that applies events to the internal transcript.
-    impl->updater = createTranscriptUpdater(impl->internalTranscript);
+    impl->internalTranscript = Heap::create<Transcript>(*impl->settings.startTranscript);
 
     // Spawn threads. Each thread captures a raw Agent::Impl* and is responsible for
     // dropping its own reference once it exits, so Agent::Impl stays alive until both
@@ -1677,8 +1658,8 @@ bool dirContainsPath(String dir, String path) {
 
 FilteredPath filterPath(ToolContext* toolCtx, StringView relPath) {
     String absPath = joinPath(toolCtx->workingDirectory, relPath);
-    for (const ToolSet::Permission& perm : toolCtx->permissions) {
-        if (dirContainsPath(perm.absPath, absPath))
+    for (const String& permittedDir : toolCtx->permittedDirectories) {
+        if (dirContainsPath(permittedDir, absPath))
             return {true, std::move(absPath)};
     }
     return {false, {}};
@@ -1691,6 +1672,11 @@ FilteredPath filterPath(ToolContext* toolCtx, StringView relPath) {
 //
 
 #if !defined(PLY_IOS)
+
+// FIXME: Improve the shell command.
+// - Long running shell commands should check the canceled flag periodically.
+// - The subprocess should be terminated when canceled.
+// - Auto-approve mode for extra security.
 
 void shellToolHandler(ToolContext* toolCtx, Transcript::Message* toolCall, const json::Node& arguments) {
     // Validate arguments.
@@ -1756,7 +1742,7 @@ void shellToolHandler(ToolContext* toolCtx, Transcript::Message* toolCall, const
     toolCtx->appendResponse(toolCall, response.moveToString());
 }
 
-void addShellTool(ToolSet* toolSet) {
+ToolSet::Handler* addShellTool(ToolSet* toolSet) {
     Owned<ToolSet::Handler> shellTool = Heap::create<ToolSet::Handler>();
     shellTool->name = "shell";
     shellTool->description = "Execute a command using the system shell in the current working directory. "
@@ -1767,7 +1753,7 @@ void addShellTool(ToolSet* toolSet) {
     shellTool->parameters.back().type = "string";
     shellTool->parameters.back().required = true;
     shellTool->handler = shellToolHandler;
-    toolSet->handlers.insertItem(std::move(shellTool));
+    return toolSet->handlers.insertItem(std::move(shellTool)).item->get();
 }
 
 #endif // !defined(PLY_IOS)
@@ -1836,7 +1822,7 @@ void readToolHandler(ToolContext* toolCtx, Transcript::Message* toolCall, const 
     }
 }
 
-void addReadTool(ToolSet* toolSet) {
+ToolSet::Handler* addReadTool(ToolSet* toolSet) {
     Owned<ToolSet::Handler> readTool = Heap::create<ToolSet::Handler>();
     readTool->name = "read";
     readTool->description =
@@ -1857,7 +1843,7 @@ void addReadTool(ToolSet* toolSet) {
     readTool->parameters.back().description = "Maximum number of lines to read";
     readTool->parameters.back().type = "number";
     readTool->handler = readToolHandler;
-    toolSet->handlers.insertItem(std::move(readTool));
+    return toolSet->handlers.insertItem(std::move(readTool)).item->get();
 }
 
 //                  ▄▄  ▄▄
@@ -1900,7 +1886,7 @@ void writeToolHandler(ToolContext* toolCtx, Transcript::Message* toolCall, const
     }
 }
 
-void addWriteTool(ToolSet* toolSet) {
+ToolSet::Handler* addWriteTool(ToolSet* toolSet) {
     Owned<ToolSet::Handler> writeTool = Heap::create<ToolSet::Handler>();
     writeTool->name = "write";
     writeTool->description = "Write content to a file. Creates the file if it doesn't exist, overwrites if it "
@@ -1916,7 +1902,7 @@ void addWriteTool(ToolSet* toolSet) {
     writeTool->parameters.back().type = "string";
     writeTool->parameters.back().required = true;
     writeTool->handler = writeToolHandler;
-    toolSet->handlers.insertItem(std::move(writeTool));
+    return toolSet->handlers.insertItem(std::move(writeTool)).item->get();
 }
 
 //  ▄▄▄  ▄▄         ▄▄             ▄▄ ▄▄
@@ -1971,7 +1957,7 @@ void listDirToolHandler(ToolContext* toolCtx, Transcript::Message* toolCall, con
     }
 }
 
-void addListDirTool(ToolSet* toolSet) {
+ToolSet::Handler* addListDirTool(ToolSet* toolSet) {
     Owned<ToolSet::Handler> listDirTool = Heap::create<ToolSet::Handler>();
     listDirTool->name = "list_dir";
     listDirTool->description = "List the contents of a directory. Shows files with their size in bytes and "
@@ -1983,7 +1969,7 @@ void addListDirTool(ToolSet* toolSet) {
     listDirTool->parameters.back().type = "string";
     listDirTool->parameters.back().required = true;
     listDirTool->handler = listDirToolHandler;
-    toolSet->handlers.insertItem(std::move(listDirTool));
+    return toolSet->handlers.insertItem(std::move(listDirTool)).item->get();
 }
 
 //    ▄▄▄ ▄▄            ▄▄       ▄▄                ▄▄▄ ▄▄ ▄▄▄
@@ -2233,7 +2219,7 @@ void findInFilesToolHandler(ToolContext* toolCtx, Transcript::Message* toolCall,
     findInFiles(findInfo, fp.absPath, FileSystem::isDir(fp.absPath));
 }
 
-void addFindInFilesTool(ToolSet* toolSet) {
+ToolSet::Handler* addFindInFilesTool(ToolSet* toolSet) {
     Owned<ToolSet::Handler> findInFilesTool = Heap::create<ToolSet::Handler>();
     findInFilesTool->name = "find_in_files";
     findInFilesTool->description = "Search for text inside files matching a glob pattern in a directory tree. "
@@ -2257,7 +2243,7 @@ void addFindInFilesTool(ToolSet* toolSet) {
     findInFilesTool->parameters.back().type = "string";
     findInFilesTool->parameters.back().required = true;
     findInFilesTool->handler = findInFilesToolHandler;
-    toolSet->handlers.insertItem(std::move(findInFilesTool));
+    return toolSet->handlers.insertItem(std::move(findInFilesTool)).item->get();
 }
 
 //             ▄▄ ▄▄  ▄▄
@@ -2369,7 +2355,7 @@ void editToolHandler(ToolContext* toolCtx, Transcript::Message* toolCall, const 
     }
 }
 
-void addEditTool(ToolSet* toolSet) {
+ToolSet::Handler* addEditTool(ToolSet* toolSet) {
     Owned<ToolSet::Handler> editTool = Heap::create<ToolSet::Handler>();
     editTool->name = "edit";
     editTool->description = "Edit a single file using exact text replacement. Every edits[].oldText must match a "
@@ -2390,7 +2376,7 @@ void addEditTool(ToolSet* toolSet) {
     editTool->parameters.back().type = "array";
     editTool->parameters.back().required = true;
     editTool->handler = editToolHandler;
-    toolSet->handlers.insertItem(std::move(editTool));
+    return toolSet->handlers.insertItem(std::move(editTool)).item->get();
 }
 
 #endif // !PLY_AGENT_TRANSCRIPT_ONLY

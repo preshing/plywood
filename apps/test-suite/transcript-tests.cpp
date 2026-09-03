@@ -43,18 +43,17 @@ static bool testTranscriptBuffer() {
 }
 
 // Verifies the implicit transcript and explicit tool-response finalization points.
-static bool testTranscriptUpdater() {
+static bool testApplyTranscriptEvent() {
     bool success = true;
     Transcript transcript;
-    Owned<TranscriptUpdater> updater = createTranscriptUpdater(&transcript);
 
     TranscriptEvent event;
     event.operation = TranscriptEvent::BeginMessage;
     event.role = Transcript::Role::User;
-    applyTranscriptEvent(updater, event);
+    applyTranscriptEvent(&transcript, event);
     event.operation = TranscriptEvent::AppendText;
     event.text = "partial";
-    applyTranscriptEvent(updater, event);
+    applyTranscriptEvent(&transcript, event);
     success &= expect(transcript.turns[0].messages[0]->content.lines.isEmpty(),
                       "an incomplete streamed line should remain in tail");
 
@@ -63,7 +62,7 @@ static bool testTranscriptUpdater() {
     event.operation = TranscriptEvent::BeginMessage;
     event.role = Transcript::Role::ToolCall;
     event.providerToolCallID = "call_123";
-    applyTranscriptEvent(updater, event);
+    applyTranscriptEvent(&transcript, event);
     success &= expect(transcript.turns[0].messages[0]->content.lines[0] == "partial",
                       "BeginMessage should finalize the previous message tail");
     success &= expect(transcript.turns[0].messages[1]->providerToolCallID == "call_123",
@@ -73,7 +72,7 @@ static bool testTranscriptUpdater() {
     event = {};
     event.operation = TranscriptEvent::AppendProviderOutputItem;
     event.text = R"({"type":"reasoning","encrypted_content":"opaque"})";
-    applyTranscriptEvent(updater, event);
+    applyTranscriptEvent(&transcript, event);
     success &= expect(transcript.turns[0].providerOutputItems[0] == event.text,
                       "provider output items should be retained for context replay");
 
@@ -81,10 +80,10 @@ static bool testTranscriptUpdater() {
     event.operation = TranscriptEvent::AppendToolResponse;
     event.toolCallID = 1;
     event.text = "first\nlast";
-    applyTranscriptEvent(updater, event);
+    applyTranscriptEvent(&transcript, event);
     event.operation = TranscriptEvent::EndToolResponse;
     event.text = {};
-    applyTranscriptEvent(updater, event);
+    applyTranscriptEvent(&transcript, event);
     const Transcript::Buffer& response = transcript.turns[0].messages[1]->toolResponse;
     success &= expect(response.lines.numItems() == 2, "EndToolResponse should finalize its incomplete line");
     success &= expect(response.lines[0] == "first\n" && response.lines[1] == "last",
@@ -105,7 +104,7 @@ static bool testTranscriptBufferToString() {
 TestResult runTranscriptTests() {
     TestResult result;
     result.add(testTranscriptBuffer());
-    result.add(testTranscriptUpdater());
+    result.add(testApplyTranscriptEvent());
     result.add(testTranscriptBufferToString());
     if (options.verbose) {
         getStdOut().write(result.isSuccess() ? "Transcript tests passed\n" : "Transcript tests failed\n");
