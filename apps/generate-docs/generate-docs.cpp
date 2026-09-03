@@ -76,15 +76,48 @@ void appendPublishKeyToAsset(String& text, StringView assetPath) {
     text = text.replace(assetPath, String::format("{}?key={}", assetPath, publishKey));
 }
 
+// Returns the first function declarator, if present.
+const DeclProduction::Function* findFunctionDeclarator(const Declaration& decl) {
+    const Declaration* mainDecl = &decl;
+    while (auto* tmpl = mainDecl->var.as<Declaration::Template>()) {
+        mainDecl = tmpl->childDecl;
+    }
+
+    auto* entity = mainDecl->var.as<Declaration::Entity>();
+    if (!entity || entity->initDeclarators.isEmpty())
+        return nullptr;
+
+    // Find the function production belonging to the first declared entity.
+    for (const DeclProduction* prod = entity->initDeclarators[0].prod; prod; prod = prod->child) {
+        if (auto* function = prod->var.as<DeclProduction::Function>()) {
+            return function;
+        }
+    }
+    return nullptr;
+}
+
 // Renders a declaration as a single highlighted code fragment for API description titles.
 void printDeclAsApiTitle(Stream& out, const Parser* parser, const Declaration& decl) {
     Array<TokenSpan> spans = parser->syntaxHighlight(decl);
-    out.write("<code>");
+    const DeclProduction::Function* function = findFunctionDeclarator(decl);
+    if (function) {
+        out.write("<code class=\"api-decl\"><span class=\"api-decl-prefix\">");
+    } else {
+        out.write("<code>");
+    }
 
     // Output token spans.
     TokenSpan::Color lastColor = TokenSpan::None;
-    bool gotFirstDeclaratorQid = false;
+    bool inFunctionParams = false;
+    bool startNextParam = false;
+    u32 paramIndex = 0;
     for (const TokenSpan& span : spans) {
+        if (startNextParam) {
+            out.write(" <span class=\"api-param\">");
+            startNextParam = false;
+            if (span.isSpace)
+                continue;
+        }
         if (lastColor != span.color) {
             if (lastColor != TokenSpan::None) {
                 out.write("</span>");
@@ -99,13 +132,39 @@ void printDeclAsApiTitle(Stream& out, const Parser* parser, const Declaration& d
             lastColor = span.color;
         }
         if (span.isSpace) {
-            out.write(gotFirstDeclaratorQid ? " " : "&nbsp;");
+            out.write(" ");
         } else {
             printXmlEscapedString(out, span.token.text);
+        }
+        if (function && (span.token == function->openParen)) {
+            if (lastColor != TokenSpan::None) {
+                out.write("</span>");
+                lastColor = TokenSpan::None;
+            }
+            out.write("</span><span class=\"api-decl-params\">");
+            if (!function->params.isEmpty()) {
+                out.write("<span class=\"api-param\">");
+            }
+            inFunctionParams = true;
+        }
+        if (function && inFunctionParams && (paramIndex < function->params.numItems()) &&
+            function->params[paramIndex].comma.isValid() &&
+            (span.token == function->params[paramIndex].comma)) {
+            out.write("</span>");
+            startNextParam = true;
+            paramIndex++;
         }
     }
     if (lastColor != TokenSpan::None) {
         out.write("</span>");
+    }
+    if (function) {
+        if (!function->params.isEmpty()) {
+            out.write("</span>");
+        }
+        out.write("</span>");
+        PLY_ASSERT(inFunctionParams);
+        PLY_ASSERT(!startNextParam);
     }
     out.write("</code>");
 }

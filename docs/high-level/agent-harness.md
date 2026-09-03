@@ -1,26 +1,26 @@
 ﻿`ply-agent.h`: Agent Harness
 ============================
 
-`ply-agent.h` defines a C++ API for interacting with AI agents. Applications can create `Agent` objects that communicate with remote inference providers and have access to tools running on the local filesystem.
-
-Using `ply-agent.h` requires linking your project with [`libcurl`](https://curl.se/libcurl/). Instructions for installing `libcurl` can be found in the documentation for [building and running the `agent` sample](/docs/apps/agent.md#installing-libcurl).
+`ply-agent.h` defines a C++ API for interacting with AI agents. Applications create `Transcript` objects and pass them to `Agent` objects; the agent's job is to extend the transcript in a natural-sounding way. It does this by communicating with a remote inference server and running tools in the local filesystem.
 
 The steps for interacting with agents are as follows:
 
 1. Create a new `Transcript` object containing the user's prompt.
 2. Create a new `Agent` object, passing in the `Transcript`, the desired inference provider and a set of tools for the agent to use.
-   The agent starts running in a background thread.
+   The agent runs in a background thread.
 3. Receive `TranscriptEvent` objects back from the `Agent`.
 4. As each event comes in, call `applyTranscriptEvent` and perform any application-specific handling.
-5. When `Agent::isWorking()` returns `false`, the conversation has ended and the `Agent` can be destroyed without missing any events.
+5. Once `Agent::isWorking()` returns `false`, no further events will be received and the `Agent` can be safely destroyed.
 
 To send a followup prompt, create a new `Transcript` object, assign the previous `Transcript` as its parent, then create another `Agent` object.
 
+Using `ply-agent.h` requires linking your project with [`libcurl`](https://curl.se/libcurl/) for HTTPS support. Instructions for installing `libcurl` can be found in the documentation for [building and running the `agent` sample](/docs/apps/agent.md#installing-libcurl).
+
 ## `Transcript`
 
-A transcript consists of a sequence of turns, and each turn consists of a sequence of messages. These concepts are represented by the `Transcript`, `Transcript::Turn` and `Transcript::Message` classes.
+A transcript consists of a sequence of turns, with each turn consisting of a sequence of messages. These concepts are represented by the `Transcript`, `Transcript::Turn` and `Transcript::Message` classes.
 
-Each message in the transcript is associated with a `Transcript::Role`, which can have any of the following values:
+Each message in the transcript is associated with a `Transcript::Role`, which can take any of the following values:
 
 | |
 | --- |
@@ -36,7 +36,7 @@ Every `Transcript` object holds a reference to a parent `Transcript` object, all
 
 The `Agent` class represents an agent running in a background thread. As the agent runs, it generates `TranscriptEvent`s, which are buffered internally until the application calls `pollForEvents`, `waitForEvents` or `waitForCompletion`. Only one thread is allowed to call `pollForEvents`, `waitForEvents` or `waitForCompletion` at a time on a given `Agent`.
 
-You can destroy an `Agent` at any time so long as no other threads are using it. A running agent is immediately canceled.
+You can destroy an `Agent` at any time as long as no other threads are using it. If the agent is still running at destruction time, it's immediately canceled.
 
 `Agent::Agent(const Agent::Settings& settings)`
 > Constructor. The agent starts running in a background thread. `Agent::Settings` has the following data members:
@@ -110,7 +110,7 @@ Applications are free to perform additional application-specific handling in res
 
 The tools available to an agent are defined by filling in `ToolSet::handlers`.
 
-Several built-in tools are available. To add them to the `ToolSet`, call any of the following functions. Each function adds a new `ToolSet::Handler` and returns a pointer to it.
+Several built-in tools are available. To add them to a `ToolSet`, call any of the following functions. Each function returns a pointer a new `ToolSet::Handler` owned by the `ToolSet`.
 
 | Function name | Tool name | Description |
 | --- | --- | --- |
@@ -128,7 +128,7 @@ Several built-in tools are available. To add them to the `ToolSet`, call any of 
 | `String name` | Tool name as presented to the agent. |
 | `String description` | A description that tells the agent when and how to use the tool. |
 | `Array<Parameter> parameters` | Describes the JSON parameters accepted by the tool. |
-| `Functor<void(ToolContext*, Transcript::Message*, const json::Node&)> handler` | The internal callback invoked when the agent requests the tool. |
+| `Functor<...> handler` | The internal callback invoked when the agent uses the tool. |
 | `Array<String> permittedDirectories` | Directories that the tool is permitted to access.  |
 
 When a tool handler is added, its `permittedDirectories` is initially empty. The application can add directories before creating the agent. All built-in tools currently enforce these permissions except the `shell` tool, which should be used with caution; ideally in a sandboxed environment. (Note: An auto-approve mode for the `shell` tool is planned.)
@@ -179,4 +179,4 @@ Long-running tools should check the `canceled` flag periodically and stop runnin
 To add text to the response, tools should call `ToolContext::appendResponse`.
 
 `void ToolContext::appendResponse(Transcript::Message* toolCall, StringView text)`
-> Add text to the tool response in a thread-safe manner. Can be called more than once to stream a response. Each call to `appendResponse` creates a new `TranscriptEvent` and buffers it in the `Agent` so that the application receives it immediately. The complete response won't be sent to the remote provider until the next turn.
+> Add text to the tool response in a thread-safe manner. Can be called more than once to stream a response. Each call to `appendResponse` creates a new `TranscriptEvent` and buffers it in the `Agent` so that the application receives it as soon as possible. The complete tool response won't be sent to the remote inference server until the next turn.

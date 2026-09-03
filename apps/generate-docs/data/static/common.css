@@ -399,6 +399,23 @@ html {
 .content dl.api_defs dt code {
     color: var(--text-muted);
 }
+.content dl.api_defs dt code.api-decl {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+}
+.content dl.api_defs .api-decl-prefix {
+    white-space: nowrap;
+}
+.content dl.api_defs .api-decl-params {
+    min-width: 0;
+}
+.content dl.api_defs .api-param {
+    display: inline-block;
+    max-width: 100%;
+}
+.content dl.api_defs code.api-decl + br {
+    display: none;
+}
 .content dl.api_defs dt {
     margin-bottom: 2px;
     line-height: 1.3333;

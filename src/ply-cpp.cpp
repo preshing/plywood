@@ -2855,6 +2855,7 @@ struct NodeVisitor {
         TokenSpan& span = this->spans.append();
         span.isSpace = true;
         span.qid = insideQid;
+        this->needsSpace = false;
     }
 };
 
@@ -3003,11 +3004,13 @@ void syntaxHighlightDeclarator(NodeVisitor* visitor, Variant<const QualifiedID*,
 
     // Visit qualified-id.
     if (const Token** token = name.as<const Token*>()) {
-        if (visitor->needsSpace) {
-            visitor->appendSpace();
+        if ((**token).isValid()) {
+            if (visitor->needsSpace) {
+                visitor->appendSpace();
+            }
+            visitor->append(TokenSpan::Variable, **token);
+            visitor->needsSpace = true;
         }
-        visitor->append(TokenSpan::Variable, **token);
-        visitor->needsSpace = true;
     } else if (const QualifiedID** qid = name.as<const QualifiedID*>()) {
         if (visitor->needsSpace) {
             visitor->appendSpace();
