@@ -16,8 +16,6 @@ A `Set` is a collection of items that supports fast lookup using a key type that
 template <typename Item> class Set;
 ```
 
-`Set` objects are movable, copyable and construct to an empty collection by default. They provide the following member functions:
-
 Hashable item types can be used directly as the key type.
 
 ```
@@ -60,6 +58,8 @@ set.eraseQuick(4);
 items = set.items();  // Returns {7, 6}.
 ```
 
+`Set` objects are movable, copyable and construct to an empty collection by default.
+
 {context class=Set}
 
 `Set(std::initializer_list<Item> items)`
@@ -101,8 +101,6 @@ A `Map` is a collection of key-value pairs whose types are determined by templat
 template <typename Key, typename Value> class Map;
 ```
 
-`Map` objects are movable, copyable and construct to an empty collection by default. They provide the following member functions:
-
 `Key` can either be a hashable type or a type that maps to a hashable type using `getLookupKey`, such as `String`. `KeyView` is a type alias for the return type of `getLookupKey`.
 
 `Item` is a member type that represents a key-value pair. It has the following members:
@@ -130,6 +128,8 @@ auto items = map.items();  // Returns {{4, "apple"}, {6, "cherry"}, {7, "date"}}
 map.eraseQuick(4);
 items = map.items();  // Returns {{7, "date"}, {6, "cherry"}}.
 ```
+
+`Map` objects are movable, copyable and construct to an empty collection by default.
 
 {context class=Map}
 

@@ -3,6 +3,35 @@
 
 `ply-agent.h` defines a C++ API for interacting with AI agents. Applications create `Transcript` objects and pass them to `Agent` objects; the agent's job is to extend the transcript in a logical way. It does this by communicating with a remote inference server and running tools in the local filesystem.
 
+<svg viewBox="0 0 497 243" style="display:block;width:497px;max-width:100%;height:auto;margin-inline:auto">
+ <rect x="4" y="3" width="269" height="134" ry="14.8" fill="none" stroke="var(--border-table)" stroke-width="2"/>
+ <path d="M81.5 124V76" fill="none" stroke="var(--text-muted)" stroke-width="1"/>
+ <g fill="var(--diagram-solid-fill)" stroke="var(--border-popup)" stroke-width="1">
+  <rect x="357.5" y="67.5" width="137" height="52" ry="10.6"/>
+  <rect x="161.5" y="76.5" width="98" height="34" ry="6.49"/>
+  <rect x="64.5" y="70.5" width="33" height="15"/>
+  <rect x="64.5" y="90.5" width="33" height="15"/>
+  <rect x="64.5" y="110.5" width="33" height="15"/>
+  <path d="M234 197c0 3.87-10.3 7-23 7s-23-3.13-23-7v-36h46z"/>
+  <ellipse cx="211" cy="161" rx="23" ry="7"/>
+ </g>
+ <g fill="none" stroke="var(--diagram-arrow-color)" stroke-width="1">
+  <path d="m105 80.4-6.43-4.81 6.43-4.81M99.3 75.4c35-1.6 26.1 18.4 61.8 18.4"/>
+  <path d="M216.3 146.9 211.5 153.3 206.7 146.9M211.5 152.7V111"/>
+  <path d="m350 93.8 6.43 4.81-6.43 4.81M356 98.6h-95.7"/>
+  <path d="m267 83.8-6.43 4.81 6.43 4.81M262 88.6h95.7"/>
+ </g>
+ <g fill="var(--type-color)" font-family="jetbrains_mono,monospace" font-size="14px" text-anchor="middle">
+  <text x="210" y="96.9">ply::Agent</text>
+  <text x="80.9" y="63.9">ply::Transcript</text>
+ </g>
+ <g fill="var(--text-secondary)" font-family="source_sans_3,sans-serif" font-size="16px" text-anchor="middle">
+  <text x="139" y="19.6">Application</text>
+  <text x="212" y="221">Local<tspan x="212" y="237">Filesystem</tspan></text>
+  <text x="425" y="89.6">Remote<tspan x="425" y="106">Inference Server</tspan></text>
+ </g>
+</svg>
+
 The steps for interacting with agents are as follows:
 
 1. Create a new `Transcript` object containing the user's prompt.
@@ -98,7 +127,6 @@ Applications are free to perform additional application-specific handling in res
 
 | | |
 | --- | --- |
-| `NoOperation` | Makes no change. |
 | `BeginMessage` | Starts a message with the specified `role`, finalizing the preceding message if necessary. |
 | `AppendText` | Appends `text` to the current message. |
 | `AppendToolResponse` | Appends `text` to the response for the tool call identified by `toolCallID`. |
@@ -106,7 +134,7 @@ Applications are free to perform additional application-specific handling in res
 | `AppendProviderOutputItem` | Preserves an opaque provider output item for use when replaying the transcript as context. |
 | `EndTurn` | Finalizes the current message and appends an empty turn for subsequent messages. |
 
-## Adding Tools
+## Tools
 
 The tools available to an agent are defined by filling in `ToolSet::handlers`.
 

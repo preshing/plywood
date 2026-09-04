@@ -106,6 +106,8 @@ html {
     --bg-code-block: #f4f4f4;
     --bg-highlight: #ffffd0;
     --bg-nav-link-hover: #f4faff;
+    --diagram-solid-fill: #fffff8;
+    --diagram-arrow-color: #2b6bc6;
     
     --text-banner: #ffffff;
     --text-primary: #181818;
@@ -152,6 +154,8 @@ html {
     --bg-code-block: #0f0f0f;
     --bg-highlight: #3a3a20;
     --bg-nav-link-hover: #1d2124;
+    --diagram-solid-fill: #171a1b;
+    --diagram-arrow-color: #3c679c;
     
     --text-primary: #e4e4e4;
     --text-secondary: #b0b0b0;
