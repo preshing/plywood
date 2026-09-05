@@ -190,6 +190,16 @@ struct ProtocolHandler {
 //  ██  ██ ▀█▄▄██ ▀█▄▄▄  ██  ██  ▀█▄▄ ▄▄ ▄▄ ▄██▄ ██ ██ ██ ██▄▄█▀ ▄██▄
 //          ▄▄▄█▀                                         ██
 
+struct ToolContextImpl : ToolContext {
+    // The mutex serializes cancellation callbacks, transcript changes and event buffering across the agent threads.
+    Mutex mutex;
+    Atomic<bool> canceled = false;
+    Functor<void()> cancelHandler;
+    Agent::Impl* agentImpl = nullptr;
+    ArrayView<const String> permittedDirectories;
+    StringView workingDirectory;
+};
+
 //--------------------------------------------------------
 // Agent::Impl contains information shared between the main thread and an inference thread.
 // The inference thread receives response data from curl, parses each line of incoming JSONL
@@ -227,10 +237,10 @@ struct Agent::Impl : RefCounted<Agent::Impl> {
     // These members are shared between all threads.
     // ToolContext is a logical grouping of the variables used by tool handlers.
     // It's mainly a way to hide the rest of the agent implementation details from tool handlers.
-    // Internally, ToolContext::mutex is also used to protect access to the other members here.
+    // Internally, toolCtx.mutex is also used to protect access to the other members here.
     //----------------------------------------------
     // toolCtx.mutex also protects access to the remaining members below.
-    ToolContext toolCtx;
+    ToolContextImpl toolCtx;
     // The inference thread adds tool calls to the end of pendingToolCalls.
     // The tool thread pops each tool call from the front after it's completed.
     Array<Transcript::Message*> pendingToolCalls;
@@ -543,14 +553,14 @@ void CompletionsProtocolHandler::receiveLine(StringView line) {
         const json::Node& jReasoning = jDelta.get("reasoning");
         if (jReasoning.text()) {
             LockGuard<Mutex> guard{impl->toolCtx.mutex};
-            if (impl->toolCtx.canceled)
+            if (impl->toolCtx.isCanceled())
                 return;
             emitText(impl, Transcript::Role::AgentThinking, jReasoning.text());
         }
         const json::Node& jContent = jDelta.get("content");
         if (jContent.text()) {
             LockGuard<Mutex> guard{impl->toolCtx.mutex};
-            if (impl->toolCtx.canceled)
+            if (impl->toolCtx.isCanceled())
                 return;
             emitText(impl, Transcript::Role::Agent, jContent.text());
         }
@@ -562,7 +572,7 @@ void CompletionsProtocolHandler::receiveLine(StringView line) {
             // so it serializes with the tool thread's event buffering calls, and so we
             // don't touch the transcript after the client destroyed the Agent.
             LockGuard<Mutex> guard{impl->toolCtx.mutex};
-            if (impl->toolCtx.canceled)
+            if (impl->toolCtx.isCanceled())
                 return;
 
             const json::Node& jFunc = jCall.get("function");
@@ -791,7 +801,7 @@ void ResponsesProtocolHandler::receiveLine(StringView line) {
                 eventType == "response.reasoning_summary_text.delta") {
                 // Stream visible output, refusals and reasoning summaries into transcript messages.
                 LockGuard<Mutex> guard{impl->toolCtx.mutex};
-                if (impl->toolCtx.canceled)
+                if (impl->toolCtx.isCanceled())
                     return;
                 Transcript::Role role = eventType == "response.reasoning_summary_text.delta"
                                             ? Transcript::Role::AgentThinking
@@ -806,7 +816,7 @@ void ResponsesProtocolHandler::receiveLine(StringView line) {
                     message = "Responses API request failed";
                 }
                 LockGuard<Mutex> guard{impl->toolCtx.mutex};
-                if (impl->toolCtx.canceled)
+                if (impl->toolCtx.isCanceled())
                     return;
                 emitText(impl, Transcript::Role::Error, message);
             } else if (eventType == "response.incomplete") {
@@ -817,7 +827,7 @@ void ResponsesProtocolHandler::receiveLine(StringView line) {
                     message += String::format(": {}", reason);
                 }
                 LockGuard<Mutex> guard{impl->toolCtx.mutex};
-                if (impl->toolCtx.canceled)
+                if (impl->toolCtx.isCanceled())
                     return;
                 emitText(impl, Transcript::Role::Error, message);
             } else if (eventType == "response.output_item.done") {
@@ -825,7 +835,7 @@ void ResponsesProtocolHandler::receiveLine(StringView line) {
                 if (jItem.isObject()) {
                     // Preserve the complete output item for stateless conversation replay.
                     LockGuard<Mutex> guard{impl->toolCtx.mutex};
-                    if (impl->toolCtx.canceled)
+                    if (impl->toolCtx.isCanceled())
                         return;
                     TranscriptEvent itemEvent;
                     itemEvent.operation = TranscriptEvent::AppendProviderOutputItem;
@@ -1012,7 +1022,7 @@ void AnthropicProtocolHandler::receiveLine(StringView line) {
         if (jBlock.get("type").text() != "tool_use")
             return;
         LockGuard<Mutex> guard{impl->toolCtx.mutex};
-        if (impl->toolCtx.canceled)
+        if (impl->toolCtx.isCanceled())
             return;
 
         // Start buffering the tool name followed by streamed JSON arguments.
@@ -1049,7 +1059,7 @@ void AnthropicProtocolHandler::receiveLine(StringView line) {
 
         if (deltaType == "text_delta" || deltaType == "thinking_delta") {
             LockGuard<Mutex> guard{impl->toolCtx.mutex};
-            if (impl->toolCtx.canceled)
+            if (impl->toolCtx.isCanceled())
                 return;
             Transcript::Role role =
                 deltaType == "thinking_delta" ? Transcript::Role::AgentThinking : Transcript::Role::Agent;
@@ -1057,7 +1067,7 @@ void AnthropicProtocolHandler::receiveLine(StringView line) {
             emitText(impl, role, text);
         } else if (deltaType == "input_json_delta") {
             LockGuard<Mutex> guard{impl->toolCtx.mutex};
-            if (impl->toolCtx.canceled)
+            if (impl->toolCtx.isCanceled())
                 return;
             if (this->toolCall && this->contentBlockIndex == (s32) result.root.get("index").getNumber()) {
                 appendText(impl, String{jDelta.get("partial_json").text()});
@@ -1065,7 +1075,7 @@ void AnthropicProtocolHandler::receiveLine(StringView line) {
         }
     } else if (eventType == "content_block_stop") {
         LockGuard<Mutex> guard{impl->toolCtx.mutex};
-        if (impl->toolCtx.canceled)
+        if (impl->toolCtx.isCanceled())
             return;
         if (this->contentBlockIndex != (s32) result.root.get("index").getNumber())
             return;
@@ -1095,13 +1105,13 @@ void AnthropicProtocolHandler::receiveLine(StringView line) {
         this->contentBlockIndex = -1;
     } else if (eventType == "error") {
         LockGuard<Mutex> guard{impl->toolCtx.mutex};
-        if (impl->toolCtx.canceled)
+        if (impl->toolCtx.isCanceled())
             return;
         StringView message = result.root.get("error").get("message").text();
         emitText(impl, Transcript::Role::Error, message ? message : "Anthropic API request failed");
     } else if (eventType == "message_delta" && jDelta.get("stop_reason").text() == "max_tokens") {
         LockGuard<Mutex> guard{impl->toolCtx.mutex};
-        if (impl->toolCtx.canceled)
+        if (impl->toolCtx.isCanceled())
             return;
         emitText(impl, Transcript::Role::Error, "Anthropic API request reached max_tokens");
     }
@@ -1132,7 +1142,7 @@ static String sanitizeUrlForFilename(StringView url) {
 // Must be called with toolCtx.mutex held. Suppresses the event if the agent was
 // canceled, so bufferEvent is never called once cancellation has been requested.
 void onError(Agent::Impl* impl, StringView message) {
-    if (impl->toolCtx.canceled)
+    if (impl->toolCtx.isCanceled())
         return;
     beginMessage(impl, Transcript::Role::Error);
     appendText(impl, String{message});
@@ -1304,7 +1314,7 @@ void performInferenceRequest(Agent::Impl* impl) {
         // curl_multi_poll inside receiveResponse() so this loop observes the change promptly.
         {
             LockGuard<Mutex> guard{impl->toolCtx.mutex};
-            if (impl->toolCtx.canceled) {
+            if (impl->toolCtx.isCanceled()) {
                 impl->httpClient->cancelRequest();
                 break;
             }
@@ -1333,7 +1343,7 @@ void performInferenceRequest(Agent::Impl* impl) {
     {
         LockGuard<Mutex> guard{impl->toolCtx.mutex};
         while (!impl->pendingToolCalls.isEmpty()) {
-            if (impl->toolCtx.canceled)
+            if (impl->toolCtx.isCanceled())
                 break;
             impl->inferenceCondVar.wait(guard);
         }
@@ -1353,7 +1363,7 @@ void runAgentThread(Agent::Impl* impl) {
 
             // Has the loop ended? Either there were no tool calls this turn, or the
             // client destroyed the Agent (setting `canceled`).
-            if (!impl->anyToolCallsThisTurn || impl->toolCtx.canceled)
+            if (!impl->anyToolCallsThisTurn || impl->toolCtx.isCanceled())
                 break; // Yes
 
             // No; append a new turn for the next inference request. Emit an EndTurn
@@ -1391,11 +1401,10 @@ void runToolThread(Agent::Impl* impl) {
     bool popHeadItem = false;
 
     for (;;) {
-        // Stop if the client destroyed the Agent. `canceled` is protected
-        // by toolCtx.mutex.
+        // Stop if the client destroyed the Agent. Hold the mutex while publishing the stopped state.
         {
             LockGuard<Mutex> guard{impl->toolCtx.mutex};
-            if (impl->toolCtx.canceled) {
+            if (impl->toolCtx.isCanceled()) {
                 impl->toolEnded = true;
                 // Release any client thread waiting for the agent to stop.
                 impl->clientCondVar.wakeAll();
@@ -1457,7 +1466,7 @@ void runToolThread(Agent::Impl* impl) {
             LockGuard<Mutex> guard{impl->toolCtx.mutex};
             toolCall->toolResponse.flush();
             toolCall->toolEnded = true;
-            if (!impl->toolCtx.canceled) {
+            if (!impl->toolCtx.isCanceled()) {
                 TranscriptEvent endResp;
                 endResp.operation = TranscriptEvent::EndToolResponse;
                 endResp.toolCallID = toolCallIDForMessage(impl, toolCall);
@@ -1471,20 +1480,52 @@ void runToolThread(Agent::Impl* impl) {
     impl->decRefCount();
 }
 
+bool ToolContext::isCanceled() const {
+    return static_cast<const ToolContextImpl*>(this)->canceled.load(MemoryOrder::Acquire);
+}
+
+// Registers a callback while holding the same mutex used by Agent::cancel(), keeping captured resources alive until
+// clearCancelHandler() returns.
+bool ToolContext::registerCancelHandler(Functor<void()>&& handler) {
+    ToolContextImpl* impl = static_cast<ToolContextImpl*>(this);
+    LockGuard<Mutex> guard{impl->mutex};
+    PLY_ASSERT(handler);
+    PLY_ASSERT(!impl->cancelHandler);
+    if (this->isCanceled())
+        return false;
+    impl->cancelHandler = std::move(handler);
+    return true;
+}
+
+void ToolContext::clearCancelHandler() {
+    ToolContextImpl* impl = static_cast<ToolContextImpl*>(this);
+    LockGuard<Mutex> guard{impl->mutex};
+    impl->cancelHandler = {};
+}
+
 // Main function used by tool handlers to add text to the response. It locks the mutex, appends response text
 // to the internal toolCall and creates a AppendToolResponse event for the client to consume.
 void ToolContext::appendResponse(Transcript::Message* toolCall, StringView text) {
-    LockGuard<Mutex> guard{this->mutex};
-    if (!this->canceled) {
+    ToolContextImpl* impl = static_cast<ToolContextImpl*>(this);
+    LockGuard<Mutex> guard{impl->mutex};
+    if (!this->isCanceled()) {
         // Append to the internal transcript while preserving completed line boundaries.
         toolCall->toolResponse.append(text);
 
         TranscriptEvent appendResp;
         appendResp.operation = TranscriptEvent::AppendToolResponse;
-        appendResp.toolCallID = toolCallIDForMessage(this->agentImpl, toolCall);
+        appendResp.toolCallID = toolCallIDForMessage(impl->agentImpl, toolCall);
         appendResp.text = text;
-        bufferEvent(this->agentImpl, std::move(appendResp));
+        bufferEvent(impl->agentImpl, std::move(appendResp));
     }
+}
+
+ArrayView<const String> ToolContext::getPermittedDirectories() const {
+    return static_cast<const ToolContextImpl*>(this)->permittedDirectories;
+}
+
+StringView ToolContext::getWorkingDirectory() const {
+    return static_cast<const ToolContextImpl*>(this)->workingDirectory;
 }
 
 //   ▄▄▄▄                        ▄▄
@@ -1545,7 +1586,7 @@ bool Agent::isWorking() {
     // while the background threads are still active and haven't been canceled.
     if (!impl->pendingEvents.isEmpty())
         return true;
-    if (impl->toolCtx.canceled)
+    if (impl->toolCtx.isCanceled())
         return false;
     if (impl->inferenceEnded && impl->toolEnded)
         return false;
@@ -1557,8 +1598,11 @@ void Agent::cancel() {
     if (!impl)
         return;
     LockGuard<Mutex> guard{impl->toolCtx.mutex};
-    if (!impl->toolCtx.canceled) {
-        impl->toolCtx.canceled = true;
+    if (!impl->toolCtx.canceled.exchange(true, MemoryOrder::Release)) {
+        // Interrupt any blocking operation owned by the active tool handler before waking its thread.
+        if (impl->toolCtx.cancelHandler) {
+            impl->toolCtx.cancelHandler();
+        }
         // Wake both background threads so they observe `canceled` promptly. The tool
         // thread may be idle on toolCondVar; the inference thread may be blocked in its
         // "wait for tools" loop on inferenceCondVar, or blocked inside
@@ -1598,7 +1642,7 @@ Array<TranscriptEvent> Agent::waitForEvents(s32 maxTimeInMillis) {
             return std::move(impl->pendingEvents);
         // Return (with an empty array) once the agent has stopped working: no more
         // events will ever be produced.
-        if (impl->toolCtx.canceled || (impl->inferenceEnded && impl->toolEnded))
+        if (impl->toolCtx.isCanceled() || (impl->inferenceEnded && impl->toolEnded))
             return std::move(impl->pendingEvents);
         if (maxTimeInMillis < 0) {
             impl->clientCondVar.wait(guard);
@@ -1627,7 +1671,7 @@ Array<TranscriptEvent> Agent::waitForCompletion(s32 maxTimeInMillis) {
     for (;;) {
         // Stop waiting once the agent has stopped working (cancel, or both threads
         // exited) and drain all remaining buffered events.
-        if (impl->toolCtx.canceled || (impl->inferenceEnded && impl->toolEnded))
+        if (impl->toolCtx.isCanceled() || (impl->inferenceEnded && impl->toolEnded))
             return std::move(impl->pendingEvents);
         if (maxTimeInMillis < 0) {
             impl->completionCondVar.wait(guard);
@@ -1657,8 +1701,8 @@ bool dirContainsPath(String dir, String path) {
 }
 
 FilteredPath filterPath(ToolContext* toolCtx, StringView relPath) {
-    String absPath = joinPath(toolCtx->workingDirectory, relPath);
-    for (const String& permittedDir : toolCtx->permittedDirectories) {
+    String absPath = joinPath(toolCtx->getWorkingDirectory(), relPath);
+    for (const String& permittedDir : toolCtx->getPermittedDirectories()) {
         if (dirContainsPath(permittedDir, absPath))
             return {true, std::move(absPath)};
     }
@@ -1673,10 +1717,7 @@ FilteredPath filterPath(ToolContext* toolCtx, StringView relPath) {
 
 #if !defined(PLY_IOS)
 
-// FIXME: Improve the shell command.
-// - Long running shell commands should check the canceled flag periodically.
-// - The subprocess should be terminated when canceled.
-// - Auto-approve mode for extra security.
+// FIXME: Add auto-approve mode for extra security.
 
 void shellToolHandler(ToolContext* toolCtx, Transcript::Message* toolCall, const json::Node& arguments) {
     // Validate arguments.
@@ -1702,11 +1743,21 @@ void shellToolHandler(ToolContext* toolCtx, Transcript::Message* toolCall, const
     shellArgs.append("-c");
 #endif
     shellArgs.append(commandArg.text());
-    Owned<Subprocess> process = Subprocess::exec(shellPath, shellArgs, toolCtx->workingDirectory,
-                                                 Subprocess::Output::openMerged(), Subprocess::Input::ignore());
+    Subprocess::Options processOptions;
+    processOptions.terminateProcessTree = true;
+    Owned<Subprocess> process =
+        Subprocess::exec(shellPath, shellArgs, toolCtx->getWorkingDirectory(), Subprocess::Output::openMerged(),
+                         Subprocess::Input::ignore(), processOptions);
     if (!process) {
         toolCtx->appendResponse(toolCall, "Error: Could not start shell command.");
         return;
+    }
+
+    // Make cancellation terminate every process that can keep the merged output pipe open.
+    bool cancelHandlerRegistered =
+        toolCtx->registerCancelHandler([process = process.get()]() { process->terminate(); });
+    if (!cancelHandlerRegistered) {
+        process->terminate();
     }
 
     // Stream up to 5 KB of output while continuing to drain the pipe after the limit.
@@ -1724,7 +1775,11 @@ void shellToolHandler(ToolContext* toolCtx, Transcript::Message* toolCall, const
         }
         outputTruncated |= numBytesToAppend < numBytes;
     }
+    // Keep the cancellation callback registered while join blocks; terminate() safely satisfies that wait.
     s32 exitCode = process->join();
+    if (cancelHandlerRegistered) {
+        toolCtx->clearCancelHandler();
+    }
 
     // Report truncation and command status after all output has been consumed.
     MemStream response;
@@ -2168,8 +2223,8 @@ void findInFiles(FindInFiles& findInfo, StringView absPath, bool isDir) {
                 break;
             lineNum++;
             if (line.find(findInfo.text) >= 0) {
-                findInfo.toolCtx->appendResponse(
-                    findInfo.toolCall, String::format("{}({}):{}\n", relPath, lineNum, line.trimRight()));
+                findInfo.toolCtx->appendResponse(findInfo.toolCall,
+                                                 String::format("{}({}):{}\n", relPath, lineNum, line.trimRight()));
             }
         }
     }
@@ -2298,8 +2353,7 @@ void editToolHandler(ToolContext* toolCtx, Transcript::Message* toolCall, const 
         const json::Node& jOldText = jEdit.get("oldText");
         const json::Node& jNewText = jEdit.get("newText");
         if (!jOldText.isText() || !jNewText.isText()) {
-            toolCtx->appendResponse(toolCall,
-                                    "Error: Each edit must have 'oldText' (string) and 'newText' (string).");
+            toolCtx->appendResponse(toolCall, "Error: Each edit must have 'oldText' (string) and 'newText' (string).");
             return;
         }
 
@@ -2309,8 +2363,7 @@ void editToolHandler(ToolContext* toolCtx, Transcript::Message* toolCall, const 
         // Find position in original text.
         s32 pos = text.find(oldText);
         if (pos < 0) {
-            toolCtx->appendResponse(toolCall,
-                                    String::format("Error: Could not find '{}' in '{}'.", oldText, path));
+            toolCtx->appendResponse(toolCall, String::format("Error: Could not find '{}' in '{}'.", oldText, path));
             return;
         }
 
@@ -2347,9 +2400,8 @@ void editToolHandler(ToolContext* toolCtx, Transcript::Message* toolCall, const 
     // Save file.
     FSResult fsResult = FileSystem::saveText(fp.absPath, mutableText);
     if (fsResult == FSResult::OK) {
-        toolCtx->appendResponse(
-            toolCall,
-            String::format("Successfully edited '{}' with {} replacement(s).", path, editPositions.numItems()));
+        toolCtx->appendResponse(toolCall, String::format("Successfully edited '{}' with {} replacement(s).", path,
+                                                         editPositions.numItems()));
     } else {
         toolCtx->appendResponse(toolCall, String::format("Error: Could not write to '{}'.", path));
     }

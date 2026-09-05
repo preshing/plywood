@@ -39,13 +39,13 @@ struct Transcript : RefCounted<Transcript> {
     struct Buffer {
         static constexpr u32 TailChunkSize = 256;
 
-        Array<String> lines; // Completed lines. Each one ends with \n except possibly the last.
+        Array<String> lines;           // Completed lines. Each one ends with \n except possibly the last.
         MemStream tail{TailChunkSize}; // Accumulates the last line until a \n is received.
         PLY_DECLARE_TYPE_INFO(Transcript::Buffer)
 
         void append(StringView text); // Appends streamed text while preserving completed lines.
-        void flush(); // Moves the unfinished tail into lines.
-        String toString() const; // Returns all lines and the unfinished tail as contiguous text.
+        void flush();                 // Moves the unfinished tail into lines.
+        String toString() const;      // Returns all lines and the unfinished tail as contiguous text.
     };
 
     struct Message {
@@ -210,17 +210,22 @@ struct Agent {
 
 // ToolContext is used to implement tool handlers.
 struct ToolContext {
-    // Protects `canceled` and serializes changes to the agent's transcript
-    // and serializes event buffering across the inference and tool threads.
-    Mutex mutex;
-    bool canceled = false; // Set by the client thread (via cancel or destruction) to request cancellation.
-    Agent::Impl* agentImpl = nullptr; // Used internally.
-    ArrayView<const String> permittedDirectories;
-    StringView workingDirectory;
+    // The agent's working directory.
+    StringView getWorkingDirectory() const;
 
-    // Main function used by tool handlers to add text to the response. It locks the mutex, appends response text
-    // to the internal toolCall and creates a AppendToolResponse event for the client to consume.
+    // The directories that the tool is allowed to work in.
+    ArrayView<const String> getPermittedDirectories() const;
+
+    // Returns whether cancellation has been requested. Should be checked periodically for long-running tools.
+    bool isCanceled() const;
+
+    // Adds text to the tool response.
     void appendResponse(Transcript::Message* toolCall, StringView text);
+
+    // Register a cancelation callback that gets invoked from the client thread.
+    // Used by the shell tool to terminate the running subprocess.
+    bool registerCancelHandler(Functor<void()>&& handler);
+    void clearCancelHandler();
 };
 
 // Individual tool registration functions. Each adds a single tool and returns its handler.

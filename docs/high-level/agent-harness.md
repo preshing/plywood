@@ -194,15 +194,15 @@ void addByteCountTool(ToolSet* toolSet) {
 }
 ```
 
-Each time a tool is invoked, it receives a `ToolContext` object. `ToolContext` has the following data members:
+Each time a tool is invoked, it receives a `ToolContext` object. `ToolContext` provides the following members:
 
 | | |
 | --- | --- |
-| `bool canceled` | Set to `true` when the agent is destroyed or `cancel` is called. |
+| `bool isCanceled() const` | Returns whether the agent has been canceled. Safe to call without holding `mutex`. |
 | `ArrayView<const String> permittedDirectories` | The permitted directories for this tool. |
 | `StringView workingDirectory` | The agent's working directory. |
 
-Long-running tools should check the `canceled` flag periodically and stop running if set to `true`.
+Long-running tools should call `isCanceled()` periodically and return promptly when it becomes true. A tool blocked in an interruptible operation can use `registerCancelHandler()` to register a callback that unblocks it. The callback is invoked synchronously by `Agent::cancel()` with the context mutex held, so it must return promptly and must not call other `ToolContext` methods. Call `clearCancelHandler()` before destroying anything captured by it.
 
 To add text to the response, tools should call `ToolContext::appendResponse`.
 
