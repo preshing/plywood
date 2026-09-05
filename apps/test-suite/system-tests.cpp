@@ -2510,6 +2510,104 @@ TEST_CASE("exec() reports child setup errors") {
     check(!badExe);
 }
 
+TEST_CASE("joinWithTimeout() supports timeouts and retries") {
+    // Keep the subprocess alive until the parent closes its input, avoiding startup timing assumptions.
+    String shellPath;
+    Array<StringView> args;
+#if defined(PLY_WINDOWS)
+    shellPath = getEnvironmentVariable("COMSPEC");
+    if (!shellPath) {
+        shellPath = "cmd.exe";
+    }
+    args = {"/d", "/s", "/c", "set /p value= >nul & exit /b -2"};
+    s32 expectedExitCode = -2;
+#else
+    shellPath = "/bin/sh";
+    args = {"-c", "read value; exit 7"};
+    s32 expectedExitCode = 7;
+#endif
+
+    // A timeout must leave the subprocess available for another wait or for termination.
+    for (u32 mode = 0; mode < 3; mode++) {
+        Owned<Subprocess> process = Subprocess::exec(shellPath, args, {}, Subprocess::Output::openMerged());
+        check(process);
+        if (!process)
+            return;
+        u64 startTicks = getCpuTicks();
+        check(!process->joinWithTimeout(0).joined);
+        double elapsedMillis = (getCpuTicks() - startTicks) * 1000.0 / getCpuTicksPerSecond();
+        check(elapsedMillis < 1000.0);
+        startTicks = getCpuTicks();
+        check(!process->joinWithTimeout(30).joined);
+        elapsedMillis = (getCpuTicks() - startTicks) * 1000.0 / getCpuTicksPerSecond();
+        check(elapsedMillis >= 20.0 && elapsedMillis < 1000.0);
+
+        // Exercise bounded completion, polling an exited child, and an indefinite wait after termination.
+        if (mode == 0) {
+            process->writeToStdIn = nullptr;
+            Subprocess::JoinResult result = process->joinWithTimeout(5000);
+            check(result.joined && result.exitCode == expectedExitCode);
+        } else if (mode == 1) {
+            process->writeToStdIn = nullptr;
+            char byte;
+            check(process->readFromStdOut->read({&byte, 1}) == 0);
+            startTicks = getCpuTicks();
+            Subprocess::JoinResult result;
+            do {
+                result = process->joinWithTimeout(0);
+            } while (!result.joined && (getCpuTicks() - startTicks) / getCpuTicksPerSecond() < 5.0);
+            check(result.joined && result.exitCode == expectedExitCode);
+        } else {
+            check(process->terminate());
+            Subprocess::JoinResult result = process->joinWithTimeout(-2);
+            check(result.joined);
+#if defined(PLY_POSIX)
+            check(result.exitCode == -1);
+#endif
+        }
+    }
+}
+
+TEST_CASE("terminate() stops an isolated process tree") {
+    // Start a shell whose child would otherwise keep the captured output pipe open for several seconds.
+    String shellPath;
+    Array<StringView> args;
+#if defined(PLY_WINDOWS)
+    shellPath = getEnvironmentVariable("COMSPEC");
+    if (!shellPath) {
+        shellPath = "cmd.exe";
+    }
+    args = {"/d", "/s", "/c", "ping -n 4 127.0.0.1 >nul"};
+#else
+    shellPath = "/bin/sh";
+    args = {"-c", "sleep 3 & wait"};
+#endif
+    Subprocess::Options processOptions;
+    processOptions.terminateProcessTree = true;
+    Owned<Subprocess> process = Subprocess::exec(shellPath, args, {}, Subprocess::Output::openMerged(),
+                                                 Subprocess::Input::ignore(), processOptions);
+    check(process);
+    if (!process)
+        return;
+
+    // Join on another thread so terminate() must safely release its blocking process wait.
+    Atomic<bool> joinReturned = false;
+    Thread joinThread{[&]() {
+        process->join();
+        joinReturned.store(true, MemoryOrder::Release);
+    }};
+    sleepMillis(50);
+    check(!joinReturned.load(MemoryOrder::Acquire));
+    u64 startTicks = getCpuTicks();
+    check(process->terminate());
+    char byte;
+    check(process->readFromStdOut->read({&byte, 1}) == 0);
+    joinThread.join();
+    check(joinReturned.load(MemoryOrder::Acquire));
+    double elapsedMillis = (getCpuTicks() - startTicks) * 1000.0 / getCpuTicksPerSecond();
+    check(elapsedMillis < 1500.0);
+}
+
 #endif // !defined(PLY_IOS)
 
 //  ▄▄▄▄▄          ▄▄   ▄▄

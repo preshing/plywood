@@ -4889,6 +4889,23 @@ struct Subprocess {
         }
     };
 
+    struct Options {
+        // This flag controls the behavior of terminate() when the subprocess spawns its own subprocesses.
+        // If true, the entire subprocess tree gets destroyed by terminate().
+        // If false, only the root subprocess gets terminated.
+        // (One exception: On POSIX, a descendant can escape termination by calling setpgid() or setsid().)
+        // Once join() or joinWithTimeout() collects the exit code, terminate() has no effect.
+        bool terminateProcessTree = false;
+
+        // Explicit constructor is needed so that {} works as a default argument to exec().
+        Options() {}
+    };
+
+    struct JoinResult {
+        bool joined = false;
+        s32 exitCode = -1; // Only meaningful when joined is true.
+    };
+
     // Members
     Owned<Pipe> writeToStdIn;
     Owned<Pipe> readFromStdOut;
@@ -4897,16 +4914,37 @@ struct Subprocess {
 #if defined(PLY_WINDOWS)
     HANDLE childProcess = INVALID_HANDLE_VALUE;
     HANDLE childMainThread = INVALID_HANDLE_VALUE;
+    HANDLE jobObject = NULL;
 #elif defined(PLY_POSIX)
     int childPid = -1;
+    int processGroupId = -1;
 #endif
+    Mutex stateMutex;    // Protects join/termination state.
+    bool joined = false; // Protected by stateMutex.
 
     Subprocess() = default;
     ~Subprocess();
 
     static Owned<Subprocess> exec(StringView exePath, ArrayView<const StringView> args, StringView initialDir,
-                                  const Output& output, const Input& input = Input::open());
-    s32 join();
+                                  const Output& output, const Input& input = Input::open(),
+                                  const Options& options = {});
+    // Forcibly terminates the subprocess, including its process group when one was requested.
+    // Safe to call from another thread while join() or joinWithTimeout() is blocked.
+    // Returns true without taking action once either method has collected the exit code, even when called concurrently.
+    bool terminate();
+
+    // Waits only for the immediate subprocess. Does not wait for descendants,
+    // even when Options::terminateProcessTree is enabled.
+    // A negative timeout waits indefinitely; zero only checks whether the subprocess has exited.
+    // Returns joined == false on timeout, allowing another wait or terminate() call.
+    JoinResult joinWithTimeout(s32 timeoutMillis);
+
+    // Waits indefinitely for the immediate subprocess and returns its exit code.
+    s32 join() {
+        JoinResult result = this->joinWithTimeout(-1);
+        PLY_ASSERT(result.joined);
+        return result.exitCode;
+    }
 };
 
 #endif // !PLY_IOS

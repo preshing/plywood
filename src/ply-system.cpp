@@ -22,6 +22,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <signal.h>
 #include <dirent.h>
 #include <fcntl.h>
 #if defined(PLY_APPLE)
@@ -6834,19 +6835,53 @@ Subprocess::~Subprocess() {
     PLY_ASSERT(this->childProcess != INVALID_HANDLE_VALUE);
     CloseHandle(this->childProcess);
     CloseHandle(this->childMainThread);
+    if (this->jobObject) {
+        CloseHandle(this->jobObject);
+    }
 }
 
-s32 Subprocess::join() {
+bool Subprocess::terminate() {
     PLY_ASSERT(this->childProcess != INVALID_HANDLE_VALUE);
-    DWORD rc = WaitForSingleObject(this->childProcess, INFINITE);
+    LockGuard<Mutex> guard{this->stateMutex};
+    if (this->joined)
+        return true;
+
+    // Terminate the whole job when process-tree isolation was requested; otherwise terminate only the child.
+    BOOL rc = FALSE;
+    if (this->jobObject) {
+        rc = TerminateJobObject(this->jobObject, ERROR_CANCELLED);
+    } else {
+        rc = TerminateProcess(this->childProcess, ERROR_CANCELLED);
+    }
+    if (!rc && WaitForSingleObject(this->childProcess, 0) == WAIT_OBJECT_0)
+        return true;
+    return rc != 0;
+}
+
+Subprocess::JoinResult Subprocess::joinWithTimeout(s32 timeoutMillis) {
+    PLY_ASSERT(this->childProcess != INVALID_HANDLE_VALUE);
+    {
+        LockGuard<Mutex> guard{this->stateMutex};
+        PLY_ASSERT(!this->joined);
+    }
+
+    // Wait without holding stateMutex so another thread can terminate the process and satisfy the wait.
+    DWORD rc = WaitForSingleObject(this->childProcess, timeoutMillis < 0 ? INFINITE : (DWORD) timeoutMillis);
+    if (rc == WAIT_TIMEOUT)
+        return {};
     PLY_ASSERT(rc == WAIT_OBJECT_0);
     PLY_UNUSED(rc);
-    // FIXME: Add an assert here to ensure that readFromStdOut & readFromStdErr have been drained (?).
+
+    // Consume the completed process while serialized with terminate().
+    LockGuard<Mutex> guard{this->stateMutex};
+    PLY_ASSERT(!this->joined);
     DWORD exitCode;
     BOOL rc2 = GetExitCodeProcess(this->childProcess, &exitCode);
     PLY_ASSERT(rc2 != 0);
     PLY_UNUSED(rc2);
-    return (s32) exitCode;
+    this->joined = true;
+    // FIXME: Add an assert here to ensure that readFromStdOut & readFromStdErr have been drained (?).
+    return {true, (s32) exitCode};
 }
 
 //--------------------------------
@@ -6941,7 +6976,7 @@ PLY_NO_INLINE void writeWinCrtArg(Stream& out, StringView arg) {
 }
 
 Owned<Subprocess> Subprocess::exec(StringView exePath, ArrayView<const StringView> args, StringView initialDir,
-                                   const Output& output, const Input& input) {
+                                   const Output& output, const Input& input, const Options& options) {
     // These are temporary handles meant for the subprocess to inherit. They're manually closed below after the call
     // to CreateProcessW.
     HANDLE childStdInRead = INVALID_HANDLE_VALUE;
@@ -7098,10 +7133,14 @@ Owned<Subprocess> Subprocess::exec(StringView exePath, ArrayView<const StringVie
 
     // Create the child process using only the handles in the explicit inheritance list.
     PROCESS_INFORMATION procInfo;
+    ZeroMemory(&procInfo, sizeof(procInfo));
+    DWORD creationFlags = EXTENDED_STARTUPINFO_PRESENT;
+    if (options.terminateProcessTree) {
+        creationFlags |= CREATE_SUSPENDED;
+    }
     rc = CreateProcessW(NULL, wCmdLine, NULL, NULL,
-                        TRUE,                         // Inherit handles from the explicit list.
-                        EXTENDED_STARTUPINFO_PRESENT, // Use startupInfoEx.
-                        NULL, initialDir.isEmpty() ? NULL : (LPCWSTR) win32Dir, &startupInfo, &procInfo);
+                        TRUE, // Inherit handles from the explicit list.
+                        creationFlags, NULL, initialDir.isEmpty() ? NULL : (LPCWSTR) win32Dir, &startupInfo, &procInfo);
     DeleteProcThreadAttributeList(startupInfoEx.lpAttributeList);
 
     // Manually close any temporary handles that were passed to the subprocess.
@@ -7115,6 +7154,26 @@ Owned<Subprocess> Subprocess::exec(StringView exePath, ArrayView<const StringVie
         CloseHandle(childStdErrWrite);
     }
 
+    // Assign a suspended child to a job before it can create descendants, then let it begin execution.
+    HANDLE jobObject = NULL;
+    if (rc && options.terminateProcessTree) {
+        jobObject = CreateJobObjectW(NULL, NULL);
+        if (!jobObject || !AssignProcessToJobObject(jobObject, procInfo.hProcess) ||
+            ResumeThread(procInfo.hThread) == (DWORD) -1) {
+            if (jobObject) {
+                TerminateJobObject(jobObject, ERROR_CANCELLED);
+            }
+            TerminateProcess(procInfo.hProcess, ERROR_CANCELLED);
+            WaitForSingleObject(procInfo.hProcess, INFINITE);
+            CloseHandle(procInfo.hProcess);
+            CloseHandle(procInfo.hThread);
+            if (jobObject) {
+                CloseHandle(jobObject);
+            }
+            rc = FALSE;
+        }
+    }
+
     if (!rc) {
         // The subprocess could not be created.
         return nullptr;
@@ -7126,6 +7185,7 @@ Owned<Subprocess> Subprocess::exec(StringView exePath, ArrayView<const StringVie
     PLY_ASSERT(procInfo.hThread != INVALID_HANDLE_VALUE);
     subprocess->childProcess = procInfo.hProcess;
     subprocess->childMainThread = procInfo.hThread;
+    subprocess->jobObject = jobObject;
     subprocess->writeToStdIn = std::move(writeToChildStdIn);
     subprocess->readFromStdOut = std::move(readFromChildStdOut);
     subprocess->readFromStdErr = std::move(readFromChildStdErr);
@@ -7146,22 +7206,78 @@ Subprocess::~Subprocess() {
     }
 }
 
-s32 Subprocess::join() {
-    PLY_ASSERT(this->childPid != -1);
-    int status;
+bool Subprocess::terminate() {
+    LockGuard<Mutex> guard{this->stateMutex};
+    if (this->joined)
+        return true;
+    PLY_ASSERT(this->childPid > 0);
+
+    // A negative process-group ID targets the child and every descendant that stayed in its group.
+    int target;
+    if (this->processGroupId > 0) {
+        target = -this->processGroupId;
+    } else {
+        target = this->childPid;
+    }
+    int rc = kill(target, SIGKILL);
+    return rc == 0 || errno == ESRCH;
+}
+
+Subprocess::JoinResult Subprocess::joinWithTimeout(s32 timeoutMillis) {
+    int childPid;
+    {
+        LockGuard<Mutex> guard{this->stateMutex};
+        PLY_ASSERT(this->childPid > 0);
+        PLY_ASSERT(!this->joined);
+        childPid = this->childPid;
+    }
+
+    // Wait for exit without reaping so the PID can't be reused before stateMutex protects the final state change.
+    int waitFlags = WEXITED | WNOWAIT;
+    if (timeoutMillis >= 0) {
+        waitFlags |= WNOHANG;
+    }
+    u64 startTicks = getCpuTicks();
+    double ticksPerMillis = getCpuTicksPerSecond() / 1000.0;
     int rc;
-    // Loop to ignore signals sent by the debugger on macOS.
+    for (;;) {
+        // Poll the subprocess state or wait for it to change.
+        siginfo_t info = {};
+        rc = waitid(P_PID, childPid, &info, waitFlags);
+        if (rc == -1 && errno != EINTR) {
+            PLY_ASSERT(0);
+            return {};
+        }
+        if (rc == 0 && info.si_pid == childPid)
+            break;
+
+        // POSIX has no timed waitid(); poll every 10 ms, capped by the remaining monotonic timeout.
+        if (timeoutMillis >= 0) {
+            double remainingMillis = timeoutMillis - (getCpuTicks() - startTicks) / ticksPerMillis;
+            if (remainingMillis <= 0)
+                return {};
+            timespec delay = {0, (long) (min(10.0, remainingMillis) * 1000000)};
+            nanosleep(&delay, nullptr);
+        }
+    }
+
+    // Reap the child while serialized with terminate().
+    LockGuard<Mutex> guard{this->stateMutex};
+    PLY_ASSERT(this->childPid == childPid);
+    PLY_ASSERT(!this->joined);
+    int status;
     do {
-        rc = waitpid(this->childPid, &status, 0);
+        rc = waitpid(childPid, &status, WNOHANG);
     } while (rc == -1 && errno == EINTR);
-    PLY_ASSERT(rc == this->childPid);
+    PLY_ASSERT(rc == childPid);
     PLY_UNUSED(rc);
     this->childPid = -1;
+    this->joined = true;
     // FIXME: Add an assert here to ensure that readFromStdOut & readFromStdErr have been drained (?).
     if (WIFEXITED(status)) {
-        return WEXITSTATUS(status);
+        return {true, WEXITSTATUS(status)};
     } else {
-        return -1;
+        return {true, -1};
     }
 }
 
@@ -7191,7 +7307,7 @@ PLY_NO_INLINE int getNullOutFdPosix() {
 }
 
 Owned<Subprocess> Subprocess::exec(StringView exePath, ArrayView<const StringView> args, StringView initialDir,
-                                   const Output& output, const Input& input) {
+                                   const Output& output, const Input& input, const Options& options) {
 #if defined(PLY_APPLE)
     // Use a mutex to avoid accidentally inheriting unwanted handles across concurrent calls to Subprocess::exec.
     static Mutex execMutex;
@@ -7320,6 +7436,9 @@ Owned<Subprocess> Subprocess::exec(StringView exePath, ArrayView<const StringVie
         // Child process
         //-----------------------------------------------------------
 
+        // Create the requested process group before executing any user-controlled code.
+        int setupRC = options.terminateProcessTree ? setpgid(0, 0) : 0;
+
         // Close the parent's end of the child error pipe.
         rc = close(childErrorFD[0]);
         PLY_ASSERT(rc == 0);
@@ -7345,12 +7464,11 @@ Owned<Subprocess> Subprocess::exec(StringView exePath, ArrayView<const StringVie
         PLY_ASSERT(rc == 0);
 
         // Execute the new process.
-        rc = 0;
-        if (nullTerminatedInitialDir) {
-            rc = chdir(nullTerminatedInitialDir.bytes());
+        if (setupRC == 0 && nullTerminatedInitialDir) {
+            setupRC = chdir(nullTerminatedInitialDir.bytes());
         }
-        // Only attempt to run if chdir was was successful.
-        if (rc == 0) {
+        // Only attempt to run if process-group and working-directory setup succeeded.
+        if (setupRC == 0) {
             execvp(nullTerminatedExePath.bytes(), argsToExecv.items());
             // If execvp returns, that indicates an error.
         }
@@ -7424,6 +7542,7 @@ Owned<Subprocess> Subprocess::exec(StringView exePath, ArrayView<const StringVie
     // Create the Subprocess object after the child has successfully executed the requested program.
     Subprocess* subprocess = Heap::create<Subprocess>();
     subprocess->childPid = childPid;
+    subprocess->processGroupId = options.terminateProcessTree ? childPid : -1;
     subprocess->writeToStdIn = std::move(writeToChildStdIn);
     subprocess->readFromStdOut = std::move(readFromChildStdOut);
     subprocess->readFromStdErr = std::move(readFromChildStdErr);
