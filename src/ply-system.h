@@ -4928,6 +4928,11 @@ struct Subprocess {
     static Owned<Subprocess> exec(StringView exePath, ArrayView<const StringView> args, StringView initialDir,
                                   const Output& output, const Input& input = Input::open(),
                                   const Options& options = {});
+
+    // Interpret a command using cmd.exe on Windows or /bin/sh on POSIX, with platform-specific shell syntax.
+    static Owned<Subprocess> execShellCommand(StringView shellCommand, StringView initialDir, const Output& output,
+                                              const Input& input = Input::open(), const Options& options = {});
+
     // Forcibly terminates the subprocess, including its process group when one was requested.
     // Safe to call from another thread while join() or joinWithTimeout() is blocked.
     // Returns true without taking action once either method has collected the exit code, even when called concurrently.

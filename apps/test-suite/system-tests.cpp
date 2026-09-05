@@ -2452,26 +2452,19 @@ TEST_CASE("Usage stats with alloc/free") {
 #undef TEST_CASE_PREFIX
 #define TEST_CASE_PREFIX Subprocess_
 
-TEST_CASE("exec() with merged output") {
-    // Select a platform shell and a command with a nonzero exit status.
-    String shellPath;
-    Array<StringView> args;
+TEST_CASE("execShellCommand() with merged output") {
+    // Select a platform command with a nonzero exit status.
 #if defined(PLY_WINDOWS)
-    shellPath = getEnvironmentVariable("COMSPEC");
-    if (!shellPath) {
-        shellPath = "cmd.exe";
-    }
-    args = {"/d", "/s", "/c", "echo stdout&echo stderr>&2&exit /b 7"};
+    StringView command = "echo stdout&echo stderr>&2&exit /b 7";
     StringView expectedOutput = "stdout\r\nstderr\r\n";
 #else
-    shellPath = "/bin/sh";
-    args = {"-c", "printf stdout; printf stderr >&2; exit 7"};
+    StringView command = "printf stdout; printf stderr >&2; exit 7";
     StringView expectedOutput = "stdoutstderr";
 #endif
 
     // Capture the merged stream through Plywood's process pipes.
     Owned<Subprocess> process =
-        Subprocess::exec(shellPath, args, {}, Subprocess::Output::openMerged(), Subprocess::Input::ignore());
+        Subprocess::execShellCommand(command, {}, Subprocess::Output::openMerged(), Subprocess::Input::ignore());
     check(process);
     if (!process)
         return;
@@ -2484,6 +2477,44 @@ TEST_CASE("exec() with merged output") {
     }
     check(output.moveToString() == expectedOutput);
     check(process->join() == 7);
+}
+
+TEST_CASE("execShellCommand() preserves quotes and backslashes") {
+    // Exercise shell quoting and a trailing backslash that CRT argument escaping would double on Windows.
+#if defined(PLY_WINDOWS)
+    StringView command = "echo \"two words\" C:\\";
+    StringView expectedOutput = "\"two words\" C:\\\r\n";
+#else
+    StringView command = "printf '%s' \"two words\" ' C:\\'";
+    StringView expectedOutput = "two words C:\\";
+#endif
+    Owned<Subprocess> process =
+        Subprocess::execShellCommand(command, {}, Subprocess::Output::openMerged(), Subprocess::Input::ignore());
+    check(process);
+    if (!process)
+        return;
+
+    // Drain the pipe and compare the shell's output exactly.
+    MemStream output;
+    while (output.makeWritable()) {
+        u32 numBytes = process->readFromStdOut->read({output.curByte, output.endByte});
+        if (numBytes == 0)
+            break;
+        output.curByte += numBytes;
+    }
+    check(output.moveToString() == expectedOutput);
+    check(process->join() == 0);
+}
+
+TEST_CASE("execShellCommand() runs a quoted executable path") {
+    // A command starting with a quoted executable must retain those quotes when cmd.exe strips its outer pair.
+    String command = String::format("\"{}\" --help", getCurrentExecutablePath());
+    Owned<Subprocess> process =
+        Subprocess::execShellCommand(command, {}, Subprocess::Output::ignore(), Subprocess::Input::ignore());
+    check(process);
+    if (!process)
+        return;
+    check(process->join() == 0);
 }
 
 TEST_CASE("exec() reports child setup errors") {
@@ -2512,24 +2543,17 @@ TEST_CASE("exec() reports child setup errors") {
 
 TEST_CASE("joinWithTimeout() supports timeouts and retries") {
     // Keep the subprocess alive until the parent closes its input, avoiding startup timing assumptions.
-    String shellPath;
-    Array<StringView> args;
 #if defined(PLY_WINDOWS)
-    shellPath = getEnvironmentVariable("COMSPEC");
-    if (!shellPath) {
-        shellPath = "cmd.exe";
-    }
-    args = {"/d", "/s", "/c", "set /p value= >nul & exit /b -2"};
+    StringView command = "set /p value= >nul & exit /b -2";
     s32 expectedExitCode = -2;
 #else
-    shellPath = "/bin/sh";
-    args = {"-c", "read value; exit 7"};
+    StringView command = "read value; exit 7";
     s32 expectedExitCode = 7;
 #endif
 
     // A timeout must leave the subprocess available for another wait or for termination.
     for (u32 mode = 0; mode < 3; mode++) {
-        Owned<Subprocess> process = Subprocess::exec(shellPath, args, {}, Subprocess::Output::openMerged());
+        Owned<Subprocess> process = Subprocess::execShellCommand(command, {}, Subprocess::Output::openMerged());
         check(process);
         if (!process)
             return;
@@ -2570,22 +2594,15 @@ TEST_CASE("joinWithTimeout() supports timeouts and retries") {
 
 TEST_CASE("terminate() stops an isolated process tree") {
     // Start a shell whose child would otherwise keep the captured output pipe open for several seconds.
-    String shellPath;
-    Array<StringView> args;
 #if defined(PLY_WINDOWS)
-    shellPath = getEnvironmentVariable("COMSPEC");
-    if (!shellPath) {
-        shellPath = "cmd.exe";
-    }
-    args = {"/d", "/s", "/c", "ping -n 4 127.0.0.1 >nul"};
+    StringView command = "ping -n 4 127.0.0.1 >nul";
 #else
-    shellPath = "/bin/sh";
-    args = {"-c", "sleep 3 & wait"};
+    StringView command = "sleep 3 & wait";
 #endif
     Subprocess::Options processOptions;
     processOptions.terminateProcessTree = true;
-    Owned<Subprocess> process = Subprocess::exec(shellPath, args, {}, Subprocess::Output::openMerged(),
-                                                 Subprocess::Input::ignore(), processOptions);
+    Owned<Subprocess> process = Subprocess::execShellCommand(command, {}, Subprocess::Output::openMerged(),
+                                                             Subprocess::Input::ignore(), processOptions);
     check(process);
     if (!process)
         return;

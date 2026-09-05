@@ -1728,26 +1728,11 @@ void shellToolHandler(ToolContext* toolCtx, Transcript::Message* toolCall, const
     }
 
     // Run the command through the default shell with closed stdin and merged stdout/stderr.
-    String shellPath;
-    Array<StringView> shellArgs;
-#if defined(PLY_WINDOWS)
-    shellPath = getEnvironmentVariable("COMSPEC");
-    if (!shellPath) {
-        shellPath = "cmd.exe";
-    }
-    shellArgs.append("/d");
-    shellArgs.append("/s");
-    shellArgs.append("/c");
-#else
-    shellPath = "/bin/sh";
-    shellArgs.append("-c");
-#endif
-    shellArgs.append(commandArg.text());
     Subprocess::Options processOptions;
     processOptions.terminateProcessTree = true;
     Owned<Subprocess> process =
-        Subprocess::exec(shellPath, shellArgs, toolCtx->getWorkingDirectory(), Subprocess::Output::openMerged(),
-                         Subprocess::Input::ignore(), processOptions);
+        Subprocess::execShellCommand(commandArg.text(), toolCtx->getWorkingDirectory(),
+                                     Subprocess::Output::openMerged(), Subprocess::Input::ignore(), processOptions);
     if (!process) {
         toolCtx->appendResponse(toolCall, "Error: Could not start shell command.");
         return;

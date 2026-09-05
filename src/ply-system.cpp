@@ -6975,8 +6975,11 @@ PLY_NO_INLINE void writeWinCrtArg(Stream& out, StringView arg) {
     out.write('"');
 }
 
-Owned<Subprocess> Subprocess::exec(StringView exePath, ArrayView<const StringView> args, StringView initialDir,
-                                   const Output& output, const Input& input, const Options& options) {
+// Launch a prepared Windows command line with shared pipe and process-tree handling.
+static Owned<Subprocess> execWin32(WString commandLine, StringView initialDir, const Subprocess::Output& output,
+                                   const Subprocess::Input& input, const Subprocess::Options& options) {
+    using PipeType = Subprocess::PipeType;
+
     // These are temporary handles meant for the subprocess to inherit. They're manually closed below after the call
     // to CreateProcessW.
     HANDLE childStdInRead = INVALID_HANDLE_VALUE;
@@ -7092,15 +7095,6 @@ Owned<Subprocess> Subprocess::exec(StringView exePath, ArrayView<const StringVie
         readFromChildStdErr = Heap::create<PipeHandle>(childStdErrRead, Pipe::HAS_READ_PERMISSION);
     }
 
-    // Create the command line.
-    MemStream cmdLine;
-    writeWinCrtArg(cmdLine, exePath);
-    for (StringView arg : args) {
-        cmdLine.write(' ');
-        writeWinCrtArg(cmdLine, arg);
-    }
-    WString wCmdLine = toWstring(cmdLine.moveToString());
-
     // Create the child process.
     WString win32Dir;
     if (!initialDir.isEmpty()) {
@@ -7138,7 +7132,7 @@ Owned<Subprocess> Subprocess::exec(StringView exePath, ArrayView<const StringVie
     if (options.terminateProcessTree) {
         creationFlags |= CREATE_SUSPENDED;
     }
-    rc = CreateProcessW(NULL, wCmdLine, NULL, NULL,
+    rc = CreateProcessW(NULL, commandLine, NULL, NULL,
                         TRUE, // Inherit handles from the explicit list.
                         creationFlags, NULL, initialDir.isEmpty() ? NULL : (LPCWSTR) win32Dir, &startupInfo, &procInfo);
     DeleteProcThreadAttributeList(startupInfoEx.lpAttributeList);
@@ -7190,6 +7184,34 @@ Owned<Subprocess> Subprocess::exec(StringView exePath, ArrayView<const StringVie
     subprocess->readFromStdOut = std::move(readFromChildStdOut);
     subprocess->readFromStdErr = std::move(readFromChildStdErr);
     return subprocess;
+}
+
+Owned<Subprocess> Subprocess::exec(StringView exePath, ArrayView<const StringView> args, StringView initialDir,
+                                   const Output& output, const Input& input, const Options& options) {
+    // Quote individual arguments for programs that use Microsoft C runtime argument parsing.
+    MemStream cmdLine;
+    writeWinCrtArg(cmdLine, exePath);
+    for (StringView arg : args) {
+        cmdLine.write(' ');
+        writeWinCrtArg(cmdLine, arg);
+    }
+    return execWin32(toWstring(cmdLine.moveToString()), initialDir, output, input, options);
+}
+
+Owned<Subprocess> Subprocess::execShellCommand(StringView shellCommand, StringView initialDir, const Output& output,
+                                               const Input& input, const Options& options) {
+    // Select the Windows command interpreter, falling back to the executable search path.
+    String shellPath = getEnvironmentVariable("COMSPEC");
+    if (!shellPath) {
+        shellPath = "cmd.exe";
+    }
+    // cmd.exe strips the outer quotes with /s /c; preserve all shell syntax inside them verbatim.
+    MemStream cmdLine;
+    writeWinCrtArg(cmdLine, shellPath);
+    cmdLine.write(" /d /s /c \"");
+    cmdLine.write(shellCommand);
+    cmdLine.write('"');
+    return execWin32(toWstring(cmdLine.moveToString()), initialDir, output, input, options);
 }
 
 #elif defined(PLY_POSIX) && !defined(PLY_IOS)
@@ -7547,6 +7569,12 @@ Owned<Subprocess> Subprocess::exec(StringView exePath, ArrayView<const StringVie
     subprocess->readFromStdOut = std::move(readFromChildStdOut);
     subprocess->readFromStdErr = std::move(readFromChildStdErr);
     return subprocess;
+}
+
+Owned<Subprocess> Subprocess::execShellCommand(StringView shellCommand, StringView initialDir, const Output& output,
+                                               const Input& input, const Options& options) {
+    // Pass the command as a single argument for the POSIX shell to interpret.
+    return Subprocess::exec("/bin/sh", {"-c", shellCommand}, initialDir, output, input, options);
 }
 
 #endif // defined(PLY_POSIX) && !defined(PLY_IOS)
