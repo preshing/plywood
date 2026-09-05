@@ -557,7 +557,14 @@ struct TranscriptPrinter {
 
 // Starts incremental Markdown conversion for a browser message section.
 void TranscriptPrinter::beginMarkdownMessage() {
-    this->markdownParser = markdown::createParser();
+    // Agent output is untrusted.
+    // Prevent potentially malicious HTML from being injected into the transcript page.
+    markdown::ParseOptions parseOptions;
+    parseOptions.inlineHTML = false;
+    parseOptions.htmlBlocks = false;
+    parseOptions.inlineImages = false;
+    parseOptions.referenceImages = false;
+    this->markdownParser = markdown::createParser(parseOptions);
     this->markdownLine = MemStream{};
     this->predictedMarkdownHtml = {};
 }
@@ -1325,8 +1332,9 @@ int main(int argc, const char* argv[]) {
         {"-x", "--proxy", PLY_LOOKUP_MEMBER(CommandLineOptions, useProxy), "Connect through agent-proxy",
          PLY_LOOKUP_MEMBER(CommandLineOptions, proxyPort), "port"},
         {"-l", "--http-log", PLY_LOOKUP_MEMBER(CommandLineOptions, enableHttpLog), "Write raw HTTP log"},
-        {"-s", "--serve", PLY_LOOKUP_MEMBER(CommandLineOptions, runWebServer), "Serve a web UI (default port: 8081)",
-         PLY_LOOKUP_MEMBER(CommandLineOptions, webServerPort), "port"},
+        {"-s", "--serve", PLY_LOOKUP_MEMBER(CommandLineOptions, runWebServer),
+         "Serve a loopback-only web UI (default port: 8081)", PLY_LOOKUP_MEMBER(CommandLineOptions, webServerPort),
+         "port"},
 #if !defined(PLY_IOS)
         {"-b", "--browser", PLY_LOOKUP_MEMBER(CommandLineOptions, openBrowser),
          "Launch a web browser to view the web UI"},
@@ -1416,7 +1424,7 @@ int main(int argc, const char* argv[]) {
     Thread webServerThread;
     if (options.runWebServer) {
         Network::initialize(IPv4);
-        webServerThread.run([] { HTTPServer::run({}, webServerPort, serveWebTranscript); });
+        webServerThread.run([] { HTTPServer::run(IPAddress::localHost(IPv4), webServerPort, serveWebTranscript); });
     }
 
     // Create a transcript with the user's prompt as the first turn.
@@ -1444,7 +1452,7 @@ int main(int argc, const char* argv[]) {
 #else
         StringView launcher = "xdg-open";
 #endif
-        String webURL = String::format("http://localhost:{}", webServerPort);
+        String webURL = String::format("http://127.0.0.1:{}", webServerPort);
         Owned<Subprocess> browser =
             Subprocess::exec(launcher, {webURL}, {}, Subprocess::Output::ignore(), Subprocess::Input::ignore());
         if (!browser) {

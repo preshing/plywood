@@ -59,7 +59,7 @@ Available command-line options:
 | `-x[=<port>]` | `--proxy[=<port>]` | Connect through [`agent-proxy`](/docs/apps/agent-proxy.md). Requires `-p/--provider`. |
 | `-l` | `--http-log` | Write a raw HTTP log. |
 | `-c` | `--config` | Path to a JSON settings file or a directory. |
-| `-s[=<port>]` | `--serve[=<port>]` | Serve a web UI. Default port is 8081. |
+| `-s[=<port>]` | `--serve[=<port>]` | Serve a loopback-only web UI. Default port is 8081. |
 | `-b` | `--browser` | Launch a web browser to view the web UI. |
 | `-h` | `--help` | Print the available options. |
 
