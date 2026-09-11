@@ -28,7 +28,7 @@ enum class Protocol {
 };
 
 struct Route {
-    String path;
+    String provider;
     String upstreamUrl;
     Protocol protocol;
     String apiKeyEnv;
@@ -101,10 +101,10 @@ static bool loadSettings() {
         }
 
         // Validate the route destination and protocol.
-        String path = String::format("/{}", jProvider.text());
-        if (!jProvider.text() || path.find('?') >= 0 || !jApiKeyEnv.text() ||
+        String provider = jProvider.text();
+        if (!jProvider.text() || provider.find('?') >= 0 || !jApiKeyEnv.text() ||
             (!jUpstreamUrl.text().startsWith("https://") && !jUpstreamUrl.text().startsWith("http://"))) {
-            getStdErr().format("Invalid route path, URL or API key environment variable in: {}\n", providersPath);
+            getStdErr().format("Invalid route provider, URL or API key environment variable in: {}\n", providersPath);
             return false;
         }
         Protocol protocol;
@@ -119,14 +119,14 @@ static bool loadSettings() {
             return false;
         }
         for (const Route& route : settings.routes) {
-            if (route.path == path) {
-                getStdErr().format("Duplicate route path '{}': {}\n", path, providersPath);
+            if (route.provider == provider) {
+                getStdErr().format("Duplicate route provider '{}': {}\n", provider, providersPath);
                 return false;
             }
         }
 
         // Retain the environment variable name so the key can be resolved for each request.
-        settings.routes.append({std::move(path), jUpstreamUrl.text(), protocol, jApiKeyEnv.text()});
+        settings.routes.append({std::move(provider), jUpstreamUrl.text(), protocol, jApiKeyEnv.text()});
     }
     return true;
 }
@@ -144,8 +144,11 @@ static void sendProxyError(HTTPServer::Request& request, u32 statusCode, String&
 
 // Find the fixed upstream associated with an incoming URI.
 static const Route* findRoute(StringView uri) {
+    if (!uri.startsWith("/"))
+        return nullptr;
+    StringView provider = uri.substr(1);
     for (const Route& route : settings.routes) {
-        if (route.path == uri)
+        if (route.provider == provider)
             return &route;
     }
     return nullptr;
@@ -229,7 +232,7 @@ static void proxyRequest(HTTPServer::Request& request) {
         request.sendGenericResponse(HTTPServer::Response::BadGateway);
     }
     if (upstreamFailed) {
-        getStdErr().format("Upstream request for {} failed: {}\n", route->path, upstreamError);
+        getStdErr().format("Upstream request for {} failed: {}\n", route->provider, upstreamError);
     }
 }
 
@@ -273,7 +276,19 @@ int main(int argc, const char* argv[]) {
     PLY_ASSERT(curlResult == CURLE_OK);
     PLY_UNUSED(curlResult);
     Network::initialize(IPv4);
-    getStdOut().format("Forwarding {} route(s) on http://127.0.0.1:{}\n", settings.routes.numItems(), settings.port);
+
+    // Report which providers have credentials and count the enabled routes.
+    getStdOut().write("Available routes:\n");
+    u32 enabledRoutes = 0;
+    for (const Route& route : settings.routes) {
+        bool isSet = (bool) getEnvironmentVariable(route.apiKeyEnv);
+        if (isSet) {
+            ++enabledRoutes;
+        }
+        getStdOut().format("[{}] {}: {} {} set\n", isSet ? "x" : " ", route.provider, route.apiKeyEnv,
+                           isSet ? "is" : "not");
+    }
+    getStdOut().format("Forwarding {} route(s) on http://127.0.0.1:{}\n", enabledRoutes, settings.port);
     HTTPServer::run(IPAddress::localHost(IPv4), settings.port, proxyRequest);
     Network::shutdown();
     curl_global_cleanup();
