@@ -60,37 +60,35 @@ items = set.items();  // Returns {7, 6}.
 
 `Set` objects are movable, copyable and construct to an empty collection by default.
 
-{context class=Set}
-
-`Set(std::initializer_list<Item> items)`
+`Set::Set(std::initializer_list<Item> items)`
 > Constructs a set from a braced initializer list. The items are inserted in the order they appear in the list.
 
-`const Item* find(const Key& key) const`
+`const Item* Set::find(const Key& key) const`
 > Looks for an item in the collection that matches the given key. Returns a pointer to the item if found, or `nullptr` if not found.
 >
 > The returned pointer is temporary. Any subsequent change to the `Set` can invalidate this pointer, so don't store it beyond the next call to `find` or `erase`, even if those calls involve different keys.
 
-`ArrayView<Item> items()`
-`ArrayView<const Item> items() const`
+`ArrayView<Item> Set::items()`
+`ArrayView<const Item> Set::items() const`
 > Returns a view of all items in the set. The items are in insertion order unless `eraseQuick` was called.
 
-`void clear()`
+`void Set::clear()`
 > Calls the destructor of all existing items and resets to an empty set.
 
-`InsertResult insert(const Key& key)`
+`InsertResult Set::insert(const Key& key)`
 > Inserts a new item in the set using the given key if it doesn't already exist. The `Item` type must be constructible from `Key`. Returns an `InsertResult` with the following members:
 >
 > [TBD]
 >
 > This function is actually a function template that uses SFINAE to delete itself if the `Key` type is not constructible from the `Item` type. In particular, this means you can't call this function on a `Set<Owned<T>>`; you can only call `insertItem` on such sets.
 
-`InsertResult insertItem(Item&& item)`
+`InsertResult Set::insertItem(Item&& item)`
 > Inserts a fully constructed item into the set using move semantics. Any existing item with the same key is replaced.
 
-`bool erase(const Key& key)`
+`bool Set::erase(const Key& key)`
 > Removes the item with the given key. The remaining items are kept in insertion order. If an existing item was found in the set, its destructor is called and `true` is returned. Otherwise, returns `false`. This function is slower than `eraseQuick`.
 
-`bool eraseQuick(const Key& key)`
+`bool Set::eraseQuick(const Key& key)`
 > Removes the item with the given key without keeping the remaining items in insertion order. If an existing item was found in the set, its destructor is called and `true` is returned. Otherwise, returns `false`.
 
 ## `Map`
@@ -131,30 +129,28 @@ items = map.items();  // Returns {{7, "date"}, {6, "cherry"}}.
 
 `Map` objects are movable, copyable and construct to an empty collection by default.
 
-{context class=Map}
-
-`Map(std::initializer_list<Item> items)`
+`Map::Map(std::initializer_list<Item> items)`
 > Constructs a map from a braced initializer list. The key-value pairs are inserted in the order they appear in the list.
 
-`const Value* find(const KeyView& key) const`
+`const Value* Map::find(const KeyView& key) const`
 > Looks up a value by key. Returns a pointer to the value if found, or `nullptr` if not present.
 
-`ArrayView<Item> items()`
-`ArrayView<const Item> items() const`
+`ArrayView<Item> Map::items()`
+`ArrayView<const Item> Map::items() const`
 > Returns a view of all key-value pairs in the map. The pairs are in insertion order unless `eraseQuick` was called.
 
-`void clear()`
+`void Map::clear()`
 > Calls the destructor of all existing items and resets to an empty map.
 
-`InsertResult insert(const KeyView& key)`
+`InsertResult Map::insert(const KeyView& key)`
 > Inserts a new key-value pair with the given key if it doesn't already exist. The value is default-constructed. Returns an `InsertResult` with the following members:
 >
 > [TBD]
 
-`bool erase(const KeyView& key)`
+`bool Map::erase(const KeyView& key)`
 > Removes the key-value pair with the given key. The remaining pairs are kept in insertion order. If an existing pair was found in the map, its destructor is called and `true` is returned. Otherwise, returns `false`. This function is slower than `eraseQuick`.
 
-`bool eraseQuick(const KeyView& key)`
+`bool Map::eraseQuick(const KeyView& key)`
 > Removes the key-value pair with the given key without keeping the remaining pairs in insertion order. If an existing pair was found in the map, its destructor is called and `true` is returned. Otherwise, returns `false`.
 
 ## Custom Key Types

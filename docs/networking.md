@@ -9,18 +9,16 @@ Before using any networking functions, call `Network::initialize()`. When finish
 
 The `Network` class provides static methods for network initialization and hostname resolution.
 
-{context class=Network}
-
-`static void initialize(IPVersion ipVersion)`
+`static void Network::initialize(IPVersion ipVersion)`
 > Initializes the networking subsystem. Must be called before any other networking functions. Specify `IPVersion::V4` or `IPVersion::V6`.
 
-`static void shutdown()`
+`static void Network::shutdown()`
 > Shuts down the networking subsystem and releases resources.
 
-`static IPAddress resolveHostName(StringView hostName, IPVersion ipVersion)`
+`static IPAddress Network::resolveHostName(StringView hostName, IPVersion ipVersion)`
 > Resolves a hostname (e.g., "example.com") to an IP address using DNS.
 
-`static NetResult lastResult()`
+`static NetResult Network::lastResult()`
 > Returns the result code from the most recent network operation.
 
 `NetResult` can take on any of the following values:
@@ -40,35 +38,31 @@ The `Network` class provides static methods for network initialization and hostn
 
 Represents an IP address (either IPv4 or IPv6).
 
-{context class=IPAddress}
-
 | | |
 | --- | --- |
 | `u32 netOrdered[4]` | The raw address bytes in network byte order. For IPv4, only `netOrdered[0]` is used. |
 
-`IPVersion version() const`
+`IPVersion IPAddress::version() const`
 > Returns `IPVersion::V4` or `IPVersion::V6`.
 
-`bool isNull() const`
+`bool IPAddress::isNull() const`
 > Returns `true` if this is a null/uninitialized address.
 
-`static constexpr IPAddress localHost(IPVersion ipVersion)`
+`static constexpr IPAddress IPAddress::localHost(IPVersion ipVersion)`
 > Returns the localhost address (`127.0.0.1` for IPv4, `::1` for IPv6).
 
-`static constexpr IPAddress fromIPv4(u32 netOrdered)`
+`static constexpr IPAddress IPAddress::fromIPv4(u32 netOrdered)`
 > Creates an IPv4 address from a 32-bit value in network byte order.
 
-`String toString() const`
+`String IPAddress::toString() const`
 > Returns a human-readable string representation of the address.
 
-`static IPAddress fromString()`
+`static IPAddress IPAddress::fromString()`
 > Parses an IP address from a string.
 
 ## `TCPConnection`
 
 Represents an established TCP connection to a remote host. Use `createInStream()` and `createOutStream()` to obtain a `Stream` interface.
-
-{context class=TCPConnection}
 
 | | |
 | --- | --- |
@@ -76,31 +70,29 @@ Represents an established TCP connection to a remote host. Use `createInStream()
 | `u16 remotePort` | The port number of the remote host. |
 | `Owned<Pipe> pipe` | A bidirectional pipe that handles both sending and receiving data. |
 
-`static Owned<TCPConnection> connectTo(const IPAddress& address, u16 port)`
+`static Owned<TCPConnection> TCPConnection::connectTo(const IPAddress& address, u16 port)`
 > Establishes a TCP connection to the specified address and port. Returns null on failure.
 
-`Stream createInStream()`
+`Stream TCPConnection::createInStream()`
 > Creates a buffered stream for reading data from the connection.
 
-`Stream createOutStream()`
+`Stream TCPConnection::createOutStream()`
 > Creates a buffered stream for writing data to the connection.
 
 ## `TCPListener`
 
 A `TCPListener` listens for incoming TCP connections on a specific port.
 
-{context class=TCPListener}
-
-`static Owned<TCPListener> create(const IPAddress& bindAddress, u16 port)`
+`static Owned<TCPListener> TCPListener::create(const IPAddress& bindAddress, u16 port)`
 > Creates a TCP listener bound to the specified address and port. A null `bindAddress` listens on every local interface.
 
-`bool isListening()`
+`bool TCPListener::isListening()`
 > Returns `true` if `stopListening()` has not been called.
 
-`void stopListening()`
+`void TCPListener::stopListening()`
 > Immediately stops accepting new connections on the listening port. Existing connections are not closed. Future calls to `accept()` return null after this. If called while another thread is waiting inside `accept()`, the waiting thread will immediately return.
 
-`Owned<TCPConnection> accept()`
+`Owned<TCPConnection> TCPListener::accept()`
 > Blocks until either a client connects or `stopListening()` is called. If a client connects, the new connection is returned.
 
 ```
@@ -173,7 +165,7 @@ int main() {
 `static Owned<HTTPClient> HTTPClient::create()`
 > Creates a new `HTTPClient`.
 
-`void destroy(HTTPClient* httpClient)`
+`void HTTPClient::destroy(HTTPClient* httpClient)`
 > Destroys an `HTTPClient`. Any in-progress request is immediately canceled.
 
 `void HTTPClient::beginRequest(Args&& args)`
@@ -263,8 +255,6 @@ int main() {
 For each incoming HTTP request, the `requestHandler` is called with an `HTTPServer::Request` object,
 which exposes the following public data members and member functions:
 
-{context class="HTTPServer::Request"}
-
 | | |
 | --- | --- |
 | `IPAddress clientAddr` | The remote TCP peer address. |
@@ -275,16 +265,16 @@ which exposes the following public data members and member functions:
 | `Map<String, String> headers` | Request headers indexed by lower-case header name. For example, keys contain "content-type" rather than "Content-Type". |
 | `String body` | The complete request body. This string can contain arbitrary binary data and is not guaranteed to be null-terminated. |
 
-`void sendFullResponse(HTTPServer::Response&& response, StringView body = {})`
+`void HTTPServer::Request::sendFullResponse(HTTPServer::Response&& response, StringView body = {})`
 > Sends a complete response.
 > The `response` argument is moved from, leaving the original argument in an empty state.
 > The underlying connection can be reused for additional requests when HTTP rules permit it.
 
-`Stream beginStreamingResponse(HTTPServer::Response&& response)`
+`Stream HTTPServer::Request::beginStreamingResponse(HTTPServer::Response&& response)`
 > Sends response headers only and returns a TCP stream for writing the body.
 > The connection is closed when the caller destroys the stream.
 
-`void sendGenericResponse(u32 responseCode)`
+`void HTTPServer::Request::sendGenericResponse(u32 responseCode)`
 > Writes a generic HTML error page with the given status code.
 
 ### `HTTPServer::Response`

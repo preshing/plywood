@@ -7,87 +7,85 @@ Plywood provides a portable file system API that works consistently across Windo
 
 The `FileSystem` class contains static methods for file and directory operations.
 
-{context class=FileSystem}
-
-`static FSResult lastResult()`
+`static FSResult FileSystem::lastResult()`
 > Returns the result code from the most recent file system operation.
 
-`static Array<DirectoryEntry> listDir(StringView path)`
+`static Array<DirectoryEntry> FileSystem::listDir(StringView path)`
 > Returns an array of directory entries for the given path. Each entry contains the name, size, and type of a file or subdirectory.
 
-`static FSResult makeDir(StringView path)`
+`static FSResult FileSystem::makeDir(StringView path)`
 > Creates a single directory. The parent directory must already exist.
 
-`static Path_t pathFormat()`
+`static Path_t FileSystem::pathFormat()`
 > Returns the native path format for the current platform (Windows or POSIX).
 
-`static String getWorkingDirectory()`
+`static String FileSystem::getWorkingDirectory()`
 > Returns the current working directory as an absolute path.
 
-`static FSResult setWorkingDirectory(StringView path)`
+`static FSResult FileSystem::setWorkingDirectory(StringView path)`
 > Changes the current working directory.
 
-`static ExistsResult exists(StringView path)`
+`static ExistsResult FileSystem::exists(StringView path)`
 > Checks if a file or directory exists at the given path.
 
-`static Owned<Pipe> openPipeForRead(StringView path)`
+`static Owned<Pipe> FileSystem::openPipeForRead(StringView path)`
 > Opens a file for reading and returns a pipe. Returns null if the file doesn't exist.
 
-`static Owned<Pipe> openPipeForWrite(StringView path)`
+`static Owned<Pipe> FileSystem::openPipeForWrite(StringView path)`
 > Opens a file for writing and returns a pipe. Creates the file if it doesn't exist.
 
-`static FSResult moveFile(StringView srcPath, StringView dstPath)`
+`static FSResult FileSystem::moveFile(StringView srcPath, StringView dstPath)`
 > Moves or renames a file.
 
-`static FSResult deleteFile(StringView path)`
+`static FSResult FileSystem::deleteFile(StringView path)`
 > Deletes a file. Does not delete directories.
 
-`static FSResult removeDirTree(StringView dirPath)`
+`static FSResult FileSystem::removeDirTree(StringView dirPath)`
 > Recursively deletes a directory and all its contents.
 
-`static DirectoryEntry getFileInfo(StringView path)`
+`static DirectoryEntry FileSystem::getFileInfo(StringView path)`
 > Returns information about a file or directory.
 
-`static FSResult copyFile(StringView srcPath, StringView dstPath)`
+`static FSResult FileSystem::copyFile(StringView srcPath, StringView dstPath)`
 > Copies a file to a new location.
 
-`static bool isDir(StringView path)`
+`static bool FileSystem::isDir(StringView path)`
 > Returns `true` if the path is a directory.
 
-`static DirectoryWalker walk(StringView top)`
+`static DirectoryWalker FileSystem::walk(StringView top)`
 > Returns an iterator for recursively walking a directory tree.
 
-`static FSResult makeDirs(StringView path)`
+`static FSResult FileSystem::makeDirs(StringView path)`
 > Creates a directory and all necessary parent directories.
 
-`static Stream openBinaryForRead(StringView path)`
+`static Stream FileSystem::openBinaryForRead(StringView path)`
 > Opens a file for binary reading and returns a buffered stream.
 
-`static Stream openBinaryForWrite(StringView path)`
+`static Stream FileSystem::openBinaryForWrite(StringView path)`
 > Opens a file for binary writing and returns a buffered stream.
 
-`static Stream openTextForRead(StringView path, const TextFormat& format = get_default_utf8_format())`
+`static Stream FileSystem::openTextForRead(StringView path, const TextFormat& format = get_default_utf8_format())`
 > Opens a file for text reading with the specified encoding.
 
-`static Stream openTextForReadAutodetect(StringView path, TextFormat* outFormat = nullptr)`
+`static Stream FileSystem::openTextForReadAutodetect(StringView path, TextFormat* outFormat = nullptr)`
 > Opens a file for text reading, automatically detecting the encoding from byte-order marks.
 
-`static Stream openTextForWrite(StringView path, const TextFormat& format = get_default_utf8_format())`
+`static Stream FileSystem::openTextForWrite(StringView path, const TextFormat& format = get_default_utf8_format())`
 > Opens a file for text writing with the specified encoding.
 
-`static String loadBinary(StringView path)`
+`static String FileSystem::loadBinary(StringView path)`
 > Loads an entire file into memory as raw bytes.
 
-`static String loadText(StringView path, const TextFormat& format)`
+`static String FileSystem::loadText(StringView path, const TextFormat& format)`
 > Loads an entire text file into memory, converting to UTF-8.
 
-`static String loadTextAutodetect(StringView path, TextFormat* outFormat = nullptr)`
+`static String FileSystem::loadTextAutodetect(StringView path, TextFormat* outFormat = nullptr)`
 > Loads an entire text file, auto-detecting the encoding.
 
-`static FSResult saveBinary(StringView path, StringView contents)`
+`static FSResult FileSystem::saveBinary(StringView path, StringView contents)`
 > Writes raw bytes to a file, replacing any existing contents.
 
-`static FSResult saveText(StringView path, StringView strContents, const TextFormat& format = get_default_utf8_format())`
+`static FSResult FileSystem::saveText(StringView path, StringView strContents, const TextFormat& format = get_default_utf8_format())`
 > Writes text to a file with the specified encoding.
 
 ### `TextFormat`
@@ -97,8 +95,6 @@ The `FileSystem` class contains static methods for file and directory operations
 ## Manipulating Paths
 
 These functions help you parse and construct file paths in a platform-independent way.
-
-{context class=Path}
 
 `char getPathSeparator()`
 > Returns the native path separator character: `'/'` on POSIX, `'\\'` on Windows.
@@ -161,18 +157,16 @@ When `mustRecurse` is `false`, the `path` refers to a specific file that changed
 
 `DirectoryWatcher` is only supported on Windows and macOS and is not enabled by default. To enable it, define `PLY_WITH_DIRECTORY_WATCHER` in your project settings. If enabled on macOS, you must also link with the CoreServices framework.
 
-{context class=DirectoryWatcher}
-
-`DirectoryWatcher()`
+`DirectoryWatcher::DirectoryWatcher()`
 > Default constructor. Creates an inactive watcher. Call `start()` to begin watching.
 
-`DirectoryWatcher(StringView root, Functor<void(StringView path, bool mustRecurse)>&& callback)`
+`DirectoryWatcher::DirectoryWatcher(StringView root, Functor<void(StringView path, bool mustRecurse)>&& callback)`
 > Constructs and immediately starts watching the directory at `root`.
 
-`void start(StringView root, Functor<void(StringView path, bool mustRecurse)>&& callback)`
+`void DirectoryWatcher::start(StringView root, Functor<void(StringView path, bool mustRecurse)>&& callback)`
 > Begins watching the directory tree rooted at `root`. The `callback` will be invoked from a background thread whenever changes are detected. The watcher must not already be running.
 
-`void stop()`
+`void DirectoryWatcher::stop()`
 > Stops the background watcher thread and waits for it to finish. After calling `stop()`, you may call `start()` again with a new root and callback. The destructor calls `stop()` automatically.
 
 ```

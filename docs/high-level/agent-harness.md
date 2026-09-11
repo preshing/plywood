@@ -194,17 +194,26 @@ void addByteCountTool(ToolSet* toolSet) {
 }
 ```
 
-Each time a tool is invoked, it receives a `ToolContext` object. `ToolContext` provides the following members:
+### `ToolContext`
 
-| | |
-| --- | --- |
-| `bool isCanceled() const` | Returns whether the agent has been canceled. Safe to call without holding `mutex`. |
-| `ArrayView<const String> permittedDirectories` | The permitted directories for this tool. |
-| `StringView workingDirectory` | The agent's working directory. |
+Each time a tool is invoked, it receives a `ToolContext` object. `ToolContext` provides the following member functions:
 
-Long-running tools should call `isCanceled()` periodically and return promptly when it becomes true. A tool blocked in an interruptible operation can use `registerCancelHandler()` to register a callback that unblocks it. The callback is invoked synchronously by `Agent::cancel()` with the context mutex held, so it must return promptly and must not call other `ToolContext` methods. Call `clearCancelHandler()` before destroying anything captured by it.
+`StringView ToolContext::getWorkingDirectory() const`
+> Returns the agent's working directory.
 
-To add text to the response, tools should call `ToolContext::appendResponse`.
+`ArrayView<const String> ToolContext::getPermittedDirectories() const`
+> Returns the directories that the tool is permitted to access.
+
+`bool ToolContext::isCanceled() const`
+> Returns whether the agent has been canceled.
 
 `void ToolContext::appendResponse(Transcript::Message* toolCall, StringView text)`
-> Add text to the tool response in a thread-safe manner. Can be called more than once to stream a response. Each call to `appendResponse` creates a new `TranscriptEvent` and buffers it in the `Agent` so that the application receives it as soon as possible. The complete tool response won't be sent to the remote inference server until the next turn.
+> Adds text to the tool response in a thread-safe manner. Can be called more than once to stream a response. Each call to `appendResponse` creates a new `TranscriptEvent` and buffers it in the `Agent` so that the application receives it as soon as possible. The complete tool response won't be sent to the remote inference server until the next turn.
+
+`bool ToolContext::registerCancelHandler(Functor<void()>&& handler)`
+> Registers a callback that is invoked when the agent is canceled. Returns `false` without registering the callback if cancellation has already been requested; otherwise returns `true`.
+
+`void ToolContext::clearCancelHandler()`
+> Clears the registered cancellation callback.
+
+Long-running tools should call `isCanceled()` periodically and return promptly when it becomes true. A tool blocked in an interruptible operation can use `registerCancelHandler()` to register a callback that unblocks it. The callback is invoked synchronously by `Agent::cancel()` with the context mutex held, so it must return promptly and must not call other `ToolContext` methods. Call `clearCancelHandler()` before destroying anything captured by it.

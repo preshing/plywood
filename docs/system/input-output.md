@@ -40,7 +40,7 @@ A `Stream` wraps a `Pipe` and provides buffered I/O operations. Streams handle t
 `bool Stream::isOpen()`
 > Returns `true` if the stream is connected to a valid pipe.
 
-`explicit operator Stream::bool()`
+`explicit Stream::operator bool()`
 > Same as `isOpen()`.
 
 `void Stream::close()`

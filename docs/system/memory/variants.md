@@ -7,28 +7,26 @@ A `Variant` can hold a value of one of several predefined types at runtime. It's
 template <typename... Types> class Variant;
 ```
 
-{context class=Variant}
-
-`template <typename T> Variant(T&& value)`
+`template <typename T> Variant::Variant(T&& value)`
 > Constructs a variant containing the given value. `T` must be one of the variant's allowed types.
 
-`template <typename T> Variant& operator=(T&& value)`
+`template <typename T> Variant& Variant::operator=(T&& value)`
 > Assigns a new value to the variant. The previous value is destroyed first.
 
-`u32 getSubtypeIndex() const`
+`u32 Variant::getSubtypeIndex() const`
 > Returns the zero-based index of the currently held type within the variant's type list.
 
-`bool isEmpty() const`
+`bool Variant::isEmpty() const`
 > Returns `true` if the variant holds no value.
 
-`template <typename T> bool is() const`
+`template <typename T> bool Variant::is() const`
 > Returns `true` if the variant currently holds a value of type `T`.
 
-`template <typename T> T* as()`
-`template <typename T> const T* as() const`
+`template <typename T> T* Variant::as()`
+`template <typename T> const T* Variant::as() const`
 > Returns a pointer to the contained value if it's of type `T`, or `nullptr` otherwise.
 
-`template <typename T, typename... Args> T& switchTo(Args&&... args)`
+`template <typename T, typename... Args> T& Variant::switchTo(Args&&... args)`
 > Destroys the current value (if any), constructs a new value of type `T` using the provided arguments, and returns a reference to it.
 
 ```

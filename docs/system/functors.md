@@ -5,15 +5,13 @@ Functors (`ply-system.h`)
 
 It's movable and copyable if the callable is copyable.
 
-{context class=Functor}
-
-`template <typename T> Functor(const T& callable)`
+`template <typename T> Functor::Functor(const T& callable)`
 > Constructs a functor from any callable object. The callable is copied into internal storage.
 
-`explicit operator bool() const`
+`explicit Functor::operator bool() const`
 > Returns `true` if the functor holds a callable, `false` if empty.
 
-`Return operator()(CallArgs&&... args) const`
+`Return Functor::operator()(CallArgs&&... args) const`
 > Invokes the wrapped callable with the given arguments and returns its result.
 
 ```
