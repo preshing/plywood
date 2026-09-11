@@ -2465,8 +2465,14 @@ void Pipe::seekTo(s64 offset) {
 #if defined(PLY_WINDOWS)
 
 PipeHandle::~PipeHandle() {
+    this->close();
+}
+
+void PipeHandle::close() {
+    // Release the handle once, leaving the pipe safe to destroy later.
     if (this->handle != INVALID_HANDLE_VALUE) {
         CloseHandle(this->handle);
+        this->handle = INVALID_HANDLE_VALUE;
     }
 }
 
@@ -2511,10 +2517,16 @@ void PipeHandle::seekTo(s64 offset) {
 #elif defined(PLY_POSIX)
 
 PipeFD::~PipeFD() {
+    this->close();
+}
+
+void PipeFD::close() {
+    // Release the descriptor once, leaving the pipe safe to destroy later.
     if (this->fd >= 0) {
         int rc = ::close(this->fd);
         PLY_ASSERT(rc == 0);
         PLY_UNUSED(rc);
+        this->fd = -1;
     }
 }
 
@@ -2618,6 +2630,10 @@ public:
         this->flags = Pipe::HAS_READ_PERMISSION;
     }
     virtual u32 read(MutStringView buf) override;
+    virtual void close() override {
+        // Closing the stream preserves ownership of its underlying pipe.
+        this->in.close();
+    }
 };
 
 u32 InPipeNewLineFilter::read(MutStringView buf) {
@@ -2656,6 +2672,13 @@ public:
     }
     virtual bool write(StringView buf) override;
     virtual void flush(bool toDevice) override;
+    virtual void close() override {
+        // Flush once before releasing the embedded stream and any owned pipe.
+        if (this->out.type != Stream::Type::None) {
+            this->flush(false);
+            this->out.close();
+        }
+    }
 };
 
 bool OutPipeNewLineFilter::write(StringView buf) {
@@ -4784,6 +4807,11 @@ bool copyFromShim(Stream& dstOut, StringView& shimUsed) {
     return false;
 }
 
+void InPipeConvertUnicode::close() {
+    // Closing the stream preserves ownership of its underlying pipe.
+    this->in.close();
+}
+
 // Fill dstBuf with UTF-8-encoded data.
 u32 InPipeConvertUnicode::read(MutStringView dstBuf) {
     ViewStream dstOut{dstBuf};
@@ -4814,6 +4842,14 @@ u32 InPipeConvertUnicode::read(MutStringView dstBuf) {
     }
 
     return numericCast<u32>(dstOut.curByte - dstBuf.bytes);
+}
+
+void OutPipeConvertUnicode::close() {
+    // Finalize any partial sequence before releasing the stream and any owned pipe.
+    if (this->childOut.type != Stream::Type::None) {
+        this->flush();
+        this->childOut.close();
+    }
 }
 
 // srcBuf expects UTF-8-encoded data.

@@ -75,6 +75,11 @@ ThreadLocal<NetResult> Network::lastResult_;
 //----------------------------------------------------------
 
 PipeWinsock::~PipeWinsock() {
+    this->close();
+}
+
+void PipeWinsock::close() {
+    // Release the socket once, leaving the pipe safe to destroy later.
     if (this->socket != INVALID_SOCKET) {
         ::closesocket(this->socket);
         this->socket = INVALID_SOCKET;
@@ -121,14 +126,6 @@ void Network::shutdown() {
     PLY_ASSERT(rc == 0);
     PLY_UNUSED(rc);
     IsInit = false;
-}
-
-TCPConnection::~TCPConnection() {
-    if (this->inPipe && this->outPipe) {
-        // Both Pipe objects use the same socket handle.
-        // We invalidate one of the handles here to prevent closing it twice.
-        static_cast<PipeWinsock*>(this->outPipe.get())->socket = INVALID_SOCKET;
-    }
 }
 
 struct TCPListenerImpl : TCPListener {
@@ -261,8 +258,7 @@ Owned<TCPConnection> TCPListener::accept() {
         tcpConn->remoteAddr = IPAddress::fromIPv4(remoteAddrV4->sin_addr.s_addr);
     }
     tcpConn->remotePort = convertBigEndian(remoteAddr.sin6_port);
-    tcpConn->inPipe = Heap::create<PipeWinsock>(hostSocket, Pipe::HAS_READ_PERMISSION);
-    tcpConn->outPipe = Heap::create<PipeWinsock>(hostSocket, Pipe::HAS_WRITE_PERMISSION);
+    tcpConn->pipe = Heap::create<PipeWinsock>(hostSocket, Pipe::HAS_READ_PERMISSION | Pipe::HAS_WRITE_PERMISSION);
     Network::lastResult_.store(NetResult::OK);
     return tcpConn;
 }
@@ -414,8 +410,8 @@ Owned<TCPConnection> TCPConnection::connectTo(const IPAddress& address, u16 port
         TCPConnection* tcpConn = Heap::create<TCPConnection>();
         tcpConn->remoteAddr = address;
         tcpConn->remotePort = port;
-        tcpConn->inPipe = Heap::create<PipeWinsock>(connectSocket, Pipe::HAS_READ_PERMISSION);
-        tcpConn->outPipe = Heap::create<PipeWinsock>(connectSocket, Pipe::HAS_WRITE_PERMISSION);
+        tcpConn->pipe =
+            Heap::create<PipeWinsock>(connectSocket, Pipe::HAS_READ_PERMISSION | Pipe::HAS_WRITE_PERMISSION);
         Network::lastResult_.store(NetResult::OK);
         return tcpConn;
     }
@@ -524,14 +520,6 @@ void Network::shutdown() {
     IsInit = false;
 }
 
-TCPConnection::~TCPConnection() {
-    if (this->inPipe && this->outPipe) {
-        // Both Pipe objects use the same socket handle.
-        // We invalidate one of the handles here to prevent closing it twice.
-        static_cast<PipeFD*>(this->outPipe.get())->fd = -1;
-    }
-}
-
 // Build the POSIX connection wrapper after accepting a socket.
 Owned<TCPConnection> createAcceptedTCPConnection(int hostSocket,
                                                  const struct PLY_IF_IPV6(sockaddr_in6, sockaddr_in) & remoteAddr,
@@ -552,8 +540,7 @@ Owned<TCPConnection> createAcceptedTCPConnection(int hostSocket,
         tcpConn->remoteAddr = IPAddress::fromIPv4(remoteAddrV4->sin_addr.s_addr);
         tcpConn->remotePort = convertBigEndian(remoteAddrV4->sin_port);
     }
-    tcpConn->inPipe = Heap::create<PipeFD>(hostSocket, Pipe::HAS_READ_PERMISSION);
-    tcpConn->outPipe = Heap::create<PipeFD>(hostSocket, Pipe::HAS_WRITE_PERMISSION);
+    tcpConn->pipe = Heap::create<PipeFD>(hostSocket, Pipe::HAS_READ_PERMISSION | Pipe::HAS_WRITE_PERMISSION);
     Network::lastResult_.store(NetResult::OK);
     return tcpConn;
 }
@@ -935,8 +922,7 @@ Owned<TCPConnection> TCPConnection::connectTo(const IPAddress& address, u16 port
         TCPConnection* tcpConn = Heap::create<TCPConnection>();
         tcpConn->remoteAddr = address;
         tcpConn->remotePort = port;
-        tcpConn->inPipe = Heap::create<PipeFD>(connectSocket, Pipe::HAS_READ_PERMISSION);
-        tcpConn->outPipe = Heap::create<PipeFD>(connectSocket, Pipe::HAS_WRITE_PERMISSION);
+        tcpConn->pipe = Heap::create<PipeFD>(connectSocket, Pipe::HAS_READ_PERMISSION | Pipe::HAS_WRITE_PERMISSION);
         Network::lastResult_.store(NetResult::OK);
         return tcpConn;
     }

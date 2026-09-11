@@ -115,22 +115,22 @@ A `ViewStream` reads from a fixed memory buffer (a `StringView`). This is useful
 
 {context class=Pipe}
 
-`virtual ~Pipe()`
-> Virtual destructor for proper cleanup of derived classes.
+`void close()`
+> Closes the pipe without destroying it. No other member function should be called after this.
 
-`virtual u32 read(MutStringView buf)`
+`u32 read(MutStringView buf)`
 > Reads up to `buf.numBytes` bytes into `buf`. Returns the number of bytes actually read. Returns 0 at end-of-file.
 
-`virtual bool write(StringView buf)`
+`bool write(StringView buf)`
 > Writes the bytes in `buf`. Returns `true` on success.
 
-`virtual void flush(bool toDevice = false)`
+`void flush(bool toDevice = false)`
 > Flushes any buffered writes. If `toDevice` is true, ensures data reaches the physical device.
 
-`virtual u64 getFileSize()`
+`u64 getFileSize()`
 > Returns the total size of the underlying file, or 0 if not applicable.
 
-`virtual void seekTo(s64 offset)`
+`void seekTo(s64 offset)`
 > Seeks to the specified byte offset. Only supported by seekable pipes.
 
 `u32 getFlags() const`

@@ -4020,6 +4020,9 @@ public:
     static constexpr u32 CAN_SEEK = 0x4;
 
     virtual ~Pipe() = default;
+    // Release resources without destroying the pipe. Only close() or destruction is supported afterward.
+    // Close any surrounding buffered Stream first; borrowed pipes remain open when their stream closes.
+    virtual void close() = 0;
     // read() only returns 0 at EOF. Otherwise, it blocks until data is available.
     virtual u32 read(MutStringView buf);
     virtual bool write(StringView buf);
@@ -4041,6 +4044,7 @@ public:
         this->flags = flags;
     }
     virtual ~PipeHandle();
+    virtual void close() override;
     virtual u32 read(MutStringView buf) override;
     virtual bool write(StringView buf) override;
     virtual void flush(bool toDevice = false) override;
@@ -4056,18 +4060,11 @@ public:
 
     PipeFD() {
     }
-    PipeFD(PipeFD&& other) : fd{other.fd} {
-        other.fd = -1;
-    }
     PipeFD(int fd, u32 flags) : fd{fd} {
         this->flags = flags;
     }
-    PipeFD& operator=(PipeFD&& other) {
-        this->fd = other.fd;
-        other.fd = -1;
-        return *this;
-    }
     virtual ~PipeFD();
+    virtual void close() override;
     virtual u32 read(MutStringView buf) override;
     virtual bool write(StringView buf) override;
     virtual void flush(bool toDevice = false) override;
@@ -4503,6 +4500,7 @@ public:
     }
     // Fill dstBuf with UTF-8-encoded data.
     virtual u32 read(MutStringView dstBuf) override;
+    virtual void close() override;
 };
 
 class OutPipeConvertUnicode : public Pipe {
@@ -4523,6 +4521,7 @@ public:
     // srcBuf expects UTF-8-encoded data.
     virtual bool write(StringView srcBuf) override;
     virtual void flush(bool toDevice = false) override;
+    virtual void close() override;
 };
 
 //  ▄▄▄▄▄▄                ▄▄   ▄▄▄▄▄                                ▄▄

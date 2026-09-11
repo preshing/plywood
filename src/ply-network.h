@@ -82,6 +82,7 @@ struct PipeWinsock : Pipe {
         this->flags = flags;
     }
     virtual ~PipeWinsock();
+    virtual void close() override;
     virtual u32 read(MutStringView buf) override;
     virtual bool write(StringView buf) override;
     virtual void flush(bool) override;
@@ -132,17 +133,21 @@ public:
 struct TCPConnection {
     IPAddress remoteAddr;
     u16 remotePort = 0;
-    Owned<Pipe> inPipe;
-    Owned<Pipe> outPipe;
+    Owned<Pipe> pipe;
 
     static Owned<TCPConnection> connectTo(const IPAddress& address, u16 port);
-    ~TCPConnection();
 
     Stream createInStream() {
-        return Stream{this->inPipe, false};
+        // Borrow the socket with a separate buffer and read-only access.
+        Stream in{this->pipe, false};
+        in.hasWritePermission = false;
+        return in;
     }
     Stream createOutStream() {
-        return Stream{this->outPipe, false};
+        // Borrow the socket with a separate buffer and write-only access.
+        Stream out{this->pipe, false};
+        out.hasReadPermission = false;
+        return out;
     }
 };
 

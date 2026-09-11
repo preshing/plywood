@@ -66,7 +66,7 @@ Represents an IP address (either IPv4 or IPv6).
 
 ## `TCPConnection`
 
-Represents an established TCP connection to a remote host. Exposes input and output pipes as public data members. Use `createInStream()` and `createOutStream()` to create `Stream` wrappers around them.
+Represents an established TCP connection to a remote host. Use `createInStream()` and `createOutStream()` to obtain a `Stream` interface.
 
 {context class=TCPConnection}
 
@@ -74,8 +74,7 @@ Represents an established TCP connection to a remote host. Exposes input and out
 | --- | --- |
 | `IPAddress remoteAddr` | The IP address of the remote host. |
 | `u16 remotePort` | The port number of the remote host. |
-| `Owned<Pipe> inPipe` | The underlying pipe object for reading. |
-| `Owned<Pipe> outPipe` | The underlying pipe object for writing. |
+| `Owned<Pipe> pipe` | A bidirectional pipe that handles both sending and receiving data. |
 
 `static Owned<TCPConnection> connectTo(const IPAddress& address, u16 port)`
 > Establishes a TCP connection to the specified address and port. Returns null on failure.
