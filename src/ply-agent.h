@@ -222,10 +222,13 @@ struct ToolContext {
     // Adds text to the tool response.
     void appendResponse(Transcript::Message* toolCall, StringView text);
 
-    // Register a cancelation callback that gets invoked from the client thread.
-    // Used by the shell tool to terminate the running subprocess.
-    bool registerCancelHandler(Functor<void()>&& handler);
-    void clearCancelHandler();
+    // If the agent has not already been canceled, registers a cancellation callback and returns true.
+    // Otherwise, if the agent was already canceled, clears any existing cancellation callback and returns false.
+    // The callback will be invoked from the client thread when Agent::cancel() is called.
+    bool setCancelCallback(Functor<void()>&& callback);
+
+    // Clears the cancellation callback.
+    void clearCancelCallback();
 };
 
 // Individual tool registration functions. Each adds a single tool and returns its handler.

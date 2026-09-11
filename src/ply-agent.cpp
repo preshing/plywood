@@ -194,7 +194,7 @@ struct ToolContextImpl : ToolContext {
     // The mutex serializes cancellation callbacks, transcript changes and event buffering across the agent threads.
     Mutex mutex;
     Atomic<bool> canceled = false;
-    Functor<void()> cancelHandler;
+    Functor<void()> cancelCallback;
     Agent::Impl* agentImpl = nullptr;
     ArrayView<const String> permittedDirectories;
     StringView workingDirectory;
@@ -1459,6 +1459,8 @@ void runToolThread(Agent::Impl* impl) {
             // Set the permitted directories for this tool call.
             PLY_SET_IN_SCOPE(impl->toolCtx.permittedDirectories, toolDef->permittedDirectories);
             toolDef->handler(&impl->toolCtx, toolCall, arguments);
+            // The handler must not leave a cancel callback set.
+            PLY_ASSERT(!impl->toolCtx.cancelCallback);
         }
 
         // Finalize the internal response and notify the client that the handler returned.
@@ -1484,23 +1486,22 @@ bool ToolContext::isCanceled() const {
     return static_cast<const ToolContextImpl*>(this)->canceled.load(MemoryOrder::Acquire);
 }
 
-// Registers a callback while holding the same mutex used by Agent::cancel(), keeping captured resources alive until
-// clearCancelHandler() returns.
-bool ToolContext::registerCancelHandler(Functor<void()>&& handler) {
+bool ToolContext::setCancelCallback(Functor<void()>&& callback) {
     ToolContextImpl* impl = static_cast<ToolContextImpl*>(this);
     LockGuard<Mutex> guard{impl->mutex};
-    PLY_ASSERT(handler);
-    PLY_ASSERT(!impl->cancelHandler);
-    if (this->isCanceled())
+    PLY_ASSERT(callback);
+    if (this->isCanceled()) {
+        impl->cancelCallback = {};
         return false;
-    impl->cancelHandler = std::move(handler);
+    }
+    impl->cancelCallback = std::move(callback);
     return true;
 }
 
-void ToolContext::clearCancelHandler() {
+void ToolContext::clearCancelCallback() {
     ToolContextImpl* impl = static_cast<ToolContextImpl*>(this);
     LockGuard<Mutex> guard{impl->mutex};
-    impl->cancelHandler = {};
+    impl->cancelCallback = {};
 }
 
 // Main function used by tool handlers to add text to the response. It locks the mutex, appends response text
@@ -1600,8 +1601,8 @@ void Agent::cancel() {
     LockGuard<Mutex> guard{impl->toolCtx.mutex};
     if (!impl->toolCtx.canceled.exchange(true, MemoryOrder::Release)) {
         // Interrupt any blocking operation owned by the active tool handler before waking its thread.
-        if (impl->toolCtx.cancelHandler) {
-            impl->toolCtx.cancelHandler();
+        if (impl->toolCtx.cancelCallback) {
+            impl->toolCtx.cancelCallback();
         }
         // Wake both background threads so they observe `canceled` promptly. The tool
         // thread may be idle on toolCondVar; the inference thread may be blocked in its
@@ -1739,9 +1740,7 @@ void shellToolHandler(ToolContext* toolCtx, Transcript::Message* toolCall, const
     }
 
     // Make cancellation terminate every process that can keep the merged output pipe open.
-    bool cancelHandlerRegistered =
-        toolCtx->registerCancelHandler([process = process.get()]() { process->terminate(); });
-    if (!cancelHandlerRegistered) {
+    if (!toolCtx->setCancelCallback([process = process.get()]() { process->terminate(); })) {
         process->terminate();
     }
 
@@ -1762,9 +1761,7 @@ void shellToolHandler(ToolContext* toolCtx, Transcript::Message* toolCall, const
     }
     // Keep the cancellation callback registered while join blocks; terminate() safely satisfies that wait.
     s32 exitCode = process->join();
-    if (cancelHandlerRegistered) {
-        toolCtx->clearCancelHandler();
-    }
+    toolCtx->clearCancelCallback();
 
     // Report truncation and command status after all output has been consumed.
     MemStream response;
