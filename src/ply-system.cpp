@@ -6865,9 +6865,49 @@ void DirectoryWatcher::stop() {
 //  ▀█▄▄█▀ ▀█▄▄██ ██▄▄█▀ ██▄▄█▀ ██     ▀█▄▄█▀ ▀█▄▄▄ ▀█▄▄▄   ▄▄▄█▀  ▄▄▄█▀
 //                       ██
 
+#if !defined(PLY_IOS)
+
+struct SubprocessImpl : Subprocess {
+    // Pipes connected to the subprocess's standard streams.
+    Owned<Pipe> stdInWriter;
+    Owned<Pipe> stdOutReader;
+    Owned<Pipe> stdErrReader;
+
+#if defined(PLY_WINDOWS)
+    HANDLE childProcess = INVALID_HANDLE_VALUE;
+    HANDLE childMainThread = INVALID_HANDLE_VALUE;
+    HANDLE jobObject = NULL;
+#elif defined(PLY_POSIX)
+    int childPid = -1;
+    int processGroupId = -1;
+#endif
+    Mutex stateMutex;    // Protects join/termination state.
+    bool joined = false; // Protected by stateMutex.
+
+    ~SubprocessImpl();
+};
+
+Pipe* Subprocess::getStdInWriter() const {
+    return static_cast<const SubprocessImpl*>(this)->stdInWriter.get();
+}
+
+Pipe* Subprocess::getStdOutReader() const {
+    return static_cast<const SubprocessImpl*>(this)->stdOutReader.get();
+}
+
+Pipe* Subprocess::getStdErrReader() const {
+    return static_cast<const SubprocessImpl*>(this)->stdErrReader.get();
+}
+
+void Subprocess::destroy() {
+    Heap::destroy(static_cast<SubprocessImpl*>(this));
+}
+
+#endif // !PLY_IOS
+
 #if defined(PLY_WINDOWS)
 
-Subprocess::~Subprocess() {
+SubprocessImpl::~SubprocessImpl() {
     PLY_ASSERT(this->childProcess != INVALID_HANDLE_VALUE);
     CloseHandle(this->childProcess);
     CloseHandle(this->childMainThread);
@@ -6877,46 +6917,48 @@ Subprocess::~Subprocess() {
 }
 
 bool Subprocess::terminate() {
-    PLY_ASSERT(this->childProcess != INVALID_HANDLE_VALUE);
-    LockGuard<Mutex> guard{this->stateMutex};
-    if (this->joined)
+    SubprocessImpl* impl = static_cast<SubprocessImpl*>(this);
+    PLY_ASSERT(impl->childProcess != INVALID_HANDLE_VALUE);
+    LockGuard<Mutex> guard{impl->stateMutex};
+    if (impl->joined)
         return true;
 
     // Terminate the whole job when process-tree isolation was requested; otherwise terminate only the child.
     BOOL rc = FALSE;
-    if (this->jobObject) {
-        rc = TerminateJobObject(this->jobObject, ERROR_CANCELLED);
+    if (impl->jobObject) {
+        rc = TerminateJobObject(impl->jobObject, ERROR_CANCELLED);
     } else {
-        rc = TerminateProcess(this->childProcess, ERROR_CANCELLED);
+        rc = TerminateProcess(impl->childProcess, ERROR_CANCELLED);
     }
-    if (!rc && WaitForSingleObject(this->childProcess, 0) == WAIT_OBJECT_0)
+    if (!rc && WaitForSingleObject(impl->childProcess, 0) == WAIT_OBJECT_0)
         return true;
     return rc != 0;
 }
 
 Subprocess::JoinResult Subprocess::joinWithTimeout(s32 timeoutMillis) {
-    PLY_ASSERT(this->childProcess != INVALID_HANDLE_VALUE);
+    SubprocessImpl* impl = static_cast<SubprocessImpl*>(this);
+    PLY_ASSERT(impl->childProcess != INVALID_HANDLE_VALUE);
     {
-        LockGuard<Mutex> guard{this->stateMutex};
-        PLY_ASSERT(!this->joined);
+        LockGuard<Mutex> guard{impl->stateMutex};
+        PLY_ASSERT(!impl->joined);
     }
 
     // Wait without holding stateMutex so another thread can terminate the process and satisfy the wait.
-    DWORD rc = WaitForSingleObject(this->childProcess, timeoutMillis < 0 ? INFINITE : (DWORD) timeoutMillis);
+    DWORD rc = WaitForSingleObject(impl->childProcess, timeoutMillis < 0 ? INFINITE : (DWORD) timeoutMillis);
     if (rc == WAIT_TIMEOUT)
         return {};
     PLY_ASSERT(rc == WAIT_OBJECT_0);
     PLY_UNUSED(rc);
 
     // Consume the completed process while serialized with terminate().
-    LockGuard<Mutex> guard{this->stateMutex};
-    PLY_ASSERT(!this->joined);
+    LockGuard<Mutex> guard{impl->stateMutex};
+    PLY_ASSERT(!impl->joined);
     DWORD exitCode;
-    BOOL rc2 = GetExitCodeProcess(this->childProcess, &exitCode);
+    BOOL rc2 = GetExitCodeProcess(impl->childProcess, &exitCode);
     PLY_ASSERT(rc2 != 0);
     PLY_UNUSED(rc2);
-    this->joined = true;
-    // FIXME: Add an assert here to ensure that readFromStdOut & readFromStdErr have been drained (?).
+    impl->joined = true;
+    // FIXME: Add an assert here to ensure that stdOutReader & stdErrReader have been drained (?).
     return {true, (s32) exitCode};
 }
 
@@ -7210,15 +7252,15 @@ static Owned<Subprocess> execWin32(WString commandLine, StringView initialDir, c
     }
 
     // Create the Subprocess object and return it.
-    Subprocess* subprocess = Heap::create<Subprocess>();
+    SubprocessImpl* subprocess = Heap::create<SubprocessImpl>();
     PLY_ASSERT(procInfo.hProcess != INVALID_HANDLE_VALUE);
     PLY_ASSERT(procInfo.hThread != INVALID_HANDLE_VALUE);
     subprocess->childProcess = procInfo.hProcess;
     subprocess->childMainThread = procInfo.hThread;
     subprocess->jobObject = jobObject;
-    subprocess->writeToStdIn = std::move(writeToChildStdIn);
-    subprocess->readFromStdOut = std::move(readFromChildStdOut);
-    subprocess->readFromStdErr = std::move(readFromChildStdErr);
+    subprocess->stdInWriter = std::move(writeToChildStdIn);
+    subprocess->stdOutReader = std::move(readFromChildStdOut);
+    subprocess->stdErrReader = std::move(readFromChildStdErr);
     return subprocess;
 }
 
@@ -7252,7 +7294,7 @@ Owned<Subprocess> Subprocess::execShellCommand(StringView shellCommand, StringVi
 
 #elif defined(PLY_POSIX) && !defined(PLY_IOS)
 
-Subprocess::~Subprocess() {
+SubprocessImpl::~SubprocessImpl() {
     if (this->childPid != -1) {
         // If the child had already exited, a non-blocking (WNOHANG) wait cleans it up.
         // If the child hasn't already exited, it will enter a "zombie" state when it exits later,
@@ -7265,29 +7307,31 @@ Subprocess::~Subprocess() {
 }
 
 bool Subprocess::terminate() {
-    LockGuard<Mutex> guard{this->stateMutex};
-    if (this->joined)
+    SubprocessImpl* impl = static_cast<SubprocessImpl*>(this);
+    LockGuard<Mutex> guard{impl->stateMutex};
+    if (impl->joined)
         return true;
-    PLY_ASSERT(this->childPid > 0);
+    PLY_ASSERT(impl->childPid > 0);
 
     // A negative process-group ID targets the child and every descendant that stayed in its group.
     int target;
-    if (this->processGroupId > 0) {
-        target = -this->processGroupId;
+    if (impl->processGroupId > 0) {
+        target = -impl->processGroupId;
     } else {
-        target = this->childPid;
+        target = impl->childPid;
     }
     int rc = kill(target, SIGKILL);
     return rc == 0 || errno == ESRCH;
 }
 
 Subprocess::JoinResult Subprocess::joinWithTimeout(s32 timeoutMillis) {
+    SubprocessImpl* impl = static_cast<SubprocessImpl*>(this);
     int childPid;
     {
-        LockGuard<Mutex> guard{this->stateMutex};
-        PLY_ASSERT(this->childPid > 0);
-        PLY_ASSERT(!this->joined);
-        childPid = this->childPid;
+        LockGuard<Mutex> guard{impl->stateMutex};
+        PLY_ASSERT(impl->childPid > 0);
+        PLY_ASSERT(!impl->joined);
+        childPid = impl->childPid;
     }
 
     // Wait for exit without reaping so the PID can't be reused before stateMutex protects the final state change.
@@ -7320,18 +7364,17 @@ Subprocess::JoinResult Subprocess::joinWithTimeout(s32 timeoutMillis) {
     }
 
     // Reap the child while serialized with terminate().
-    LockGuard<Mutex> guard{this->stateMutex};
-    PLY_ASSERT(this->childPid == childPid);
-    PLY_ASSERT(!this->joined);
+    LockGuard<Mutex> guard{impl->stateMutex};
+    PLY_ASSERT(impl->childPid == childPid);
+    PLY_ASSERT(!impl->joined);
     int status;
     do {
         rc = waitpid(childPid, &status, WNOHANG);
     } while (rc == -1 && errno == EINTR);
     PLY_ASSERT(rc == childPid);
     PLY_UNUSED(rc);
-    this->childPid = -1;
-    this->joined = true;
-    // FIXME: Add an assert here to ensure that readFromStdOut & readFromStdErr have been drained (?).
+    impl->childPid = -1;
+    impl->joined = true;
     if (WIFEXITED(status)) {
         return {true, WEXITSTATUS(status)};
     } else {
@@ -7598,12 +7641,12 @@ Owned<Subprocess> Subprocess::exec(StringView exePath, ArrayView<const StringVie
     }
 
     // Create the Subprocess object after the child has successfully executed the requested program.
-    Subprocess* subprocess = Heap::create<Subprocess>();
+    SubprocessImpl* subprocess = Heap::create<SubprocessImpl>();
     subprocess->childPid = childPid;
     subprocess->processGroupId = options.terminateProcessTree ? childPid : -1;
-    subprocess->writeToStdIn = std::move(writeToChildStdIn);
-    subprocess->readFromStdOut = std::move(readFromChildStdOut);
-    subprocess->readFromStdErr = std::move(readFromChildStdErr);
+    subprocess->stdInWriter = std::move(writeToChildStdIn);
+    subprocess->stdOutReader = std::move(readFromChildStdOut);
+    subprocess->stdErrReader = std::move(readFromChildStdErr);
     return subprocess;
 }
 

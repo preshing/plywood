@@ -4905,24 +4905,7 @@ struct Subprocess {
         s32 exitCode = -1; // Only meaningful when joined is true.
     };
 
-    // Members
-    Owned<Pipe> writeToStdIn;
-    Owned<Pipe> readFromStdOut;
-    Owned<Pipe> readFromStdErr;
-
-#if defined(PLY_WINDOWS)
-    HANDLE childProcess = INVALID_HANDLE_VALUE;
-    HANDLE childMainThread = INVALID_HANDLE_VALUE;
-    HANDLE jobObject = NULL;
-#elif defined(PLY_POSIX)
-    int childPid = -1;
-    int processGroupId = -1;
-#endif
-    Mutex stateMutex;    // Protects join/termination state.
-    bool joined = false; // Protected by stateMutex.
-
     Subprocess() = default;
-    ~Subprocess();
 
     static Owned<Subprocess> exec(StringView exePath, ArrayView<const StringView> args, StringView initialDir,
                                   const Output& output, const Input& input = Input::open(),
@@ -4931,6 +4914,13 @@ struct Subprocess {
     // Interpret a command using cmd.exe on Windows or /bin/sh on POSIX, with platform-specific shell syntax.
     static Owned<Subprocess> execShellCommand(StringView shellCommand, StringView initialDir, const Output& output,
                                               const Input& input = Input::open(), const Options& options = {});
+
+    // Returns the pipe that writes to the subprocess's stdin, or nullptr when stdin wasn't opened.
+    Pipe* getStdInWriter() const;
+    // Returns the pipe that reads the subprocess's stdout, or nullptr when stdout wasn't opened.
+    Pipe* getStdOutReader() const;
+    // Returns the pipe that reads the subprocess's stderr, or nullptr when stderr wasn't opened.
+    Pipe* getStdErrReader() const;
 
     // Forcibly terminates the subprocess, including its process group when one was requested.
     // Safe to call from another thread while join() or joinWithTimeout() is blocked.
@@ -4949,6 +4939,9 @@ struct Subprocess {
         PLY_ASSERT(result.joined);
         return result.exitCode;
     }
+
+    // Destroys the subprocess.
+    void destroy();
 };
 
 #endif // !PLY_IOS

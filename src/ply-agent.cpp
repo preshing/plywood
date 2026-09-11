@@ -1751,7 +1751,7 @@ void shellToolHandler(ToolContext* toolCtx, Transcript::Message* toolCall, const
     u32 outputBytes = 0;
     char lastOutputByte = 0;
     bool outputTruncated = false;
-    while (u32 numBytes = process->readFromStdOut->read({buffer, sizeof(buffer)})) {
+    while (u32 numBytes = process->getStdOutReader()->read({buffer, sizeof(buffer)})) {
         u32 numBytesToAppend = min(numBytes, OutputLimit - outputBytes);
         if (numBytesToAppend > 0) {
             toolCtx->appendResponse(toolCall, StringView{buffer, numBytesToAppend});

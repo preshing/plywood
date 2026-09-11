@@ -2470,7 +2470,7 @@ TEST_CASE("execShellCommand() with merged output") {
         return;
     MemStream output;
     while (output.makeWritable()) {
-        u32 numBytes = process->readFromStdOut->read({output.curByte, output.endByte});
+        u32 numBytes = process->getStdOutReader()->read({output.curByte, output.endByte});
         if (numBytes == 0)
             break;
         output.curByte += numBytes;
@@ -2497,7 +2497,7 @@ TEST_CASE("execShellCommand() preserves quotes and backslashes") {
     // Drain the pipe and compare the shell's output exactly.
     MemStream output;
     while (output.makeWritable()) {
-        u32 numBytes = process->readFromStdOut->read({output.curByte, output.endByte});
+        u32 numBytes = process->getStdOutReader()->read({output.curByte, output.endByte});
         if (numBytes == 0)
             break;
         output.curByte += numBytes;
@@ -2568,13 +2568,13 @@ TEST_CASE("joinWithTimeout() supports timeouts and retries") {
 
         // Exercise bounded completion, polling an exited child, and an indefinite wait after termination.
         if (mode == 0) {
-            process->writeToStdIn = nullptr;
+            process->getStdInWriter()->close();
             Subprocess::JoinResult result = process->joinWithTimeout(5000);
             check(result.joined && result.exitCode == expectedExitCode);
         } else if (mode == 1) {
-            process->writeToStdIn = nullptr;
+            process->getStdInWriter()->close();
             char byte;
-            check(process->readFromStdOut->read({&byte, 1}) == 0);
+            check(process->getStdOutReader()->read({&byte, 1}) == 0);
             startTicks = getCpuTicks();
             Subprocess::JoinResult result;
             do {
@@ -2618,7 +2618,7 @@ TEST_CASE("terminate() stops an isolated process tree") {
     u64 startTicks = getCpuTicks();
     check(process->terminate());
     char byte;
-    check(process->readFromStdOut->read({&byte, 1}) == 0);
+    check(process->getStdOutReader()->read({&byte, 1}) == 0);
     joinThread.join();
     check(joinReturned.load(MemoryOrder::Acquire));
     double elapsedMillis = (getCpuTicks() - startTicks) * 1000.0 / getCpuTicksPerSecond();
