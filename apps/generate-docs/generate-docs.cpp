@@ -206,7 +206,7 @@ void printHighlightedTableDeclaration(Stream& out, ArrayView<const TokenSpan> sp
 }
 
 // Highlights one blank-heading declaration/description table, leaving all other tables unchanged.
-void highlightMemberTable(markdown::Block::Table* table, StringView className) {
+void highlightMemberTable(markdown::Block::Table* table) {
     if (table->childBlocks.numItems() < 2)
         return;
 
@@ -251,7 +251,7 @@ void highlightMemberTable(markdown::Block::Table* table, StringView className) {
         auto* declarationCode = span->var.as<markdown::Span::Code>();
         PLY_ASSERT(declarationCode);
         Owned<Parser> parser = Parser::create();
-        Declaration decl = parser->parseDeclaration(declarationCode->text, className);
+        Declaration decl = parser->parseDeclaration(declarationCode->text);
         auto* entity = decl.var.as<Declaration::Entity>();
         PLY_ASSERT(entity && (entity->initDeclarators.numItems() == 1) && !entity->initDeclarators[0].qid.isEmpty());
         Array<TokenSpan> spans = parser->syntaxHighlight(decl);
@@ -263,15 +263,15 @@ void highlightMemberTable(markdown::Block::Table* table, StringView className) {
 }
 
 // Recursively highlights member tables at top level and inside API-description blockquotes.
-void highlightMemberTables(markdown::Block* block, StringView className) {
+void highlightMemberTables(markdown::Block* block) {
     if (auto* table = block->var.as<markdown::Block::Table>()) {
-        highlightMemberTable(table, className);
+        highlightMemberTable(table);
     }
 
     // Visit tables in blockquotes and any other Markdown containers.
     if (markdown::Block::Inner* inner = block->asInner()) {
         for (markdown::Block* child : inner->childBlocks) {
-            highlightMemberTables(child, className);
+            highlightMemberTables(child);
         }
     }
 }
@@ -336,11 +336,11 @@ bool parseApiDeclarationParagraph(const markdown::Block* block, Array<String>* d
 }
 
 // Parses and renders one or more declaration strings as an API definition title.
-void printApiDeclarationsAsTitle(Stream& out, StringView className, const Array<String>& declarations) {
+void printApiDeclarationsAsTitle(Stream& out, const Array<String>& declarations) {
     bool firstDecl = true;
     for (const String& declText : declarations) {
         Owned<Parser> parser = Parser::create();
-        Declaration decl = parser->parseDeclaration(declText, className);
+        Declaration decl = parser->parseDeclaration(declText);
         if (!firstDecl) {
             out.write("<br>\n");
         }
@@ -443,11 +443,6 @@ public:
         this->options.filterLinks = convertDocsPathToURL;
     }
 
-    // Sets the class context used when parsing declaration-only markdown entries.
-    void setApiClassContext(StringView className) {
-        this->apiClassContext = className;
-    }
-
     // Parses one markdown line and appends any completed block to the pending queue.
     void parseMarkdownLine(StringView line) {
         if (Owned<markdown::Block> node = markdown::parseLine(this->parser, line)) {
@@ -469,7 +464,6 @@ private:
     markdown::HTMLOptions options;
     Owned<markdown::Parser> parser = markdown::createParser(markdown::ParseOptions::githubFlavored());
     Array<Owned<markdown::Block>> pendingBlocks;
-    String apiClassContext;
     bool foundFirstH1 = false;
 
     // Emits and removes a split filename/title heading when the first h1 uses a recognized Markdown form.
@@ -569,7 +563,7 @@ private:
             if (!firstPair) {
                 this->out.write("</dd>\n<dt>");
             }
-            printApiDeclarationsAsTitle(this->out, this->apiClassContext, declarations);
+            printApiDeclarationsAsTitle(this->out, declarations);
 
             auto* bq = this->pendingBlocks[index + 1]->var.as<markdown::Block::BlockQuote>();
             PLY_ASSERT(bq);
@@ -591,7 +585,7 @@ private:
 
         // Highlight validated declaration tables before ordinary recursive Markdown rendering.
         for (markdown::Block* block : this->pendingBlocks) {
-            highlightMemberTables(block, this->apiClassContext);
+            highlightMemberTables(block);
         }
 
         // Collect navigation entries before special API-description blocks consume the pending range.
@@ -613,44 +607,6 @@ private:
         this->pendingBlocks.clear();
     }
 };
-
-// Parses an entire documentation markdown file with custom section directives.
-void parseMarkdown(Stream& out, ViewStream& in, Array<PageHeading>& headings) {
-    MarkdownBlockProcessor blockProcessor{out, headings};
-    while (StringView line = readLine(in)) {
-        ViewStream lineIn{line};
-        StringView cmd;
-        if (lineIn.match("'{%i", &cmd)) {
-            // Flush current markdown blocks.
-            blockProcessor.flushToOutput();
-
-            // Parse section arguments.
-            Map<StringView, String> args;
-            {
-                StringView key;
-                String value;
-                while (lineIn.match(" *%i=(%i|%q)", &key, &value, &value)) {
-                    *args.insert(key).value = std::move(value);
-                }
-            }
-            PLY_ASSERT(lineIn.match(" *'}"));
-
-            // Handle section type.
-            if (cmd == "context") {
-                if (const String* c = args.find("class")) {
-                    blockProcessor.setApiClassContext(*c);
-                } else {
-                    blockProcessor.setApiClassContext({});
-                }
-            } else {
-                PLY_ASSERT(0); // Unrecognized section type
-            }
-        } else {
-            blockProcessor.parseMarkdownLine(line);
-        }
-    }
-    blockProcessor.flushToOutput();
-}
 
 // Extracts page entries from one Markdown list and validates its item structure.
 bool parseContentsList(Array<Owned<ContentsPage>>& pages, const markdown::Block* block) {
@@ -790,7 +746,13 @@ void convertPage(const ContentsPage& item, const ContentsPage* prevPage, const C
     String markdown = FileSystem::loadTextAutodetect(markdownPath);
     ViewStream in{markdown};
     MemStream mem;
-    parseMarkdown(mem, in, headings);
+
+    // Parse and render the documentation Markdown into the page body.
+    MarkdownBlockProcessor blockProcessor{mem, headings};
+    while (StringView line = readLine(in)) {
+        blockProcessor.parseMarkdownLine(line);
+    }
+    blockProcessor.flushToOutput();
     String articleContent = mem.moveToString();
 
     // Generate prev/next navigation
