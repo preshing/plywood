@@ -2468,14 +2468,8 @@ TEST_CASE("execShellCommand() with merged output") {
     check(process);
     if (!process)
         return;
-    MemStream output;
-    while (output.makeWritable()) {
-        u32 numBytes = process->getStdOutReader()->read({output.curByte, output.endByte});
-        if (numBytes == 0)
-            break;
-        output.curByte += numBytes;
-    }
-    check(output.moveToString() == expectedOutput);
+    String output = readAllRemainingData(process->getStdOutReader());
+    check(output == expectedOutput);
     check(process->join() == 7);
 }
 
@@ -2495,14 +2489,7 @@ TEST_CASE("execShellCommand() preserves quotes and backslashes") {
         return;
 
     // Drain the pipe and compare the shell's output exactly.
-    MemStream output;
-    while (output.makeWritable()) {
-        u32 numBytes = process->getStdOutReader()->read({output.curByte, output.endByte});
-        if (numBytes == 0)
-            break;
-        output.curByte += numBytes;
-    }
-    check(output.moveToString() == expectedOutput);
+    check(readAllRemainingData(process->getStdOutReader()) == expectedOutput);
     check(process->join() == 0);
 }
 

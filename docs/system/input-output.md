@@ -25,75 +25,73 @@ These functions provide access to the standard input, output, and error streams.
 
 A `Stream` wraps a `Pipe` and provides buffered I/O operations. Streams handle the details of buffering data for efficient reads and writes.
 
-{context class=Stream}
-
-`Stream()`
+`Stream::Stream()`
 > Constructs an empty stream that is not connected to any pipe.
 
-`Stream(Pipe* pipe, bool isPipeOwner)`
+`Stream::Stream(Pipe* pipe, bool isPipeOwner)`
 > Constructs a stream from a pipe. If `isPipeOwner` is true, the stream will destroy the pipe when closed.
 
-`Stream(Stream&& other)`
+`Stream::Stream(Stream&& other)`
 > Move constructor.
 
-`Stream& operator=(Stream&& other)`
+`Stream& Stream::operator=(Stream&& other)`
 > Move assignment.
 
-`bool isOpen()`
+`bool Stream::isOpen()`
 > Returns `true` if the stream is connected to a valid pipe.
 
-`explicit operator bool()`
+`explicit operator Stream::bool()`
 > Same as `isOpen()`.
 
-`void close()`
+`void Stream::close()`
 > Flushes and closes the stream. If the stream owns the pipe, the pipe is destroyed.
 
-`bool makeReadable(u32 minBytes = 1)`
+`bool Stream::makeReadable(u32 minBytes = 1)`
 > Ensures at least `minBytes` are available in the read buffer. Returns `false` if end-of-file is reached.
 
-`bool makeWritable(u32 minBytes = 1)`
+`bool Stream::makeWritable(u32 minBytes = 1)`
 > Ensures at least `minBytes` of space are available in the write buffer.
 
-`bool hasRemainingBytes() bool`
+`bool Stream::hasRemainingBytes() bool`
 > Returns `true` if there are any bytes remaining in the read buffer.
 
-`u32 numRemainingBytes() const`
+`u32 Stream::numRemainingBytes() const`
 > Returns the number of bytes currently available in the read buffer.
 
-`StringView viewRemainingBytes() const`
+`StringView Stream::viewRemainingBytes() const`
 > Returns a view of the bytes currently in the read buffer.
 
-`MutStringView viewRemainingBytesMut()`
+`MutStringView Stream::viewRemainingBytesMut()`
 > Returns a mutable view of the read buffer.
 
-`void flush(bool toDevice = false)`
+`void Stream::flush(bool toDevice = false)`
 > Writes any buffered data to the underlying pipe. If `toDevice` is true, also flushes the pipe to the physical device.
 
-`char peekByte()`
+`char Stream::peekByte()`
 > Returns the next byte in the input stream, or `0` if at end-of-file.
 
-`char readByte()`
+`char Stream::readByte()`
 > Reads and returns a single byte.
 
-`u32 read(MutStringView dst)`
+`u32 Stream::read(MutStringView dst)`
 > Reads up to `dst.numBytes` bytes into `dst`. Returns the number of bytes actually read.
 
-`u32 skip(u32 numBytes)`
+`u32 Stream::skip(u32 numBytes)`
 > Skips up to `numBytes` in the input. Returns the number of bytes actually skipped.
 
-`bool write(char c)`
+`bool Stream::write(char c)`
 > Writes a single byte.
 
-`u32 write(StringView bytes)`
+`u32 Stream::write(StringView bytes)`
 > Writes the given bytes to the stream. Returns the number of bytes written.
 
-`void format(StringView fmt, const Args&... args)`
+`void Stream::format(StringView fmt, const Args&... args)`
 > Writes formatted text using `{}` placeholders.
 
-`u64 getSeekPos()`
+`u64 Stream::getSeekPos()`
 > Returns the current seek position in the stream.
 
-`void seekTo(u64 seekPos)`
+`void Stream::seekTo(u64 seekPos)`
 > Seeks to the specified position. Only works with seekable pipes.
 
 Remember to write `'\n'` for newlines. There's no `endl` like C++ iostreams—use `flush` to force output.
@@ -102,7 +100,7 @@ Remember to write `'\n'` for newlines. There's no `endl` like C++ iostreams—us
 
 A `MemStream` writes to an in-memory buffer that grows as needed. This is useful for building strings or serializing data.
 
-`MemStream duplicate() const`
+`MemStream MemStream::duplicate() const`
 > Creates an independent copy with the same contents, access mode and seek position.
 
 ## `ViewStream`
@@ -113,28 +111,29 @@ A `ViewStream` reads from a fixed memory buffer (a `StringView`). This is useful
 
 `Pipe` is the abstract base class for all I/O providers. Concrete implementations include file pipes, socket pipes, and memory pipes. You rarely need to work with pipes directly—use `Stream` instead.
 
-{context class=Pipe}
-
-`void close()`
+`void Pipe::close()`
 > Closes the pipe without destroying it. No other member function should be called after this.
 
-`u32 read(MutStringView buf)`
+`u32 Pipe::read(MutStringView buf)`
 > Reads up to `buf.numBytes` bytes into `buf`. Returns the number of bytes actually read. Returns 0 at end-of-file.
 
-`bool write(StringView buf)`
+`bool Pipe::write(StringView buf)`
 > Writes the bytes in `buf`. Returns `true` on success.
 
-`void flush(bool toDevice = false)`
+`void Pipe::flush(bool toDevice = false)`
 > Flushes any buffered writes. If `toDevice` is true, ensures data reaches the physical device.
 
-`u64 getFileSize()`
+`u64 Pipe::getFileSize()`
 > Returns the total size of the underlying file, or 0 if not applicable.
 
-`void seekTo(s64 offset)`
+`void Pipe::seekTo(s64 offset)`
 > Seeks to the specified byte offset. Only supported by seekable pipes.
 
-`u32 getFlags() const`
+`u32 Pipe::getFlags() const`
 > Returns the pipe's capability flags (readable, writable, seekable, etc.).
+
+`String readAllRemainingData(Pipe* inPipe)`
+> Reads and returns all remaining data from `inPipe` through end-of-file. This function may block until the pipe's writer closes. It does not close the pipe.
 
 Plywood provides utility functions for reading and writing text data.
 

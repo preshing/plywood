@@ -4034,6 +4034,9 @@ public:
     }
 };
 
+// Reads from a pipe until EOF and returns all remaining data.
+String readAllRemainingData(Pipe* inPipe);
+
 #if defined(PLY_WINDOWS)
 
 class PipeHandle : public Pipe {
@@ -4141,10 +4144,10 @@ struct Stream {
         return *this;
     }
 
-    bool isOpen() {
+    bool isOpen() const {
         return this->curByte != nullptr;
     }
-    explicit operator bool() {
+    explicit operator bool() const {
         return this->curByte != nullptr;
     }
     void close() {

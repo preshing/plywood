@@ -5991,7 +5991,7 @@ String FileSystem::loadBinary(StringView path) {
     return result;
 }
 
-String readAllRemainingBytes(Pipe* inPipe) {
+String readAllRemainingData(Pipe* inPipe) {
     MemStream mem;
     for (;;) {
         mem.makeWritable();
@@ -6006,7 +6006,7 @@ String readAllRemainingBytes(Pipe* inPipe) {
 String FileSystem::loadText(StringView path, const TextFormat& textFormat) {
     if (Stream in = FileSystem::openBinaryForRead(path)) {
         Owned<Pipe> importer = createImporter(std::move(in), textFormat);
-        return readAllRemainingBytes(importer);
+        return readAllRemainingData(importer);
     }
     return {};
 }
@@ -6019,7 +6019,7 @@ String FileSystem::loadTextAutodetect(StringView path, TextFormat* outFormat) {
         }
 
         Owned<Pipe> importer = createImporter(std::move(in), textFormat);
-        return readAllRemainingBytes(importer);
+        return readAllRemainingData(importer);
     }
     return {};
 }
