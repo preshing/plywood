@@ -73,6 +73,12 @@ static String formatRate(double bytesPerSec) {
     return String::format("{:.1}MB/s", kb / 1024.0);
 }
 
+// Formats a single token usage line with the given label.
+static String formatTokenUsage(StringView label, const Transcript::TokenUsage& tokenUsage) {
+    return String::format("Tokens used ({}): in={}, cached={}, out={}", label, tokenUsage.uncachedInputTokens,
+                          tokenUsage.cachedInputTokens, tokenUsage.outputTokens);
+}
+
 //  ▄▄    ▄▄        ▄▄
 //  ██ ▄▄ ██  ▄▄▄▄  ██▄▄▄   ▄▄▄▄   ▄▄▄▄  ▄▄▄▄▄  ▄▄   ▄▄  ▄▄▄▄  ▄▄▄▄▄
 //  ▀█▄██▄█▀ ██▄▄██ ██  ██ ▀█▄▄▄  ██▄▄██ ██  ▀▀ ▀█▄ ▄█▀ ██▄▄██ ██  ▀▀
@@ -161,6 +167,7 @@ body { margin: 0; background: #101010; color: #e8e6e3; font: 14px/1.5 monospace;
 .agent > .section-header { background: #244a7c; }
 .error > .section-header { background: #813b3b; }
 .tool-call > .section-header, .tool-response > .section-header { background: #393c3f; }
+.token-usage > .section-header { background: #3d4b38; }
 .timestamp { margin-right: 10px; color: #c0c3c5; font-size: 0.85em; font-weight: normal; }
 .timing { font-family: system-ui, sans-serif; color: #9aa0a6; }
 </style></head><body><main id="transcript"></main>
@@ -275,6 +282,11 @@ function eraseText(numBytes) {
     renderOpenMessage();
 }
 
+function showTokenUsage(event) {
+    const content = createSection('token-usage', 'Token Usage', event.timeStamp, true);
+    content.append(document.createTextNode(event.turnUsage + '\n' + event.sessionUsage));
+}
+
 function handleEvent(event) {
     switch (event.operation) {
         case 'BeginMessage':
@@ -316,6 +328,9 @@ function handleEvent(event) {
             toolResponses.delete(event.toolCallID);
             break;
         }
+        case 'TokenUsage':
+            showTokenUsage(event);
+            break;
     }
 }
 
@@ -462,6 +477,19 @@ static void webEndToolResponse(u32 toolCallID, StringView timeStamp) {
     webTranscript.append(std::move(event));
 }
 
+// Publishes the token usage for a completed inference turn and its session total.
+static void webTokenUsage(StringView timeStamp, u32 turnNumber, StringView turnUsage, StringView sessionUsage,
+                          u64 sessionInputTokens, u64 sessionOutputTokens) {
+    json::Node event = makeWebEvent("TokenUsage");
+    event.set("timeStamp", json::Node::Text{String{timeStamp}});
+    event.set("turnNumber", json::Node::Number{double(turnNumber)});
+    event.set("turnUsage", json::Node::Text{String{turnUsage}});
+    event.set("sessionUsage", json::Node::Text{String{sessionUsage}});
+    event.set("sessionInputTokens", json::Node::Number{double(sessionInputTokens)});
+    event.set("sessionOutputTokens", json::Node::Number{double(sessionOutputTokens)});
+    webTranscript.append(std::move(event));
+}
+
 //   ▄▄▄▄                              ▄▄▄              ▄▄▄▄          ▄▄                  ▄▄
 //  ██  ▀▀  ▄▄▄▄  ▄▄▄▄▄   ▄▄▄▄   ▄▄▄▄   ██   ▄▄▄▄      ██  ██ ▄▄  ▄▄ ▄██▄▄ ▄▄▄▄▄  ▄▄  ▄▄ ▄██▄▄
 //  ██     ██  ██ ██  ██ ▀█▄▄▄  ██  ██  ██  ██▄▄██     ██  ██ ██  ██  ██   ██  ██ ██  ██  ██
@@ -523,12 +551,12 @@ struct TranscriptPrinter {
     s64 sectionStartTime = 0;
     uptr openOutputBytes = 0;
     bool openLastWasNewline = true; // ensures the timing line starts on its own line
-    String openToolCallText; // accumulated raw text for a ToolCall section
+    String openToolCallText;        // accumulated raw text for a ToolCall section
 
     // The tool call IDs used by the underlying protocol are local to each turn.
     // Map them to displayed indices that increase across the entire transcript.
     u32 nextDisplayedToolCallIndex = 1;
-    Map<u32, u32> displayedToolCallIndices;  // Reset at the end of each turn.
+    Map<u32, u32> displayedToolCallIndices; // Reset at the end of each turn.
 
     // Incremental Markdown state for the currently open browser message.
     Owned<markdown::Parser> markdownParser;
@@ -539,6 +567,10 @@ struct TranscriptPrinter {
     // Buffered tool responses, keyed by toolCallID, awaiting flush at EndTurn.
     Map<u32, Transcript::Buffer> pendingResponses;
     Array<u32> responseOrder; // toolCallIDs in first-arrival order
+    bool hasPendingTokenUsage = false;
+    Transcript::TokenUsage pendingTokenUsage;
+    Transcript::TokenUsage sessionTokenUsage;
+    u32 nextTurnNumber = 1;
 
     void printStartup(StringView userPrompt);
     void handleEvent(const TranscriptEvent& event);
@@ -547,6 +579,7 @@ struct TranscriptPrinter {
     void openSection(Transcript::Role role, u32 toolCallID, s64 timeStamp);
     void closeOpen(s64 endMicros);
     void flushToolResponses(s64 timeStamp);
+    void printTokenUsage(s64 timeStamp);
     u32 getDisplayedToolCallIndex(u32 toolCallID);
     void beginMarkdownMessage();
     void appendMarkdown(StringView text);
@@ -855,6 +888,29 @@ void TranscriptPrinter::flushToolResponses(s64 timeStamp) {
     this->responseOrder.clear();
 }
 
+// Prints one completed turn's usage and updates the running session total.
+void TranscriptPrinter::printTokenUsage(s64 timeStamp) {
+    if (!this->hasPendingTokenUsage) {
+        return;
+    }
+
+    this->sessionTokenUsage.isValid = true;
+    this->sessionTokenUsage.uncachedInputTokens += this->pendingTokenUsage.uncachedInputTokens;
+    this->sessionTokenUsage.outputTokens += this->pendingTokenUsage.outputTokens;
+    this->sessionTokenUsage.cachedInputTokens += this->pendingTokenUsage.cachedInputTokens;
+
+    String turnUsage = formatTokenUsage(String::format("turn #{}", this->nextTurnNumber), this->pendingTokenUsage);
+    String sessionUsage = formatTokenUsage("total", this->sessionTokenUsage);
+    Stream out = getStdOut();
+    out.format("{}\n{}\n{}\n", turnUsage, sessionUsage, Separator);
+    if (options.runWebServer) {
+        webTokenUsage(formatTimeStamp(timeStamp), this->nextTurnNumber, turnUsage, sessionUsage,
+                      this->sessionTokenUsage.uncachedInputTokens, this->sessionTokenUsage.outputTokens);
+    }
+    this->hasPendingTokenUsage = false;
+    this->nextTurnNumber++;
+}
+
 void TranscriptPrinter::handleEvent(const TranscriptEvent& event) {
     switch (event.operation) {
         case TranscriptEvent::BeginMessage:
@@ -899,11 +955,16 @@ void TranscriptPrinter::handleEvent(const TranscriptEvent& event) {
                 response->flush();
             }
             break;
+        case TranscriptEvent::SetTokenUsage:
+            this->pendingTokenUsage = event.tokenUsage;
+            this->hasPendingTokenUsage = event.tokenUsage.isValid;
+            break;
         case TranscriptEvent::EndTurn:
             if (this->hasOpen) {
                 this->closeOpen(event.timeStamp);
             }
             this->flushToolResponses(event.timeStamp);
+            this->printTokenUsage(event.timeStamp);
             this->displayedToolCallIndices.clear();
             break;
         default:
@@ -918,6 +979,7 @@ void TranscriptPrinter::finish(s64 endMicros) {
     // Flush any tool responses that never got an EndTurn (e.g. the agent was
     // canceled mid-turn).
     this->flushToolResponses(endMicros);
+    this->printTokenUsage(endMicros);
 }
 
 //   ▄▄▄▄          ▄▄    ▄▄   ▄▄
@@ -1000,10 +1062,10 @@ static bool loadSettingsWithIncludes(StringView settingsPath, Array<String>& inc
                     getStdErr().format("Could not load AGENTS.md file: {}\n", agentsMDPath);
                     return false;
                 }
-                agentsMDSections.append(String::format(
-                    "\n\n--------------------------------------------------------------------\n"
-                    "[Contents of {}]\n\n{}",
-                    agentsMDPath, content));
+                agentsMDSections.append(
+                    String::format("\n\n--------------------------------------------------------------------\n"
+                                   "[Contents of {}]\n\n{}",
+                                   agentsMDPath, content));
             }
         }
     }
@@ -1291,10 +1353,8 @@ static bool validateEndPoint() {
                           "`NONE` for no authentication, or pass -p/--provider.\n");
         return false;
     }
-    if (agentSettings.endPoint.apiKeyEnv != "NONE" &&
-        !getEnvironmentVariable(agentSettings.endPoint.apiKeyEnv)) {
-        getStdErr().format("Missing API key: environment variable {} is not set\n",
-                           agentSettings.endPoint.apiKeyEnv);
+    if (agentSettings.endPoint.apiKeyEnv != "NONE" && !getEnvironmentVariable(agentSettings.endPoint.apiKeyEnv)) {
+        getStdErr().format("Missing API key: environment variable {} is not set\n", agentSettings.endPoint.apiKeyEnv);
         return false;
     }
     if (!agentSettings.endPoint.model) {

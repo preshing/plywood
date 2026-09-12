@@ -80,17 +80,13 @@ static bool testApplyTranscriptEvent() {
     event = {};
     event.operation = TranscriptEvent::SetTokenUsage;
     event.tokenUsage.isValid = true;
-    event.tokenUsage.inputTokens = 100;
+    event.tokenUsage.uncachedInputTokens = 100;
     event.tokenUsage.outputTokens = 25;
-    event.tokenUsage.totalTokens = 125;
     event.tokenUsage.cachedInputTokens = 80;
-    event.tokenUsage.cacheCreationInputTokens = 20;
-    event.tokenUsage.reasoningTokens = 5;
     applyTranscriptEvent(&transcript, event);
     const Transcript::TokenUsage& tokenUsage = transcript.turns[0].tokenUsage;
-    success &= expect(tokenUsage.isValid && tokenUsage.inputTokens == 100 && tokenUsage.outputTokens == 25 &&
-                          tokenUsage.totalTokens == 125 && tokenUsage.cachedInputTokens == 80 &&
-                          tokenUsage.cacheCreationInputTokens == 20 && tokenUsage.reasoningTokens == 5,
+    success &= expect(tokenUsage.isValid && tokenUsage.uncachedInputTokens == 100 && tokenUsage.outputTokens == 25 &&
+                          tokenUsage.cachedInputTokens == 80,
                       "SetTokenUsage should retain aggregate usage on the current turn");
 
     event = {};

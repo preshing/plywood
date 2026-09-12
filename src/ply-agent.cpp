@@ -162,12 +162,9 @@ PLY_STRUCT_END()
 
 PLY_STRUCT_BEGIN(Transcript::TokenUsage)
 PLY_STRUCT_MEMBER(isValid)
-PLY_STRUCT_MEMBER(inputTokens)
-PLY_STRUCT_MEMBER(outputTokens)
-PLY_STRUCT_MEMBER(totalTokens)
+PLY_STRUCT_MEMBER(uncachedInputTokens)
 PLY_STRUCT_MEMBER(cachedInputTokens)
-PLY_STRUCT_MEMBER(cacheCreationInputTokens)
-PLY_STRUCT_MEMBER(reasoningTokens)
+PLY_STRUCT_MEMBER(outputTokens)
 PLY_STRUCT_END()
 
 PLY_STRUCT_BEGIN(Transcript::Turn)
@@ -338,6 +335,13 @@ static void copyTokenCount(u64& dst, const json::Node& src) {
     if (src.isNumber()) {
         dst = numericCast<u64>(src.getNumber());
     }
+}
+
+// Copies uncached input tokens, which the provider reports either as total input minus cached or directly.
+static void copyUncachedInputCount(u64& dst, const json::Node& totalSrc, u64 cachedInputTokens) {
+    u64 totalInputTokens = 0;
+    copyTokenCount(totalInputTokens, totalSrc);
+    dst = totalInputTokens > cachedInputTokens ? totalInputTokens - cachedInputTokens : 0;
 }
 
 // Counts the ToolCall-role messages in the current turn, up to and including the one
@@ -676,11 +680,10 @@ void CompletionsProtocolHandler::receiveLine(StringView line) {
     if (jUsage.isObject()) {
         Transcript::TokenUsage tokenUsage;
         tokenUsage.isValid = true;
-        copyTokenCount(tokenUsage.inputTokens, jUsage.get("prompt_tokens"));
-        copyTokenCount(tokenUsage.outputTokens, jUsage.get("completion_tokens"));
-        copyTokenCount(tokenUsage.totalTokens, jUsage.get("total_tokens"));
         copyTokenCount(tokenUsage.cachedInputTokens, jUsage.get("prompt_tokens_details").get("cached_tokens"));
-        copyTokenCount(tokenUsage.reasoningTokens, jUsage.get("completion_tokens_details").get("reasoning_tokens"));
+        copyUncachedInputCount(tokenUsage.uncachedInputTokens, jUsage.get("prompt_tokens"),
+                               tokenUsage.cachedInputTokens);
+        copyTokenCount(tokenUsage.outputTokens, jUsage.get("completion_tokens"));
 
         LockGuard<Mutex> guard{impl->toolCtx.mutex};
         if (impl->toolCtx.isCanceled())
@@ -926,13 +929,10 @@ void ResponsesProtocolHandler::receiveLine(StringView line) {
 
                 Transcript::TokenUsage tokenUsage;
                 tokenUsage.isValid = true;
-                copyTokenCount(tokenUsage.inputTokens, jUsage.get("input_tokens"));
-                copyTokenCount(tokenUsage.outputTokens, jUsage.get("output_tokens"));
-                copyTokenCount(tokenUsage.totalTokens, jUsage.get("total_tokens"));
                 copyTokenCount(tokenUsage.cachedInputTokens, jUsage.get("input_tokens_details").get("cached_tokens"));
-                copyTokenCount(tokenUsage.cacheCreationInputTokens,
-                               jUsage.get("input_tokens_details").get("cache_write_tokens"));
-                copyTokenCount(tokenUsage.reasoningTokens, jUsage.get("output_tokens_details").get("reasoning_tokens"));
+                copyUncachedInputCount(tokenUsage.uncachedInputTokens, jUsage.get("input_tokens"),
+                                       tokenUsage.cachedInputTokens);
+                copyTokenCount(tokenUsage.outputTokens, jUsage.get("output_tokens"));
 
                 LockGuard<Mutex> guard{impl->toolCtx.mutex};
                 if (impl->toolCtx.isCanceled())
@@ -954,6 +954,7 @@ struct AnthropicProtocolHandler : ProtocolHandler {
     s32 contentBlockIndex = -1;
     json::Node contentBlock;
     Transcript::Message* toolCall = nullptr;
+    Transcript::TokenUsage tokenUsage;
 
     using ProtocolHandler::ProtocolHandler;
     virtual String makeRequestBody() override;
@@ -967,6 +968,7 @@ String AnthropicProtocolHandler::makeRequestBody() {
     this->contentBlockIndex = -1;
     this->contentBlock = {};
     this->toolCall = nullptr;
+    this->tokenUsage = {};
 
     json::Node root{json::Node::Object{}};
     root.set("model", json::Node::Text{impl->settings.endPoint.model});
@@ -1097,17 +1099,21 @@ void AnthropicProtocolHandler::receiveLine(StringView line) {
         const json::Node& jUsage =
             eventType == "message_start" ? result.root.get("message").get("usage") : result.root.get("usage");
         if (jUsage.isObject()) {
+            this->tokenUsage.isValid = true;
+            // Anthropic reports uncached input and cache writes separately from cache reads.
+            u64 inputTokens = 0;
+            u64 cacheCreationInputTokens = 0;
+            copyTokenCount(inputTokens, jUsage.get("input_tokens"));
+            copyTokenCount(cacheCreationInputTokens, jUsage.get("cache_creation_input_tokens"));
+            this->tokenUsage.uncachedInputTokens = inputTokens + cacheCreationInputTokens;
+            copyTokenCount(this->tokenUsage.cachedInputTokens, jUsage.get("cache_read_input_tokens"));
+            copyTokenCount(this->tokenUsage.outputTokens, jUsage.get("output_tokens"));
+        }
+        if (eventType == "message_delta" && jDelta.get("stop_reason").text() && this->tokenUsage.isValid) {
             LockGuard<Mutex> guard{impl->toolCtx.mutex};
             if (impl->toolCtx.isCanceled())
                 return;
-            Transcript::TokenUsage tokenUsage = impl->internalTranscript->turns.back().tokenUsage;
-            tokenUsage.isValid = true;
-            copyTokenCount(tokenUsage.inputTokens, jUsage.get("input_tokens"));
-            copyTokenCount(tokenUsage.outputTokens, jUsage.get("output_tokens"));
-            copyTokenCount(tokenUsage.cachedInputTokens, jUsage.get("cache_read_input_tokens"));
-            copyTokenCount(tokenUsage.cacheCreationInputTokens, jUsage.get("cache_creation_input_tokens"));
-            copyTokenCount(tokenUsage.reasoningTokens, jUsage.get("output_tokens_details").get("thinking_tokens"));
-            setTokenUsage(impl, tokenUsage);
+            setTokenUsage(impl, this->tokenUsage);
         }
     }
 

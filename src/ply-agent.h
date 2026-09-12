@@ -63,12 +63,9 @@ struct Transcript : RefCounted<Transcript> {
     struct TokenUsage {
         // False when the provider did not report aggregate token counts for this turn.
         bool isValid = false;
-        u64 inputTokens = 0;
-        u64 outputTokens = 0;
-        u64 totalTokens = 0;
+        u64 uncachedInputTokens = 0;
         u64 cachedInputTokens = 0;
-        u64 cacheCreationInputTokens = 0;
-        u64 reasoningTokens = 0;
+        u64 outputTokens = 0;
 
         PLY_DECLARE_TYPE_INFO(Transcript::TokenUsage)
     };
