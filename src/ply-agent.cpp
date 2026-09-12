@@ -1123,21 +1123,6 @@ void AnthropicProtocolHandler::receiveLine(StringView line) {
 //  ▄██▄ ██  ██  ██   ▀█▄▄▄  ██     ▀█▄▄▄  ██  ██ ▀█▄▄▄ ▀█▄▄▄        ██   ██  ██ ██     ▀█▄▄▄  ▀█▄▄██ ▀█▄▄██
 //
 
-// Helper function to sanitize a URL for use in a filename
-static String sanitizeUrlForFilename(StringView url) {
-    MemStream result;
-    for (char c : url) {
-        // Only keep alphanumeric characters, dash, underscore, and dot
-        if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_' ||
-            c == '.') {
-            result.write(c);
-        } else if (c == '/') {
-            result.write('-');
-        }
-    }
-    return result.moveToString();
-}
-
 // Delivers an error event via the pendingEvents buffer.
 // Must be called with toolCtx.mutex held. Suppresses the event if the agent was
 // canceled, so bufferEvent is never called once cancellation has been requested.
@@ -1180,25 +1165,56 @@ void receiveLineInProgress(Agent::Impl* impl) {
     impl->protocolHandler->receiveLine(line);
 }
 
+// Convert the Protocol enum to a string.
+static StringView getProtocolName(Protocol protocol) {
+    switch (protocol) {
+        case Protocol::Completions:
+            return "completions";
+        case Protocol::Responses:
+            return "responses";
+        case Protocol::Anthropic:
+            return "anthropic";
+    }
+    PLY_ASSERT(0);
+    return {};
+}
+
 // Performs an inference request and converts the response data to a queue of ResponseEvents.
 // This is the bulk of the work performed by the inference thread (Agent::Impl::inferenceThread).
 // The calling thread receives response data by periodically calling receiveResponseEvents.
-void performInferenceRequest(Agent::Impl* impl) {
+void performInferenceRequest(Agent::Impl* impl, u32 turnNumber) {
     impl->anyToolCallsThisTurn = false;
     // Reset the per-turn role tracking so the first streamed message begins a new
     // Message block.
     impl->currentRole = Transcript::Role::None;
     impl->lineInProgress = MemStream{};
 
-    if (impl->settings.enableHttpLog) {
-        // Generate filename based on current date/time and URL
+    if (impl->settings.enableHttpLog && !impl->httpLogFile.isOpen()) {
+        // Create one log file for the agent's complete inference session.
         DateTime dateTime = convertToDateTime(getUnixTimestamp());
-        String timestampStr = String::fromDateTime("%Y-%m-%d_%H-%M-%S", dateTime);
-        String sanitizedUrl = sanitizeUrlForFilename(impl->settings.endPoint.url);
-        String logFilename = String::format("llm-log_{}_{}.txt", timestampStr, sanitizedUrl);
+        String timestampStr = String::fromDateTime("%Y%m%d-%H%M%S", dateTime);
+        String logFilename = String::format("agent-http-log-{}.txt", timestampStr);
         impl->httpLogFile = FileSystem::openBinaryForWrite(logFilename);
+        if (impl->httpLogFile.isOpen()) {
+            // Write immutable session details before logging the first provider response.
+            impl->httpLogFile.format("========================================\n"
+                                     "AGENT HTTP LOG\n"
+                                     "========================================\n"
+                                     "Start time: {}\n",
+                                     String::fromDateTime("%Y-%m-%d %H:%M:%S", dateTime));
+            impl->httpLogFile.format("Destination URL: {}\nProtocol: {}\nModel: {}\n\n", impl->settings.endPoint.url,
+                                     getProtocolName(impl->settings.endPoint.protocol), impl->settings.endPoint.model);
+        }
     }
-    PLY_ON_SCOPE_EXIT({ impl->httpLogFile.close(); });
+    if (impl->httpLogFile.isOpen()) {
+        // Separate each provider request so tool-driven follow-up turns remain readable.
+        if (turnNumber != 1) {
+            impl->httpLogFile.write('\n');
+        }
+        impl->httpLogFile.format(
+            "----------------------------------------\nTURN #{}\n----------------------------------------\n\n",
+            turnNumber);
+    }
 
     // Let the selected protocol translate the current transcript into a request body.
     String body = impl->protocolHandler->makeRequestBody();
@@ -1353,9 +1369,9 @@ void performInferenceRequest(Agent::Impl* impl) {
 void runAgentThread(Agent::Impl* impl) {
     // Iterate making inference requests until the main thread requests exit
     // or there are no more tool responses to send back.
-    for (;;) {
+    for (u32 turnNumber = 1;; turnNumber++) {
         // Perform one inference request.
-        performInferenceRequest(impl);
+        performInferenceRequest(impl, turnNumber);
 
         {
             // Consume tool response events and check whether the loop should continue running.
