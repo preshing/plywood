@@ -130,6 +130,11 @@ void applyTranscriptEvent(Transcript* transcript, const TranscriptEvent& event) 
             transcript->turns.back().providerOutputItems.append(event.text);
             break;
         }
+        case TranscriptEvent::SetTokenUsage: {
+            PLY_ASSERT(!transcript->turns.isEmpty());
+            transcript->turns.back().tokenUsage = event.tokenUsage;
+            break;
+        }
         case TranscriptEvent::EndTurn: {
             if (!transcript->turns.isEmpty() && transcript->turns.back().messages) {
                 transcript->turns.back().messages.back()->content.flush();
@@ -155,9 +160,20 @@ PLY_STRUCT_MEMBER(toolResponse)
 PLY_STRUCT_MEMBER(toolEnded)
 PLY_STRUCT_END()
 
+PLY_STRUCT_BEGIN(Transcript::TokenUsage)
+PLY_STRUCT_MEMBER(isValid)
+PLY_STRUCT_MEMBER(inputTokens)
+PLY_STRUCT_MEMBER(outputTokens)
+PLY_STRUCT_MEMBER(totalTokens)
+PLY_STRUCT_MEMBER(cachedInputTokens)
+PLY_STRUCT_MEMBER(cacheCreationInputTokens)
+PLY_STRUCT_MEMBER(reasoningTokens)
+PLY_STRUCT_END()
+
 PLY_STRUCT_BEGIN(Transcript::Turn)
 PLY_STRUCT_MEMBER(messages)
 PLY_STRUCT_MEMBER(providerOutputItems)
+PLY_STRUCT_MEMBER(tokenUsage)
 PLY_STRUCT_END()
 
 PLY_STRUCT_BEGIN(Transcript)
@@ -169,6 +185,7 @@ PLY_STRUCT_MEMBER(timeStamp)
 PLY_STRUCT_MEMBER(toolCallID)
 PLY_STRUCT_MEMBER(providerToolCallID)
 PLY_STRUCT_MEMBER(text)
+PLY_STRUCT_MEMBER(tokenUsage)
 PLY_STRUCT_END()
 
 #if !PLY_AGENT_TRANSCRIPT_ONLY
@@ -305,6 +322,22 @@ static void emitText(Agent::Impl* impl, Transcript::Role role, StringView text) 
         impl->currentRole = role;
     }
     appendText(impl, String{text});
+}
+
+// Updates the aggregate token usage for the current inference request.
+// Must be called with toolCtx.mutex held.
+static void setTokenUsage(Agent::Impl* impl, const Transcript::TokenUsage& tokenUsage) {
+    TranscriptEvent event;
+    event.operation = TranscriptEvent::SetTokenUsage;
+    event.tokenUsage = tokenUsage;
+    addEvent(impl, std::move(event));
+}
+
+// Copies a token field when the provider included it in a usage object.
+static void copyTokenCount(u64& dst, const json::Node& src) {
+    if (src.isNumber()) {
+        dst = numericCast<u64>(src.getNumber());
+    }
 }
 
 // Counts the ToolCall-role messages in the current turn, up to and including the one
@@ -516,6 +549,13 @@ String CompletionsProtocolHandler::makeRequestBody() {
     // stream
     root.set("stream", json::Node::Bool{true});
 
+    // Request the final streaming chunk that contains aggregate token usage.
+    {
+        json::Node jStreamOptions{json::Node::Object{}};
+        jStreamOptions.set("include_usage", json::Node::Bool{true});
+        root.set("stream_options", std::move(jStreamOptions));
+    }
+
     // store
     root.set("store", json::Node::Bool{false});
 
@@ -629,6 +669,23 @@ void CompletionsProtocolHandler::receiveLine(StringView line) {
             impl->pendingToolCalls.append(toolCallMsg);
             impl->toolCondVar.wakeAll();
         }
+    }
+
+    // The final empty-choice chunk reports aggregate usage for this request.
+    const json::Node& jUsage = result.root.get("usage");
+    if (jUsage.isObject()) {
+        Transcript::TokenUsage tokenUsage;
+        tokenUsage.isValid = true;
+        copyTokenCount(tokenUsage.inputTokens, jUsage.get("prompt_tokens"));
+        copyTokenCount(tokenUsage.outputTokens, jUsage.get("completion_tokens"));
+        copyTokenCount(tokenUsage.totalTokens, jUsage.get("total_tokens"));
+        copyTokenCount(tokenUsage.cachedInputTokens, jUsage.get("prompt_tokens_details").get("cached_tokens"));
+        copyTokenCount(tokenUsage.reasoningTokens, jUsage.get("completion_tokens_details").get("reasoning_tokens"));
+
+        LockGuard<Mutex> guard{impl->toolCtx.mutex};
+        if (impl->toolCtx.isCanceled())
+            return;
+        setTokenUsage(impl, tokenUsage);
     }
 }
 
@@ -861,6 +918,26 @@ void ResponsesProtocolHandler::receiveLine(StringView line) {
                     impl->pendingToolCalls.append(toolCallMsg);
                     impl->toolCondVar.wakeAll();
                 }
+            } else if (eventType == "response.completed") {
+                // The completed response contains aggregate usage for this request.
+                const json::Node& jUsage = result.root.get("response").get("usage");
+                if (!jUsage.isObject())
+                    return;
+
+                Transcript::TokenUsage tokenUsage;
+                tokenUsage.isValid = true;
+                copyTokenCount(tokenUsage.inputTokens, jUsage.get("input_tokens"));
+                copyTokenCount(tokenUsage.outputTokens, jUsage.get("output_tokens"));
+                copyTokenCount(tokenUsage.totalTokens, jUsage.get("total_tokens"));
+                copyTokenCount(tokenUsage.cachedInputTokens, jUsage.get("input_tokens_details").get("cached_tokens"));
+                copyTokenCount(tokenUsage.cacheCreationInputTokens,
+                               jUsage.get("input_tokens_details").get("cache_write_tokens"));
+                copyTokenCount(tokenUsage.reasoningTokens, jUsage.get("output_tokens_details").get("reasoning_tokens"));
+
+                LockGuard<Mutex> guard{impl->toolCtx.mutex};
+                if (impl->toolCtx.isCanceled())
+                    return;
+                setTokenUsage(impl, tokenUsage);
             }
         }
     }
@@ -1014,6 +1091,25 @@ void AnthropicProtocolHandler::receiveLine(StringView line) {
         return;
     StringView eventType = result.root.get("type").text();
     const json::Node& jDelta = result.root.get("delta");
+
+    // Message streams expose input counts at the start and cumulative output at the end.
+    if (eventType == "message_start" || eventType == "message_delta") {
+        const json::Node& jUsage =
+            eventType == "message_start" ? result.root.get("message").get("usage") : result.root.get("usage");
+        if (jUsage.isObject()) {
+            LockGuard<Mutex> guard{impl->toolCtx.mutex};
+            if (impl->toolCtx.isCanceled())
+                return;
+            Transcript::TokenUsage tokenUsage = impl->internalTranscript->turns.back().tokenUsage;
+            tokenUsage.isValid = true;
+            copyTokenCount(tokenUsage.inputTokens, jUsage.get("input_tokens"));
+            copyTokenCount(tokenUsage.outputTokens, jUsage.get("output_tokens"));
+            copyTokenCount(tokenUsage.cachedInputTokens, jUsage.get("cache_read_input_tokens"));
+            copyTokenCount(tokenUsage.cacheCreationInputTokens, jUsage.get("cache_creation_input_tokens"));
+            copyTokenCount(tokenUsage.reasoningTokens, jUsage.get("output_tokens_details").get("thinking_tokens"));
+            setTokenUsage(impl, tokenUsage);
+        }
+    }
 
     if (eventType == "content_block_start") {
         const json::Node& jBlock = result.root.get("content_block");

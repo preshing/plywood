@@ -76,6 +76,23 @@ static bool testApplyTranscriptEvent() {
     success &= expect(transcript.turns[0].providerOutputItems[0] == event.text,
                       "provider output items should be retained for context replay");
 
+    // Aggregate usage belongs to the turn that made the provider request.
+    event = {};
+    event.operation = TranscriptEvent::SetTokenUsage;
+    event.tokenUsage.isValid = true;
+    event.tokenUsage.inputTokens = 100;
+    event.tokenUsage.outputTokens = 25;
+    event.tokenUsage.totalTokens = 125;
+    event.tokenUsage.cachedInputTokens = 80;
+    event.tokenUsage.cacheCreationInputTokens = 20;
+    event.tokenUsage.reasoningTokens = 5;
+    applyTranscriptEvent(&transcript, event);
+    const Transcript::TokenUsage& tokenUsage = transcript.turns[0].tokenUsage;
+    success &= expect(tokenUsage.isValid && tokenUsage.inputTokens == 100 && tokenUsage.outputTokens == 25 &&
+                          tokenUsage.totalTokens == 125 && tokenUsage.cachedInputTokens == 80 &&
+                          tokenUsage.cacheCreationInputTokens == 20 && tokenUsage.reasoningTokens == 5,
+                      "SetTokenUsage should retain aggregate usage on the current turn");
+
     event = {};
     event.operation = TranscriptEvent::AppendToolResponse;
     event.toolCallID = 1;

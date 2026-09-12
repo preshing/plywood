@@ -60,10 +60,25 @@ struct Transcript : RefCounted<Transcript> {
         PLY_DECLARE_TYPE_INFO(Transcript::Message)
     };
 
+    struct TokenUsage {
+        // False when the provider did not report aggregate token counts for this turn.
+        bool isValid = false;
+        u64 inputTokens = 0;
+        u64 outputTokens = 0;
+        u64 totalTokens = 0;
+        u64 cachedInputTokens = 0;
+        u64 cacheCreationInputTokens = 0;
+        u64 reasoningTokens = 0;
+
+        PLY_DECLARE_TYPE_INFO(Transcript::TokenUsage)
+    };
+
     struct Turn {
         Array<Owned<Message>> messages;
         // Opaque provider output items used when replaying manually managed context.
         Array<String> providerOutputItems;
+        // Aggregate usage reported by the provider for this inference request.
+        TokenUsage tokenUsage;
 
         PLY_DECLARE_TYPE_INFO(Transcript::Turn)
     };
@@ -87,6 +102,7 @@ struct TranscriptEvent {
         AppendToolResponse,       // Requires toolCallID and text
         EndToolResponse,          // Requires toolCallID
         AppendProviderOutputItem, // Requires text
+        SetTokenUsage,            // Requires tokenUsage
         EndTurn,
     };
 
@@ -101,6 +117,8 @@ struct TranscriptEvent {
     String providerToolCallID;
     // text is used by AppendText, AppendToolResponse and AppendProviderOutputItem.
     String text;
+    // tokenUsage is only used by SetTokenUsage.
+    Transcript::TokenUsage tokenUsage;
 
     PLY_DECLARE_TYPE_INFO(TranscriptEvent)
 };
