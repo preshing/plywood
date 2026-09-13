@@ -74,9 +74,14 @@ static String formatRate(double bytesPerSec) {
 }
 
 // Formats a single token usage line with the given label.
-static String formatTokenUsage(StringView label, const Transcript::TokenUsage& tokenUsage) {
-    return String::format("Tokens used ({}): in={}, cached={}, out={}", label, tokenUsage.uncachedInputTokens,
-                          tokenUsage.cachedInputTokens, tokenUsage.outputTokens);
+static String formatTokenUsage(StringView label, const Transcript::TokenUsage& tokenUsage,
+                               StringView cacheUtilization = {}) {
+    String result = String::format("Tokens used ({}): in={}, cached={}, out={}", label, tokenUsage.uncachedInputTokens,
+                                   tokenUsage.cachedInputTokens, tokenUsage.outputTokens);
+    if (cacheUtilization) {
+        result += String::format(" (cache utilization={})", cacheUtilization);
+    }
+    return result;
 }
 
 //  ▄▄    ▄▄        ▄▄
@@ -567,10 +572,7 @@ struct TranscriptPrinter {
     // Buffered tool responses, keyed by toolCallID, awaiting flush at EndTurn.
     Map<u32, Transcript::Buffer> pendingResponses;
     Array<u32> responseOrder; // toolCallIDs in first-arrival order
-    bool hasPendingTokenUsage = false;
-    Transcript::TokenUsage pendingTokenUsage;
-    Transcript::TokenUsage sessionTokenUsage;
-    u32 nextTurnNumber = 1;
+    bool turnEnded = false;
 
     void printStartup(StringView userPrompt);
     void handleEvent(const TranscriptEvent& event);
@@ -888,31 +890,74 @@ void TranscriptPrinter::flushToolResponses(s64 timeStamp) {
     this->responseOrder.clear();
 }
 
-// Prints one completed turn's usage and updates the running session total.
+// Prints the current turn's usage and totals derived from the transcript.
 void TranscriptPrinter::printTokenUsage(s64 timeStamp) {
-    if (!this->hasPendingTokenUsage) {
+    u32 turnNumber = numericCast<u32>(transcript->turns.numItems());
+    const Transcript::TokenUsage& turnTokenUsage = transcript->turns.back().tokenUsage;
+    if (!turnTokenUsage.isValid) {
         return;
     }
 
-    this->sessionTokenUsage.isValid = true;
-    this->sessionTokenUsage.uncachedInputTokens += this->pendingTokenUsage.uncachedInputTokens;
-    this->sessionTokenUsage.outputTokens += this->pendingTokenUsage.outputTokens;
-    this->sessionTokenUsage.cachedInputTokens += this->pendingTokenUsage.cachedInputTokens;
+    // Sum token usage from every valid turn for the session totals.
+    Transcript::TokenUsage sessionTokenUsage;
+    sessionTokenUsage.isValid = true;
+    for (const Transcript::Turn& turn : transcript->turns) {
+        if (turn.tokenUsage.isValid) {
+            sessionTokenUsage.uncachedInputTokens += turn.tokenUsage.uncachedInputTokens;
+            sessionTokenUsage.cachedInputTokens += turn.tokenUsage.cachedInputTokens;
+            sessionTokenUsage.outputTokens += turn.tokenUsage.outputTokens;
+        }
+    }
 
-    String turnUsage = formatTokenUsage(String::format("turn #{}", this->nextTurnNumber), this->pendingTokenUsage);
-    String sessionUsage = formatTokenUsage("total", this->sessionTokenUsage);
+    // Format the share of eligible input that was served from cache.
+    auto formatCacheUtilization = [](u64 cachedInputTokens, u64 eligibleInputTokens) {
+        if (eligibleInputTokens == 0) {
+            return String{"n/a"};
+        }
+        return String::format("{:.0f}%", double(cachedInputTokens) * 100.0 / double(eligibleInputTokens));
+    };
+
+    // Calculate per-turn and cumulative cache utilization, then format both usage lines.
+    String turnLabel = String::format("turn #{}", turnNumber);
+    String turnCacheUtilization;
+    String totalCacheUtilization;
+    if (turnNumber > 1) {
+        const Transcript::TokenUsage& previousTokenUsage = transcript->turns[turnNumber - 2].tokenUsage;
+        u64 previousInputTokens = previousTokenUsage.isValid
+                                      ? previousTokenUsage.uncachedInputTokens + previousTokenUsage.cachedInputTokens
+                                      : 0;
+        turnCacheUtilization = formatCacheUtilization(turnTokenUsage.cachedInputTokens, previousInputTokens);
+
+        // Accumulate cache utilization across turns whose preceding usage is known.
+        u64 cacheUtilizedInputTokens = 0;
+        u64 cacheEligibleInputTokens = 0;
+        for (uptr i = 1; i < transcript->turns.numItems(); i++) {
+            const Transcript::TokenUsage& current = transcript->turns[i].tokenUsage;
+            const Transcript::TokenUsage& previous = transcript->turns[i - 1].tokenUsage;
+            u64 eligibleInputTokens = previous.uncachedInputTokens + previous.cachedInputTokens;
+            if (!current.isValid || !previous.isValid || eligibleInputTokens == 0) {
+                continue;
+            }
+            cacheUtilizedInputTokens += current.cachedInputTokens;
+            cacheEligibleInputTokens += eligibleInputTokens;
+        }
+        totalCacheUtilization = formatCacheUtilization(cacheUtilizedInputTokens, cacheEligibleInputTokens);
+    }
+    String turnUsage = formatTokenUsage(turnLabel, turnTokenUsage, turnCacheUtilization);
+    String sessionUsage = formatTokenUsage("total", sessionTokenUsage, totalCacheUtilization);
     Stream out = getStdOut();
     out.format("{}\n{}\n{}\n", turnUsage, sessionUsage, Separator);
     if (options.runWebServer) {
-        webTokenUsage(formatTimeStamp(timeStamp), this->nextTurnNumber, turnUsage, sessionUsage,
-                      this->sessionTokenUsage.uncachedInputTokens, this->sessionTokenUsage.outputTokens);
+        webTokenUsage(formatTimeStamp(timeStamp), turnNumber, turnUsage, sessionUsage,
+                      sessionTokenUsage.uncachedInputTokens, sessionTokenUsage.outputTokens);
     }
-    this->hasPendingTokenUsage = false;
-    this->nextTurnNumber++;
 }
 
 void TranscriptPrinter::handleEvent(const TranscriptEvent& event) {
     switch (event.operation) {
+        case TranscriptEvent::BeginTurn:
+            this->turnEnded = false;
+            break;
         case TranscriptEvent::BeginMessage:
             this->openSection(event.role, event.toolCallID, event.timeStamp);
             break;
@@ -955,10 +1000,6 @@ void TranscriptPrinter::handleEvent(const TranscriptEvent& event) {
                 response->flush();
             }
             break;
-        case TranscriptEvent::SetTokenUsage:
-            this->pendingTokenUsage = event.tokenUsage;
-            this->hasPendingTokenUsage = event.tokenUsage.isValid;
-            break;
         case TranscriptEvent::EndTurn:
             if (this->hasOpen) {
                 this->closeOpen(event.timeStamp);
@@ -966,6 +1007,7 @@ void TranscriptPrinter::handleEvent(const TranscriptEvent& event) {
             this->flushToolResponses(event.timeStamp);
             this->printTokenUsage(event.timeStamp);
             this->displayedToolCallIndices.clear();
+            this->turnEnded = true;
             break;
         default:
             break;
@@ -973,13 +1015,14 @@ void TranscriptPrinter::handleEvent(const TranscriptEvent& event) {
 }
 
 void TranscriptPrinter::finish(s64 endMicros) {
-    if (this->hasOpen) {
-        this->closeOpen(endMicros);
+    if (!this->turnEnded) {
+        if (this->hasOpen) {
+            this->closeOpen(endMicros);
+        }
+        // Flush any tool responses and token usage from a turn canceled before EndTurn.
+        this->flushToolResponses(endMicros);
+        this->printTokenUsage(endMicros);
     }
-    // Flush any tool responses that never got an EndTurn (e.g. the agent was
-    // canceled mid-turn).
-    this->flushToolResponses(endMicros);
-    this->printTokenUsage(endMicros);
 }
 
 //   ▄▄▄▄          ▄▄    ▄▄   ▄▄
