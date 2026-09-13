@@ -38,13 +38,17 @@ struct CommandLineOptions {
     PLY_DECLARE_TYPE_INFO(CommandLineOptions)
 };
 
+struct AppSettings {
+    String userPrompt;
+    Array<String> agentsMDSections;
+    u16 agentProxyPort = 8082;
+    u16 webServerPort = 8081;
+};
+
 CommandLineOptions options;
+AppSettings appSettings;
 Agent::Settings agentSettings;
-String tempUserPrompt; // Will remove later
-Array<String> agentsMDSections;
 Reference<Transcript> transcript;
-u16 agentProxyPort = 8082;
-u16 webServerPort = 8081;
 
 //---------------------------------------------------
 // Helpers for formatting the transcript output.
@@ -1105,7 +1109,7 @@ static bool loadSettingsWithIncludes(StringView settingsPath, Array<String>& inc
                     getStdErr().format("Could not load AGENTS.md file: {}\n", agentsMDPath);
                     return false;
                 }
-                agentsMDSections.append(
+                appSettings.agentsMDSections.append(
                     String::format("\n\n--------------------------------------------------------------------\n"
                                    "[Contents of {}]\n\n{}",
                                    agentsMDPath, content));
@@ -1186,7 +1190,7 @@ static bool loadSettingsWithIncludes(StringView settingsPath, Array<String>& inc
             getStdErr().format("userPrompt must be a string in: {}\n", settingsPath);
             return false;
         }
-        tempUserPrompt = jUserPrompt.text();
+        appSettings.userPrompt = jUserPrompt.text();
     }
 
     // Import directory permissions.
@@ -1306,7 +1310,7 @@ static bool loadSettings() {
     if (!loadSettingsWithIncludes(settingsPath, includedPaths))
         return false;
     if (!options.userPrompt) {
-        options.userPrompt = tempUserPrompt;
+        options.userPrompt = appSettings.userPrompt;
     }
 
     // Augment the system prompt.
@@ -1314,7 +1318,7 @@ static bool loadSettings() {
         String::format("\n\nThe current working directory is: {}", agentSettings.toolSet.workingDirectory);
 
     // Append collected AGENTS.md sections after the current working directory.
-    for (const String& section : agentsMDSections) {
+    for (const String& section : appSettings.agentsMDSections) {
         agentSettings.toolSet.systemPrompt += section;
     }
 
@@ -1354,7 +1358,8 @@ static bool applyProviderOverride() {
 
         // Select either the remote provider endpoint or its local proxy route.
         if (options.useProxy) {
-            agentSettings.endPoint.url = String::format("http://127.0.0.1:{}/{}", agentProxyPort, options.provider);
+            agentSettings.endPoint.url =
+                String::format("http://127.0.0.1:{}/{}", appSettings.agentProxyPort, options.provider);
             agentSettings.endPoint.apiKeyEnv = "NONE";
         } else {
             const json::Node& jUrl = route.get("url");
@@ -1477,7 +1482,7 @@ int main(int argc, const char* argv[]) {
             getStdErr().format("Invalid proxy port '{}': expected an integer from 1 to 65535.\n", options.proxyPort);
             return 1;
         }
-        agentProxyPort = numericCast<u16>(parsedPort);
+        appSettings.agentProxyPort = numericCast<u16>(parsedPort);
     }
 
     // Validate an optional web server port before starting any worker threads.
@@ -1488,7 +1493,7 @@ int main(int argc, const char* argv[]) {
                                options.webServerPort);
             return 1;
         }
-        webServerPort = numericCast<u16>(parsedPort);
+        appSettings.webServerPort = numericCast<u16>(parsedPort);
     }
 
     // Opening the web UI also enables the server that provides it.
@@ -1527,7 +1532,8 @@ int main(int argc, const char* argv[]) {
     Thread webServerThread;
     if (options.runWebServer) {
         Network::initialize(IPv4);
-        webServerThread.run([] { HTTPServer::run(IPAddress::localHost(IPv4), webServerPort, serveWebTranscript); });
+        webServerThread.run(
+            [] { HTTPServer::run(IPAddress::localHost(IPv4), appSettings.webServerPort, serveWebTranscript); });
     }
 
     // Create a transcript with the user's prompt as the first turn.
@@ -1555,7 +1561,7 @@ int main(int argc, const char* argv[]) {
 #else
         StringView launcher = "xdg-open";
 #endif
-        String webURL = String::format("http://127.0.0.1:{}", webServerPort);
+        String webURL = String::format("http://127.0.0.1:{}", appSettings.webServerPort);
         Owned<Subprocess> browser =
             Subprocess::exec(launcher, {webURL}, {}, Subprocess::Output::ignore(), Subprocess::Input::ignore());
         if (!browser) {
