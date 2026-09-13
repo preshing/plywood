@@ -94,13 +94,14 @@ struct Transcript : RefCounted<Transcript> {
 struct TranscriptEvent {
     enum Operation {
         NoOperation,
+        BeginTurn,                // Appends a turn for an inference request
         BeginMessage,             // Requires role and toolCallID (if ToolCall)
         AppendText,               // Requires text
         AppendToolResponse,       // Requires toolCallID and text
         EndToolResponse,          // Requires toolCallID
         AppendProviderOutputItem, // Requires text
         SetTokenUsage,            // Requires tokenUsage
-        EndTurn,
+        EndTurn,                  // Finalizes the current inference request
     };
 
     s64 timeStamp = 0;

@@ -127,12 +127,16 @@ Applications are free to perform additional application-specific handling in res
 
 | | |
 | --- | --- |
+| `BeginTurn` | Appends a new turn for an inference request. |
 | `BeginMessage` | Starts a message with the specified `role`, finalizing the preceding message if necessary. |
 | `AppendText` | Appends `text` to the current message. |
 | `AppendToolResponse` | Appends `text` to the response for the tool call identified by `toolCallID`. |
 | `EndToolResponse` | Finalizes the response for the tool call identified by `toolCallID`. |
 | `AppendProviderOutputItem` | Preserves an opaque provider output item for use when replaying the transcript as context. |
-| `EndTurn` | Finalizes the current message and appends an empty turn for subsequent messages. |
+| `SetTokenUsage` | Stores aggregate token usage on the current turn. |
+| `EndTurn` | Finalizes the current message after an inference request completes. |
+
+For every inference request that completes or reports an error, the agent emits `EndTurn`. If tool calls require another inference request, the agent then emits `BeginTurn` before any events belonging to that request. A canceled inference is incomplete and does not receive `EndTurn`.
 
 ## Tools
 

@@ -67,14 +67,27 @@ String Transcript::Buffer::toString() const {
     return result;
 }
 
+// Returns the indexed tool call from a turn and asserts if the event stream is invalid.
+static Transcript::Message* getToolCall(Transcript::Turn& turn, u32 toolCallID) {
+    PLY_ASSERT(toolCallID > 0);
+    u32 id = 0;
+    for (Owned<Transcript::Message>& msg : turn.messages) {
+        if (msg->role == Transcript::Role::ToolCall && ++id == toolCallID)
+            return msg;
+    }
+    PLY_ASSERT(0);
+    return nullptr;
+}
+
 // Applies a streamed event directly to the supplied transcript.
 void applyTranscriptEvent(Transcript* transcript, const TranscriptEvent& event) {
     switch (event.operation) {
+        case TranscriptEvent::BeginTurn: {
+            transcript->turns.append();
+            break;
+        }
         case TranscriptEvent::BeginMessage: {
-            // Ensure there is a turn to append the message to.
-            if (transcript->turns.isEmpty()) {
-                transcript->turns.append();
-            }
+            PLY_ASSERT(!transcript->turns.isEmpty());
             Transcript::Turn& turn = transcript->turns.back();
             if (turn.messages) {
                 turn.messages.back()->content.flush();
@@ -96,33 +109,15 @@ void applyTranscriptEvent(Transcript* transcript, const TranscriptEvent& event) 
         case TranscriptEvent::AppendToolResponse: {
             PLY_ASSERT(!transcript->turns.isEmpty());
             Transcript::Turn& turn = transcript->turns.back();
-            // Find the toolCallID-th ToolCall message (1-based) and append response text.
-            u32 id = 0;
-            for (Owned<Transcript::Message>& msg : turn.messages) {
-                if (msg->role == Transcript::Role::ToolCall) {
-                    id++;
-                    if (id == event.toolCallID) {
-                        msg->toolResponse.append(event.text);
-                        break;
-                    }
-                }
-            }
+            getToolCall(turn, event.toolCallID)->toolResponse.append(event.text);
             break;
         }
         case TranscriptEvent::EndToolResponse: {
             PLY_ASSERT(!transcript->turns.isEmpty());
             Transcript::Turn& turn = transcript->turns.back();
-            u32 id = 0;
-            for (Owned<Transcript::Message>& msg : turn.messages) {
-                if (msg->role == Transcript::Role::ToolCall) {
-                    id++;
-                    if (id == event.toolCallID) {
-                        msg->toolResponse.flush();
-                        msg->toolEnded = true;
-                        break;
-                    }
-                }
-            }
+            Transcript::Message* toolCall = getToolCall(turn, event.toolCallID);
+            toolCall->toolResponse.flush();
+            toolCall->toolEnded = true;
             break;
         }
         case TranscriptEvent::AppendProviderOutputItem: {
@@ -136,11 +131,11 @@ void applyTranscriptEvent(Transcript* transcript, const TranscriptEvent& event) 
             break;
         }
         case TranscriptEvent::EndTurn: {
-            if (!transcript->turns.isEmpty() && transcript->turns.back().messages) {
-                transcript->turns.back().messages.back()->content.flush();
+            PLY_ASSERT(!transcript->turns.isEmpty());
+            Transcript::Turn& turn = transcript->turns.back();
+            if (turn.messages) {
+                turn.messages.back()->content.flush();
             }
-            // Append a new empty turn for the next round of messages.
-            transcript->turns.append();
             break;
         }
         default:
@@ -288,6 +283,22 @@ static void addEvent(Agent::Impl* impl, TranscriptEvent&& event) {
     bufferEvent(impl, std::move(event));
 }
 
+// Starts a new turn for an inference request.
+// Must be called with toolCtx.mutex held.
+static void beginTurn(Agent::Impl* impl) {
+    TranscriptEvent event;
+    event.operation = TranscriptEvent::BeginTurn;
+    addEvent(impl, std::move(event));
+}
+
+// Finalizes the current turn after an inference request completes.
+// Must be called with toolCtx.mutex held.
+static void endTurn(Agent::Impl* impl) {
+    TranscriptEvent event;
+    event.operation = TranscriptEvent::EndTurn;
+    addEvent(impl, std::move(event));
+}
+
 // Emits a BeginMessage event for the given role. If the role is ToolCall, toolCallID
 // identifies the tool call (1-based, sequential within the current turn).
 // Must be called with toolCtx.mutex held.
@@ -354,9 +365,12 @@ static u32 toolCallIDForMessage(Agent::Impl* impl, Transcript::Message* toolCall
     for (const Owned<Transcript::Message>& msg : turn.messages) {
         if (msg->role == Transcript::Role::ToolCall)
             id++;
-        if (msg.get() == toolCall)
+        if (msg.get() == toolCall) {
+            PLY_ASSERT(msg->role == Transcript::Role::ToolCall);
             return id;
+        }
     }
+    PLY_ASSERT(0);
     return 0;
 }
 
@@ -1469,6 +1483,14 @@ void performInferenceRequest(Agent::Impl* impl, u32 turnNumber) {
 }
 
 void runAgentThread(Agent::Impl* impl) {
+    // Supply the initial turn when the caller passed an empty transcript.
+    {
+        LockGuard<Mutex> guard{impl->toolCtx.mutex};
+        if (impl->internalTranscript->turns.isEmpty() && !impl->toolCtx.isCanceled()) {
+            beginTurn(impl);
+        }
+    }
+
     // Iterate making inference requests until the main thread requests exit
     // or there are no more tool responses to send back.
     for (u32 turnNumber = 1;; turnNumber++) {
@@ -1479,16 +1501,17 @@ void runAgentThread(Agent::Impl* impl) {
             // Consume tool response events and check whether the loop should continue running.
             LockGuard<Mutex> guard{impl->toolCtx.mutex};
 
-            // Has the loop ended? Either there were no tool calls this turn, or the
-            // client destroyed the Agent (setting `canceled`).
-            if (!impl->anyToolCallsThisTurn || impl->toolCtx.isCanceled())
-                break; // Yes
+            // A canceled inference is incomplete and therefore has no EndTurn event.
+            if (impl->toolCtx.isCanceled())
+                break;
 
-            // No; append a new turn for the next inference request. Emit an EndTurn
-            // event so the client appends a matching turn to its own copy.
-            TranscriptEvent endTurn;
-            endTurn.operation = TranscriptEvent::EndTurn;
-            addEvent(impl, std::move(endTurn));
+            // Finalize every completed inference, including the last one.
+            endTurn(impl);
+            if (!impl->anyToolCallsThisTurn)
+                break;
+
+            // Create the destination turn before starting the next inference.
+            beginTurn(impl);
         }
     }
 
@@ -1655,7 +1678,6 @@ StringView ToolContext::getWorkingDirectory() const {
 
 Agent::Agent(const Settings& settings) {
     PLY_ASSERT(settings.startTranscript);
-    PLY_ASSERT(!settings.startTranscript->turns.isEmpty());
 
     // Initialize new Agent.
     this->impl = Heap::create<Agent::Impl>();

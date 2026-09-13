@@ -46,6 +46,7 @@ static bool testTranscriptBuffer() {
 static bool testApplyTranscriptEvent() {
     bool success = true;
     Transcript transcript;
+    transcript.turns.append();
 
     TranscriptEvent event;
     event.operation = TranscriptEvent::BeginMessage;
@@ -101,7 +102,44 @@ static bool testApplyTranscriptEvent() {
     success &= expect(response.lines.numItems() == 2, "EndToolResponse should finalize its incomplete line");
     success &= expect(response.lines[0] == "first\n" && response.lines[1] == "last",
                       "tool response lines should retain their original boundaries");
+
+    // Ending a turn finalizes it without creating another turn.
+    event = {};
+    event.operation = TranscriptEvent::BeginMessage;
+    event.role = Transcript::Role::Agent;
+    applyTranscriptEvent(&transcript, event);
+    event.operation = TranscriptEvent::AppendText;
+    event.text = "done";
+    applyTranscriptEvent(&transcript, event);
+    event = {};
+    event.operation = TranscriptEvent::EndTurn;
+    applyTranscriptEvent(&transcript, event);
+    success &= expect(transcript.turns.numItems() == 1, "EndTurn should not create another turn");
+    success &= expect(transcript.turns[0].messages.back()->content.lines[0] == "done",
+                      "EndTurn should finalize the current message tail");
+
+    // Beginning a turn explicitly creates the destination for subsequent events.
+    event.operation = TranscriptEvent::BeginTurn;
+    applyTranscriptEvent(&transcript, event);
+    success &= expect(transcript.turns.numItems() == 2 && transcript.turns[1].messages.isEmpty(),
+                      "BeginTurn should append one empty destination turn");
+    event = {};
+    event.operation = TranscriptEvent::AppendProviderOutputItem;
+    event.text = R"({"type":"reasoning","encrypted_content":"next"})";
+    applyTranscriptEvent(&transcript, event);
+    success &= expect(transcript.turns[1].providerOutputItems[0] == event.text,
+                      "events after BeginTurn should apply to the new turn");
     return success;
+}
+
+// Verifies that BeginTurn can initialize a completely empty transcript.
+static bool testBeginTurnOnEmptyTranscript() {
+    Transcript transcript;
+    TranscriptEvent event;
+    event.operation = TranscriptEvent::BeginTurn;
+    applyTranscriptEvent(&transcript, event);
+    return expect(transcript.turns.numItems() == 1 && transcript.turns[0].messages.isEmpty(),
+                  "BeginTurn should initialize an empty transcript");
 }
 
 // Verifies that buffers can be converted without first flushing their unfinished tail.
@@ -118,6 +156,7 @@ TestResult runTranscriptTests() {
     TestResult result;
     result.add(testTranscriptBuffer());
     result.add(testApplyTranscriptEvent());
+    result.add(testBeginTurnOnEmptyTranscript());
     result.add(testTranscriptBufferToString());
     if (options.verbose) {
         getStdOut().write(result.isSuccess() ? "Transcript tests passed\n" : "Transcript tests failed\n");
