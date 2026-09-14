@@ -137,6 +137,7 @@ enum class Protocol {
     Completions,
     Responses,
     Anthropic,
+    Interactions,
 };
 
 // Describes an inference provider to connect to.

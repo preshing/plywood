@@ -1233,6 +1233,314 @@ void AnthropicProtocolHandler::receiveLine(StringView line) {
     }
 }
 
+//  ▄▄▄▄         ▄▄                               ▄▄   ▄▄                           ▄▄▄▄  ▄▄▄▄▄  ▄▄▄▄
+//   ██  ▄▄▄▄▄  ▄██▄▄  ▄▄▄▄  ▄▄▄▄▄   ▄▄▄▄   ▄▄▄▄ ▄██▄▄ ▄▄  ▄▄▄▄  ▄▄▄▄▄   ▄▄▄▄      ██  ██ ██  ██  ██
+//   ██  ██  ██  ██   ██▄▄██ ██  ▀▀  ▄▄▄██ ██     ██   ██ ██  ██ ██  ██ ▀█▄▄▄      ██▀▀██ ██▀▀▀   ██
+//  ▄██▄ ██  ██  ▀█▄▄ ▀█▄▄▄  ██     ▀█▄▄██ ▀█▄▄▄  ▀█▄▄ ██ ▀█▄▄█▀ ██  ██  ▄▄▄█▀     ██  ██ ██     ▄██▄
+//
+
+struct InteractionsProtocolHandler : ProtocolHandler {
+    // Accumulate the active streamed step until it is complete and replayable.
+    s32 stepIndex = -1;
+    json::Node step;
+    Transcript::Message* toolCall = nullptr;
+
+    using ProtocolHandler::ProtocolHandler;
+    virtual String makeRequestBody() override;
+    virtual void receiveLine(StringView line) override;
+};
+
+// Append text to the final text block in an Interactions step.
+static void appendInteractionsText(json::Node& step, StringView field, StringView text) {
+    json::Node& jItems = step.get(field);
+    if (!jItems.isArray()) {
+        step.set(field, json::Node::Array{});
+    }
+    Array<json::Node>& items = step.get(field).array();
+    if (items.items() && items.back().get("type").text() == "text") {
+        String combined = items.back().get("text").text();
+        combined += text;
+        items.back().set("text", json::Node::Text{std::move(combined)});
+    } else {
+        json::Node& item = items.append(json::Node::Object{});
+        item.set("type", json::Node::Text{"text"});
+        item.set("text", json::Node::Text{String{text}});
+    }
+}
+
+String InteractionsProtocolHandler::makeRequestBody() {
+    Agent::Impl* impl = this->impl;
+
+    // Discard any incomplete step left by the preceding request.
+    this->stepIndex = -1;
+    this->step = {};
+    this->toolCall = nullptr;
+
+    json::Node root{json::Node::Object{}};
+    root.set("model", json::Node::Text{impl->settings.endPoint.model});
+    root.set("store", json::Node::Bool{false});
+    root.set("stream", json::Node::Bool{true});
+
+    // Send the system prompt as interaction-scoped configuration.
+    if (impl->settings.toolSet.systemPrompt) {
+        root.set("system_instruction", json::Node::Text{impl->settings.toolSet.systemPrompt});
+    }
+
+    // Describe client-side tools using Interactions function declarations.
+    if (impl->settings.toolSet.handlers.items()) {
+        json::Node tools{json::Node::Array{}};
+        for (const Owned<ToolSet::Handler>& tool : impl->settings.toolSet.handlers) {
+            json::Node& jTool = tools.array().append(json::Node::Object{});
+            jTool.set("type", json::Node::Text{"function"});
+            jTool.set("name", json::Node::Text{tool->name});
+            jTool.set("description", json::Node::Text{tool->description});
+            json::Node schema{json::Node::Object{}};
+            schema.set("type", json::Node::Text{"object"});
+            json::Node required{json::Node::Array{}};
+            json::Node properties{json::Node::Object{}};
+            for (const ToolSet::Parameter& param : tool->parameters) {
+                json::Node property{json::Node::Object{}};
+                property.set("type", json::Node::Text{param.type});
+                property.set("description", json::Node::Text{param.description});
+                if (param.type == "array") {
+                    json::Node items{json::Node::Object{}};
+                    items.set("type", json::Node::Text{"object"});
+                    property.set("items", std::move(items));
+                }
+                properties.set(param.name, std::move(property));
+                if (param.required) {
+                    required.array().append(json::Node::Text{param.name});
+                }
+            }
+            schema.set("properties", std::move(properties));
+            schema.set("required", std::move(required));
+            jTool.set("parameters", std::move(schema));
+        }
+        root.set("tools", std::move(tools));
+    }
+
+    // Flatten the transcript into the complete stateless interaction history.
+    Array<const Transcript*> flattened;
+    for (const Transcript* transcript = impl->internalTranscript; transcript; transcript = transcript->parent) {
+        flattened.append(transcript);
+    }
+    json::Node input{json::Node::Array{}};
+    for (s32 i = flattened.numItems() - 1; i >= 0; i--) {
+        for (u32 turnIndex = 0; turnIndex < flattened[i]->turns.numItems(); turnIndex++) {
+            const Transcript::Turn& turn = flattened[i]->turns[turnIndex];
+            json::Node fallbackSteps{json::Node::Array{}};
+            json::Node functionResults{json::Node::Array{}};
+            u32 fallbackToolCallID = 0;
+            for (const Transcript::Message* msg : turn.messages) {
+                if (msg->role == Transcript::Role::User) {
+                    json::Node& userInput = input.array().append(json::Node::Object{});
+                    userInput.set("type", json::Node::Text{"user_input"});
+                    appendInteractionsText(userInput, "content", msg->content.toString());
+                } else if (msg->role == Transcript::Role::Agent && turn.providerOutputItems.isEmpty()) {
+                    json::Node& modelOutput = fallbackSteps.array().append(json::Node::Object{});
+                    modelOutput.set("type", json::Node::Text{"model_output"});
+                    appendInteractionsText(modelOutput, "content", msg->content.toString());
+                } else if (msg->role == Transcript::Role::ToolCall) {
+                    fallbackToolCallID++;
+                    StringView name;
+                    json::Parser::Result parsedArgs;
+                    parseToolCallText(msg->content, name, parsedArgs);
+                    String callID = msg->providerToolCallID
+                                        ? msg->providerToolCallID
+                                        : String::format("call_{}_{}_{}", i, turnIndex, fallbackToolCallID);
+                    if (turn.providerOutputItems.isEmpty()) {
+                        json::Node& functionCall = fallbackSteps.array().append(json::Node::Object{});
+                        functionCall.set("type", json::Node::Text{"function_call"});
+                        functionCall.set("id", json::Node::Text{callID});
+                        functionCall.set("name", json::Node::Text{name});
+                        functionCall.set("arguments", parsedArgs.root.isObject() ? std::move(parsedArgs.root)
+                                                                                 : json::Node{json::Node::Object{}});
+                    }
+                    if (msg->toolEnded) {
+                        json::Node& functionResult = functionResults.array().append(json::Node::Object{});
+                        functionResult.set("type", json::Node::Text{"function_result"});
+                        functionResult.set("name", json::Node::Text{name});
+                        functionResult.set("call_id", json::Node::Text{std::move(callID)});
+                        appendInteractionsText(functionResult, "result", msg->toolResponse.toString());
+                    }
+                }
+            }
+
+            // Replay every signed model step exactly as it was assembled from the stream.
+            for (StringView itemText : turn.providerOutputItems) {
+                json::Parser parser;
+                parser.setErrorCallback([](const json::ParseError&) {});
+                json::Parser::Result item = parser.parse({}, itemText);
+                if (item.root.isObject()) {
+                    input.array().append(std::move(item.root));
+                }
+            }
+            if (turn.providerOutputItems.isEmpty()) {
+                for (json::Node& step : fallbackSteps.array()) {
+                    input.array().append(std::move(step));
+                }
+            }
+            for (json::Node& result : functionResults.array()) {
+                input.array().append(std::move(result));
+            }
+        }
+    }
+    root.set("input", std::move(input));
+
+    // Request thought summaries while allowing the selected model to choose its default effort.
+    json::Node generationConfig{json::Node::Object{}};
+    generationConfig.set("thinking_summaries", json::Node::Text{"auto"});
+    root.set("generation_config", std::move(generationConfig));
+    return json::toString(root, {false});
+}
+
+void InteractionsProtocolHandler::receiveLine(StringView line) {
+    Agent::Impl* impl = this->impl;
+    if (!line.startsWith("data:"))
+        return;
+
+    // Parse one typed event from the Interactions SSE stream.
+    json::Parser parser;
+    parser.setErrorCallback([](const json::ParseError&) {});
+    parser.setGreedy(false);
+    json::Parser::Result result = parser.parse({}, line.substr(5).trim());
+    if (!result.root.isObject())
+        return;
+
+    StringView eventType = result.root.get("event_type").text();
+    if (!eventType) {
+        eventType = result.root.get("type").text();
+    }
+
+    // Start a replayable step and prepare any client-side function call.
+    if (eventType == "step.start") {
+        const json::Node& jStep = result.root.get("step");
+        if (!jStep.isObject())
+            return;
+        this->step = json::Node{jStep};
+        this->stepIndex = (s32) result.root.get("index").getNumber();
+        if (jStep.get("type").text() != "function_call")
+            return;
+        LockGuard<Mutex> guard{impl->toolCtx.mutex};
+        if (impl->toolCtx.isCanceled())
+            return;
+
+        // Buffer the function name followed by its streamed JSON arguments.
+        u32 toolCallID = 1;
+        for (const Owned<Transcript::Message>& msg : impl->internalTranscript->turns.back().messages) {
+            if (msg->role == Transcript::Role::ToolCall) {
+                toolCallID++;
+            }
+        }
+        beginMessage(impl, Transcript::Role::ToolCall, toolCallID, jStep.get("id").text());
+        appendText(impl, String{jStep.get("name").text()});
+        this->toolCall = impl->internalTranscript->turns.back().messages.back().get();
+        impl->currentRole = Transcript::Role::ToolCall;
+    } else if (eventType == "step.delta") {
+        if (this->stepIndex != (s32) result.root.get("index").getNumber())
+            return;
+        const json::Node& delta = result.root.get("delta");
+        StringView deltaType = delta.get("type").text();
+        StringView visibleText;
+        Transcript::Role role = Transcript::Role::None;
+        if (deltaType == "text") {
+            visibleText = delta.get("text").text();
+            if (visibleText) {
+                appendInteractionsText(this->step, "content", visibleText);
+            }
+            role = Transcript::Role::Agent;
+        } else if (deltaType == "thought_summary" || deltaType == "thought") {
+            visibleText = delta.get("content").get("text").text();
+            if (!visibleText) {
+                visibleText = delta.get("text").text();
+            }
+            if (visibleText) {
+                appendInteractionsText(this->step, "summary", visibleText);
+            }
+            role = Transcript::Role::AgentThinking;
+        } else if (deltaType == "thought_signature") {
+            this->step.set("signature", json::Node::Text{String{delta.get("signature").text()}});
+        } else if (deltaType == "arguments_delta" || deltaType == "arguments") {
+            StringView arguments = delta.get("arguments").text();
+            if (!arguments) {
+                arguments = delta.get("partial_arguments").text();
+            }
+            if (this->toolCall) {
+                LockGuard<Mutex> guard{impl->toolCtx.mutex};
+                if (impl->toolCtx.isCanceled())
+                    return;
+                appendText(impl, String{arguments});
+            }
+        }
+        if (role != Transcript::Role::None && visibleText) {
+            LockGuard<Mutex> guard{impl->toolCtx.mutex};
+            if (impl->toolCtx.isCanceled())
+                return;
+            emitText(impl, role, visibleText);
+        }
+    } else if (eventType == "step.stop") {
+        LockGuard<Mutex> guard{impl->toolCtx.mutex};
+        if (impl->toolCtx.isCanceled())
+            return;
+        if (this->stepIndex != (s32) result.root.get("index").getNumber() || !this->step.isObject())
+            return;
+        if (this->toolCall) {
+            // Queue the function only after its complete argument JSON has arrived.
+            if (this->toolCall->content.toString().find('{') < 0) {
+                appendText(impl, String{"{}"});
+            }
+            this->toolCall->content.flush();
+            StringView name;
+            json::Parser::Result parsedArgs;
+            parseToolCallText(this->toolCall->content, name, parsedArgs);
+            this->step.get("arguments") =
+                parsedArgs.root.isObject() ? std::move(parsedArgs.root) : json::Node{json::Node::Object{}};
+            impl->anyToolCallsThisTurn = true;
+            impl->pendingToolCalls.append(this->toolCall);
+            impl->toolCondVar.wakeAll();
+            this->toolCall = nullptr;
+        }
+
+        // Preserve the completed step for exact stateless replay on the next request.
+        TranscriptEvent itemEvent;
+        itemEvent.operation = TranscriptEvent::AppendProviderOutputItem;
+        itemEvent.text = json::toString(this->step, {false});
+        addEvent(impl, std::move(itemEvent));
+        this->step = {};
+        this->stepIndex = -1;
+    } else if (eventType == "interaction.completed") {
+        const json::Node& interaction = result.root.get("interaction");
+        const json::Node& usage = interaction.get("usage");
+        LockGuard<Mutex> guard{impl->toolCtx.mutex};
+        if (impl->toolCtx.isCanceled())
+            return;
+        if (usage.isObject()) {
+            Transcript::TokenUsage tokenUsage;
+            tokenUsage.isValid = true;
+            copyTokenCount(tokenUsage.cachedInputTokens, usage.get("total_cached_tokens"));
+            copyUncachedInputCount(tokenUsage.uncachedInputTokens, usage.get("total_input_tokens"),
+                                   tokenUsage.cachedInputTokens);
+            u64 outputTokens = 0;
+            u64 thoughtTokens = 0;
+            copyTokenCount(outputTokens, usage.get("total_output_tokens"));
+            copyTokenCount(thoughtTokens, usage.get("total_thought_tokens"));
+            tokenUsage.outputTokens = outputTokens + thoughtTokens;
+            setTokenUsage(impl, tokenUsage);
+        }
+        StringView status = interaction.get("status").text();
+        if (status && status != "completed" && status != "requires_action") {
+            emitText(impl, Transcript::Role::Error,
+                     String::format("Interactions API completed with status {}", status));
+        }
+    } else if (eventType == "error" || eventType == "interaction.failed") {
+        LockGuard<Mutex> guard{impl->toolCtx.mutex};
+        if (impl->toolCtx.isCanceled())
+            return;
+        StringView message = result.root.get("error").get("message").text();
+        emitText(impl, Transcript::Role::Error, message ? message : "Interactions API request failed");
+    }
+}
+
 //  ▄▄▄▄          ▄▄▄                                              ▄▄▄▄▄▄ ▄▄                              ▄▄
 //   ██  ▄▄▄▄▄   ██    ▄▄▄▄  ▄▄▄▄▄   ▄▄▄▄  ▄▄▄▄▄   ▄▄▄▄  ▄▄▄▄        ██   ██▄▄▄  ▄▄▄▄▄   ▄▄▄▄   ▄▄▄▄   ▄▄▄██
 //   ██  ██  ██ ▀██▀▀ ██▄▄██ ██  ▀▀ ██▄▄██ ██  ██ ██    ██▄▄██       ██   ██  ██ ██  ▀▀ ██▄▄██  ▄▄▄██ ██  ██
@@ -1290,6 +1598,8 @@ static StringView getProtocolName(Protocol protocol) {
             return "responses";
         case Protocol::Anthropic:
             return "anthropic";
+        case Protocol::Interactions:
+            return "interactions";
     }
     PLY_ASSERT(0);
     return {};
@@ -1351,6 +1661,8 @@ void performInferenceRequest(Agent::Impl* impl, u32 turnNumber) {
         }
         if (impl->settings.endPoint.protocol == Protocol::Anthropic) {
             *headers.insert("x-api-key").value = std::move(apiKey);
+        } else if (impl->settings.endPoint.protocol == Protocol::Interactions) {
+            *headers.insert("x-goog-api-key").value = std::move(apiKey);
         } else {
             *headers.insert("Authorization").value = String::format("Bearer {}", apiKey);
         }
@@ -1694,6 +2006,8 @@ Agent::Agent(const Settings& settings) {
         impl->protocolHandler = Heap::create<ResponsesProtocolHandler>(impl);
     } else if (impl->settings.endPoint.protocol == Protocol::Anthropic) {
         impl->protocolHandler = Heap::create<AnthropicProtocolHandler>(impl);
+    } else if (impl->settings.endPoint.protocol == Protocol::Interactions) {
+        impl->protocolHandler = Heap::create<InteractionsProtocolHandler>(impl);
     } else {
         PLY_ASSERT(0);
     }

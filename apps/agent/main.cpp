@@ -1157,6 +1157,8 @@ static bool loadSettingsWithIncludes(StringView settingsPath, Array<String>& inc
             agentSettings.endPoint.protocol = Protocol::Responses;
         } else if (protocol == "anthropic") {
             agentSettings.endPoint.protocol = Protocol::Anthropic;
+        } else if (protocol == "interactions") {
+            agentSettings.endPoint.protocol = Protocol::Interactions;
         } else {
             getStdErr().format("Unknown protocol '{}' in: {}\n", protocol, settingsPath);
             return false;
@@ -1349,9 +1351,11 @@ static bool applyProviderOverride() {
     for (const json::Node& route : result.root.arrayView()) {
         if (!route.isObject() || !route.get("provider").isText() || route.get("provider").text() != options.provider)
             continue;
+        const json::Node& jUrl = route.get("url");
         const json::Node& jProtocol = route.get("protocol");
+        const json::Node& jApiKeyEnv = route.get("apiKeyEnv");
         const json::Node& jDefaultModel = route.get("defaultModel");
-        if (!jProtocol.isText() || !jDefaultModel.isText()) {
+        if (!jUrl.isText() || !jProtocol.isText() || !jApiKeyEnv.isText() || !jDefaultModel.isText()) {
             getStdErr().format("Invalid route for provider '{}': {}\n", options.provider, routesPath);
             return false;
         }
@@ -1362,12 +1366,6 @@ static bool applyProviderOverride() {
                 String::format("http://127.0.0.1:{}/{}", appSettings.agentProxyPort, options.provider);
             agentSettings.endPoint.apiKeyEnv = "NONE";
         } else {
-            const json::Node& jUrl = route.get("url");
-            const json::Node& jApiKeyEnv = route.get("apiKeyEnv");
-            if (!jUrl.isText() || !jApiKeyEnv.isText()) {
-                getStdErr().format("Invalid route for provider '{}': {}\n", options.provider, routesPath);
-                return false;
-            }
             agentSettings.endPoint.url = jUrl.text();
             agentSettings.endPoint.apiKeyEnv = jApiKeyEnv.text();
         }
@@ -1378,6 +1376,8 @@ static bool applyProviderOverride() {
             agentSettings.endPoint.protocol = Protocol::Responses;
         } else if (jProtocol.text() == "anthropic") {
             agentSettings.endPoint.protocol = Protocol::Anthropic;
+        } else if (jProtocol.text() == "interactions") {
+            agentSettings.endPoint.protocol = Protocol::Interactions;
         } else {
             getStdErr().format("Unknown protocol '{}' for provider '{}': {}\n", jProtocol.text(), options.provider,
                                routesPath);

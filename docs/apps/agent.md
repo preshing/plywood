@@ -71,6 +71,7 @@ The choice of model can be overridden using `-m/--model`.
 |---|---|---|---|
 | `openai` | `https://api.openai.com/v1/responses` | `OPENAI_API_KEY` | `gpt-5.6-luna` |
 | `anthropic` | `https://api.anthropic.com/v1/messages` | `ANTHROPIC_API_KEY` | `claude-haiku-4-5` |
+| `google` | Gemini Interactions API | `GEMINI_API_KEY` | `gemini-3.8-flash` |
 | `ollama-cloud` | `https://ollama.com/v1/chat/completions` | `OLLAMA_API_KEY` | `deepseek-v4-flash` |
 
 The agent reads its API key from the environment variable named by the endpoint's `apiKeyEnv` property. If this
@@ -100,7 +101,7 @@ The settings file must contain a single JSON object with any of the following op
 
 - `endPoint`: A subobject with four required properties. Provider endpoints can be defined here instead of using the `-p/--provider` command-line option.
     - `url`: The URL of an inference server.
-    - `protocol`: Must be one of "completions", "responses" or "anthropic".
+    - `protocol`: Must be one of "completions", "responses", "anthropic" or "interactions".
     - `apiKeyEnv`: The name of an environment variable containing an API key, or `NONE` to omit authentication.
     - `model`: The name of the model to use.
 - `systemPrompt`: A system prompt message.

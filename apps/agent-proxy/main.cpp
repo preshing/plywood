@@ -25,6 +25,7 @@ enum class Protocol {
     Completions,
     Responses,
     Anthropic,
+    Interactions,
 };
 
 struct Route {
@@ -114,6 +115,8 @@ static bool loadSettings() {
             protocol = Protocol::Responses;
         } else if (jProtocol.text() == "anthropic") {
             protocol = Protocol::Anthropic;
+        } else if (jProtocol.text() == "interactions") {
+            protocol = Protocol::Interactions;
         } else {
             getStdErr().format("Unknown protocol '{}' in: {}\n", jProtocol.text(), providersPath);
             return false;
@@ -142,13 +145,13 @@ static void sendProxyError(HTTPServer::Request& request, u32 statusCode, String&
     request.sendFullResponse(std::move(response), json::toString(root, {false}));
 }
 
-// Find the fixed upstream associated with an incoming URI.
+// Find the fixed upstream associated with an incoming provider URI.
 static const Route* findRoute(StringView uri) {
     if (!uri.startsWith("/"))
         return nullptr;
     StringView provider = uri.substr(1);
     for (const Route& route : settings.routes) {
-        if (route.provider == provider)
+        if (provider == route.provider)
             return &route;
     }
     return nullptr;
@@ -179,9 +182,15 @@ static void proxyRequest(HTTPServer::Request& request) {
             String::format("API key environment variable {} is not a valid HTTP header value", route->apiKeyEnv));
         return;
     }
-
     // Copy end-to-end request headers while replacing the protocol's credential.
-    StringView apiKeyHeader = route->protocol == Protocol::Anthropic ? "x-api-key" : "authorization";
+    StringView apiKeyHeader;
+    if (route->protocol == Protocol::Anthropic) {
+        apiKeyHeader = "x-api-key";
+    } else if (route->protocol == Protocol::Interactions) {
+        apiKeyHeader = "x-goog-api-key";
+    } else {
+        apiKeyHeader = "authorization";
+    }
     Map<String, String> upstreamHeaders;
     for (const auto& item : request.headers.items()) {
         if (isEndToEndHeader(item.key) && !isNamedByConnectionHeader(item.key, request.headers) &&
@@ -190,7 +199,9 @@ static void proxyRequest(HTTPServer::Request& request) {
         }
     }
     *upstreamHeaders.insert(apiKeyHeader).value =
-        route->protocol == Protocol::Anthropic ? std::move(apiKey) : String::format("Bearer {}", apiKey);
+        route->protocol == Protocol::Completions || route->protocol == Protocol::Responses
+            ? String::format("Bearer {}", apiKey)
+            : std::move(apiKey);
 
     // Relay the upstream response into a close-delimited streaming response.
     bool responseStarted = false;
