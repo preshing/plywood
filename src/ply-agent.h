@@ -134,6 +134,7 @@ void applyTranscriptEvent(Transcript* transcript, const TranscriptEvent& event);
 
 // Determines the format of messages sent and received in the endpoint's underlying protocol.
 enum class Protocol {
+    Unset,
     Completions,
     Responses,
     Anthropic,
@@ -142,9 +143,10 @@ enum class Protocol {
 
 // Describes an inference provider to connect to.
 struct EndPoint {
+    String provider;
     String url;
+    Protocol protocol = Protocol::Unset;
     String apiKeyEnv;
-    Protocol protocol = Protocol::Completions;
     String model;
 };
 
@@ -165,7 +167,6 @@ struct ToolSet {
         String description;
         Array<Parameter> parameters;
         Functor<void(ToolContext* toolCtx, Transcript::Message* toolCall, const json::Node& arguments)> handler;
-        Array<String> permittedDirectories;
 
         StringView getLookupKey() const {
             return this->name;
@@ -175,6 +176,8 @@ struct ToolSet {
     String systemPrompt;
     Set<Owned<Handler>> handlers;
     String workingDirectory;
+    Array<String> readableDirectories;
+    Array<String> writableDirectories;
 };
 
 // Agent provides the public API for operating LLM agents.
@@ -230,8 +233,8 @@ struct ToolContext {
     // The agent's working directory.
     StringView getWorkingDirectory() const;
 
-    // The directories that the tool is allowed to work in.
-    ArrayView<const String> getPermittedDirectories() const;
+    // Returns an absolute path if the specified access is permitted; otherwise returns an empty string.
+    String checkPathPermission(StringView path, bool withWriteAccess) const;
 
     // Returns whether cancellation has been requested. Should be checked periodically for long-running tools.
     bool isCanceled() const;
@@ -250,7 +253,10 @@ struct ToolContext {
 
 // Individual tool registration functions. Each adds a single tool and returns its handler.
 #if !defined(PLY_IOS)
-ToolSet::Handler* addShellTool(ToolSet* toolSet);
+struct ShellToolSettings {
+    bool unrestricted = true; // Explicitly bypasses filesystem permissions.
+};
+ToolSet::Handler* addShellTool(ToolSet* toolSet, const ShellToolSettings& settings = {});
 #endif // !defined(PLY_IOS)
 ToolSet::Handler* addReadTool(ToolSet* toolSet);
 ToolSet::Handler* addWriteTool(ToolSet* toolSet);

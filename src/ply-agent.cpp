@@ -205,7 +205,6 @@ struct ToolContextImpl : ToolContext {
     Atomic<bool> canceled = false;
     Functor<void()> cancelCallback;
     Agent::Impl* agentImpl = nullptr;
-    ArrayView<const String> permittedDirectories;
     StringView workingDirectory;
 };
 
@@ -1592,6 +1591,8 @@ void receiveLineInProgress(Agent::Impl* impl) {
 // Convert the Protocol enum to a string.
 static StringView getProtocolName(Protocol protocol) {
     switch (protocol) {
+        case Protocol::Unset:
+            break;
         case Protocol::Completions:
             return "completions";
         case Protocol::Responses:
@@ -1909,8 +1910,6 @@ void runToolThread(Agent::Impl* impl) {
         PLY_ASSERT(found);
         const ToolSet::Handler* toolDef = found->get();
         {
-            // Set the permitted directories for this tool call.
-            PLY_SET_IN_SCOPE(impl->toolCtx.permittedDirectories, toolDef->permittedDirectories);
             toolDef->handler(&impl->toolCtx, toolCall, arguments);
             // The handler must not leave a cancel callback set.
             PLY_ASSERT(!impl->toolCtx.cancelCallback);
@@ -1972,10 +1971,6 @@ void ToolContext::appendResponse(Transcript::Message* toolCall, StringView text)
         appendResp.text = text;
         bufferEvent(impl->agentImpl, std::move(appendResp));
     }
-}
-
-ArrayView<const String> ToolContext::getPermittedDirectories() const {
-    return static_cast<const ToolContextImpl*>(this)->permittedDirectories;
 }
 
 StringView ToolContext::getWorkingDirectory() const {
@@ -2142,26 +2137,16 @@ Array<TranscriptEvent> Agent::waitForCompletion(s32 maxTimeInMillis) {
 //--------------------------------------------------
 // Tool permission helpers
 //--------------------------------------------------
-struct FilteredPath {
-    bool ok = false;
-    String absPath;
-};
-
-bool dirContainsPath(String dir, String path) {
-    if (dir == path)
-        return true;
-    if (path.startsWith(dir) && path[dir.numBytes()] == getPathSeparator())
-        return true;
-    return false;
-}
-
-FilteredPath filterPath(ToolContext* toolCtx, StringView relPath) {
-    String absPath = joinPath(toolCtx->getWorkingDirectory(), relPath);
-    for (const String& permittedDir : toolCtx->getPermittedDirectories()) {
-        if (dirContainsPath(permittedDir, absPath))
-            return {true, std::move(absPath)};
+String ToolContext::checkPathPermission(StringView path, bool withWriteAccess) const {
+    String absPath = makeAbsolutePath(joinPath(this->getWorkingDirectory(), path));
+    const ToolSet& toolSet = static_cast<const ToolContextImpl*>(this)->agentImpl->settings.toolSet;
+    const Array<String>& directories = withWriteAccess ? toolSet.writableDirectories : toolSet.readableDirectories;
+    for (const String& dir : directories) {
+        if (dir == absPath || (dir && absPath.numBytes() > dir.numBytes() && absPath.startsWith(dir) &&
+                               (isPathSeparator(dir.back()) || isPathSeparator(absPath[dir.numBytes()]))))
+            return absPath;
     }
-    return {false, {}};
+    return {};
 }
 
 //         ▄▄            ▄▄▄  ▄▄▄
@@ -2171,8 +2156,6 @@ FilteredPath filterPath(ToolContext* toolCtx, StringView relPath) {
 //
 
 #if !defined(PLY_IOS)
-
-// FIXME: Add auto-approve mode for extra security.
 
 void shellToolHandler(ToolContext* toolCtx, Transcript::Message* toolCall, const json::Node& arguments) {
     // Validate arguments.
@@ -2233,7 +2216,7 @@ void shellToolHandler(ToolContext* toolCtx, Transcript::Message* toolCall, const
     toolCtx->appendResponse(toolCall, response.moveToString());
 }
 
-ToolSet::Handler* addShellTool(ToolSet* toolSet) {
+ToolSet::Handler* addShellTool(ToolSet* toolSet, const ShellToolSettings& settings) {
     Owned<ToolSet::Handler> shellTool = Heap::create<ToolSet::Handler>();
     shellTool->name = "shell";
     shellTool->description = "Execute a command using the system shell in the current working directory. "
@@ -2244,6 +2227,7 @@ ToolSet::Handler* addShellTool(ToolSet* toolSet) {
     shellTool->parameters.back().type = "string";
     shellTool->parameters.back().required = true;
     shellTool->handler = shellToolHandler;
+    PLY_UNUSED(settings); // Will use this later.
     return toolSet->handlers.insertItem(std::move(shellTool)).item->get();
 }
 
@@ -2265,14 +2249,14 @@ void readToolHandler(ToolContext* toolCtx, Transcript::Message* toolCall, const 
 
     // Check permissions.
     StringView path = pathArg.text();
-    FilteredPath fp = filterPath(toolCtx, path);
-    if (!fp.ok) {
+    String absPath = toolCtx->checkPathPermission(path, false);
+    if (!absPath) {
         toolCtx->appendResponse(toolCall, "Error: Permission denied.");
         return;
     }
 
     // Open file.
-    Stream in = FileSystem::openTextForReadAutodetect(fp.absPath);
+    Stream in = FileSystem::openTextForReadAutodetect(absPath);
     if (FileSystem::lastResult() != FSResult::OK) {
         toolCtx->appendResponse(toolCall, String::format("Error: Could not read file '{}'.", path));
         return;
@@ -2360,15 +2344,33 @@ void writeToolHandler(ToolContext* toolCtx, Transcript::Message* toolCall, const
 
     // Check permissions.
     StringView path = pathArg.text();
-    FilteredPath fp = filterPath(toolCtx, path);
-    if (!fp.ok) {
+    String absPath = toolCtx->checkPathPermission(path, true);
+    if (!absPath) {
         toolCtx->appendResponse(toolCall, "Error: Permission denied.");
+        return;
+    }
+
+    // Create missing parent directories only when each new directory is writable.
+    String parent = splitPath(absPath).directory;
+    for (String missing = parent; FileSystem::exists(missing) == ExistsResult::NotFound;) {
+        if (!toolCtx->checkPathPermission(missing, true)) {
+            toolCtx->appendResponse(toolCall, "Error: Permission denied for a missing parent directory.");
+            return;
+        }
+        String next = splitPath(missing).directory;
+        if (next == missing)
+            break;
+        missing = std::move(next);
+    }
+    FSResult parentResult = FileSystem::makeDirs(parent);
+    if (parentResult != FSResult::OK && parentResult != FSResult::AlreadyExists) {
+        toolCtx->appendResponse(toolCall, String::format("Error: Could not create parent directory for '{}'.", path));
         return;
     }
 
     // Save file.
     StringView content = contentArg.text();
-    FSResult fsResult = FileSystem::saveText(fp.absPath, content);
+    FSResult fsResult = FileSystem::saveText(absPath, content);
     if (fsResult == FSResult::OK) {
         toolCtx->appendResponse(toolCall,
                                 String::format("Successfully wrote {} bytes to '{}'.", content.numBytes(), path));
@@ -2412,14 +2414,14 @@ void listDirToolHandler(ToolContext* toolCtx, Transcript::Message* toolCall, con
 
     // Check permissions.
     StringView path = pathArg.text();
-    FilteredPath fp = filterPath(toolCtx, path);
-    if (!fp.ok) {
+    String absPath = toolCtx->checkPathPermission(path, false);
+    if (!absPath) {
         toolCtx->appendResponse(toolCall, "Error: Permission denied.");
         return;
     }
 
     // List directory.
-    Array<DirectoryEntry> entries = FileSystem::listDir(fp.absPath);
+    Array<DirectoryEntry> entries = FileSystem::listDir(absPath);
     if (FileSystem::lastResult() != FSResult::OK) {
         toolCtx->appendResponse(toolCall, String::format("Error: Could not list '{}'.", path));
         return;
@@ -2528,10 +2530,12 @@ struct GitIgnoreContents {
 
 // Loads the .gitignore file for the specified directory.
 // Returns an empty object if no .gitignore file found.
-GitIgnoreContents loadGitIgnoreForDirectory(StringView absDirPath) {
+GitIgnoreContents loadGitIgnoreForDirectory(ToolContext* toolCtx, StringView absDirPath) {
     PLY_ASSERT(isAbsolutePath(absDirPath));
 
-    String gitIgnorePath = joinPath(absDirPath, ".gitignore");
+    String gitIgnorePath = toolCtx->checkPathPermission(joinPath(absDirPath, ".gitignore"), false);
+    if (!gitIgnorePath)
+        return {};
     String text = FileSystem::loadTextAutodetect(gitIgnorePath);
     if (!text)
         return {};
@@ -2570,7 +2574,7 @@ GitIgnoreContents loadGitIgnoreForDirectory(StringView absDirPath) {
 }
 
 // Returns an array of .gitignore file contents from all ancestor directories.
-Array<GitIgnoreContents> loadAllAncestorGitIgnoreFiles(StringView absDirPath) {
+Array<GitIgnoreContents> loadAllAncestorGitIgnoreFiles(ToolContext* toolCtx, StringView absDirPath) {
     PLY_ASSERT(isAbsolutePath(absDirPath));
     Array<GitIgnoreContents> result;
 
@@ -2582,7 +2586,7 @@ Array<GitIgnoreContents> loadAllAncestorGitIgnoreFiles(StringView absDirPath) {
             break; // Reached the file system root.
         currentDir = sp.directory;
 
-        GitIgnoreContents contents = loadGitIgnoreForDirectory(currentDir);
+        GitIgnoreContents contents = loadGitIgnoreForDirectory(toolCtx, currentDir);
         if (contents.items) {
             result.append(std::move(contents));
         }
@@ -2624,13 +2628,16 @@ struct FindInFiles {
 };
 
 void findInFiles(FindInFiles& findInfo, StringView absPath, bool isDir) {
+    // Stop promptly when the caller cancels a recursive search.
+    if (findInfo.toolCtx->isCanceled())
+        return;
     if (isIgnored(findInfo.ignoreLists, absPath, isDir))
         return;
 
     if (isDir) {
         // Load .gitignore file for this directory.
         bool pushedGitIgnore = false;
-        GitIgnoreContents contents = loadGitIgnoreForDirectory(absPath);
+        GitIgnoreContents contents = loadGitIgnoreForDirectory(findInfo.toolCtx, absPath);
         if (!contents.items.isEmpty()) {
             findInfo.ignoreLists.append(std::move(contents));
             pushedGitIgnore = true;
@@ -2686,14 +2693,14 @@ void findInFilesToolHandler(ToolContext* toolCtx, Transcript::Message* toolCall,
 
     // Check permissions.
     StringView path = pathArg.text();
-    FilteredPath fp = filterPath(toolCtx, path);
-    if (!fp.ok) {
+    String absPath = toolCtx->checkPathPermission(path, false);
+    if (!absPath) {
         toolCtx->appendResponse(toolCall, "Error: Permission denied.");
         return;
     }
 
     // Check that the search path exists.
-    if (FileSystem::exists(fp.absPath) == ExistsResult::NotFound) {
+    if (FileSystem::exists(absPath) == ExistsResult::NotFound) {
         toolCtx->appendResponse(toolCall, String::format("Error: Path '{}' does not exist.", path));
         return;
     }
@@ -2702,12 +2709,12 @@ void findInFilesToolHandler(ToolContext* toolCtx, Transcript::Message* toolCall,
     FindInFiles findInfo;
     findInfo.toolCtx = toolCtx;
     findInfo.toolCall = toolCall;
-    findInfo.ignoreLists = loadAllAncestorGitIgnoreFiles(fp.absPath);
+    findInfo.ignoreLists = loadAllAncestorGitIgnoreFiles(toolCtx, absPath);
     findInfo.glob = globArg.text();
     findInfo.text = textArg.text();
-    findInfo.root = fp.absPath;
+    findInfo.root = absPath;
 
-    findInFiles(findInfo, fp.absPath, FileSystem::isDir(fp.absPath));
+    findInFiles(findInfo, absPath, FileSystem::isDir(absPath));
 }
 
 ToolSet::Handler* addFindInFilesTool(ToolSet* toolSet) {
@@ -2760,14 +2767,14 @@ void editToolHandler(ToolContext* toolCtx, Transcript::Message* toolCall, const 
 
     // Check permissions.
     StringView path = pathArg.text();
-    FilteredPath fp = filterPath(toolCtx, path);
-    if (!fp.ok) {
+    String absPath = toolCtx->checkPathPermission(path, true);
+    if (!absPath) {
         toolCtx->appendResponse(toolCall, "Error: Permission denied.");
         return;
     }
 
     // Load file contents.
-    String text = FileSystem::loadTextAutodetect(fp.absPath);
+    String text = FileSystem::loadTextAutodetect(absPath);
     if (FileSystem::lastResult() != FSResult::OK) {
         toolCtx->appendResponse(toolCall, String::format("Error: Could not read file '{}'.", path));
         return;
@@ -2834,7 +2841,7 @@ void editToolHandler(ToolContext* toolCtx, Transcript::Message* toolCall, const 
     }
 
     // Save file.
-    FSResult fsResult = FileSystem::saveText(fp.absPath, mutableText);
+    FSResult fsResult = FileSystem::saveText(absPath, mutableText);
     if (fsResult == FSResult::OK) {
         toolCtx->appendResponse(toolCall, String::format("Successfully edited '{}' with {} replacement(s).", path,
                                                          editPositions.numItems()));

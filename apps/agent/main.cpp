@@ -1035,6 +1035,162 @@ void TranscriptPrinter::finish(s64 endMicros) {
 //  ▀█▄▄█▀ ▀█▄▄▄   ▀█▄▄  ▀█▄▄ ██ ██  ██ ▀█▄▄██  ▄▄▄█▀
 //                                       ▄▄▄█▀
 
+// Convert a provider protocol name to its enum value.
+static Protocol parseProtocol(StringView name) {
+    if (name == "completions")
+        return Protocol::Completions;
+    if (name == "responses")
+        return Protocol::Responses;
+    if (name == "anthropic")
+        return Protocol::Anthropic;
+    if (name == "interactions")
+        return Protocol::Interactions;
+    return Protocol::Unset;
+}
+
+// Replace the inherited endpoint with either a provider preset or a custom endpoint.
+static bool loadEndPoint(const json::Node& root, StringView settingsPath, EndPoint& endPoint) {
+    if (!root.get("provider") && !root.get("url") && !root.get("protocol") && !root.get("apiKeyEnv") &&
+        !root.get("model"))
+        return true;
+
+    // Inherited endpoint selections must be fully replaced.
+    endPoint = {};
+    if (const json::Node& provider = root.get("provider")) {
+        if (!provider.isText() || !provider.text()) {
+            getStdErr().format("provider must be a non-empty string in: {}\n", settingsPath);
+            return false;
+        }
+        if (root.get("url") || root.get("protocol") || root.get("apiKeyEnv")) {
+            getStdErr().format("provider cannot be combined with url, protocol, or apiKeyEnv in: {}\n", settingsPath);
+            return false;
+        }
+        endPoint.provider = provider.text();
+        if (const json::Node& model = root.get("model")) {
+            if (!model.isText() || !model.text()) {
+                getStdErr().format("model must be a non-empty string in: {}\n", settingsPath);
+                return false;
+            }
+            endPoint.model = model.text();
+        }
+        return true;
+    }
+
+    // Import url.
+    const auto& jUrl = root.get("url");
+    if (!jUrl.isText()) {
+        getStdErr().format("url must be a string in: {}\n", settingsPath);
+        return false;
+    }
+    endPoint.url = jUrl.text();
+
+    // Import apiKeyEnv.
+    const auto& jApiKeyEnv = root.get("apiKeyEnv");
+    if (!jApiKeyEnv.isText()) {
+        getStdErr().format("apiKeyEnv must be a string in: {}\n", settingsPath);
+        return false;
+    }
+    // The API key is read from the named environment variable on demand.
+    endPoint.apiKeyEnv = jApiKeyEnv.text();
+
+    // Import protocol.
+    const auto& jProtocol = root.get("protocol");
+    if (!jProtocol.isText()) {
+        getStdErr().format("protocol must be a string in: {}\n", settingsPath);
+        return false;
+    }
+    endPoint.protocol = parseProtocol(jProtocol.text());
+    if (endPoint.protocol == Protocol::Unset) {
+        getStdErr().format("Unknown protocol '{}' in: {}\n", jProtocol.text(), settingsPath);
+        return false;
+    }
+
+    // Import model.
+    const auto& jModel = root.get("model");
+    if (!jModel.isText()) {
+        getStdErr().format("model must be a string in: {}\n", settingsPath);
+        return false;
+    }
+    endPoint.model = jModel.text();
+    return true;
+}
+
+// Merge recursive directory grants using the declaring file's working directory.
+static bool loadPermission(const json::Node& root, StringView name, StringView workingDir, StringView settingsPath,
+                           Array<String>& directories, Array<String>* impliedDirectories = nullptr) {
+    const json::Node& grants = root.get(name);
+    if (!grants)
+        return true;
+    if (!grants.isArray()) {
+        getStdErr().format("{} must be an array of directory strings in: {}\n", name, settingsPath);
+        return false;
+    }
+    for (const json::Node& grant : grants.arrayView()) {
+        if (!grant.isText() || !grant.text()) {
+            getStdErr().format("{} entries must be non-empty directory strings in: {}\n", name, settingsPath);
+            return false;
+        }
+        String path = makeAbsolutePath(joinPath(workingDir, grant.text()));
+        if (find(directories, path) < 0) {
+            directories.append(path);
+        }
+        if (impliedDirectories && find(*impliedDirectories, path) < 0) {
+            impliedDirectories->append(std::move(path));
+        }
+    }
+    return true;
+}
+
+// Validate tool entries independently of directory permissions and merge by tool name.
+static bool loadTools(const json::Node& root, StringView settingsPath) {
+    const json::Node& tools = root.get("tools");
+    if (!tools)
+        return true;
+    if (!tools.isArray()) {
+        getStdErr().format("tools must be an array in: {}\n", settingsPath);
+        return false;
+    }
+    Array<String> localNames;
+    for (const json::Node& entry : tools.arrayView()) {
+        if (!entry.isText() || !entry.text()) {
+            getStdErr().format("Each tool must be a non-empty string in: {}\n", settingsPath);
+            return false;
+        }
+        StringView name = entry.text();
+        if (find(localNames, name) >= 0) {
+            getStdErr().format("Duplicate tool '{}' in: {}\n", name, settingsPath);
+            return false;
+        }
+        localNames.append(name);
+        // Register each tool on its first occurrence across the include chain.
+        if (agentSettings.toolSet.handlers.find(name))
+            continue;
+        if (name == "read") {
+            addReadTool(&agentSettings.toolSet);
+        } else if (name == "write") {
+            addWriteTool(&agentSettings.toolSet);
+        } else if (name == "edit") {
+            addEditTool(&agentSettings.toolSet);
+        } else if (name == "list_dir") {
+            addListDirTool(&agentSettings.toolSet);
+        } else if (name == "find_in_files") {
+            addFindInFilesTool(&agentSettings.toolSet);
+#if !defined(PLY_IOS)
+        } else if (name == "shell") {
+            addShellTool(&agentSettings.toolSet);
+#else
+        } else if (name == "shell") {
+            getStdErr().write("The shell tool is not available on iOS.\n");
+            return false;
+#endif
+        } else {
+            getStdErr().format("Unknown tool '{}' in: {}\n", name, settingsPath);
+            return false;
+        }
+    }
+    return true;
+}
+
 // Load a chain of JSON settings files by following includes and merge them into one.
 static bool loadSettingsWithIncludes(StringView settingsPath, Array<String>& includedPaths) {
     // Reject include cycles before loading the next file.
@@ -1096,7 +1252,7 @@ static bool loadSettingsWithIncludes(StringView settingsPath, Array<String>& inc
     agentSettings.toolSet.workingDirectory = workingDir;
 
     // Collect this settings file's AGENTS.md for later addition to the system prompt.
-    if (const auto& jUseAgentsMD = root.get("useAgentsMD")) {
+    if (const json::Node& jUseAgentsMD = root.get("useAgentsMD")) {
         if (!jUseAgentsMD.isBool()) {
             getStdErr().format("useAgentsMD must be a boolean in: {}\n", settingsPath);
             return false;
@@ -1117,64 +1273,12 @@ static bool loadSettingsWithIncludes(StringView settingsPath, Array<String>& inc
         }
     }
 
-    // Import endPoint.
-    if (const auto& jEndPoint = root.get("endPoint")) {
-        if (!jEndPoint.isObject()) {
-            getStdErr().format("endPoint must be an object in: {}\n", settingsPath);
-            return false;
-        }
-
-        // Inherited endpoints must be fully replaced.
-        agentSettings.endPoint = {};
-
-        // Import url.
-        const auto& jUrl = jEndPoint.get("url");
-        if (!jUrl.isText()) {
-            getStdErr().format("endPoint.url must be a string in: {}\n", settingsPath);
-            return false;
-        }
-        agentSettings.endPoint.url = jUrl.text();
-
-        // Import apiKeyEnv.
-        const auto& jApiKeyEnv = jEndPoint.get("apiKeyEnv");
-        if (!jApiKeyEnv.isText()) {
-            getStdErr().format("endPoint.apiKeyEnv must be a string in: {}\n", settingsPath);
-            return false;
-        }
-        // The API key is read from the named environment variable on demand.
-        agentSettings.endPoint.apiKeyEnv = jApiKeyEnv.text();
-
-        // Import protocol.
-        const auto& jProtocol = jEndPoint.get("protocol");
-        if (!jProtocol.isText()) {
-            getStdErr().format("endPoint.protocol must be a string in: {}\n", settingsPath);
-            return false;
-        }
-        StringView protocol = jProtocol.text();
-        if (protocol == "completions") {
-            agentSettings.endPoint.protocol = Protocol::Completions;
-        } else if (protocol == "responses") {
-            agentSettings.endPoint.protocol = Protocol::Responses;
-        } else if (protocol == "anthropic") {
-            agentSettings.endPoint.protocol = Protocol::Anthropic;
-        } else if (protocol == "interactions") {
-            agentSettings.endPoint.protocol = Protocol::Interactions;
-        } else {
-            getStdErr().format("Unknown protocol '{}' in: {}\n", protocol, settingsPath);
-            return false;
-        }
-
-        // Import model.
-        const auto& jModel = jEndPoint.get("model");
-        if (!jModel.isText()) {
-            getStdErr().format("endPoint.model must be a string in: {}\n", settingsPath);
-            return false;
-        }
-        agentSettings.endPoint.model = jModel.text();
-    }
+    // Merge the endpoint selection independently from CLI overrides and proxy routing.
+    if (!loadEndPoint(root, settingsPath, agentSettings.endPoint))
+        return false;
 
     // Import systemPrompt.
-    if (const auto& jSystemPrompt = root.get("systemPrompt")) {
+    if (const json::Node& jSystemPrompt = root.get("systemPrompt")) {
         if (!jSystemPrompt.isText()) {
             getStdErr().format("systemPrompt must be a string in: {}\n", settingsPath);
             return false;
@@ -1187,7 +1291,7 @@ static bool loadSettingsWithIncludes(StringView settingsPath, Array<String>& inc
     }
 
     // Import userPrompt.
-    if (const auto& jUserPrompt = root.get("userPrompt")) {
+    if (const json::Node& jUserPrompt = root.get("userPrompt")) {
         if (!jUserPrompt.isText()) {
             getStdErr().format("userPrompt must be a string in: {}\n", settingsPath);
             return false;
@@ -1195,84 +1299,14 @@ static bool loadSettingsWithIncludes(StringView settingsPath, Array<String>& inc
         appSettings.userPrompt = jUserPrompt.text();
     }
 
-    // Import directory permissions.
-    if (const json::Node& jPerms = root.get("permissions")) {
-        if (!jPerms.isArray()) {
-            getStdErr().format("permissions must be an array in: {}\n", settingsPath);
-            return false;
-        }
-        // Iterate over permissions.
-        for (const json::Node& jPerm : jPerms.arrayView()) {
-            if (!jPerm.isObject()) {
-                getStdErr().format("Each permission entry must be an object in: {}\n", settingsPath);
-                return false;
-            }
-
-            // Import path.
-            const auto& jPath = jPerm.get("path");
-            if (!jPath) {
-                getStdErr().format("Each permission entry must have a 'path'.\n");
-                return false;
-            }
-            if (!jPath.isText()) {
-                getStdErr().format("path must be a string in: {}\n", settingsPath);
-                return false;
-            }
-            if (!jPath.text()) {
-                getStdErr().format("path must be a non-empty string in: {}\n", settingsPath);
-                return false;
-            }
-            // paths are relative to the current settings file's working directory.
-            String absPath = makeAbsolutePath(joinPath(workingDir, jPath.text()));
-
-            // Import tools.
-            const json::Node& jTools = jPerm.get("tools");
-            if (!jTools) {
-                getStdErr().format("Each permission entry must have 'tools'.\n");
-                return false;
-            }
-            if (!jTools.isArray()) {
-                getStdErr().format("tools must be an array in: {}\n", settingsPath);
-                return false;
-            }
-            for (const json::Node& t : jTools.arrayView()) {
-                if (!t.isText()) {
-                    getStdErr().format("Each tool entry must be a string in: {}\n", settingsPath);
-                    return false;
-                }
-                StringView toolName = t.text();
-
-                // Register the tool on first encounter.
-                ToolSet::Handler* tool = nullptr;
-                if (Owned<ToolSet::Handler>* found = agentSettings.toolSet.handlers.find(toolName)) {
-                    tool = *found;
-                }
-                if (!tool) {
-                    if (toolName == "read") {
-                        tool = addReadTool(&agentSettings.toolSet);
-#if !defined(PLY_IOS)
-                    } else if (toolName == "shell") {
-                        tool = addShellTool(&agentSettings.toolSet);
-#endif // !defined(PLY_IOS)
-                    } else if (toolName == "write") {
-                        tool = addWriteTool(&agentSettings.toolSet);
-                    } else if (toolName == "list_dir") {
-                        tool = addListDirTool(&agentSettings.toolSet);
-                    } else if (toolName == "find_in_files") {
-                        tool = addFindInFilesTool(&agentSettings.toolSet);
-                    } else if (toolName == "edit") {
-                        tool = addEditTool(&agentSettings.toolSet);
-                    } else {
-                        getStdErr().format("Unknown tool in configuration: {}\n", toolName);
-                        return false;
-                    }
-                }
-
-                // Grant this directory to the tool handler.
-                tool->permittedDirectories.append(absPath);
-            }
-        }
-    }
+    // Import remaining settings.
+    if (!loadPermission(root, "readPermission", workingDir, settingsPath, agentSettings.toolSet.readableDirectories))
+        return false;
+    if (!loadPermission(root, "writePermission", workingDir, settingsPath, agentSettings.toolSet.writableDirectories,
+                        &agentSettings.toolSet.readableDirectories))
+        return false;
+    if (!loadTools(root, settingsPath))
+        return false;
 
     return true;
 }
@@ -1319,6 +1353,16 @@ static bool loadSettings() {
     agentSettings.toolSet.systemPrompt +=
         String::format("\n\nThe current working directory is: {}", agentSettings.toolSet.workingDirectory);
 
+    // Explain the shared grants so the agent can choose permitted file operations.
+    agentSettings.toolSet.systemPrompt +=
+        "\nFilesystem permissions are recursive. Write permission also grants read access.";
+    for (const String& path : agentSettings.toolSet.readableDirectories) {
+        agentSettings.toolSet.systemPrompt += String::format("\nRead permission: {}", path);
+    }
+    for (const String& path : agentSettings.toolSet.writableDirectories) {
+        agentSettings.toolSet.systemPrompt += String::format("\nWrite permission: {}", path);
+    }
+
     // Append collected AGENTS.md sections after the current working directory.
     for (const String& section : appSettings.agentsMDSections) {
         agentSettings.toolSet.systemPrompt += section;
@@ -1327,12 +1371,19 @@ static bool loadSettings() {
     return true;
 }
 
-// Overrides the loaded endpoint settings using the route for the provider specified
-// on the command line, if any.
-static bool applyProviderOverride() {
-    if (!options.provider)
+// Resolve a named provider in place using the shared route table and optional proxy.
+static bool resolveEndPoint(EndPoint& endPoint, bool useProxy, u16 proxyPort) {
+    if (!endPoint.provider) {
+        if (useProxy) {
+            getStdErr().write("Proxy mode requires a named provider in JSON or -p/--provider; "
+                              "custom endpoint settings have no proxy route.\n");
+            return false;
+        }
         return true;
+    }
 
+    // Preserve an explicit model override while filling the provider's route fields.
+    String model = std::move(endPoint.model);
     // Load the route table installed beside the executable.
     String routesPath = joinPath(getCurrentExecutablePath(), "../known-providers.json");
     String jsonText = FileSystem::loadText(routesPath);
@@ -1349,64 +1400,63 @@ static bool applyProviderOverride() {
 
     // Find the selected provider and import its endpoint fields.
     for (const json::Node& route : result.root.arrayView()) {
-        if (!route.isObject() || !route.get("provider").isText() || route.get("provider").text() != options.provider)
+        if (!route.isObject() || !route.get("provider").isText() || route.get("provider").text() != endPoint.provider)
             continue;
         const json::Node& jUrl = route.get("url");
         const json::Node& jProtocol = route.get("protocol");
         const json::Node& jApiKeyEnv = route.get("apiKeyEnv");
         const json::Node& jDefaultModel = route.get("defaultModel");
         if (!jUrl.isText() || !jProtocol.isText() || !jApiKeyEnv.isText() || !jDefaultModel.isText()) {
-            getStdErr().format("Invalid route for provider '{}': {}\n", options.provider, routesPath);
+            getStdErr().format("Invalid route for provider '{}': {}\n", endPoint.provider, routesPath);
             return false;
         }
 
         // Select either the remote provider endpoint or its local proxy route.
-        if (options.useProxy) {
-            agentSettings.endPoint.url =
-                String::format("http://127.0.0.1:{}/{}", appSettings.agentProxyPort, options.provider);
-            agentSettings.endPoint.apiKeyEnv = "NONE";
+        if (useProxy) {
+            endPoint.url = String::format("http://127.0.0.1:{}/{}", proxyPort, endPoint.provider);
+            endPoint.apiKeyEnv = "NONE";
         } else {
-            agentSettings.endPoint.url = jUrl.text();
-            agentSettings.endPoint.apiKeyEnv = jApiKeyEnv.text();
+            endPoint.url = jUrl.text();
+            endPoint.apiKeyEnv = jApiKeyEnv.text();
         }
-        agentSettings.endPoint.model = jDefaultModel.text();
-        if (jProtocol.text() == "completions") {
-            agentSettings.endPoint.protocol = Protocol::Completions;
-        } else if (jProtocol.text() == "responses") {
-            agentSettings.endPoint.protocol = Protocol::Responses;
-        } else if (jProtocol.text() == "anthropic") {
-            agentSettings.endPoint.protocol = Protocol::Anthropic;
-        } else if (jProtocol.text() == "interactions") {
-            agentSettings.endPoint.protocol = Protocol::Interactions;
-        } else {
-            getStdErr().format("Unknown protocol '{}' for provider '{}': {}\n", jProtocol.text(), options.provider,
+        endPoint.model = jDefaultModel.text();
+        endPoint.protocol = parseProtocol(jProtocol.text());
+        if (endPoint.protocol == Protocol::Unset) {
+            getStdErr().format("Unknown protocol '{}' for provider '{}': {}\n", jProtocol.text(), endPoint.provider,
                                routesPath);
             return false;
         }
+        if (model) {
+            endPoint.model = std::move(model);
+        }
         return true;
     }
-    getStdErr().format("Unknown provider: {}\n", options.provider);
+    getStdErr().format("Unknown provider: {}\n", endPoint.provider);
     return false;
 }
 
 // Validates endpoint settings that must be usable before an Agent is created.
-static bool validateEndPoint() {
-    if (!agentSettings.endPoint.url) {
-        getStdErr().write(
-            "No inference endpoint selected. Pass -p/--provider or define `endpoint` in a settings file.\n");
+static bool validateEndPoint(const EndPoint& endPoint) {
+    if (!endPoint.url) {
+        getStdErr().write("No inference endpoint selected. Pass -p/--provider or define endpoint properties in a "
+                          "settings file.\n");
         return false;
     }
-    if (!agentSettings.endPoint.apiKeyEnv) {
-        getStdErr().write("No API key source is configured. Define `endPoint.apiKeyEnv` in a settings file, using "
+    if (!endPoint.apiKeyEnv) {
+        getStdErr().write("No API key source is configured. Define `apiKeyEnv` in a settings file, using "
                           "`NONE` for no authentication, or pass -p/--provider.\n");
         return false;
     }
-    if (agentSettings.endPoint.apiKeyEnv != "NONE" && !getEnvironmentVariable(agentSettings.endPoint.apiKeyEnv)) {
-        getStdErr().format("Missing API key: environment variable {} is not set\n", agentSettings.endPoint.apiKeyEnv);
+    if (endPoint.protocol == Protocol::Unset) {
+        getStdErr().write("No inference protocol is configured. Define `protocol` or select a provider.\n");
         return false;
     }
-    if (!agentSettings.endPoint.model) {
-        getStdErr().write("No inference model is configured. Define `endPoint.model` in a settings file, pass "
+    if (endPoint.apiKeyEnv != "NONE" && !getEnvironmentVariable(endPoint.apiKeyEnv)) {
+        getStdErr().format("Missing API key: environment variable {} is not set\n", endPoint.apiKeyEnv);
+        return false;
+    }
+    if (!endPoint.model) {
+        getStdErr().write("No inference model is configured. Define `model` in a settings file, pass "
                           "-p/--provider or pass -m/--model.\n");
         return false;
     }
@@ -1470,11 +1520,6 @@ int main(int argc, const char* argv[]) {
         getStdErr().write("Only one prompt may be specified on the command line.\n");
         return 1;
     }
-    // Proxy mode needs a known-provider route to select its path.
-    if (options.useProxy && !options.provider) {
-        getStdErr().write("The -x/--proxy option requires -p/--provider.\n");
-        return 1;
-    }
     // Validate an optional proxy port before loading any settings.
     if (options.proxyPort) {
         u64 parsedPort = 0;
@@ -1505,16 +1550,17 @@ int main(int argc, const char* argv[]) {
     if (!loadSettings())
         return 1;
 
-    // Apply command-line overrides. -m/--model takes precedence over both the
-    // settings file and the model default of -p/--provider.
-    if (!applyProviderOverride())
-        return 1;
+    // Apply CLI selections before resolving provider defaults and global proxy routing.
+    if (options.provider) {
+        agentSettings.endPoint = {};
+        agentSettings.endPoint.provider = options.provider;
+    }
     if (options.model) {
         agentSettings.endPoint.model = options.model;
     }
-
-    // Validate the endpoint before creating the transcript or agent.
-    if (!validateEndPoint())
+    if (!resolveEndPoint(agentSettings.endPoint, options.useProxy, appSettings.agentProxyPort))
+        return 1;
+    if (!validateEndPoint(agentSettings.endPoint))
         return 1;
 
     // Ensure a prompt was specified on the command line or in the JSON settings.

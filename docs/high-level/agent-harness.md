@@ -84,6 +84,8 @@ You can destroy an `Agent` at any time as long as there are no racing member fun
 > | `String systemPrompt` | The system prompt passed to the agent. |
 > | `Set<Owned<Handler>> handlers` | The tool handlers available to the agent. |
 > | `String workingDirectory` | The agent's working directory. |
+> | `Array<String> readableDirectories` | Absolute directory paths granting recursive read access. |
+> | `Array<String> writableDirectories` | Absolute directory paths granting recursive write access. These paths should also be present in `readableDirectories`. |
 
 `Array<TranscriptEvent> Agent::pollForEvents()`
 > Returns all currently buffered events without waiting, or an empty array if no events are buffered.
@@ -161,9 +163,6 @@ Several built-in tools are available. To add them to a `ToolSet`, call any of th
 | `String description` | A description that tells the agent when and how to use the tool. |
 | `Array<Parameter> parameters` | Describes the JSON parameters accepted by the tool. |
 | `Functor<...> handler` | The internal callback invoked when the agent uses the tool. |
-| `Array<String> permittedDirectories` | Directories that the tool is permitted to access.  |
-
-When a tool handler is added, its `permittedDirectories` is initially empty. The application can add directories before creating the agent. All built-in tools currently enforce these permissions except the `shell` tool, which should be used with caution; ideally in a sandboxed environment. (Note: An auto-approve mode for the `shell` tool is planned.)
 
 ### Defining Custom Tools
 
@@ -205,8 +204,8 @@ Each time a tool is invoked, it receives a `ToolContext` object. `ToolContext` p
 `StringView ToolContext::getWorkingDirectory() const`
 > Returns the agent's working directory.
 
-`ArrayView<const String> ToolContext::getPermittedDirectories() const`
-> Returns the directories that the tool is permitted to access.
+`String ToolContext::checkPathPermission(StringView path, bool withWriteAccess) const`
+> Converts `path` to an absolute path if read access is permitted, or write access if `withWriteAccess` is true. Otherwise returns an empty string.
 
 `void ToolContext::appendResponse(Transcript::Message* toolCall, StringView text)`
 > Adds text to the tool response in a thread-safe manner. Can be called more than once to stream a response. Each call to `appendResponse` creates a new `TranscriptEvent` and buffers it in the `Agent` so that the application receives it as soon as possible. The complete tool response won't be sent to the remote inference server until the next turn.

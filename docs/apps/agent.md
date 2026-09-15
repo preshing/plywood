@@ -56,7 +56,7 @@ Available command-line options:
 |---|---|---|
 | `-p` | `--provider` | Select from a list of known inference providers. |
 | `-m` | `--model` | The name of the model to use. |
-| `-x[=<port>]` | `--proxy[=<port>]` | Connect through [`agent-proxy`](/docs/apps/agent-proxy.md). Requires `-p/--provider`. |
+| `-x[=<port>]` | `--proxy[=<port>]` | Connect through [`agent-proxy`](/docs/apps/agent-proxy.md). |
 | `-l` | `--http-log` | Write a raw HTTP log. |
 | `-c` | `--config` | Path to a JSON settings file or a directory. |
 | `-s[=<port>]` | `--serve[=<port>]` | Serve a loopback-only web UI. Default port is 8081. |
@@ -77,7 +77,7 @@ The choice of model can be overridden using `-m/--model`.
 The agent reads its API key from the environment variable named by the endpoint's `apiKeyEnv` property. If this
 property is `NONE`, authentication is omitted.
 
-When `-x/--proxy` is specified, the agent connects to [`agent-proxy`](/docs/apps/agent-proxy.md) on IPv4 loopback, skips the environment variable lookup and omits authentication. The default port is 8082; pass an inline value such as `--proxy=8088` to select a different port.
+When `-x/--proxy` is specified, a named `provider` must be selected in JSON or with `-p/--provider`. The agent connects to [`agent-proxy`](/docs/apps/agent-proxy.md) on IPv4 loopback, skips the environment variable lookup and omits authentication. The default port is 8082; pass an inline value such as `--proxy=8088` to select a different port.
 
 ## Configuration
 
@@ -87,30 +87,30 @@ If `-c/--config` is specified, the app loads settings from the specified path in
 
 ```json
 {
+    "provider": "openai",
     "systemPrompt": "You are a helpful assistant.",
-    "permissions": [
-        {
-            "path": ".",
-            "tools": ["read", "write", "edit", "shell"]
-        }
+    "readPermission": ["../reference"],
+    "writePermission": ["."],
+    "tools": [
+        "read", "list_dir", "find_in_files", "write", "edit", "shell"
     ]
 }
 ```
 
-The settings file must contain a single JSON object with any of the following optional properties:
+The settings file must contain a single JSON object with these optional properties:
 
-- `endPoint`: A subobject with four required properties. Provider endpoints can be defined here instead of using the `-p/--provider` command-line option.
-    - `url`: The URL of an inference server.
-    - `protocol`: Must be one of "completions", "responses", "anthropic" or "interactions".
-    - `apiKeyEnv`: The name of an environment variable containing an API key, or `NONE` to omit authentication.
-    - `model`: The name of the model to use.
-- `systemPrompt`: A system prompt message.
-- `useAgentsMD`: If `true` and the working directory contains an `AGENTS.md` file, the contents of this file are appended to the system prompt.
-- `userPrompt`: The user prompt. Can be overridden by passing a prompt on the command line.
-- `workingDirectory`: The working directory for this settings file. Used as the agent's working directory and as the base for relative permission paths in this settings file. Default is the directory containing the settings file itself. Relative paths are interpreted as relative to the directory containing the settings file.
-- `permissions`: An array of subobjects describing the directories the agent can access. Each subobject has the following properties:
-    - `path`: The path to a directory. Can be absolute or relative to `workingDirectory`.
-    - `tools`: An array of strings listing the tools that the agent is allowed to use in the specified directory.
-- `include`: The path to another file containing JSON settings to inherit. Can also be an array of paths for multiple includes. Relative paths are interpreted as relative to the directory containing the JSON file itself.
-
-When the `include` property is used by file A to inherit from another file B, file B is loaded first, then file A's settings are merged in. Any `endPoint` and `userPrompt` properties are fully replaced, while the `systemPrompt` and `permissions` properties are combined additively. All `AGENTS.md` files in the include tree are appended to the system prompt, with leaf files being appended first.
+| Property | Description |
+|---|---|
+| `provider` | Selects a preset from `known-providers.json`. It must be a nonempty string and cannot be combined with `url`, `protocol`, or `apiKeyEnv`. |
+| `url` | The URL of a custom inference endpoint. Custom endpoints must also specify `protocol`, `apiKeyEnv`, and `model`. |
+| `protocol` | The custom endpoint protocol: `completions`, `responses`, `anthropic`, or `interactions`. |
+| `apiKeyEnv` | The environment variable containing the custom endpoint's API key. Use `NONE` to omit authentication. |
+| `model` | Selects the model. It is required for a custom endpoint and optionally overrides a provider's default model; a provider override must be nonempty. |
+| `systemPrompt` | A system prompt message. |
+| `useAgentsMD` | If `true`, appends the `AGENTS.md` in this file's working directory to the system prompt. |
+| `userPrompt` | The user prompt, overridden by a prompt on the command line. |
+| `workingDirectory` | The agent's working directory and base for this file's relative permission paths. Defaults to the settings file's directory; relative values are resolved against that directory. |
+| `readPermission` | An array of absolute paths or paths relative to this file's working directory where the agent has recursive read access. |
+| `writePermission` | An array of absolute paths or paths relative to this file's working directory where the agent has recursive write access. Write permission also grants read access. |
+| `tools` | An array of tool names. Available names are `read`, `list_dir`, `find_in_files`, `write`, `edit`, and `shell` (except on iOS). |
+| `include` | A settings file path or array of paths to inherit, relative to the declaring file's directory. |
