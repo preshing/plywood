@@ -579,7 +579,7 @@ struct TranscriptPrinter {
     bool turnEnded = false;
 
     void printStartup(StringView userPrompt);
-    void handleEvent(const TranscriptEvent& event);
+    void handleEvent(const Transcript::Event& event);
     void finish(s64 endMicros);
 
     void openSection(Transcript::Role role, u32 toolCallID, s64 timeStamp);
@@ -705,23 +705,23 @@ void TranscriptPrinter::printStartup(StringView userPrompt) {
         // Write system prompt to stdout.
         Stream out = getStdOut();
         out.format("{} [System Prompt]\n", formatTimeStamp(now));
-        out.format("{}\n", agentSettings.toolSet.systemPrompt);
+        out.format("{}\n", agentSettings.capabilities.systemPrompt);
         out.format("{}\n", Separator);
     }
     if (options.runWebServer) {
         // Stream the system prompt to the web browser.
         webBeginMessage("SystemPrompt", formatTimeStamp(now));
-        webAppendText(agentSettings.toolSet.systemPrompt);
+        webAppendText(agentSettings.capabilities.systemPrompt);
         webEndMessage();
     }
 
     // Tool definition blocks.
     {
         Stream out = getStdOut();
-        for (const Owned<ToolSet::Handler>& tool : agentSettings.toolSet.handlers) {
+        for (const Owned<ToolDefinition>& tool : agentSettings.capabilities.tools) {
             // Write tool definition to stdout.
             out.format("{} [Tool Definition: {}]\n", formatTimeStamp(now), tool->name);
-            for (const ToolSet::Parameter& param : tool->parameters) {
+            for (const ToolDefinition::Parameter& param : tool->parameters) {
                 out.format("`{}`: {}\n", param.name, param.description);
             }
             out.format("{}\n", tool->description);
@@ -730,7 +730,7 @@ void TranscriptPrinter::printStartup(StringView userPrompt) {
             if (options.runWebServer) {
                 // Stream the tool definition to the web browser.
                 MemStream text;
-                for (const ToolSet::Parameter& param : tool->parameters) {
+                for (const ToolDefinition::Parameter& param : tool->parameters) {
                     text.format("`{}`: {}\n", param.name, param.description);
                 }
                 text.format("{}", tool->description);
@@ -957,15 +957,15 @@ void TranscriptPrinter::printTokenUsage(s64 timeStamp) {
     }
 }
 
-void TranscriptPrinter::handleEvent(const TranscriptEvent& event) {
+void TranscriptPrinter::handleEvent(const Transcript::Event& event) {
     switch (event.operation) {
-        case TranscriptEvent::BeginTurn:
+        case Transcript::Event::BeginTurn:
             this->turnEnded = false;
             break;
-        case TranscriptEvent::BeginMessage:
+        case Transcript::Event::BeginMessage:
             this->openSection(event.role, event.toolCallID, event.timeStamp);
             break;
-        case TranscriptEvent::AppendText:
+        case Transcript::Event::AppendText:
             if (this->hasOpen) {
                 if (this->openIsTextMsg) {
                     // Stream text messages to stdout as they arrive.
@@ -987,7 +987,7 @@ void TranscriptPrinter::handleEvent(const TranscriptEvent& event) {
                 }
             }
             break;
-        case TranscriptEvent::AppendToolResponse: {
+        case Transcript::Event::AppendToolResponse: {
             // Buffer the response; it is flushed at EndTurn.
             auto ins = this->pendingResponses.insert(event.toolCallID);
             if (!ins.wasFound) {
@@ -999,12 +999,12 @@ void TranscriptPrinter::handleEvent(const TranscriptEvent& event) {
             }
             break;
         }
-        case TranscriptEvent::EndToolResponse:
+        case Transcript::Event::EndToolResponse:
             if (Transcript::Buffer* response = this->pendingResponses.find(event.toolCallID)) {
                 response->flush();
             }
             break;
-        case TranscriptEvent::EndTurn:
+        case Transcript::Event::EndTurn:
             if (this->hasOpen) {
                 this->closeOpen(event.timeStamp);
             }
@@ -1036,20 +1036,20 @@ void TranscriptPrinter::finish(s64 endMicros) {
 //                                       ▄▄▄█▀
 
 // Convert a provider protocol name to its enum value.
-static Protocol parseProtocol(StringView name) {
+static Agent::Protocol parseProtocol(StringView name) {
     if (name == "completions")
-        return Protocol::Completions;
+        return Agent::Protocol::Completions;
     if (name == "responses")
-        return Protocol::Responses;
+        return Agent::Protocol::Responses;
     if (name == "anthropic")
-        return Protocol::Anthropic;
+        return Agent::Protocol::Anthropic;
     if (name == "interactions")
-        return Protocol::Interactions;
-    return Protocol::Unset;
+        return Agent::Protocol::Interactions;
+    return Agent::Protocol::Unset;
 }
 
 // Replace the inherited endpoint with either a provider preset or a custom endpoint.
-static bool loadEndPoint(const json::Node& root, StringView settingsPath, EndPoint& endPoint) {
+static bool loadEndPoint(const json::Node& root, StringView settingsPath, Agent::EndPoint& endPoint) {
     if (!root.get("provider") && !root.get("url") && !root.get("protocol") && !root.get("apiKeyEnv") &&
         !root.get("model"))
         return true;
@@ -1100,7 +1100,7 @@ static bool loadEndPoint(const json::Node& root, StringView settingsPath, EndPoi
         return false;
     }
     endPoint.protocol = parseProtocol(jProtocol.text());
-    if (endPoint.protocol == Protocol::Unset) {
+    if (endPoint.protocol == Agent::Protocol::Unset) {
         getStdErr().format("Unknown protocol '{}' in: {}\n", jProtocol.text(), settingsPath);
         return false;
     }
@@ -1116,8 +1116,8 @@ static bool loadEndPoint(const json::Node& root, StringView settingsPath, EndPoi
 }
 
 // Merge recursive directory grants using the declaring file's working directory.
-static bool loadPermission(const json::Node& root, StringView name, StringView workingDir, StringView settingsPath,
-                           Array<String>& directories, Array<String>* impliedDirectories = nullptr) {
+static bool loadDirs(const json::Node& root, StringView name, StringView workingDir, StringView settingsPath,
+                     Array<String>& directories, Array<String>* impliedDirectories = nullptr) {
     const json::Node& grants = root.get(name);
     if (!grants)
         return true;
@@ -1163,21 +1163,21 @@ static bool loadTools(const json::Node& root, StringView settingsPath) {
         }
         localNames.append(name);
         // Register each tool on its first occurrence across the include chain.
-        if (agentSettings.toolSet.handlers.find(name))
+        if (agentSettings.capabilities.tools.find(name))
             continue;
         if (name == "read") {
-            addReadTool(&agentSettings.toolSet);
+            addReadTool(&agentSettings.capabilities);
         } else if (name == "write") {
-            addWriteTool(&agentSettings.toolSet);
+            addWriteTool(&agentSettings.capabilities);
         } else if (name == "edit") {
-            addEditTool(&agentSettings.toolSet);
+            addEditTool(&agentSettings.capabilities);
         } else if (name == "list_dir") {
-            addListDirTool(&agentSettings.toolSet);
+            addListDirTool(&agentSettings.capabilities);
         } else if (name == "find_in_files") {
-            addFindInFilesTool(&agentSettings.toolSet);
+            addFindInFilesTool(&agentSettings.capabilities);
 #if !defined(PLY_IOS)
         } else if (name == "shell") {
-            addShellTool(&agentSettings.toolSet);
+            addShellTool(&agentSettings.capabilities);
 #else
         } else if (name == "shell") {
             getStdErr().write("The shell tool is not available on iOS.\n");
@@ -1239,17 +1239,17 @@ static bool loadSettingsWithIncludes(StringView settingsPath, Array<String>& inc
         }
     }
 
-    // Import workingDirectory.
+    // Import workingDir.
     String workingDir = splitPath(settingsPath).directory;
-    if (auto jWorkingDir = root.get("workingDirectory")) {
+    if (auto jWorkingDir = root.get("workingDir")) {
         if (!jWorkingDir.isText()) {
-            getStdErr().format("workingDirectory must be a string in: {}\n", settingsPath);
+            getStdErr().format("workingDir must be a string in: {}\n", settingsPath);
             return false;
         }
         workingDir = joinPath(workingDir, jWorkingDir.text());
     }
     // The agent's working directory is determined by the innermost settings file.
-    agentSettings.toolSet.workingDirectory = workingDir;
+    agentSettings.capabilities.workingDir = workingDir;
 
     // Collect this settings file's AGENTS.md for later addition to the system prompt.
     if (const json::Node& jUseAgentsMD = root.get("useAgentsMD")) {
@@ -1284,10 +1284,10 @@ static bool loadSettingsWithIncludes(StringView settingsPath, Array<String>& inc
             return false;
         }
         // Append this prompt after any prompt inherited from an included settings file.
-        if (agentSettings.toolSet.systemPrompt) {
-            agentSettings.toolSet.systemPrompt += '\n';
+        if (agentSettings.capabilities.systemPrompt) {
+            agentSettings.capabilities.systemPrompt += '\n';
         }
-        agentSettings.toolSet.systemPrompt += jSystemPrompt.text();
+        agentSettings.capabilities.systemPrompt += jSystemPrompt.text();
     }
 
     // Import userPrompt.
@@ -1300,10 +1300,10 @@ static bool loadSettingsWithIncludes(StringView settingsPath, Array<String>& inc
     }
 
     // Import remaining settings.
-    if (!loadPermission(root, "readPermission", workingDir, settingsPath, agentSettings.toolSet.readableDirectories))
+    if (!loadDirs(root, "readableDirs", workingDir, settingsPath, agentSettings.capabilities.readableDirs))
         return false;
-    if (!loadPermission(root, "writePermission", workingDir, settingsPath, agentSettings.toolSet.writableDirectories,
-                        &agentSettings.toolSet.readableDirectories))
+    if (!loadDirs(root, "writableDirs", workingDir, settingsPath, agentSettings.capabilities.writableDirs,
+                  &agentSettings.capabilities.readableDirs))
         return false;
     if (!loadTools(root, settingsPath))
         return false;
@@ -1314,7 +1314,7 @@ static bool loadSettingsWithIncludes(StringView settingsPath, Array<String>& inc
 // Load settings from the appropriate JSON files and convert them to Agent::Settings.
 static bool loadSettings() {
     // Set defaults.
-    agentSettings.toolSet.workingDirectory = FileSystem::getWorkingDirectory();
+    agentSettings.capabilities.workingDir = FileSystem::getWorkingDirectory();
 
     // Find settings file.
     String settingsPath;
@@ -1350,29 +1350,29 @@ static bool loadSettings() {
     }
 
     // Augment the system prompt.
-    agentSettings.toolSet.systemPrompt +=
-        String::format("\n\nThe current working directory is: {}", agentSettings.toolSet.workingDirectory);
+    agentSettings.capabilities.systemPrompt +=
+        String::format("\n\nThe current working directory is: {}", agentSettings.capabilities.workingDir);
 
     // Explain the shared grants so the agent can choose permitted file operations.
-    agentSettings.toolSet.systemPrompt +=
+    agentSettings.capabilities.systemPrompt +=
         "\nFilesystem permissions are recursive. Write permission also grants read access.";
-    for (const String& path : agentSettings.toolSet.readableDirectories) {
-        agentSettings.toolSet.systemPrompt += String::format("\nRead permission: {}", path);
+    for (const String& path : agentSettings.capabilities.readableDirs) {
+        agentSettings.capabilities.systemPrompt += String::format("\nRead permission: {}", path);
     }
-    for (const String& path : agentSettings.toolSet.writableDirectories) {
-        agentSettings.toolSet.systemPrompt += String::format("\nWrite permission: {}", path);
+    for (const String& path : agentSettings.capabilities.writableDirs) {
+        agentSettings.capabilities.systemPrompt += String::format("\nWrite permission: {}", path);
     }
 
     // Append collected AGENTS.md sections after the current working directory.
     for (const String& section : appSettings.agentsMDSections) {
-        agentSettings.toolSet.systemPrompt += section;
+        agentSettings.capabilities.systemPrompt += section;
     }
 
     return true;
 }
 
 // Resolve a named provider in place using the shared route table and optional proxy.
-static bool resolveEndPoint(EndPoint& endPoint, bool useProxy, u16 proxyPort) {
+static bool resolveEndPoint(Agent::EndPoint& endPoint, bool useProxy, u16 proxyPort) {
     if (!endPoint.provider) {
         if (useProxy) {
             getStdErr().write("Proxy mode requires a named provider in JSON or -p/--provider; "
@@ -1421,7 +1421,7 @@ static bool resolveEndPoint(EndPoint& endPoint, bool useProxy, u16 proxyPort) {
         }
         endPoint.model = jDefaultModel.text();
         endPoint.protocol = parseProtocol(jProtocol.text());
-        if (endPoint.protocol == Protocol::Unset) {
+        if (endPoint.protocol == Agent::Protocol::Unset) {
             getStdErr().format("Unknown protocol '{}' for provider '{}': {}\n", jProtocol.text(), endPoint.provider,
                                routesPath);
             return false;
@@ -1436,7 +1436,7 @@ static bool resolveEndPoint(EndPoint& endPoint, bool useProxy, u16 proxyPort) {
 }
 
 // Validates endpoint settings that must be usable before an Agent is created.
-static bool validateEndPoint(const EndPoint& endPoint) {
+static bool validateEndPoint(const Agent::EndPoint& endPoint) {
     if (!endPoint.url) {
         getStdErr().write("No inference endpoint selected. Pass -p/--provider or define endpoint properties in a "
                           "settings file.\n");
@@ -1447,7 +1447,7 @@ static bool validateEndPoint(const EndPoint& endPoint) {
                           "`NONE` for no authentication, or pass -p/--provider.\n");
         return false;
     }
-    if (endPoint.protocol == Protocol::Unset) {
+    if (endPoint.protocol == Agent::Protocol::Unset) {
         getStdErr().write("No inference protocol is configured. Define `protocol` or select a provider.\n");
         return false;
     }
@@ -1623,7 +1623,7 @@ int main(int argc, const char* argv[]) {
 
     // Process streamed events until the agent stops working.
     while (agent->isWorking()) {
-        for (const TranscriptEvent& event : agent->waitForEvents()) {
+        for (const Transcript::Event& event : agent->waitForEvents()) {
             applyTranscriptEvent(transcript, event);
             printer.handleEvent(event);
         }

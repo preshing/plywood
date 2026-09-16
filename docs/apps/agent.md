@@ -89,8 +89,8 @@ If `-c/--config` is specified, the app loads settings from the specified path in
 {
     "provider": "openai",
     "systemPrompt": "You are a helpful assistant.",
-    "readPermission": ["../reference"],
-    "writePermission": ["."],
+    "readableDirs": ["../reference"],
+    "writableDirs": ["."],
     "tools": [
         "read", "list_dir", "find_in_files", "write", "edit", "shell"
     ]
@@ -109,8 +109,8 @@ The settings file must contain a single JSON object with these optional properti
 | `systemPrompt` | A system prompt message. |
 | `useAgentsMD` | If `true`, appends the `AGENTS.md` in this file's working directory to the system prompt. |
 | `userPrompt` | The user prompt, overridden by a prompt on the command line. |
-| `workingDirectory` | The agent's working directory and base for this file's relative permission paths. Defaults to the settings file's directory; relative values are resolved against that directory. |
-| `readPermission` | An array of absolute paths or paths relative to this file's working directory where the agent has recursive read access. |
-| `writePermission` | An array of absolute paths or paths relative to this file's working directory where the agent has recursive write access. Write permission also grants read access. |
+| `workingDir` | The agent's working directory and base for this file's relative directory paths. Defaults to the settings file's directory; relative values are resolved against that directory. |
+| `readableDirs` | An array of absolute paths or paths relative to this file's working directory where the agent has recursive read access. |
+| `writableDirs` | An array of absolute paths or paths relative to this file's working directory where the agent has recursive write access. Write permission also grants read access. |
 | `tools` | An array of tool names. Available names are `read`, `list_dir`, `find_in_files`, `write`, `edit`, and `shell` (except on iOS). |
 | `include` | A settings file path or array of paths to inherit, relative to the declaring file's directory. |

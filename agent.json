@@ -1,8 +1,7 @@
 {
     "systemPrompt": "You are a helpful assistant working in the Plywood repository.",
     "useAgentsMD": true,
-    "readPermission": [],
-    "writePermission": [
+    "writableDirs": [
         "."
     ],
     "tools": ["read", "list_dir", "find_in_files", "write", "edit", "shell"]

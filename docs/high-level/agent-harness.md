@@ -37,7 +37,7 @@ The steps for interacting with agents are as follows:
 1. Create a new `Transcript` object containing the user's prompt.
 2. Create a new `Agent` object, passing in the `Transcript`, the desired inference provider and a set of tools for the agent to use.
    The agent runs in a background thread.
-3. Receive `TranscriptEvent` objects back from the `Agent`.
+3. Receive `Transcript::Event` objects back from the `Agent`.
 4. As each event comes in, call `applyTranscriptEvent` and perform any application-specific handling.
 5. Once `Agent::isWorking()` returns `false`, no further events will be received and the `Agent` can be safely destroyed.
 
@@ -63,7 +63,7 @@ Every `Transcript` object holds a reference to a parent `Transcript` object, all
 
 ## `Agent`
 
-The `Agent` class represents an agent running in a background thread. As the agent runs, it generates `TranscriptEvent`s, which are buffered internally until the application calls `pollForEvents`, `waitForEvents` or `waitForCompletion`. Only one thread is allowed to call `pollForEvents`, `waitForEvents` or `waitForCompletion` at a time.
+The `Agent` class represents an agent running in a background thread. As the agent runs, it generates `Transcript::Event`s, which are buffered internally until the application calls `pollForEvents`, `waitForEvents` or `waitForCompletion`. Only one thread is allowed to call `pollForEvents`, `waitForEvents` or `waitForCompletion` at a time.
 
 You can destroy an `Agent` at any time as long as there are no racing member function calls from other threads. If the agent is still running at destruction time, it's immediately canceled.
 
@@ -73,27 +73,27 @@ You can destroy an `Agent` at any time as long as there are no racing member fun
 > | | |
 > | --- | --- |
 > | `const Transcript* startTranscript` | The transcript used to start the agent. |
-> | `EndPoint endPoint` | Identifies the inference provider, protocol and model. |
-> | `ToolSet toolSet` | Specifies the system prompt, working directory and available tools. |
+> | `Agent::EndPoint endPoint` | Identifies the inference provider, protocol and model. |
+> | `Agent::Capabilities capabilities` | Specifies the system prompt, working directory and available tools. |
 > | `bool enableHttpLog` | Enables HTTP-level logging (for debugging purposes). Default is `false`. |
 >
-> `ToolSet` has the following data members:
+> `Agent::Capabilities` has the following data members:
 >
 > | | |
 > | --- | --- |
 > | `String systemPrompt` | The system prompt passed to the agent. |
-> | `Set<Owned<Handler>> handlers` | The tool handlers available to the agent. |
-> | `String workingDirectory` | The agent's working directory. |
-> | `Array<String> readableDirectories` | Absolute directory paths granting recursive read access. |
-> | `Array<String> writableDirectories` | Absolute directory paths granting recursive write access. These paths should also be present in `readableDirectories`. |
+> | `Set<Owned<ToolDefinition>> tools` | The tools available to the agent. |
+> | `String workingDir` | The agent's working directory. |
+> | `Array<String> readableDirs` | Absolute directory paths granting recursive read access. |
+> | `Array<String> writableDirs` | Absolute directory paths granting recursive write access. These paths should also be present in `readableDirs`. |
 
-`Array<TranscriptEvent> Agent::pollForEvents()`
+`Array<Transcript::Event> Agent::pollForEvents()`
 > Returns all currently buffered events without waiting, or an empty array if no events are buffered.
 
-`Array<TranscriptEvent> Agent::waitForEvents(s32 maxTimeInMillis = -1)`
+`Array<Transcript::Event> Agent::waitForEvents(s32 maxTimeInMillis = -1)`
 > Waits until at least one event is available, then returns all buffered events. A negative argument waits indefinitely.
 
-`Array<TranscriptEvent> Agent::waitForCompletion(s32 maxTimeInMillis = -1)`
+`Array<Transcript::Event> Agent::waitForCompletion(s32 maxTimeInMillis = -1)`
 > Waits until the agent stops working or the time limit is reached, then returns all buffered events. A negative argument waits indefinitely.
 
 `bool Agent::isWorking()`
@@ -105,16 +105,16 @@ You can destroy an `Agent` at any time as long as there are no racing member fun
 > This function can be called by any thread at any time.
 > If another thread is waiting inside `waitForEvents` or `waitForCompletion`, that thread will immediately return.
 >
-> If `cancel` is called while a tool call is running in the background, the tool call might not stop immediately. Tool calls can continue running briefly after `cancel` returns, but they'll be stopped as soon as possible and won't generate any further `TranscriptEvent`s.
+> If `cancel` is called while a tool call is running in the background, the tool call might not stop immediately. Tool calls can continue running briefly after `cancel` returns, but they'll be stopped as soon as possible and won't generate any further `Transcript::Event`s.
 
-### `TranscriptEvent`
+### `Transcript::Event`
 
-Transcript changes are received as a stream of `TranscriptEvent` objects. The agent never modifies the original `Transcript` object directly; instead, the application must call `applyTranscriptEvent` for each event it receives.
+Transcript changes are received as a stream of `Transcript::Event` objects. The agent never modifies the original `Transcript` object directly; instead, the application must call `applyTranscriptEvent` for each event it receives.
 
-`void applyTranscriptEvent(Transcript* transcript, const TranscriptEvent& event)`
+`void applyTranscriptEvent(Transcript* transcript, const Transcript::Event& event)`
 > Modifies `transcript` by applying the given `event`.
 
-Applications are free to perform additional application-specific handling in response to each event. To facilitate this, `TranscriptEvent` exposes the following data members:
+Applications are free to perform additional application-specific handling in response to each event. To facilitate this, `Transcript::Event` exposes the following data members:
 
 | | |
 | --- | --- |
@@ -125,7 +125,7 @@ Applications are free to perform additional application-specific handling in res
 | `String providerToolCallID` | The inference provider's identifier for a tool call. Used internally. |
 | `String text` | The content carried by `AppendText`, `AppendToolResponse` or `AppendProviderOutputItem` events. |
 
-`TranscriptEvent::Operation` can have any of the following values:
+`Transcript::Event::Operation` can have any of the following values:
 
 | | |
 | --- | --- |
@@ -142,9 +142,9 @@ For every inference request that completes or reports an error, the agent emits 
 
 ## Tools
 
-The tools available to an agent are defined by filling in `ToolSet::handlers`.
+The tools available to an agent are defined by filling in `Agent::Capabilities::tools`.
 
-Several built-in tools are available. To add them to a `ToolSet`, call any of the following functions. Each function returns a pointer a new `ToolSet::Handler` owned by the `ToolSet`.
+Several built-in tools are available. To add them to `Agent::Capabilities`, call any of the following functions. Each function returns a pointer to a new `ToolDefinition` owned by `Agent::Capabilities`.
 
 | Function name | Tool name | Description |
 | --- | --- | --- |
@@ -155,7 +155,7 @@ Several built-in tools are available. To add them to a `ToolSet`, call any of th
 | `addFindInFilesTool` | `find_in_files` | Searches for text in a directory tree. |
 | `addEditTool` | `edit` | Edits a file using exact text replacements. |
 
-`ToolSet::Handler` has the following data members:
+`ToolDefinition` has the following data members:
 
 | | |
 | --- | --- |
@@ -182,18 +182,18 @@ void byteCountToolHandler(ToolContext* toolCtx, Transcript::Message* toolCall,
     toolCtx->appendResponse(toolCall, String::format("{} bytes", textArg.text().numBytes()));
 }
 
-void addByteCountTool(ToolSet* toolSet) {
+void addByteCountTool(Agent::Capabilities* capabilities) {
     // Describe the tool and its arguments.
-    Owned<ToolSet::Handler> tool = Heap::create<ToolSet::Handler>();
+    Owned<ToolDefinition> tool = Heap::create<ToolDefinition>();
     tool->name = "byte_count";
     tool->description = "Return the length of a string in bytes.";
-    ToolSet::Parameter& textParam = tool->parameters.append();
+    ToolDefinition::Parameter& textParam = tool->parameters.append();
     textParam.name = "text";
     textParam.description = "Text to measure";
     textParam.type = "string";
     textParam.required = true;
     tool->handler = byteCountToolHandler;
-    toolSet->handlers.insertItem(std::move(tool));
+    capabilities->tools.insertItem(std::move(tool));
 }
 ```
 
@@ -208,7 +208,7 @@ Each time a tool is invoked, it receives a `ToolContext` object. `ToolContext` p
 > Converts `path` to an absolute path if read access is permitted, or write access if `withWriteAccess` is true. Otherwise returns an empty string.
 
 `void ToolContext::appendResponse(Transcript::Message* toolCall, StringView text)`
-> Adds text to the tool response in a thread-safe manner. Can be called more than once to stream a response. Each call to `appendResponse` creates a new `TranscriptEvent` and buffers it in the `Agent` so that the application receives it as soon as possible. The complete tool response won't be sent to the remote inference server until the next turn.
+> Adds text to the tool response in a thread-safe manner. Can be called more than once to stream a response. Each call to `appendResponse` creates a new `Transcript::Event` and buffers it in the `Agent` so that the application receives it as soon as possible. The complete tool response won't be sent to the remote inference server until the next turn.
 
 `bool ToolContext::isCanceled() const`
 > Returns whether the agent has been canceled.

@@ -80,13 +80,13 @@ static Transcript::Message* getToolCall(Transcript::Turn& turn, u32 toolCallID) 
 }
 
 // Applies a streamed event directly to the supplied transcript.
-void applyTranscriptEvent(Transcript* transcript, const TranscriptEvent& event) {
+void applyTranscriptEvent(Transcript* transcript, const Transcript::Event& event) {
     switch (event.operation) {
-        case TranscriptEvent::BeginTurn: {
+        case Transcript::Event::BeginTurn: {
             transcript->turns.append();
             break;
         }
-        case TranscriptEvent::BeginMessage: {
+        case Transcript::Event::BeginMessage: {
             PLY_ASSERT(!transcript->turns.isEmpty());
             Transcript::Turn& turn = transcript->turns.back();
             if (turn.messages) {
@@ -99,20 +99,20 @@ void applyTranscriptEvent(Transcript* transcript, const TranscriptEvent& event) 
             turn.messages.append(std::move(msg));
             break;
         }
-        case TranscriptEvent::AppendText: {
+        case Transcript::Event::AppendText: {
             PLY_ASSERT(!transcript->turns.isEmpty());
             Transcript::Turn& turn = transcript->turns.back();
             PLY_ASSERT(!turn.messages.isEmpty());
             turn.messages.back()->content.append(event.text);
             break;
         }
-        case TranscriptEvent::AppendToolResponse: {
+        case Transcript::Event::AppendToolResponse: {
             PLY_ASSERT(!transcript->turns.isEmpty());
             Transcript::Turn& turn = transcript->turns.back();
             getToolCall(turn, event.toolCallID)->toolResponse.append(event.text);
             break;
         }
-        case TranscriptEvent::EndToolResponse: {
+        case Transcript::Event::EndToolResponse: {
             PLY_ASSERT(!transcript->turns.isEmpty());
             Transcript::Turn& turn = transcript->turns.back();
             Transcript::Message* toolCall = getToolCall(turn, event.toolCallID);
@@ -120,17 +120,17 @@ void applyTranscriptEvent(Transcript* transcript, const TranscriptEvent& event) 
             toolCall->toolEnded = true;
             break;
         }
-        case TranscriptEvent::AppendProviderOutputItem: {
+        case Transcript::Event::AppendProviderOutputItem: {
             PLY_ASSERT(!transcript->turns.isEmpty());
             transcript->turns.back().providerOutputItems.append(event.text);
             break;
         }
-        case TranscriptEvent::SetTokenUsage: {
+        case Transcript::Event::SetTokenUsage: {
             PLY_ASSERT(!transcript->turns.isEmpty());
             transcript->turns.back().tokenUsage = event.tokenUsage;
             break;
         }
-        case TranscriptEvent::EndTurn: {
+        case Transcript::Event::EndTurn: {
             PLY_ASSERT(!transcript->turns.isEmpty());
             Transcript::Turn& turn = transcript->turns.back();
             if (turn.messages) {
@@ -172,7 +172,7 @@ PLY_STRUCT_BEGIN(Transcript)
 PLY_STRUCT_MEMBER(turns)
 PLY_STRUCT_END()
 
-PLY_STRUCT_BEGIN(TranscriptEvent)
+PLY_STRUCT_BEGIN(Transcript::Event)
 PLY_STRUCT_MEMBER(timeStamp)
 PLY_STRUCT_MEMBER(toolCallID)
 PLY_STRUCT_MEMBER(providerToolCallID)
@@ -205,13 +205,13 @@ struct ToolContextImpl : ToolContext {
     Atomic<bool> canceled = false;
     Functor<void()> cancelCallback;
     Agent::Impl* agentImpl = nullptr;
-    StringView workingDirectory;
+    StringView workingDir;
 };
 
 //--------------------------------------------------------
 // Agent::Impl contains information shared between the main thread and an inference thread.
 // The inference thread receives response data from curl, parses each line of incoming JSONL
-// and generates ResponseEvents.
+// and generates transcript events.
 //
 // If tools are enabled, an additional background thread is spawned to perform the
 // tool requests. Tool requests are enqueued immediately as soon as they're received.
@@ -253,7 +253,7 @@ struct Agent::Impl : RefCounted<Agent::Impl> {
     // The tool thread pops each tool call from the front after it's completed.
     Array<Transcript::Message*> pendingToolCalls;
     // Events are buffered here until the client thread consumes them.
-    Array<TranscriptEvent> pendingEvents;
+    Array<Transcript::Event> pendingEvents;
     // The inference thread only sets inferenceEnded to true when the LLM completes a turn
     // without issuing any new tool requests.
     bool inferenceEnded = false;
@@ -268,7 +268,7 @@ struct Agent::Impl : RefCounted<Agent::Impl> {
 // Must be called with toolCtx.mutex held. Timestamps the event, appends it to the
 // pendingEvents buffer and wakes any client thread blocked in waitForEvents. It does
 // NOT wake waitForCompletion, which is only released by when the agent stops.
-static void bufferEvent(Agent::Impl* impl, TranscriptEvent&& event) {
+static void bufferEvent(Agent::Impl* impl, Transcript::Event&& event) {
     event.timeStamp = getUnixTimestamp();
     impl->pendingEvents.append(std::move(event));
     impl->clientCondVar.wakeAll();
@@ -277,7 +277,7 @@ static void bufferEvent(Agent::Impl* impl, TranscriptEvent&& event) {
 // Must be called with toolCtx.mutex held. Applies the event to the current transcript
 // section (via applyTranscriptEvent) and then buffers it for delivery to the client
 // thread.
-static void addEvent(Agent::Impl* impl, TranscriptEvent&& event) {
+static void addEvent(Agent::Impl* impl, Transcript::Event&& event) {
     applyTranscriptEvent(impl->internalTranscript, event);
     bufferEvent(impl, std::move(event));
 }
@@ -285,16 +285,16 @@ static void addEvent(Agent::Impl* impl, TranscriptEvent&& event) {
 // Starts a new turn for an inference request.
 // Must be called with toolCtx.mutex held.
 static void beginTurn(Agent::Impl* impl) {
-    TranscriptEvent event;
-    event.operation = TranscriptEvent::BeginTurn;
+    Transcript::Event event;
+    event.operation = Transcript::Event::BeginTurn;
     addEvent(impl, std::move(event));
 }
 
 // Finalizes the current turn after an inference request completes.
 // Must be called with toolCtx.mutex held.
 static void endTurn(Agent::Impl* impl) {
-    TranscriptEvent event;
-    event.operation = TranscriptEvent::EndTurn;
+    Transcript::Event event;
+    event.operation = Transcript::Event::EndTurn;
     addEvent(impl, std::move(event));
 }
 
@@ -303,8 +303,8 @@ static void endTurn(Agent::Impl* impl) {
 // Must be called with toolCtx.mutex held.
 static void beginMessage(Agent::Impl* impl, Transcript::Role role, u32 toolCallID = 0,
                          StringView providerToolCallID = {}) {
-    TranscriptEvent event;
-    event.operation = TranscriptEvent::BeginMessage;
+    Transcript::Event event;
+    event.operation = Transcript::Event::BeginMessage;
     event.role = role;
     event.toolCallID = toolCallID;
     event.providerToolCallID = providerToolCallID;
@@ -314,8 +314,8 @@ static void beginMessage(Agent::Impl* impl, Transcript::Role role, u32 toolCallI
 // Emits an AppendText event that appends to the last message in the current turn.
 // Must be called with toolCtx.mutex held.
 static void appendText(Agent::Impl* impl, String&& text) {
-    TranscriptEvent event;
-    event.operation = TranscriptEvent::AppendText;
+    Transcript::Event event;
+    event.operation = Transcript::Event::AppendText;
     event.text = std::move(text);
     addEvent(impl, std::move(event));
 }
@@ -334,8 +334,8 @@ static void emitText(Agent::Impl* impl, Transcript::Role role, StringView text) 
 // Updates the aggregate token usage for the current inference request.
 // Must be called with toolCtx.mutex held.
 static void setTokenUsage(Agent::Impl* impl, const Transcript::TokenUsage& tokenUsage) {
-    TranscriptEvent event;
-    event.operation = TranscriptEvent::SetTokenUsage;
+    Transcript::Event event;
+    event.operation = Transcript::Event::SetTokenUsage;
     event.tokenUsage = tokenUsage;
     addEvent(impl, std::move(event));
 }
@@ -416,9 +416,9 @@ String CompletionsProtocolHandler::makeRequestBody() {
     root.set("model", json::Node::Text{impl->settings.endPoint.model});
 
     // tool definitions
-    if (impl->settings.toolSet.handlers.items()) {
+    if (impl->settings.capabilities.tools.items()) {
         json::Node jTools{json::Node::Array{}};
-        for (const Owned<ToolSet::Handler>& tool : impl->settings.toolSet.handlers) {
+        for (const Owned<ToolDefinition>& tool : impl->settings.capabilities.tools) {
             json::Node& jTool = jTools.array().append(json::Node::Object{});
             jTool.set("type", json::Node::Text{"function"});
             json::Node jFunc{json::Node::Object{}};
@@ -430,7 +430,7 @@ String CompletionsProtocolHandler::makeRequestBody() {
             jParams.set("type", json::Node::Text{"object"});
             json::Node jRequired{json::Node::Array{}};
             json::Node jProps{json::Node::Object{}};
-            for (const ToolSet::Parameter& param : tool->parameters) {
+            for (const ToolDefinition::Parameter& param : tool->parameters) {
                 json::Node jParam{json::Node::Object{}};
                 jParam.set("description", json::Node::Text{param.description});
                 jParam.set("type", json::Node::Text{param.type});
@@ -450,10 +450,10 @@ String CompletionsProtocolHandler::makeRequestBody() {
 
     // messages
     json::Node jMessages{json::Node::Array{}};
-    if (impl->settings.toolSet.systemPrompt) {
+    if (impl->settings.capabilities.systemPrompt) {
         json::Node jMsg{json::Node::Object{}};
         jMsg.set("role", json::Node::Text{"developer"});
-        jMsg.set("content", json::Node::Text{impl->settings.toolSet.systemPrompt});
+        jMsg.set("content", json::Node::Text{impl->settings.capabilities.systemPrompt});
         jMessages.array().append(jMsg);
     }
 
@@ -725,9 +725,9 @@ String ResponsesProtocolHandler::makeRequestBody() {
     root.set("model", json::Node::Text{impl->settings.endPoint.model});
 
     // tool definitions
-    if (impl->settings.toolSet.handlers.items()) {
+    if (impl->settings.capabilities.tools.items()) {
         json::Node jTools{json::Node::Array{}};
-        for (const Owned<ToolSet::Handler>& tool : impl->settings.toolSet.handlers) {
+        for (const Owned<ToolDefinition>& tool : impl->settings.capabilities.tools) {
             json::Node& jTool = jTools.array().append(json::Node::Object{});
             jTool.set("type", json::Node::Text{"function"});
             jTool.set("name", json::Node::Text{tool->name});
@@ -738,7 +738,7 @@ String ResponsesProtocolHandler::makeRequestBody() {
             jParams.set("type", json::Node::Text{"object"});
             json::Node jRequired{json::Node::Array{}};
             json::Node jProps{json::Node::Object{}};
-            for (const ToolSet::Parameter& param : tool->parameters) {
+            for (const ToolDefinition::Parameter& param : tool->parameters) {
                 json::Node jParam{json::Node::Object{}};
                 jParam.set("description", json::Node::Text{param.description});
                 jParam.set("type", json::Node::Text{param.type});
@@ -757,10 +757,10 @@ String ResponsesProtocolHandler::makeRequestBody() {
 
     // messages
     json::Node jInput{json::Node::Array{}};
-    if (impl->settings.toolSet.systemPrompt) {
+    if (impl->settings.capabilities.systemPrompt) {
         json::Node jMsg{json::Node::Object{}};
         jMsg.set("role", json::Node::Text{"developer"});
-        jMsg.set("content", json::Node::Text{impl->settings.toolSet.systemPrompt});
+        jMsg.set("content", json::Node::Text{impl->settings.capabilities.systemPrompt});
         jInput.array().append(jMsg);
     }
 
@@ -910,8 +910,8 @@ void ResponsesProtocolHandler::receiveLine(StringView line) {
                     LockGuard<Mutex> guard{impl->toolCtx.mutex};
                     if (impl->toolCtx.isCanceled())
                         return;
-                    TranscriptEvent itemEvent;
-                    itemEvent.operation = TranscriptEvent::AppendProviderOutputItem;
+                    Transcript::Event itemEvent;
+                    itemEvent.operation = Transcript::Event::AppendProviderOutputItem;
                     itemEvent.text = json::toString(jItem, {false});
                     addEvent(impl, std::move(itemEvent));
 
@@ -987,14 +987,14 @@ String AnthropicProtocolHandler::makeRequestBody() {
     root.set("model", json::Node::Text{impl->settings.endPoint.model});
     root.set("max_tokens", json::Node::Number{16384});
     root.set("stream", json::Node::Bool{true});
-    if (impl->settings.toolSet.systemPrompt) {
-        root.set("system", json::Node::Text{impl->settings.toolSet.systemPrompt});
+    if (impl->settings.capabilities.systemPrompt) {
+        root.set("system", json::Node::Text{impl->settings.capabilities.systemPrompt});
     }
 
     // Describe tools using the Messages API's input_schema format.
-    if (impl->settings.toolSet.handlers.items()) {
+    if (impl->settings.capabilities.tools.items()) {
         json::Node jTools{json::Node::Array{}};
-        for (const Owned<ToolSet::Handler>& tool : impl->settings.toolSet.handlers) {
+        for (const Owned<ToolDefinition>& tool : impl->settings.capabilities.tools) {
             json::Node& jTool = jTools.array().append(json::Node::Object{});
             jTool.set("name", json::Node::Text{tool->name});
             jTool.set("description", json::Node::Text{tool->description});
@@ -1002,7 +1002,7 @@ String AnthropicProtocolHandler::makeRequestBody() {
             jSchema.set("type", json::Node::Text{"object"});
             json::Node jRequired{json::Node::Array{}};
             json::Node jProperties{json::Node::Object{}};
-            for (const ToolSet::Parameter& param : tool->parameters) {
+            for (const ToolDefinition::Parameter& param : tool->parameters) {
                 json::Node jParam{json::Node::Object{}};
                 jParam.set("type", json::Node::Text{param.type});
                 jParam.set("description", json::Node::Text{param.description});
@@ -1212,8 +1212,8 @@ void AnthropicProtocolHandler::receiveLine(StringView line) {
         }
 
         // Preserve the completed block for exact stateless replay on the next request.
-        TranscriptEvent itemEvent;
-        itemEvent.operation = TranscriptEvent::AppendProviderOutputItem;
+        Transcript::Event itemEvent;
+        itemEvent.operation = Transcript::Event::AppendProviderOutputItem;
         itemEvent.text = json::toString(this->contentBlock, {false});
         addEvent(impl, std::move(itemEvent));
         this->contentBlock = {};
@@ -1281,14 +1281,14 @@ String InteractionsProtocolHandler::makeRequestBody() {
     root.set("stream", json::Node::Bool{true});
 
     // Send the system prompt as interaction-scoped configuration.
-    if (impl->settings.toolSet.systemPrompt) {
-        root.set("system_instruction", json::Node::Text{impl->settings.toolSet.systemPrompt});
+    if (impl->settings.capabilities.systemPrompt) {
+        root.set("system_instruction", json::Node::Text{impl->settings.capabilities.systemPrompt});
     }
 
     // Describe client-side tools using Interactions function declarations.
-    if (impl->settings.toolSet.handlers.items()) {
+    if (impl->settings.capabilities.tools.items()) {
         json::Node tools{json::Node::Array{}};
-        for (const Owned<ToolSet::Handler>& tool : impl->settings.toolSet.handlers) {
+        for (const Owned<ToolDefinition>& tool : impl->settings.capabilities.tools) {
             json::Node& jTool = tools.array().append(json::Node::Object{});
             jTool.set("type", json::Node::Text{"function"});
             jTool.set("name", json::Node::Text{tool->name});
@@ -1297,7 +1297,7 @@ String InteractionsProtocolHandler::makeRequestBody() {
             schema.set("type", json::Node::Text{"object"});
             json::Node required{json::Node::Array{}};
             json::Node properties{json::Node::Object{}};
-            for (const ToolSet::Parameter& param : tool->parameters) {
+            for (const ToolDefinition::Parameter& param : tool->parameters) {
                 json::Node property{json::Node::Object{}};
                 property.set("type", json::Node::Text{param.type});
                 property.set("description", json::Node::Text{param.description});
@@ -1501,8 +1501,8 @@ void InteractionsProtocolHandler::receiveLine(StringView line) {
         }
 
         // Preserve the completed step for exact stateless replay on the next request.
-        TranscriptEvent itemEvent;
-        itemEvent.operation = TranscriptEvent::AppendProviderOutputItem;
+        Transcript::Event itemEvent;
+        itemEvent.operation = Transcript::Event::AppendProviderOutputItem;
         itemEvent.text = json::toString(this->step, {false});
         addEvent(impl, std::move(itemEvent));
         this->step = {};
@@ -1588,27 +1588,27 @@ void receiveLineInProgress(Agent::Impl* impl) {
     impl->protocolHandler->receiveLine(line);
 }
 
-// Convert the Protocol enum to a string.
-static StringView getProtocolName(Protocol protocol) {
+// Convert the Agent::Protocol enum to a string.
+static StringView getProtocolName(Agent::Protocol protocol) {
     switch (protocol) {
-        case Protocol::Unset:
+        case Agent::Protocol::Unset:
             break;
-        case Protocol::Completions:
+        case Agent::Protocol::Completions:
             return "completions";
-        case Protocol::Responses:
+        case Agent::Protocol::Responses:
             return "responses";
-        case Protocol::Anthropic:
+        case Agent::Protocol::Anthropic:
             return "anthropic";
-        case Protocol::Interactions:
+        case Agent::Protocol::Interactions:
             return "interactions";
     }
     PLY_ASSERT(0);
     return {};
 }
 
-// Performs an inference request and converts the response data to a queue of ResponseEvents.
+// Performs an inference request and converts the response data to a queue of transcript events.
 // This is the bulk of the work performed by the inference thread (Agent::Impl::inferenceThread).
-// The calling thread receives response data by periodically calling receiveResponseEvents.
+// The calling thread receives events by periodically calling pollForEvents or one of the wait functions.
 void performInferenceRequest(Agent::Impl* impl, u32 turnNumber) {
     impl->anyToolCallsThisTurn = false;
     // Reset the per-turn role tracking so the first streamed message begins a new
@@ -1649,7 +1649,7 @@ void performInferenceRequest(Agent::Impl* impl, u32 turnNumber) {
     // Apply the protocol-specific headers alongside Content-Type.
     Map<String, String> headers;
     *headers.insert("Content-Type").value = "application/json";
-    if (impl->settings.endPoint.protocol == Protocol::Anthropic) {
+    if (impl->settings.endPoint.protocol == Agent::Protocol::Anthropic) {
         *headers.insert("anthropic-version").value = "2023-06-01";
     }
     StringView apiKeyEnv = impl->settings.endPoint.apiKeyEnv;
@@ -1660,9 +1660,9 @@ void performInferenceRequest(Agent::Impl* impl, u32 turnNumber) {
             onError(impl, String::format("Missing API key: environment variable {} is not set", apiKeyEnv));
             return;
         }
-        if (impl->settings.endPoint.protocol == Protocol::Anthropic) {
+        if (impl->settings.endPoint.protocol == Agent::Protocol::Anthropic) {
             *headers.insert("x-api-key").value = std::move(apiKey);
-        } else if (impl->settings.endPoint.protocol == Protocol::Interactions) {
+        } else if (impl->settings.endPoint.protocol == Agent::Protocol::Interactions) {
             *headers.insert("x-goog-api-key").value = std::move(apiKey);
         } else {
             *headers.insert("Authorization").value = String::format("Bearer {}", apiKey);
@@ -1905,10 +1905,10 @@ void runToolThread(Agent::Impl* impl) {
 
         // Handle this tool call (no locks held).
         // Look up the handler for this tool call by name.
-        const Owned<ToolSet::Handler>* found = impl->settings.toolSet.handlers.find(tcName);
+        const Owned<ToolDefinition>* found = impl->settings.capabilities.tools.find(tcName);
         // FIXME: Improve error handling
         PLY_ASSERT(found);
-        const ToolSet::Handler* toolDef = found->get();
+        const ToolDefinition* toolDef = found->get();
         {
             toolDef->handler(&impl->toolCtx, toolCall, arguments);
             // The handler must not leave a cancel callback set.
@@ -1921,8 +1921,8 @@ void runToolThread(Agent::Impl* impl) {
             toolCall->toolResponse.flush();
             toolCall->toolEnded = true;
             if (!impl->toolCtx.isCanceled()) {
-                TranscriptEvent endResp;
-                endResp.operation = TranscriptEvent::EndToolResponse;
+                Transcript::Event endResp;
+                endResp.operation = Transcript::Event::EndToolResponse;
                 endResp.toolCallID = toolCallIDForMessage(impl, toolCall);
                 bufferEvent(impl, std::move(endResp));
             }
@@ -1965,8 +1965,8 @@ void ToolContext::appendResponse(Transcript::Message* toolCall, StringView text)
         // Append to the internal transcript while preserving completed line boundaries.
         toolCall->toolResponse.append(text);
 
-        TranscriptEvent appendResp;
-        appendResp.operation = TranscriptEvent::AppendToolResponse;
+        Transcript::Event appendResp;
+        appendResp.operation = Transcript::Event::AppendToolResponse;
         appendResp.toolCallID = toolCallIDForMessage(impl->agentImpl, toolCall);
         appendResp.text = text;
         bufferEvent(impl->agentImpl, std::move(appendResp));
@@ -1974,7 +1974,7 @@ void ToolContext::appendResponse(Transcript::Message* toolCall, StringView text)
 }
 
 StringView ToolContext::getWorkingDirectory() const {
-    return static_cast<const ToolContextImpl*>(this)->workingDirectory;
+    return static_cast<const ToolContextImpl*>(this)->workingDir;
 }
 
 //   ▄▄▄▄                        ▄▄
@@ -1992,16 +1992,16 @@ Agent::Agent(const Settings& settings) {
     impl->settings = settings;        // copies the settings
     this->settings = &impl->settings; // points to the internal copy of the settings
     impl->toolCtx.agentImpl = impl;
-    impl->toolCtx.workingDirectory = impl->settings.toolSet.workingDirectory;
+    impl->toolCtx.workingDir = impl->settings.capabilities.workingDir;
 
     // Create the handler that owns this endpoint's protocol-specific behavior and state.
-    if (impl->settings.endPoint.protocol == Protocol::Completions) {
+    if (impl->settings.endPoint.protocol == Agent::Protocol::Completions) {
         impl->protocolHandler = Heap::create<CompletionsProtocolHandler>(impl);
-    } else if (impl->settings.endPoint.protocol == Protocol::Responses) {
+    } else if (impl->settings.endPoint.protocol == Agent::Protocol::Responses) {
         impl->protocolHandler = Heap::create<ResponsesProtocolHandler>(impl);
-    } else if (impl->settings.endPoint.protocol == Protocol::Anthropic) {
+    } else if (impl->settings.endPoint.protocol == Agent::Protocol::Anthropic) {
         impl->protocolHandler = Heap::create<AnthropicProtocolHandler>(impl);
-    } else if (impl->settings.endPoint.protocol == Protocol::Interactions) {
+    } else if (impl->settings.endPoint.protocol == Agent::Protocol::Interactions) {
         impl->protocolHandler = Heap::create<InteractionsProtocolHandler>(impl);
     } else {
         PLY_ASSERT(0);
@@ -2067,13 +2067,13 @@ void Agent::cancel() {
     }
 }
 
-Array<TranscriptEvent> Agent::pollForEvents() {
+Array<Transcript::Event> Agent::pollForEvents() {
     Agent::Impl* impl = this->impl;
     LockGuard<Mutex> guard{impl->toolCtx.mutex};
     return std::move(impl->pendingEvents);
 }
 
-Array<TranscriptEvent> Agent::waitForEvents(s32 maxTimeInMillis) {
+Array<Transcript::Event> Agent::waitForEvents(s32 maxTimeInMillis) {
     Agent::Impl* impl = this->impl;
     LockGuard<Mutex> guard{impl->toolCtx.mutex};
     if (maxTimeInMillis == 0) {
@@ -2105,7 +2105,7 @@ Array<TranscriptEvent> Agent::waitForEvents(s32 maxTimeInMillis) {
     }
 }
 
-Array<TranscriptEvent> Agent::waitForCompletion(s32 maxTimeInMillis) {
+Array<Transcript::Event> Agent::waitForCompletion(s32 maxTimeInMillis) {
     Agent::Impl* impl = this->impl;
     LockGuard<Mutex> guard{impl->toolCtx.mutex};
     if (maxTimeInMillis == 0) {
@@ -2139,8 +2139,9 @@ Array<TranscriptEvent> Agent::waitForCompletion(s32 maxTimeInMillis) {
 //--------------------------------------------------
 String ToolContext::checkPathPermission(StringView path, bool withWriteAccess) const {
     String absPath = makeAbsolutePath(joinPath(this->getWorkingDirectory(), path));
-    const ToolSet& toolSet = static_cast<const ToolContextImpl*>(this)->agentImpl->settings.toolSet;
-    const Array<String>& directories = withWriteAccess ? toolSet.writableDirectories : toolSet.readableDirectories;
+    const Agent::Capabilities& capabilities =
+        static_cast<const ToolContextImpl*>(this)->agentImpl->settings.capabilities;
+    const Array<String>& directories = withWriteAccess ? capabilities.writableDirs : capabilities.readableDirs;
     for (const String& dir : directories) {
         if (dir == absPath || (dir && absPath.numBytes() > dir.numBytes() && absPath.startsWith(dir) &&
                                (isPathSeparator(dir.back()) || isPathSeparator(absPath[dir.numBytes()]))))
@@ -2216,8 +2217,8 @@ void shellToolHandler(ToolContext* toolCtx, Transcript::Message* toolCall, const
     toolCtx->appendResponse(toolCall, response.moveToString());
 }
 
-ToolSet::Handler* addShellTool(ToolSet* toolSet, const ShellToolSettings& settings) {
-    Owned<ToolSet::Handler> shellTool = Heap::create<ToolSet::Handler>();
+ToolDefinition* addShellTool(Agent::Capabilities* capabilities, const ShellToolSettings& settings) {
+    Owned<ToolDefinition> shellTool = Heap::create<ToolDefinition>();
     shellTool->name = "shell";
     shellTool->description = "Execute a command using the system shell in the current working directory. "
                              "Returns merged stdout/stderr, truncated to 5KB, followed by the exit code.";
@@ -2228,7 +2229,7 @@ ToolSet::Handler* addShellTool(ToolSet* toolSet, const ShellToolSettings& settin
     shellTool->parameters.back().required = true;
     shellTool->handler = shellToolHandler;
     PLY_UNUSED(settings); // Will use this later.
-    return toolSet->handlers.insertItem(std::move(shellTool)).item->get();
+    return capabilities->tools.insertItem(std::move(shellTool)).item->get();
 }
 
 #endif // !defined(PLY_IOS)
@@ -2297,8 +2298,8 @@ void readToolHandler(ToolContext* toolCtx, Transcript::Message* toolCall, const 
     }
 }
 
-ToolSet::Handler* addReadTool(ToolSet* toolSet) {
-    Owned<ToolSet::Handler> readTool = Heap::create<ToolSet::Handler>();
+ToolDefinition* addReadTool(Agent::Capabilities* capabilities) {
+    Owned<ToolDefinition> readTool = Heap::create<ToolDefinition>();
     readTool->name = "read";
     readTool->description =
         "Read the contents of a file. For text files, output is truncated to 2000 lines or 50KB (whichever is hit "
@@ -2318,7 +2319,7 @@ ToolSet::Handler* addReadTool(ToolSet* toolSet) {
     readTool->parameters.back().description = "Maximum number of lines to read";
     readTool->parameters.back().type = "number";
     readTool->handler = readToolHandler;
-    return toolSet->handlers.insertItem(std::move(readTool)).item->get();
+    return capabilities->tools.insertItem(std::move(readTool)).item->get();
 }
 
 //                  ▄▄  ▄▄
@@ -2379,8 +2380,8 @@ void writeToolHandler(ToolContext* toolCtx, Transcript::Message* toolCall, const
     }
 }
 
-ToolSet::Handler* addWriteTool(ToolSet* toolSet) {
-    Owned<ToolSet::Handler> writeTool = Heap::create<ToolSet::Handler>();
+ToolDefinition* addWriteTool(Agent::Capabilities* capabilities) {
+    Owned<ToolDefinition> writeTool = Heap::create<ToolDefinition>();
     writeTool->name = "write";
     writeTool->description = "Write content to a file. Creates the file if it doesn't exist, overwrites if it "
                              "does. Automatically creates parent directories.";
@@ -2395,7 +2396,7 @@ ToolSet::Handler* addWriteTool(ToolSet* toolSet) {
     writeTool->parameters.back().type = "string";
     writeTool->parameters.back().required = true;
     writeTool->handler = writeToolHandler;
-    return toolSet->handlers.insertItem(std::move(writeTool)).item->get();
+    return capabilities->tools.insertItem(std::move(writeTool)).item->get();
 }
 
 //  ▄▄▄  ▄▄         ▄▄             ▄▄ ▄▄
@@ -2450,8 +2451,8 @@ void listDirToolHandler(ToolContext* toolCtx, Transcript::Message* toolCall, con
     }
 }
 
-ToolSet::Handler* addListDirTool(ToolSet* toolSet) {
-    Owned<ToolSet::Handler> listDirTool = Heap::create<ToolSet::Handler>();
+ToolDefinition* addListDirTool(Agent::Capabilities* capabilities) {
+    Owned<ToolDefinition> listDirTool = Heap::create<ToolDefinition>();
     listDirTool->name = "list_dir";
     listDirTool->description = "List the contents of a directory. Shows files with their size in bytes and "
                                "subdirectories with a trailing '/'.";
@@ -2462,7 +2463,7 @@ ToolSet::Handler* addListDirTool(ToolSet* toolSet) {
     listDirTool->parameters.back().type = "string";
     listDirTool->parameters.back().required = true;
     listDirTool->handler = listDirToolHandler;
-    return toolSet->handlers.insertItem(std::move(listDirTool)).item->get();
+    return capabilities->tools.insertItem(std::move(listDirTool)).item->get();
 }
 
 //    ▄▄▄ ▄▄            ▄▄       ▄▄                ▄▄▄ ▄▄ ▄▄▄
@@ -2717,8 +2718,8 @@ void findInFilesToolHandler(ToolContext* toolCtx, Transcript::Message* toolCall,
     findInFiles(findInfo, absPath, FileSystem::isDir(absPath));
 }
 
-ToolSet::Handler* addFindInFilesTool(ToolSet* toolSet) {
-    Owned<ToolSet::Handler> findInFilesTool = Heap::create<ToolSet::Handler>();
+ToolDefinition* addFindInFilesTool(Agent::Capabilities* capabilities) {
+    Owned<ToolDefinition> findInFilesTool = Heap::create<ToolDefinition>();
     findInFilesTool->name = "find_in_files";
     findInFilesTool->description = "Search for text inside files matching a glob pattern in a directory tree. "
                                    "Returns matching lines in 'path(line):content' format. The glob pattern "
@@ -2741,7 +2742,7 @@ ToolSet::Handler* addFindInFilesTool(ToolSet* toolSet) {
     findInFilesTool->parameters.back().type = "string";
     findInFilesTool->parameters.back().required = true;
     findInFilesTool->handler = findInFilesToolHandler;
-    return toolSet->handlers.insertItem(std::move(findInFilesTool)).item->get();
+    return capabilities->tools.insertItem(std::move(findInFilesTool)).item->get();
 }
 
 //             ▄▄ ▄▄  ▄▄
@@ -2850,8 +2851,8 @@ void editToolHandler(ToolContext* toolCtx, Transcript::Message* toolCall, const 
     }
 }
 
-ToolSet::Handler* addEditTool(ToolSet* toolSet) {
-    Owned<ToolSet::Handler> editTool = Heap::create<ToolSet::Handler>();
+ToolDefinition* addEditTool(Agent::Capabilities* capabilities) {
+    Owned<ToolDefinition> editTool = Heap::create<ToolDefinition>();
     editTool->name = "edit";
     editTool->description = "Edit a single file using exact text replacement. Every edits[].oldText must match a "
                             "unique, non-overlapping region of the original file. If two changes affect the same "
@@ -2871,7 +2872,7 @@ ToolSet::Handler* addEditTool(ToolSet* toolSet) {
     editTool->parameters.back().type = "array";
     editTool->parameters.back().required = true;
     editTool->handler = editToolHandler;
-    return toolSet->handlers.insertItem(std::move(editTool)).item->get();
+    return capabilities->tools.insertItem(std::move(editTool)).item->get();
 }
 
 #endif // !PLY_AGENT_TRANSCRIPT_ONLY

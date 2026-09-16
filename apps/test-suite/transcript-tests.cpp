@@ -48,11 +48,11 @@ static bool testApplyTranscriptEvent() {
     Transcript transcript;
     transcript.turns.append();
 
-    TranscriptEvent event;
-    event.operation = TranscriptEvent::BeginMessage;
+    Transcript::Event event;
+    event.operation = Transcript::Event::BeginMessage;
     event.role = Transcript::Role::User;
     applyTranscriptEvent(&transcript, event);
-    event.operation = TranscriptEvent::AppendText;
+    event.operation = Transcript::Event::AppendText;
     event.text = "partial";
     applyTranscriptEvent(&transcript, event);
     success &= expect(transcript.turns[0].messages[0]->content.lines.isEmpty(),
@@ -60,7 +60,7 @@ static bool testApplyTranscriptEvent() {
 
     // Beginning the next message implicitly finalizes the previous message.
     event = {};
-    event.operation = TranscriptEvent::BeginMessage;
+    event.operation = Transcript::Event::BeginMessage;
     event.role = Transcript::Role::ToolCall;
     event.providerToolCallID = "call_123";
     applyTranscriptEvent(&transcript, event);
@@ -71,7 +71,7 @@ static bool testApplyTranscriptEvent() {
 
     // Opaque provider items are retained separately from the visible transcript.
     event = {};
-    event.operation = TranscriptEvent::AppendProviderOutputItem;
+    event.operation = Transcript::Event::AppendProviderOutputItem;
     event.text = R"({"type":"reasoning","encrypted_content":"opaque"})";
     applyTranscriptEvent(&transcript, event);
     success &= expect(transcript.turns[0].providerOutputItems[0] == event.text,
@@ -79,7 +79,7 @@ static bool testApplyTranscriptEvent() {
 
     // Aggregate usage belongs to the turn that made the provider request.
     event = {};
-    event.operation = TranscriptEvent::SetTokenUsage;
+    event.operation = Transcript::Event::SetTokenUsage;
     event.tokenUsage.isValid = true;
     event.tokenUsage.uncachedInputTokens = 100;
     event.tokenUsage.outputTokens = 25;
@@ -91,11 +91,11 @@ static bool testApplyTranscriptEvent() {
                       "SetTokenUsage should retain aggregate usage on the current turn");
 
     event = {};
-    event.operation = TranscriptEvent::AppendToolResponse;
+    event.operation = Transcript::Event::AppendToolResponse;
     event.toolCallID = 1;
     event.text = "first\nlast";
     applyTranscriptEvent(&transcript, event);
-    event.operation = TranscriptEvent::EndToolResponse;
+    event.operation = Transcript::Event::EndToolResponse;
     event.text = {};
     applyTranscriptEvent(&transcript, event);
     const Transcript::Buffer& response = transcript.turns[0].messages[1]->toolResponse;
@@ -105,26 +105,26 @@ static bool testApplyTranscriptEvent() {
 
     // Ending a turn finalizes it without creating another turn.
     event = {};
-    event.operation = TranscriptEvent::BeginMessage;
+    event.operation = Transcript::Event::BeginMessage;
     event.role = Transcript::Role::Agent;
     applyTranscriptEvent(&transcript, event);
-    event.operation = TranscriptEvent::AppendText;
+    event.operation = Transcript::Event::AppendText;
     event.text = "done";
     applyTranscriptEvent(&transcript, event);
     event = {};
-    event.operation = TranscriptEvent::EndTurn;
+    event.operation = Transcript::Event::EndTurn;
     applyTranscriptEvent(&transcript, event);
     success &= expect(transcript.turns.numItems() == 1, "EndTurn should not create another turn");
     success &= expect(transcript.turns[0].messages.back()->content.lines[0] == "done",
                       "EndTurn should finalize the current message tail");
 
     // Beginning a turn explicitly creates the destination for subsequent events.
-    event.operation = TranscriptEvent::BeginTurn;
+    event.operation = Transcript::Event::BeginTurn;
     applyTranscriptEvent(&transcript, event);
     success &= expect(transcript.turns.numItems() == 2 && transcript.turns[1].messages.isEmpty(),
                       "BeginTurn should append one empty destination turn");
     event = {};
-    event.operation = TranscriptEvent::AppendProviderOutputItem;
+    event.operation = Transcript::Event::AppendProviderOutputItem;
     event.text = R"({"type":"reasoning","encrypted_content":"next"})";
     applyTranscriptEvent(&transcript, event);
     success &= expect(transcript.turns[1].providerOutputItems[0] == event.text,
@@ -135,8 +135,8 @@ static bool testApplyTranscriptEvent() {
 // Verifies that BeginTurn can initialize a completely empty transcript.
 static bool testBeginTurnOnEmptyTranscript() {
     Transcript transcript;
-    TranscriptEvent event;
-    event.operation = TranscriptEvent::BeginTurn;
+    Transcript::Event event;
+    event.operation = Transcript::Event::BeginTurn;
     applyTranscriptEvent(&transcript, event);
     return expect(transcript.turns.numItems() == 1 && transcript.turns[0].messages.isEmpty(),
                   "BeginTurn should initialize an empty transcript");
