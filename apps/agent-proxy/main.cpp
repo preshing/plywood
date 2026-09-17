@@ -282,24 +282,30 @@ int main(int argc, const char* argv[]) {
     if (!loadSettings())
         return 1;
 
-    // Initialize networking and serve only on IPv4 loopback.
-    CURLcode curlResult = curl_global_init(CURL_GLOBAL_DEFAULT);
-    PLY_ASSERT(curlResult == CURLE_OK);
-    PLY_UNUSED(curlResult);
-    Network::initialize(IPv4);
-
     // Report which providers have credentials and count the enabled routes.
-    getStdOut().write("Available routes:\n");
+    Stream out = getStdOut();
+    out.write("Available routes:\n");
     u32 enabledRoutes = 0;
     for (const Route& route : settings.routes) {
         bool isSet = (bool) getEnvironmentVariable(route.apiKeyEnv);
         if (isSet) {
             ++enabledRoutes;
         }
-        getStdOut().format("[{}] {}: {} {} set\n", isSet ? "x" : " ", route.provider, route.apiKeyEnv,
-                           isSet ? "is" : "not");
+        out.format("[{}] {}: {} {} set\n", isSet ? "x" : " ", route.provider, route.apiKeyEnv, isSet ? "is" : "not");
     }
-    getStdOut().format("Forwarding {} route(s) on http://127.0.0.1:{}\n", enabledRoutes, settings.port);
+    out.flush(true);
+    if (enabledRoutes == 0) {
+        getStdErr().write("No routes to forward. Set at least one API key environment variable.\n");
+        return 1;
+    }
+
+    // Initialize networking and serve only on IPv4 loopback.
+    CURLcode curlResult = curl_global_init(CURL_GLOBAL_DEFAULT);
+    PLY_ASSERT(curlResult == CURLE_OK);
+    PLY_UNUSED(curlResult);
+    Network::initialize(IPv4);
+    out.format("Forwarding {} route(s) on http://127.0.0.1:{}\n", enabledRoutes, settings.port);
+    out.flush(true);
     HTTPServer::run(IPAddress::localHost(IPv4), settings.port, proxyRequest);
     Network::shutdown();
     curl_global_cleanup();
