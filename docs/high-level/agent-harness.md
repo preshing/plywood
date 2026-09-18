@@ -144,16 +144,16 @@ For every inference request that completes or reports an error, the agent emits 
 
 The tools available to an agent are defined by filling in `Agent::Capabilities::tools`.
 
-Several built-in tools are available. To add them to `Agent::Capabilities`, call any of the following functions. Each function returns a pointer to a new `ToolDefinition` owned by `Agent::Capabilities`.
+Several built-in tools are available. To add them to `Agent::Capabilities`, call any of the following functions. Each function returns an `Owned<ToolDefinition>` that can be inserted into `tools`.
 
 | Function name | Tool name | Description |
 | --- | --- | --- |
-| `addShellTool` | `shell` | Runs a command using the system shell. Not available on iOS. |
-| `addReadTool` | `read` | Reads part or all of a file. |
-| `addWriteTool` | `write` | Creates or overwrites a file. |
-| `addListDirTool` | `list_dir` | Lists the contents of a directory. |
-| `addFindInFilesTool` | `find_in_files` | Searches for text in a directory tree. |
-| `addEditTool` | `edit` | Edits a file using exact text replacements. |
+| `createShellTool` | `shell` | Runs a command using the system shell after authorization. Not available on iOS. |
+| `createReadTool` | `read` | Reads part or all of a file. |
+| `createWriteTool` | `write` | Creates or overwrites a file. |
+| `createListDirTool` | `list_dir` | Lists the contents of a directory. |
+| `createFindInFilesTool` | `find_in_files` | Searches for text in a directory tree. |
+| `createEditTool` | `edit` | Edits a file using exact text replacements. |
 
 `ToolDefinition` has the following data members:
 
@@ -163,6 +163,23 @@ Several built-in tools are available. To add them to `Agent::Capabilities`, call
 | `String description` | A description that tells the agent when and how to use the tool. |
 | `Array<Parameter> parameters` | Describes the JSON parameters accepted by the tool. |
 | `Functor<...> handler` | The internal callback invoked when the agent uses the tool. |
+| `bool readOnly` | Indicates that the tool does not modify any data. |
+
+### `shell` Tool Permissions
+
+There are two ways for agents to use the `shell` tool:
+
+- With full unrestricted access to run any command on behalf of the user.
+- In a restricted mode, where a second "authorizer" agent reviews each shell command to make sure it's permitted by a given policy. The "authorizer" has read-only access to the full set of directories available to the model.
+
+To configure a `shell` tool, pass a `ShellToolSettings` instance to `createShellTool`. `ShellToolSettings` has the following data members:
+
+| | |
+| --- | --- |
+| `String policy` | A natural-language description of shell commands the agent is allowed to run. |
+| `Agent::EndPoint authorizerEndPoint` | The authorizer's provider, protocol and model. |
+| `Set<Owned<ToolDefinition>> authorizerTools` | The tools available to the authorizer. |
+| `bool unrestricted` | If `true`, all permission checks are bypassed completely. |
 
 ### Defining Custom Tools
 

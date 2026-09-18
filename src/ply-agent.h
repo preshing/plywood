@@ -144,6 +144,7 @@ struct ToolDefinition {
     String description;
     Array<Parameter> parameters;
     Functor<void(ToolContext* toolCtx, Transcript::Message* toolCall, const json::Node& arguments)> handler;
+    bool readOnly = false;
 
     StringView getLookupKey() const {
         return this->name;
@@ -253,18 +254,21 @@ struct ToolContext {
     void clearCancelCallback();
 };
 
-// Individual tool registration functions.
+// Individual tool creation functions.
 #if !defined(PLY_IOS)
 struct ShellToolSettings {
-    bool unrestricted = true; // Bypasses filesystem permissions.
+    String policy;
+    Agent::EndPoint authorizerEndPoint;
+    Set<Owned<ToolDefinition>> authorizerTools;
+    bool unrestricted = false; // Bypasses all permission checking.
 };
-ToolDefinition* addShellTool(Agent::Capabilities* capabilities, const ShellToolSettings& settings = {});
+Owned<ToolDefinition> createShellTool(const ShellToolSettings& settings = {});
 #endif // !defined(PLY_IOS)
-ToolDefinition* addReadTool(Agent::Capabilities* capabilities);
-ToolDefinition* addWriteTool(Agent::Capabilities* capabilities);
-ToolDefinition* addListDirTool(Agent::Capabilities* capabilities);
-ToolDefinition* addFindInFilesTool(Agent::Capabilities* capabilities);
-ToolDefinition* addEditTool(Agent::Capabilities* capabilities);
+Owned<ToolDefinition> createReadTool();
+Owned<ToolDefinition> createWriteTool();
+Owned<ToolDefinition> createListDirTool();
+Owned<ToolDefinition> createFindInFilesTool();
+Owned<ToolDefinition> createEditTool();
 
 #endif // !PLY_AGENT_TRANSCRIPT_ONLY
 

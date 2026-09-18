@@ -93,7 +93,11 @@ If `-c/--config` is specified, the app loads settings from the specified path in
     "writableDirs": ["."],
     "tools": [
         "read", "list_dir", "find_in_files", "write", "edit", "shell"
-    ]
+    ],
+    "shellAuthorizer": {
+        "policy": "The agent may build and run the existing sample applications.",
+        "tools": ["read", "list_dir", "find_in_files"]
+    }
 }
 ```
 
@@ -113,4 +117,17 @@ The settings file must contain a single JSON object with these optional properti
 | `readableDirs` | An array of absolute paths or paths relative to this file's working directory where the agent has recursive read access. |
 | `writableDirs` | An array of absolute paths or paths relative to this file's working directory where the agent has recursive write access. Write permission also grants read access. |
 | `tools` | An array of tool names. Available names are `read`, `list_dir`, `find_in_files`, `write`, `edit`, and `shell` (except on iOS). |
+| `shellAuthorizer` | Configures the "authorizer" agent that reviews each `shell` request. |
 | `include` | A settings file path or array of paths to inherit, relative to the declaring file's directory. |
+
+The `shellAuthorizer` subobject is used to configure a `ShellToolSettings` instance as described in the [Agent Harness library](/docs/high-level/agent-harness#tools). It accepts the following optional properties:
+
+| Property | Description |
+|---|---|
+| `policy` | Additional natural-language rules describing the shell actions the main agent may take. |
+| `provider` | Selects a preset from `known-providers.json`. It must be a nonempty string and cannot be combined with `url`, `protocol`, or `apiKeyEnv`. |
+| `url` | The URL of a custom inference endpoint. Custom endpoints must also specify `protocol`, `apiKeyEnv`, and `model`. |
+| `protocol` | The custom endpoint protocol: `completions`, `responses`, `anthropic`, or `interactions`. |
+| `apiKeyEnv` | The environment variable containing the custom endpoint's API key. Use `NONE` to omit authentication. |
+| `model` | Selects the model. It is required for a custom endpoint and optionally overrides a provider's default model; a provider override must be nonempty. |
+| `tools` | Read-only tools available to the authorizer. |

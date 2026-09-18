@@ -41,6 +41,10 @@ struct CommandLineOptions {
 struct AppSettings {
     String userPrompt;
     Array<String> agentsMDSections;
+    Array<String> toolNames;
+#if !defined(PLY_IOS)
+    Array<String> shellAuthorizerToolNames;
+#endif
     u16 agentProxyPort = 8082;
     u16 webServerPort = 8081;
 };
@@ -48,6 +52,9 @@ struct AppSettings {
 CommandLineOptions options;
 AppSettings appSettings;
 Agent::Settings agentSettings;
+#if !defined(PLY_IOS)
+ShellToolSettings shellToolSettings;
+#endif
 Reference<Transcript> transcript;
 
 //---------------------------------------------------
@@ -1141,17 +1148,17 @@ static bool loadDirs(const json::Node& root, StringView name, StringView working
     return true;
 }
 
-// Validate tool entries independently of directory permissions and merge by tool name.
-static bool loadTools(const json::Node& root, StringView settingsPath) {
-    const json::Node& tools = root.get("tools");
-    if (!tools)
+// Validate and collect tool names for materialization after all settings are final.
+static bool loadToolNames(const json::Node& root, StringView settingsPath, Array<String>& toolNames) {
+    const json::Node& jTools = root.get("tools");
+    if (!jTools)
         return true;
-    if (!tools.isArray()) {
+    if (!jTools.isArray()) {
         getStdErr().format("tools must be an array in: {}\n", settingsPath);
         return false;
     }
     Array<String> localNames;
-    for (const json::Node& entry : tools.arrayView()) {
+    for (const json::Node& entry : jTools.arrayView()) {
         if (!entry.isText() || !entry.text()) {
             getStdErr().format("Each tool must be a non-empty string in: {}\n", settingsPath);
             return false;
@@ -1162,30 +1169,9 @@ static bool loadTools(const json::Node& root, StringView settingsPath) {
             return false;
         }
         localNames.append(name);
-        // Register each tool on its first occurrence across the include chain.
-        if (agentSettings.capabilities.tools.find(name))
-            continue;
-        if (name == "read") {
-            addReadTool(&agentSettings.capabilities);
-        } else if (name == "write") {
-            addWriteTool(&agentSettings.capabilities);
-        } else if (name == "edit") {
-            addEditTool(&agentSettings.capabilities);
-        } else if (name == "list_dir") {
-            addListDirTool(&agentSettings.capabilities);
-        } else if (name == "find_in_files") {
-            addFindInFilesTool(&agentSettings.capabilities);
-#if !defined(PLY_IOS)
-        } else if (name == "shell") {
-            addShellTool(&agentSettings.capabilities);
-#else
-        } else if (name == "shell") {
-            getStdErr().write("The shell tool is not available on iOS.\n");
-            return false;
-#endif
-        } else {
-            getStdErr().format("Unknown tool '{}' in: {}\n", name, settingsPath);
-            return false;
+        // Merge each tool only on its first occurrence across the include chain.
+        if (find(toolNames, name) < 0) {
+            toolNames.append(name);
         }
     }
     return true;
@@ -1299,19 +1285,47 @@ static bool loadSettingsWithIncludes(StringView settingsPath, Array<String>& inc
         appSettings.userPrompt = jUserPrompt.text();
     }
 
+    // Import shell authorization.
+#if !defined(PLY_IOS)
+    if (const json::Node& jShellAuthorizer = root.get("shellAuthorizer")) {
+        if (!jShellAuthorizer.isObject()) {
+            getStdErr().format("shellAuthorizer must be an object in: {}\n", settingsPath);
+            return false;
+        }
+        String authorizerPath = String::format("shellAuthorizer in {}", settingsPath);
+
+        // Load policy.
+        if (const json::Node& jPolicy = jShellAuthorizer.get("policy")) {
+            if (!jPolicy.isText()) {
+                getStdErr().format("policy must be a string in: {}\n", authorizerPath);
+                return false;
+            }
+            shellToolSettings.policy = jPolicy.text();
+        }
+
+        // Load EndPoint.
+        if (!loadEndPoint(jShellAuthorizer, authorizerPath, shellToolSettings.authorizerEndPoint))
+            return false;
+
+        // Load tool names.
+        if (!loadToolNames(jShellAuthorizer, authorizerPath, appSettings.shellAuthorizerToolNames))
+            return false;
+    }
+#endif
+
     // Import remaining settings.
     if (!loadDirs(root, "readableDirs", workingDir, settingsPath, agentSettings.capabilities.readableDirs))
         return false;
     if (!loadDirs(root, "writableDirs", workingDir, settingsPath, agentSettings.capabilities.writableDirs,
                   &agentSettings.capabilities.readableDirs))
         return false;
-    if (!loadTools(root, settingsPath))
+    if (!loadToolNames(root, settingsPath, appSettings.toolNames))
         return false;
 
     return true;
 }
 
-// Load settings from the appropriate JSON files and convert them to Agent::Settings.
+// Load and merge JSON settings from the appropriate files.
 static bool loadSettings() {
     // Set defaults.
     agentSettings.capabilities.workingDir = FileSystem::getWorkingDirectory();
@@ -1345,10 +1359,6 @@ static bool loadSettings() {
     Array<String> includedPaths;
     if (!loadSettingsWithIncludes(settingsPath, includedPaths))
         return false;
-    if (!options.userPrompt) {
-        options.userPrompt = appSettings.userPrompt;
-    }
-
     // Augment the system prompt.
     agentSettings.capabilities.systemPrompt +=
         String::format("\n\nThe current working directory is: {}", agentSettings.capabilities.workingDir);
@@ -1463,6 +1473,95 @@ static bool validateEndPoint(const Agent::EndPoint& endPoint) {
     return true;
 }
 
+// Apply command-line values only after every JSON setting has been merged.
+static void applyCommandLineOptions() {
+    if (options.provider) {
+        agentSettings.endPoint = {};
+        agentSettings.endPoint.provider = options.provider;
+    }
+    if (options.model) {
+        agentSettings.endPoint.model = options.model;
+    }
+    if (options.userPrompt) {
+        appSettings.userPrompt = options.userPrompt;
+    }
+}
+
+// Resolve and validate endpoints only after JSON and command-line overrides are final.
+static bool resolveSettings() {
+    if (!resolveEndPoint(agentSettings.endPoint, options.useProxy, appSettings.agentProxyPort) ||
+        !validateEndPoint(agentSettings.endPoint))
+        return false;
+
+#if !defined(PLY_IOS)
+    // The authorizer endpoint is needed only when the main agent has the shell tool.
+    if (find(appSettings.toolNames, StringView{"shell"}) >= 0) {
+        Agent::EndPoint& authorizerEndPoint = shellToolSettings.authorizerEndPoint;
+        bool hasAuthorizerEndPoint = authorizerEndPoint.provider || authorizerEndPoint.url ||
+                                     authorizerEndPoint.protocol != Agent::Protocol::Unset ||
+                                     authorizerEndPoint.apiKeyEnv || authorizerEndPoint.model;
+        if (!hasAuthorizerEndPoint) {
+            authorizerEndPoint = agentSettings.endPoint;
+        } else if (!resolveEndPoint(authorizerEndPoint, options.useProxy, appSettings.agentProxyPort) ||
+                   !validateEndPoint(authorizerEndPoint)) {
+            return false;
+        }
+    }
+#endif
+    return true;
+}
+
+// Create one built-in tool from its configured name.
+static Owned<ToolDefinition> createConfiguredTool(StringView name) {
+    if (name == "read")
+        return createReadTool();
+    if (name == "write")
+        return createWriteTool();
+    if (name == "edit")
+        return createEditTool();
+    if (name == "list_dir")
+        return createListDirTool();
+    if (name == "find_in_files")
+        return createFindInFilesTool();
+#if !defined(PLY_IOS)
+    if (name == "shell")
+        return createShellTool(shellToolSettings);
+#endif
+    return {};
+}
+
+// Materialize a list of tool names after all settings they can capture are final.
+static bool createTools(ArrayView<const String> toolNames, Set<Owned<ToolDefinition>>& tools, bool readOnly = false) {
+    for (StringView name : toolNames) {
+        Owned<ToolDefinition> tool = createConfiguredTool(name);
+        if (!tool) {
+#if defined(PLY_IOS)
+            if (name == "shell") {
+                getStdErr().write("The shell tool is not available on iOS.\n");
+                return false;
+            }
+#endif
+            getStdErr().format("Unknown tool '{}'.\n", name);
+            return false;
+        }
+        if (readOnly && !tool->readOnly) {
+            getStdErr().format("Tool '{}' is not read-only.\n", name);
+            return false;
+        }
+        tools.insertItem(std::move(tool));
+    }
+    return true;
+}
+
+// Build both tool sets once the complete configuration has been finalized.
+static bool createConfiguredTools() {
+#if !defined(PLY_IOS)
+    if (!createTools(appSettings.shellAuthorizerToolNames, shellToolSettings.authorizerTools, true))
+        return false;
+#endif
+    return createTools(appSettings.toolNames, agentSettings.capabilities.tools);
+}
+
 // Prints the command-line syntax and registered options.
 static void printUsage(Stream& out, StringView executablePath, const CommandLineParser& parser) {
     out.format("Usage: {} [options] [prompt]\n", executablePath);
@@ -1546,25 +1645,17 @@ int main(int argc, const char* argv[]) {
         options.runWebServer = true;
     }
 
-    // Load agent settings.
+    // Load and merge the complete JSON settings chain.
     if (!loadSettings())
         return 1;
 
-    // Apply CLI selections before resolving provider defaults and global proxy routing.
-    if (options.provider) {
-        agentSettings.endPoint = {};
-        agentSettings.endPoint.provider = options.provider;
-    }
-    if (options.model) {
-        agentSettings.endPoint.model = options.model;
-    }
-    if (!resolveEndPoint(agentSettings.endPoint, options.useProxy, appSettings.agentProxyPort))
-        return 1;
-    if (!validateEndPoint(agentSettings.endPoint))
+    // Apply command-line overrides, then finalize settings and materialize tools exactly once.
+    applyCommandLineOptions();
+    if (!resolveSettings() || !createConfiguredTools())
         return 1;
 
     // Ensure a prompt was specified on the command line or in the JSON settings.
-    if (!options.userPrompt) {
+    if (!appSettings.userPrompt) {
         getStdErr().write("A prompt must be specified.\n");
         return 1;
     }
@@ -1588,14 +1679,14 @@ int main(int argc, const char* argv[]) {
     {
         Owned<Transcript::Message> userMsg = Heap::create<Transcript::Message>();
         userMsg->role = Transcript::Role::User;
-        userMsg->content.append(options.userPrompt);
+        userMsg->content.append(appSettings.userPrompt);
         userMsg->content.flush();
         turn.messages.append(std::move(userMsg));
     }
 
     // Print the initial portion of the transcript (system prompt, tool definitions and user prompt).
     TranscriptPrinter printer;
-    printer.printStartup(options.userPrompt);
+    printer.printStartup(appSettings.userPrompt);
 
 #if !defined(PLY_IOS)
     // Open the web UI in the default browser.
