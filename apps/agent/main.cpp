@@ -29,7 +29,9 @@ struct CommandLineOptions {
     String model;
     bool useProxy = false;
     String proxyPort;
-    bool enableHttpLog = false;
+    bool enableLog = false;
+    bool enableAuthorizerLog = false;
+    bool enableRawLog = false;
     bool runWebServer = false;
     String webServerPort;
     bool openBrowser = false;
@@ -49,18 +51,50 @@ struct AppSettings {
     u16 webServerPort = 8081;
 };
 
+struct AppState {
+    Reference<Transcript> transcript;
+    Stream appLogFile;
+    Stream authorizationLogFile;
+    u32 authorizationCount = 0;
+};
+
 CommandLineOptions options;
 AppSettings appSettings;
 Agent::Settings agentSettings;
 #if !defined(PLY_IOS)
 ShellToolSettings shellToolSettings;
 #endif
-Reference<Transcript> transcript;
+AppState appState;
 
 //---------------------------------------------------
 // Helpers for formatting the transcript output.
 //---------------------------------------------------
 static const StringView Separator = "-------------------------------";
+
+// Forwards writes and flushes to a set of borrowed output pipes.
+struct MultiPipe : Pipe {
+    Array<Pipe*> pipes;
+
+    MultiPipe() {
+        this->flags = Pipe::HAS_WRITE_PERMISSION;
+    }
+
+    virtual bool write(StringView buf) override {
+        bool succeeded = true;
+        for (Pipe* pipe : this->pipes) {
+            if (!pipe->write(buf)) {
+                succeeded = false;
+            }
+        }
+        return succeeded;
+    }
+
+    virtual void flush(bool toDevice = false) override {
+        for (Pipe* pipe : this->pipes) {
+            pipe->flush(toDevice);
+        }
+    }
+};
 
 static String formatTimeStamp(s64 micros) {
     return String::fromDateTime("%l:%M%P", convertToDateTime(micros));
@@ -548,15 +582,20 @@ static String formatToolCall(StringView raw) {
 }
 
 //---------------------------------------------------
-// TranscriptPrinter writes the agent's transcript to stdout as a sequence of
+// TranscriptPrinter writes an agent transcript to text output as a sequence of
 // timestamped message blocks. Tool responses are received asynchronously
 // from the rest of the transcript, so they are buffered here and only flushed
-// to stdout once an EndTurn event arrives (or the agent stops). This keeps
+// once an EndTurn event arrives (or the agent stops). This keeps
 // them from appearing interleaved with the other messages of the turn.
 //---------------------------------------------------
 struct TranscriptPrinter {
+    Stream* output = nullptr;
+    Transcript* transcript = nullptr;
+    const Agent::Capabilities* capabilities = nullptr;
+    bool publishToWeb = false;
+
     // The currently open section: its header (and, for streamed text messages,
-    // its content) has already been written to stdout, but the closing timing
+    // its content) has already been written, but the closing timing
     // line and separator are deferred until the next section opens or the turn
     // ends. This is what lets us compute the message's elapsed time and output
     // size.
@@ -709,32 +748,30 @@ void TranscriptPrinter::printStartup(StringView userPrompt) {
     s64 now = getUnixTimestamp();
 
     {
-        // Write system prompt to stdout.
-        Stream out = getStdOut();
-        out.format("{} [System Prompt]\n", formatTimeStamp(now));
-        out.format("{}\n", agentSettings.capabilities.systemPrompt);
-        out.format("{}\n", Separator);
+        // Write system prompt.
+        this->output->format("{} [System Prompt]\n", formatTimeStamp(now));
+        this->output->format("{}\n", this->capabilities->systemPrompt);
+        this->output->format("{}\n", Separator);
     }
-    if (options.runWebServer) {
+    if (this->publishToWeb) {
         // Stream the system prompt to the web browser.
         webBeginMessage("SystemPrompt", formatTimeStamp(now));
-        webAppendText(agentSettings.capabilities.systemPrompt);
+        webAppendText(this->capabilities->systemPrompt);
         webEndMessage();
     }
 
     // Tool definition blocks.
     {
-        Stream out = getStdOut();
-        for (const Owned<ToolDefinition>& tool : agentSettings.capabilities.tools) {
-            // Write tool definition to stdout.
-            out.format("{} [Tool Definition: {}]\n", formatTimeStamp(now), tool->name);
+        for (const Owned<ToolDefinition>& tool : this->capabilities->tools) {
+            // Write tool definition.
+            this->output->format("{} [Tool Definition: {}]\n", formatTimeStamp(now), tool->name);
             for (const ToolDefinition::Parameter& param : tool->parameters) {
-                out.format("`{}`: {}\n", param.name, param.description);
+                this->output->format("`{}`: {}\n", param.name, param.description);
             }
-            out.format("{}\n", tool->description);
-            out.format("{}\n", Separator);
+            this->output->format("{}\n", tool->description);
+            this->output->format("{}\n", Separator);
 
-            if (options.runWebServer) {
+            if (this->publishToWeb) {
                 // Stream the tool definition to the web browser.
                 MemStream text;
                 for (const ToolDefinition::Parameter& param : tool->parameters) {
@@ -751,10 +788,9 @@ void TranscriptPrinter::printStartup(StringView userPrompt) {
     // User block. Its header and content are emitted now, but it is left open so
     // that its elapsed time reflects the wait for the agent's first response.
     {
-        // Write user header to stdout.
-        Stream out = getStdOut();
-        out.format("{} [User]\n", formatTimeStamp(now));
-        out.format("{}\n", userPrompt);
+        // Write user header.
+        this->output->format("{} [User]\n", formatTimeStamp(now));
+        this->output->format("{}\n", userPrompt);
     }
     this->hasOpen = true;
     this->openIsTextMsg = true;
@@ -762,7 +798,7 @@ void TranscriptPrinter::printStartup(StringView userPrompt) {
     this->openUsesMarkdown = true;
     this->sectionStartTime = now;
     this->openOutputBytes = userPrompt.numBytes();
-    if (options.runWebServer) {
+    if (this->publishToWeb) {
         // Stream the user message to the web browser.
         webBeginMessage("User", formatTimeStamp(now));
         this->beginMarkdownMessage();
@@ -785,35 +821,34 @@ void TranscriptPrinter::openSection(Transcript::Role role, u32 toolCallID, s64 t
     this->openLastWasNewline = true;
     this->openToolCallText = {};
 
-    Stream out = getStdOut();
     switch (role) {
         case Transcript::Role::AgentThinking:
-            out.format("{} [Agent Thinking]\n", formatTimeStamp(timeStamp));
-            if (options.runWebServer) {
+            this->output->format("{} [Agent Thinking]\n", formatTimeStamp(timeStamp));
+            if (this->publishToWeb) {
                 webBeginMessage("AgentThinking", formatTimeStamp(timeStamp));
             }
             this->openIsTextMsg = true;
             this->openUsesMarkdown = true;
             break;
         case Transcript::Role::Agent:
-            out.format("{} [Agent]\n", formatTimeStamp(timeStamp));
-            if (options.runWebServer) {
+            this->output->format("{} [Agent]\n", formatTimeStamp(timeStamp));
+            if (this->publishToWeb) {
                 webBeginMessage("Agent", formatTimeStamp(timeStamp));
             }
             this->openIsTextMsg = true;
             this->openUsesMarkdown = true;
             break;
         case Transcript::Role::Error:
-            out.format("{} [Error]\n", formatTimeStamp(timeStamp));
-            if (options.runWebServer) {
+            this->output->format("{} [Error]\n", formatTimeStamp(timeStamp));
+            if (this->publishToWeb) {
                 webBeginMessage("Error", formatTimeStamp(timeStamp));
             }
             this->openIsTextMsg = true;
             break;
         case Transcript::Role::ToolCall: {
             u32 displayedToolCallIndex = this->getDisplayedToolCallIndex(toolCallID);
-            out.format("{} [Tool Call #{}]\n", formatTimeStamp(timeStamp), displayedToolCallIndex);
-            if (options.runWebServer) {
+            this->output->format("{} [Tool Call #{}]\n", formatTimeStamp(timeStamp), displayedToolCallIndex);
+            if (this->publishToWeb) {
                 webBeginMessage("ToolCall", formatTimeStamp(timeStamp), {}, displayedToolCallIndex);
             }
             this->openIsTextMsg = false;
@@ -823,21 +858,20 @@ void TranscriptPrinter::openSection(Transcript::Role role, u32 toolCallID, s64 t
             this->openIsTextMsg = false;
             break;
     }
-    if (options.runWebServer && this->openUsesMarkdown) {
+    if (this->publishToWeb && this->openUsesMarkdown) {
         this->beginMarkdownMessage();
     }
 }
 
 void TranscriptPrinter::closeOpen(s64 endMicros) {
-    Stream out = getStdOut();
     if (this->openIsTextMsg) {
         if (!this->openLastWasNewline) {
-            out.format("\n");
+            this->output->format("\n");
         }
 
         // Error messages don't include output statistics.
         if (this->openRole == Transcript::Role::Error) {
-            if (options.runWebServer) {
+            if (this->publishToWeb) {
                 webEndMessage();
             }
         } else {
@@ -849,9 +883,9 @@ void TranscriptPrinter::closeOpen(s64 endMicros) {
             String footer = String::format("({:.1}s elapsed, {} output, {})", elapsedSec,
                                            formatSize(this->openOutputBytes), formatRate(rate));
 
-            // Write message footer to stdout.
-            out.format("{}\n", footer);
-            if (options.runWebServer) {
+            // Write message footer.
+            this->output->format("{}\n", footer);
+            if (this->publishToWeb) {
                 if (this->openUsesMarkdown) {
                     this->endMarkdownMessage(footer);
                 } else {
@@ -860,16 +894,16 @@ void TranscriptPrinter::closeOpen(s64 endMicros) {
             }
         }
     } else if (this->openRole == Transcript::Role::ToolCall) {
-        // Flush tool call to stdout.
+        // Flush tool call.
         String formatted = formatToolCall(this->openToolCallText);
-        out.format("{}\n", formatted);
-        if (options.runWebServer) {
+        this->output->format("{}\n", formatted);
+        if (this->publishToWeb) {
             // Publish the formatted tool call as a complete message.
             webAppendText(formatted);
             webEndMessage();
         }
     }
-    out.format("{}\n", Separator);
+    this->output->format("{}\n", Separator);
     this->hasOpen = false;
 }
 
@@ -878,21 +912,20 @@ void TranscriptPrinter::flushToolResponses(s64 timeStamp) {
     // they are produced asynchronously by the tool thread).
     Array<u32> ids = this->responseOrder;
     sort(ids);
-    Stream out = getStdOut();
     for (u32 id : ids) {
         Transcript::Buffer* response = this->pendingResponses.find(id);
         if (!response)
             continue;
         response->flush();
-        // Write tool response to stdout.
+        // Write tool response.
         u32 displayedToolCallIndex = this->getDisplayedToolCallIndex(id);
-        out.format("{} [Tool Response #{}]\n", formatTimeStamp(timeStamp), displayedToolCallIndex);
+        this->output->format("{} [Tool Response #{}]\n", formatTimeStamp(timeStamp), displayedToolCallIndex);
         for (const String& line : response->lines) {
-            out.write(line);
+            this->output->write(line);
         }
-        out.write('\n');
-        out.format("{}\n", Separator);
-        if (options.runWebServer) {
+        this->output->write('\n');
+        this->output->format("{}\n", Separator);
+        if (this->publishToWeb) {
             // Display the response after all of its streamed chunks have arrived.
             webEndToolResponse(displayedToolCallIndex, formatTimeStamp(timeStamp));
         }
@@ -903,8 +936,8 @@ void TranscriptPrinter::flushToolResponses(s64 timeStamp) {
 
 // Prints the current turn's usage and totals derived from the transcript.
 void TranscriptPrinter::printTokenUsage(s64 timeStamp) {
-    u32 turnNumber = numericCast<u32>(transcript->turns.numItems());
-    const Transcript::TokenUsage& turnTokenUsage = transcript->turns.back().tokenUsage;
+    u32 turnNumber = numericCast<u32>(this->transcript->turns.numItems());
+    const Transcript::TokenUsage& turnTokenUsage = this->transcript->turns.back().tokenUsage;
     if (!turnTokenUsage.isValid) {
         return;
     }
@@ -912,7 +945,7 @@ void TranscriptPrinter::printTokenUsage(s64 timeStamp) {
     // Sum token usage from every valid turn for the session totals.
     Transcript::TokenUsage sessionTokenUsage;
     sessionTokenUsage.isValid = true;
-    for (const Transcript::Turn& turn : transcript->turns) {
+    for (const Transcript::Turn& turn : this->transcript->turns) {
         if (turn.tokenUsage.isValid) {
             sessionTokenUsage.uncachedInputTokens += turn.tokenUsage.uncachedInputTokens;
             sessionTokenUsage.cachedInputTokens += turn.tokenUsage.cachedInputTokens;
@@ -933,7 +966,7 @@ void TranscriptPrinter::printTokenUsage(s64 timeStamp) {
     String turnCacheUtilization;
     String totalCacheUtilization;
     if (turnNumber > 1) {
-        const Transcript::TokenUsage& previousTokenUsage = transcript->turns[turnNumber - 2].tokenUsage;
+        const Transcript::TokenUsage& previousTokenUsage = this->transcript->turns[turnNumber - 2].tokenUsage;
         u64 previousInputTokens = previousTokenUsage.isValid
                                       ? previousTokenUsage.uncachedInputTokens + previousTokenUsage.cachedInputTokens
                                       : 0;
@@ -942,9 +975,9 @@ void TranscriptPrinter::printTokenUsage(s64 timeStamp) {
         // Accumulate cache utilization across turns whose preceding usage is known.
         u64 cacheUtilizedInputTokens = 0;
         u64 cacheEligibleInputTokens = 0;
-        for (uptr i = 1; i < transcript->turns.numItems(); i++) {
-            const Transcript::TokenUsage& current = transcript->turns[i].tokenUsage;
-            const Transcript::TokenUsage& previous = transcript->turns[i - 1].tokenUsage;
+        for (uptr i = 1; i < this->transcript->turns.numItems(); i++) {
+            const Transcript::TokenUsage& current = this->transcript->turns[i].tokenUsage;
+            const Transcript::TokenUsage& previous = this->transcript->turns[i - 1].tokenUsage;
             u64 eligibleInputTokens = previous.uncachedInputTokens + previous.cachedInputTokens;
             if (!current.isValid || !previous.isValid || eligibleInputTokens == 0) {
                 continue;
@@ -956,9 +989,8 @@ void TranscriptPrinter::printTokenUsage(s64 timeStamp) {
     }
     String turnUsage = formatTokenUsage(turnLabel, turnTokenUsage, turnCacheUtilization);
     String sessionUsage = formatTokenUsage("total", sessionTokenUsage, totalCacheUtilization);
-    Stream out = getStdOut();
-    out.format("{}\n{}\n{}\n", turnUsage, sessionUsage, Separator);
-    if (options.runWebServer) {
+    this->output->format("{}\n{}\n{}\n", turnUsage, sessionUsage, Separator);
+    if (this->publishToWeb) {
         webTokenUsage(formatTimeStamp(timeStamp), turnNumber, turnUsage, sessionUsage,
                       sessionTokenUsage.uncachedInputTokens, sessionTokenUsage.outputTokens);
     }
@@ -975,13 +1007,13 @@ void TranscriptPrinter::handleEvent(const Transcript::Event& event) {
         case Transcript::Event::AppendText:
             if (this->hasOpen) {
                 if (this->openIsTextMsg) {
-                    // Stream text messages to stdout as they arrive.
-                    getStdOut().format("{}", event.text);
+                    // Stream text messages as they arrive.
+                    this->output->write(event.text);
                     this->openOutputBytes += event.text.numBytes();
                     if (event.text) {
                         this->openLastWasNewline = event.text.endsWith('\n');
                     }
-                    if (options.runWebServer) {
+                    if (this->publishToWeb) {
                         if (this->openUsesMarkdown) {
                             this->appendMarkdown(event.text);
                         } else {
@@ -1001,7 +1033,7 @@ void TranscriptPrinter::handleEvent(const Transcript::Event& event) {
                 this->responseOrder.append(event.toolCallID);
             }
             ins.value->append(event.text);
-            if (options.runWebServer) {
+            if (this->publishToWeb) {
                 webAppendToolResponse(this->getDisplayedToolCallIndex(event.toolCallID), event.text);
             }
             break;
@@ -1035,6 +1067,47 @@ void TranscriptPrinter::finish(s64 endMicros) {
         this->printTokenUsage(endMicros);
     }
 }
+
+#if !defined(PLY_IOS)
+// Writes one complete authorizer transcript to the shared authorization log.
+static void logAuthorizerTranscript(Agent* authorizer) {
+    PLY_ASSERT(authorizer);
+    PLY_ASSERT(authorizer->settings->startTranscript);
+
+    // Copy the starting transcript so streamed events can be applied for token totals and formatting.
+    Transcript authorizerTranscript = *authorizer->settings->startTranscript;
+    String userPrompt;
+    if (authorizerTranscript.turns && authorizerTranscript.turns.back().messages) {
+        const Transcript::Message& userMsg = *authorizerTranscript.turns.back().messages.back();
+        userPrompt = userMsg.content.toString();
+    }
+
+    // Separate every authorization run with a prominent heading.
+    appState.authorizationCount++;
+    if (appState.authorizationCount > 1) {
+        appState.authorizationLogFile.write('\n');
+    }
+    appState.authorizationLogFile.format("========================================\n"
+                                         "AUTHORIZATION #{}\n"
+                                         "========================================\n\n",
+                                         appState.authorizationCount);
+
+    // Reuse the normal text formatter while consuming all authorizer events.
+    TranscriptPrinter printer;
+    printer.output = &appState.authorizationLogFile;
+    printer.transcript = &authorizerTranscript;
+    printer.capabilities = &authorizer->settings->capabilities;
+    printer.printStartup(userPrompt);
+    while (authorizer->isWorking()) {
+        for (const Transcript::Event& event : authorizer->waitForEvents()) {
+            applyTranscriptEvent(&authorizerTranscript, event);
+            printer.handleEvent(event);
+        }
+    }
+    printer.finish(getUnixTimestamp());
+    appState.authorizationLogFile.flush(true);
+}
+#endif
 
 //   ▄▄▄▄          ▄▄    ▄▄   ▄▄
 //  ██  ▀▀  ▄▄▄▄  ▄██▄▄ ▄██▄▄ ▄▄ ▄▄▄▄▄   ▄▄▄▄▄  ▄▄▄▄
@@ -1568,6 +1641,19 @@ static void printUsage(Stream& out, StringView executablePath, const CommandLine
     parser.printAvailableOptions(out);
 }
 
+// Opens a timestamped log in the current working directory.
+static bool openLogFile(Stream* file, StringView prefix) {
+    DateTime dateTime = convertToDateTime(getUnixTimestamp());
+    String timestamp = String::fromDateTime("%Y%m%d-%H%M%S", dateTime);
+    String path = String::format("{}-{}.txt", prefix, timestamp);
+    *file = FileSystem::openBinaryForWrite(path);
+    if (!file->isOpen()) {
+        getStdErr().format("Could not open log file: {}\n", path);
+        return false;
+    }
+    return true;
+}
+
 //  ▄▄   ▄▄        ▄▄
 //  ███▄███  ▄▄▄▄  ▄▄ ▄▄▄▄▄
 //  ██▀█▀██  ▄▄▄██ ██ ██  ██
@@ -1588,7 +1674,12 @@ int main(int argc, const char* argv[]) {
         {"-m", "--model", PLY_LOOKUP_MEMBER(CommandLineOptions, model), "Model name to use"},
         {"-x", "--proxy", PLY_LOOKUP_MEMBER(CommandLineOptions, useProxy), "Connect through agent-proxy",
          PLY_LOOKUP_MEMBER(CommandLineOptions, proxyPort), "port"},
-        {"-l", "--http-log", PLY_LOOKUP_MEMBER(CommandLineOptions, enableHttpLog), "Write raw HTTP log"},
+        {"-l", "--log", PLY_LOOKUP_MEMBER(CommandLineOptions, enableLog), "Copy stdout to a log"},
+#if !defined(PLY_IOS)
+        {"-a", "--authorizer-log", PLY_LOOKUP_MEMBER(CommandLineOptions, enableAuthorizerLog),
+         "Write authorizer transcripts to a log"},
+#endif
+        {"-r", "--raw-log", PLY_LOOKUP_MEMBER(CommandLineOptions, enableRawLog), "Write raw provider responses"},
         {"-s", "--serve", PLY_LOOKUP_MEMBER(CommandLineOptions, runWebServer),
          "Serve a loopback-only web UI (default port: 8081)", PLY_LOOKUP_MEMBER(CommandLineOptions, webServerPort),
          "port"},
@@ -1610,9 +1701,27 @@ int main(int argc, const char* argv[]) {
         printUsage(err, argv[0], parser);
         return 1;
     }
+
+    // Open requested app-level logs before writing any normal stdout output.
+    if (options.enableLog && !openLogFile(&appState.appLogFile, "agent-log"))
+        return 1;
+#if !defined(PLY_IOS)
+    if (options.enableAuthorizerLog && !openLogFile(&appState.authorizationLogFile, "agent-authorization-log"))
+        return 1;
+#endif
+
+    // Create the stream used for normal app output, optionally duplicating it to the app log.
+    Stream consoleOutput = getStdOut();
+    Owned<MultiPipe> multiPipe = Heap::create<MultiPipe>();
+    multiPipe->pipes.append(consoleOutput.pipe.pipe);
+    if (appState.appLogFile.isOpen()) {
+        multiPipe->pipes.append(appState.appLogFile.pipe.pipe);
+    }
+    Stream appOutput{multiPipe.release(), true};
     if (options.printUsage) {
-        Stream out = getStdOut();
-        printUsage(out, argv[0], parser);
+        MemStream usage;
+        printUsage(usage, argv[0], parser);
+        appOutput.write(usage.moveToString());
         return 0;
     }
     if (numUserPrompts > 1) {
@@ -1651,6 +1760,11 @@ int main(int argc, const char* argv[]) {
 
     // Apply command-line overrides, then finalize settings and materialize tools exactly once.
     applyCommandLineOptions();
+#if !defined(PLY_IOS)
+    if (options.enableAuthorizerLog) {
+        shellToolSettings.authorizerHook = logAuthorizerTranscript;
+    }
+#endif
     if (!resolveSettings() || !createConfiguredTools())
         return 1;
 
@@ -1674,8 +1788,8 @@ int main(int argc, const char* argv[]) {
     }
 
     // Create a transcript with the user's prompt as the first turn.
-    transcript = new Transcript;
-    Transcript::Turn& turn = transcript->turns.append();
+    appState.transcript = new Transcript;
+    Transcript::Turn& turn = appState.transcript->turns.append();
     {
         Owned<Transcript::Message> userMsg = Heap::create<Transcript::Message>();
         userMsg->role = Transcript::Role::User;
@@ -1686,6 +1800,10 @@ int main(int argc, const char* argv[]) {
 
     // Print the initial portion of the transcript (system prompt, tool definitions and user prompt).
     TranscriptPrinter printer;
+    printer.output = &appOutput;
+    printer.transcript = appState.transcript;
+    printer.capabilities = &agentSettings.capabilities;
+    printer.publishToWeb = options.runWebServer;
     printer.printStartup(appSettings.userPrompt);
 
 #if !defined(PLY_IOS)
@@ -1708,14 +1826,14 @@ int main(int argc, const char* argv[]) {
 #endif
 
     // Start the agent.
-    agentSettings.startTranscript = transcript;
-    agentSettings.enableHttpLog = options.enableHttpLog;
+    agentSettings.startTranscript = appState.transcript;
+    agentSettings.enableRawLog = options.enableRawLog;
     Owned<Agent> agent = Heap::create<Agent>(agentSettings);
 
     // Process streamed events until the agent stops working.
     while (agent->isWorking()) {
         for (const Transcript::Event& event : agent->waitForEvents()) {
-            applyTranscriptEvent(transcript, event);
+            applyTranscriptEvent(appState.transcript, event);
             printer.handleEvent(event);
         }
     }
@@ -1746,7 +1864,9 @@ PLY_STRUCT_MEMBER(provider)
 PLY_STRUCT_MEMBER(model)
 PLY_STRUCT_MEMBER(useProxy)
 PLY_STRUCT_MEMBER(proxyPort)
-PLY_STRUCT_MEMBER(enableHttpLog)
+PLY_STRUCT_MEMBER(enableLog)
+PLY_STRUCT_MEMBER(enableAuthorizerLog)
+PLY_STRUCT_MEMBER(enableRawLog)
 PLY_STRUCT_MEMBER(runWebServer)
 PLY_STRUCT_MEMBER(webServerPort)
 PLY_STRUCT_MEMBER(openBrowser)

@@ -75,7 +75,7 @@ You can destroy an `Agent` at any time as long as there are no racing member fun
 > | `const Transcript* startTranscript` | The transcript used to start the agent. |
 > | `Agent::EndPoint endPoint` | Identifies the inference provider, protocol and model. |
 > | `Agent::Capabilities capabilities` | Specifies the system prompt, working directory and available tools. |
-> | `bool enableHttpLog` | Enables HTTP-level logging (for debugging purposes). Default is `false`. |
+> | `bool enableRawLog` | Enables raw HTTP-level logging (for debug purposes). Default is `false`. |
 >
 > `Agent::Capabilities` has the following data members:
 >
@@ -179,7 +179,10 @@ To configure a `shell` tool, pass a `ShellToolSettings` instance to `createShell
 | `String policy` | A natural-language description of shell commands the agent is allowed to run. |
 | `Agent::EndPoint authorizerEndPoint` | The authorizer's provider, protocol and model. |
 | `Set<Owned<ToolDefinition>> authorizerTools` | The tools available to the authorizer. |
+| `Functor<void(Agent*)> authorizerHook` | Optional authorization hook for logging purposes. |
 | `bool unrestricted` | If `true`, all permission checks are bypassed completely. |
+
+If `authorizerHook` is set, the hook receives a fully constructed `Agent*` and must consume its events until the agent finishes.
 
 ### Defining Custom Tools
 

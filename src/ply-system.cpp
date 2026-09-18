@@ -2438,6 +2438,10 @@ constexpr u32 Pipe::HAS_READ_PERMISSION;
 constexpr u32 Pipe::HAS_WRITE_PERMISSION;
 constexpr u32 Pipe::CAN_SEEK;
 
+void Pipe::close() {
+    PLY_ASSERT(0);
+}
+
 u32 Pipe::read(MutStringView buf) {
     PLY_ASSERT(0);
     return 0;

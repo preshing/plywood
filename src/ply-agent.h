@@ -191,7 +191,7 @@ struct Agent {
         const Transcript* startTranscript = nullptr;
         EndPoint endPoint;
         Capabilities capabilities;
-        bool enableHttpLog = false;
+        bool enableRawLog = false;
     };
 
     const Settings* settings = nullptr; // Points to the internal copy of the settings.
@@ -260,6 +260,7 @@ struct ShellToolSettings {
     String policy;
     Agent::EndPoint authorizerEndPoint;
     Set<Owned<ToolDefinition>> authorizerTools;
+    Functor<void(Agent*)> authorizerHook;
     bool unrestricted = false; // Bypasses all permission checking.
 };
 Owned<ToolDefinition> createShellTool(const ShellToolSettings& settings = {});

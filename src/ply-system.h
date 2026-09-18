@@ -4022,7 +4022,7 @@ public:
     virtual ~Pipe() = default;
     // Release resources without destroying the pipe. Only close() or destruction is supported afterward.
     // Close any surrounding buffered Stream first; borrowed pipes remain open when their stream closes.
-    virtual void close() = 0;
+    virtual void close();
     // read() only returns 0 at EOF. Otherwise, it blocks until data is available.
     virtual u32 read(MutStringView buf);
     virtual bool write(StringView buf);
