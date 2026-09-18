@@ -255,7 +255,7 @@ struct ToolContext {
 };
 
 // Individual tool creation functions.
-#if !defined(PLY_IOS)
+#if PLY_WITH_SUBPROCESS
 struct ShellToolSettings {
     String policy;
     Agent::EndPoint authorizerEndPoint;
@@ -264,7 +264,7 @@ struct ShellToolSettings {
     bool unrestricted = false; // Bypasses all permission checking.
 };
 Owned<ToolDefinition> createShellTool(const ShellToolSettings& settings = {});
-#endif // !defined(PLY_IOS)
+#endif // PLY_WITH_SUBPROCESS
 Owned<ToolDefinition> createReadTool();
 Owned<ToolDefinition> createWriteTool();
 Owned<ToolDefinition> createListDirTool();

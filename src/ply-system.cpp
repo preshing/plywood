@@ -6869,7 +6869,7 @@ void DirectoryWatcher::stop() {
 //  ▀█▄▄█▀ ▀█▄▄██ ██▄▄█▀ ██▄▄█▀ ██     ▀█▄▄█▀ ▀█▄▄▄ ▀█▄▄▄   ▄▄▄█▀  ▄▄▄█▀
 //                       ██
 
-#if !defined(PLY_IOS)
+#if PLY_WITH_SUBPROCESS
 
 struct SubprocessImpl : Subprocess {
     // Pipes connected to the subprocess's standard streams.
@@ -6907,9 +6907,9 @@ void Subprocess::destroy() {
     Heap::destroy(static_cast<SubprocessImpl*>(this));
 }
 
-#endif // !PLY_IOS
+#endif // PLY_WITH_SUBPROCESS
 
-#if defined(PLY_WINDOWS)
+#if PLY_WITH_SUBPROCESS && defined(PLY_WINDOWS)
 
 SubprocessImpl::~SubprocessImpl() {
     PLY_ASSERT(this->childProcess != INVALID_HANDLE_VALUE);
@@ -7296,7 +7296,7 @@ Owned<Subprocess> Subprocess::execShellCommand(StringView shellCommand, StringVi
     return execWin32(toWstring(cmdLine.moveToString()), initialDir, output, input, options);
 }
 
-#elif defined(PLY_POSIX) && !defined(PLY_IOS)
+#elif PLY_WITH_SUBPROCESS && defined(PLY_POSIX)
 
 SubprocessImpl::~SubprocessImpl() {
     if (this->childPid != -1) {
@@ -7660,6 +7660,6 @@ Owned<Subprocess> Subprocess::execShellCommand(StringView shellCommand, StringVi
     return Subprocess::exec("/bin/sh", {"-c", shellCommand}, initialDir, output, input, options);
 }
 
-#endif // defined(PLY_POSIX) && !defined(PLY_IOS)
+#endif // PLY_WITH_SUBPROCESS && platform support
 
 } // namespace ply

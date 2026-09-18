@@ -2156,7 +2156,7 @@ String ToolContext::checkPathPermission(StringView path, bool withWriteAccess) c
 //   ▄▄▄█▀ ██  ██ ▀█▄▄▄  ▄██▄ ▄██▄
 //
 
-#if !defined(PLY_IOS)
+#if PLY_WITH_SUBPROCESS
 
 // Runs a short-lived agent that decides whether a complete shell expression is permitted.
 static bool authorizeShellCommand(ToolContext* toolCtx, StringView command, const ShellToolSettings& settings) {
@@ -2328,7 +2328,7 @@ Owned<ToolDefinition> createShellTool(const ShellToolSettings& settings) {
     return shellTool;
 }
 
-#endif // !defined(PLY_IOS)
+#endif // PLY_WITH_SUBPROCESS
 
 //                           ▄▄
 //  ▄▄▄▄▄   ▄▄▄▄   ▄▄▄▄   ▄▄▄██

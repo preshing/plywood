@@ -12,7 +12,7 @@
 
 ## `Subprocess`
 
-The `Subprocess` class represents a child process. You can spawn processes, redirect their I/O and wait for them to complete. Not supported on iOS.
+The `Subprocess` class represents a child process. You can spawn processes, redirect their I/O and wait for them to complete. Not available on iOS. Check `PLY_WITH_SUBPROCESS` to determine whether it's enabled on the target platform.
 
 ```
 Owned<Subprocess> process = Subprocess::execShellCommand("ls -la", "/home/user",

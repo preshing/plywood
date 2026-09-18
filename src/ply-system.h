@@ -4831,8 +4831,16 @@ String getCurrentExecutablePath();
 // Returns the value of the specified environment variable, or an empty string if the variable is unset.
 String getEnvironmentVariable(StringView name);
 
-// Not supported on iOS.
-#if !defined(PLY_IOS)
+// Automatically set PLY_WITH_SUBPROCESS based on platform support.
+#if !defined(PLY_WITH_SUBPROCESS)
+#if defined(PLY_IOS)
+#define PLY_WITH_SUBPROCESS 0  // Not supported on iOS.
+#else
+#define PLY_WITH_SUBPROCESS 1
+#endif
+#endif
+
+#if PLY_WITH_SUBPROCESS
 
 struct Subprocess {
     enum class PipeType {
@@ -4947,6 +4955,6 @@ struct Subprocess {
     void destroy();
 };
 
-#endif // !PLY_IOS
+#endif // PLY_WITH_SUBPROCESS
 
 } // namespace ply

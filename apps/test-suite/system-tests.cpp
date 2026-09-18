@@ -2447,7 +2447,7 @@ TEST_CASE("Usage stats with alloc/free") {
 //  ▀█▄▄█▀ ▀█▄▄██ ██▄▄█▀ ██▄▄█▀ ██     ▀█▄▄█▀ ▀█▄▄▄ ▀█▄▄▄   ▄▄▄█▀  ▄▄▄█▀
 //                       ██
 
-#if !defined(PLY_IOS)
+#if PLY_WITH_SUBPROCESS
 
 #undef TEST_CASE_PREFIX
 #define TEST_CASE_PREFIX Subprocess_
@@ -2612,7 +2612,7 @@ TEST_CASE("terminate() stops an isolated process tree") {
     check(elapsedMillis < 1500.0);
 }
 
-#endif // !defined(PLY_IOS)
+#endif // PLY_WITH_SUBPROCESS
 
 //  ▄▄▄▄▄          ▄▄   ▄▄
 //  ██  ██  ▄▄▄▄  ▄██▄▄ ██▄▄▄

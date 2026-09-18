@@ -44,7 +44,7 @@ struct AppSettings {
     String userPrompt;
     Array<String> agentsMDSections;
     Array<String> toolNames;
-#if !defined(PLY_IOS)
+#if PLY_WITH_SUBPROCESS
     Array<String> shellAuthorizerToolNames;
 #endif
     u16 agentProxyPort = 8082;
@@ -61,7 +61,7 @@ struct AppState {
 CommandLineOptions options;
 AppSettings appSettings;
 Agent::Settings agentSettings;
-#if !defined(PLY_IOS)
+#if PLY_WITH_SUBPROCESS
 ShellToolSettings shellToolSettings;
 #endif
 AppState appState;
@@ -1068,7 +1068,7 @@ void TranscriptPrinter::finish(s64 endMicros) {
     }
 }
 
-#if !defined(PLY_IOS)
+#if PLY_WITH_SUBPROCESS
 // Writes one complete authorizer transcript to the shared authorization log.
 static void logAuthorizerTranscript(Agent* authorizer) {
     PLY_ASSERT(authorizer);
@@ -1359,7 +1359,7 @@ static bool loadSettingsWithIncludes(StringView settingsPath, Array<String>& inc
     }
 
     // Import shell authorization.
-#if !defined(PLY_IOS)
+#if PLY_WITH_SUBPROCESS
     if (const json::Node& jShellAuthorizer = root.get("shellAuthorizer")) {
         if (!jShellAuthorizer.isObject()) {
             getStdErr().format("shellAuthorizer must be an object in: {}\n", settingsPath);
@@ -1566,7 +1566,7 @@ static bool resolveSettings() {
         !validateEndPoint(agentSettings.endPoint))
         return false;
 
-#if !defined(PLY_IOS)
+#if PLY_WITH_SUBPROCESS
     // The authorizer endpoint is needed only when the main agent has the shell tool.
     if (find(appSettings.toolNames, StringView{"shell"}) >= 0) {
         Agent::EndPoint& authorizerEndPoint = shellToolSettings.authorizerEndPoint;
@@ -1596,7 +1596,7 @@ static Owned<ToolDefinition> createConfiguredTool(StringView name) {
         return createListDirTool();
     if (name == "find_in_files")
         return createFindInFilesTool();
-#if !defined(PLY_IOS)
+#if PLY_WITH_SUBPROCESS
     if (name == "shell")
         return createShellTool(shellToolSettings);
 #endif
@@ -1608,9 +1608,9 @@ static bool createTools(ArrayView<const String> toolNames, Set<Owned<ToolDefinit
     for (StringView name : toolNames) {
         Owned<ToolDefinition> tool = createConfiguredTool(name);
         if (!tool) {
-#if defined(PLY_IOS)
+#if !PLY_WITH_SUBPROCESS
             if (name == "shell") {
-                getStdErr().write("The shell tool is not available on iOS.\n");
+                getStdErr().write("The shell tool is not available because subprocess support is disabled.\n");
                 return false;
             }
 #endif
@@ -1628,7 +1628,7 @@ static bool createTools(ArrayView<const String> toolNames, Set<Owned<ToolDefinit
 
 // Build both tool sets once the complete configuration has been finalized.
 static bool createConfiguredTools() {
-#if !defined(PLY_IOS)
+#if PLY_WITH_SUBPROCESS
     if (!createTools(appSettings.shellAuthorizerToolNames, shellToolSettings.authorizerTools, true))
         return false;
 #endif
@@ -1675,7 +1675,7 @@ int main(int argc, const char* argv[]) {
         {"-x", "--proxy", PLY_LOOKUP_MEMBER(CommandLineOptions, useProxy), "Connect through agent-proxy",
          PLY_LOOKUP_MEMBER(CommandLineOptions, proxyPort), "port"},
         {"-l", "--log", PLY_LOOKUP_MEMBER(CommandLineOptions, enableLog), "Copy stdout to a log"},
-#if !defined(PLY_IOS)
+#if PLY_WITH_SUBPROCESS
         {"-a", "--authorizer-log", PLY_LOOKUP_MEMBER(CommandLineOptions, enableAuthorizerLog),
          "Write authorizer transcripts to a log"},
 #endif
@@ -1683,7 +1683,7 @@ int main(int argc, const char* argv[]) {
         {"-s", "--serve", PLY_LOOKUP_MEMBER(CommandLineOptions, runWebServer),
          "Serve a loopback-only web UI (default port: 8081)", PLY_LOOKUP_MEMBER(CommandLineOptions, webServerPort),
          "port"},
-#if !defined(PLY_IOS)
+#if PLY_WITH_SUBPROCESS
         {"-b", "--browser", PLY_LOOKUP_MEMBER(CommandLineOptions, openBrowser),
          "Launch a web browser to view the web UI"},
 #endif
@@ -1705,7 +1705,7 @@ int main(int argc, const char* argv[]) {
     // Open requested app-level logs before writing any normal stdout output.
     if (options.enableLog && !openLogFile(&appState.appLogFile, "agent-log"))
         return 1;
-#if !defined(PLY_IOS)
+#if PLY_WITH_SUBPROCESS
     if (options.enableAuthorizerLog && !openLogFile(&appState.authorizationLogFile, "agent-authorization-log"))
         return 1;
 #endif
@@ -1760,7 +1760,7 @@ int main(int argc, const char* argv[]) {
 
     // Apply command-line overrides, then finalize settings and materialize tools exactly once.
     applyCommandLineOptions();
-#if !defined(PLY_IOS)
+#if PLY_WITH_SUBPROCESS
     if (options.enableAuthorizerLog) {
         shellToolSettings.authorizerHook = logAuthorizerTranscript;
     }
@@ -1806,7 +1806,7 @@ int main(int argc, const char* argv[]) {
     printer.publishToWeb = options.runWebServer;
     printer.printStartup(appSettings.userPrompt);
 
-#if !defined(PLY_IOS)
+#if PLY_WITH_SUBPROCESS
     // Open the web UI in the default browser.
     if (options.openBrowser) {
 #if defined(PLY_WINDOWS)

@@ -27,3 +27,4 @@ You can customize this module by defining any of the following preprocessor macr
 | `PLY_WITH_ASSERTS` | Controls whether [assertions](/docs/system/preprocessor-macros.md#assertions) are enabled. | 1 in Debug builds; 0 otherwise |
 | `PLY_OVERRIDE_NEW` | Controls whether C++'s built-in `new` and `delete` operators should allocate from [Plywood's built-in heap](/docs/system/memory/heap.md). Projects already having their own `new`/`delete` overloads should set this to 0. | 1 |
 | `PLY_WITH_DIRECTORY_WATCHER` | Enables the optional [`DirectoryWatcher`](/docs/system/file-system.md#directory-watcher) feature. | 0 |
+| `PLY_WITH_SUBPROCESS` | Enables support for [`Subprocess`](/docs/system/processes.md#subprocess). | 0 on iOS (unsupported); 1 otherwise |
