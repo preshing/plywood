@@ -1,8 +1,10 @@
 {
-    "systemPrompt": "You are a helpful assistant working in the Plywood repository.",
+    "systemPrompt": "You are a coding agent working in the Plywood repository.",
     "useAgentsMD": true,
-    "writableDirs": [
-        "."
-    ],
-    "tools": ["read", "list_dir", "find_in_files", "write", "edit", "shell"]
+    "writableDirs": ["."],
+    "tools": ["read", "list_dir", "find_in_files", "write", "edit", "shell"],
+    "shellAuthorizer": {
+        "policy": "Allow building and running projects in the apps/ directory as described in docs/project-overview.md.",
+        "tools": ["read", "list_dir", "find_in_files"]
+    }
 }
