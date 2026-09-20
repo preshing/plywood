@@ -1645,7 +1645,7 @@ static void printUsage(Stream& out, StringView executablePath, const CommandLine
 static bool openLogFile(Stream* file, StringView prefix) {
     DateTime dateTime = convertToDateTime(getUnixTimestamp());
     String timestamp = String::fromDateTime("%Y%m%d-%H%M%S", dateTime);
-    String path = String::format("{}-{}.txt", prefix, timestamp);
+    String path = String::format("{}-{}.log", prefix, timestamp);
     *file = FileSystem::openBinaryForWrite(path);
     if (!file->isOpen()) {
         getStdErr().format("Could not open log file: {}\n", path);
@@ -1703,10 +1703,10 @@ int main(int argc, const char* argv[]) {
     }
 
     // Open requested app-level logs before writing any normal stdout output.
-    if (options.enableLog && !openLogFile(&appState.appLogFile, "agent-log"))
+    if (options.enableLog && !openLogFile(&appState.appLogFile, "agent"))
         return 1;
 #if PLY_WITH_SUBPROCESS
-    if (options.enableAuthorizerLog && !openLogFile(&appState.authorizationLogFile, "agent-authorization-log"))
+    if (options.enableAuthorizerLog && !openLogFile(&appState.authorizationLogFile, "agent-authorization"))
         return 1;
 #endif
 

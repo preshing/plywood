@@ -57,9 +57,9 @@ Available command-line options:
 | `-p` | `--provider` | Select from a list of known inference providers. |
 | `-m` | `--model` | The name of the model to use. |
 | `-x[=<port>]` | `--proxy[=<port>]` | Connect through [`agent-proxy`](/docs/apps/agent-proxy.md). |
-| `-l` | `--log` | Log the transcript to `agent-log-<timestamp>.txt`. |
-| `-a` | `--authorizer-log` | Log authorizer transcripts to `agent-authorization-log-<timestamp>.txt`. |
-| `-r` | `--raw-log` | Write raw HTTP log to `agent-raw-log-<timestamp>.txt`. |
+| `-l` | `--log` | Log the transcript to `agent-<timestamp>.log`. |
+| `-a` | `--authorizer-log` | Log authorizer transcripts to `agent-authorization-<timestamp>.log`. |
+| `-r` | `--raw-log` | Write raw HTTP log to `agent-raw-<timestamp>.log`. |
 | `-c` | `--config` | Path to a JSON settings file or a directory. |
 | `-s[=<port>]` | `--serve[=<port>]` | Serve a loopback-only web UI. Default port is 8081. |
 | `-b` | `--browser` | Launch a web browser to view the web UI. |

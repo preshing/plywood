@@ -1620,7 +1620,7 @@ void performInferenceRequest(Agent::Impl* impl, u32 turnNumber) {
         // Create one log file for the agent's complete inference session.
         DateTime dateTime = convertToDateTime(getUnixTimestamp());
         String timestampStr = String::fromDateTime("%Y%m%d-%H%M%S", dateTime);
-        String logFilename = String::format("agent-raw-log-{}.txt", timestampStr);
+        String logFilename = String::format("agent-raw-{}.log", timestampStr);
         impl->rawLogFile = FileSystem::openBinaryForWrite(logFilename);
         if (impl->rawLogFile.isOpen()) {
             // Write immutable session details before logging the first provider response.
