@@ -805,6 +805,7 @@ void TranscriptPrinter::printStartup(StringView userPrompt) {
         this->appendMarkdown(userPrompt);
         this->appendMarkdown("\n");
     }
+    this->output->flush();
 }
 
 void TranscriptPrinter::openSection(Transcript::Role role, u32 toolCallID, s64 timeStamp) {
@@ -1055,6 +1056,7 @@ void TranscriptPrinter::handleEvent(const Transcript::Event& event) {
         default:
             break;
     }
+    this->output->flush();
 }
 
 void TranscriptPrinter::finish(s64 endMicros) {
@@ -1066,6 +1068,7 @@ void TranscriptPrinter::finish(s64 endMicros) {
         this->flushToolResponses(endMicros);
         this->printTokenUsage(endMicros);
     }
+    this->output->flush();
 }
 
 #if PLY_WITH_SUBPROCESS
