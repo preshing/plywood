@@ -96,7 +96,7 @@ Plywood versions of commonly-used C++ macros.
 
 ## Assertions
 
-Plywood assertions are extremely simple: If the condition fails, they immediately force a crash using a single CPU instruction. This is enough to see which assertion failed when a debugger is attached, including when a crash dump is loaded.
+Plywood assertions are simple: If the condition fails, they immediately force a crash using a single CPU instruction. This is enough to see which assertion failed when a debugger is attached, including when a crash dump is loaded.
 
 `PLY_ASSERT(cond)`
 > If the condition fails, immediately forces a crash. Only enabled when [`PLY_WITH_ASSERTS=1`](system/index.md#configuration-options).
