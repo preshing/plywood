@@ -179,10 +179,16 @@ struct Node {
 };
 
 //  ▄▄▄▄▄
-//  ██  ██  ▄▄▄▄  ▄▄▄▄▄   ▄▄▄▄   ▄▄▄▄
-//  ██▀▀▀   ▄▄▄██ ██  ▀▀ ▀█▄▄▄  ██▄▄██
-//  ██     ▀█▄▄██ ██      ▄▄▄█▀ ▀█▄▄▄
+//  ██  ██  ▄▄▄▄  ▄▄▄▄▄   ▄▄▄▄   ▄▄▄▄  ▄▄▄▄▄
+//  ██▀▀▀   ▄▄▄██ ██  ▀▀ ▀█▄▄▄  ██▄▄██ ██  ▀▀
+//  ██     ▀█▄▄██ ██      ▄▄▄█▀ ▀█▄▄▄  ██
 //
+
+struct ParseResult {
+    Node root;
+    TokenLocationMap tokenLocMap;
+    u32 numBytes = 0;
+};
 
 struct ParseError {
     struct Scope {
@@ -216,102 +222,20 @@ struct ParseError {
     const Array<Scope>& context;
 };
 
-class Parser {
-private:
-    struct Token {
-        enum Type {
-            Invalid,
-            OpenCurly,
-            CloseCurly,
-            OpenSquare,
-            CloseSquare,
-            Colon,
-            Equals,
-            Comma,
-            Semicolon,
-            Text,
-            Junk,
-            NewLine,
-            EndOfFile,
-        };
-        Type type = Invalid;
-        u32 fileOfs = 0;
-        String text;
-        bool wasQuoted = false;
+struct Parser {
+    // Create & destroy
+    static Owned<Parser> create();
+    void destroy();
 
-        bool isValid() const {
-            return type != Type::Invalid;
-        }
-    };
+    // Settings
+    void setTabSize(int tabSize);
+    void setGreedy(bool greedy);
+    void setErrorCallback(Functor<void(const ParseError& err)>&& cb);
 
-    Functor<void(const ParseError& err)> errorCallback;
-    TokenLocationMap tokenLocMap;
-    bool anyError_ = false;
-    bool greedy = true;
-    StringView srcView;
-    u32 readOfs = 0;
-    s32 nextUnit = 0;
-    u32 tabSize = 4;
-    Token pushBackToken;
-    Array<ParseError::Scope> context;
-
-    void pushBack(Token&& token) {
-        pushBackToken = std::move(token);
-    }
-
-    struct ScopeHandler {
-        Parser& parser;
-        u32 index;
-
-        ScopeHandler(Parser& parser, ParseError::Scope&& scope) : parser{parser}, index{parser.context.numItems()} {
-            parser.context.append(std::move(scope));
-        }
-        ~ScopeHandler() {
-            // parser.context can be empty when Parse_Error is thrown
-            if (!parser.context.isEmpty()) {
-                PLY_ASSERT(parser.context.numItems() == index + 1);
-                parser.context.pop();
-            }
-        }
-        ParseError::Scope& get() {
-            return parser.context[index];
-        }
-    };
-
-    void error(u32 fileOfs, String&& message);
-    void advanceChar();
-    Token readPlainToken(Token::Type type);
-    Token readLiteral();
-    Token readToken(bool tokenizeNewLine = false);
-    static String toString(const Token& token);
-    static String toString(const Node& node);
-    Node readObject(const Token& startToken);
-    Node readArray(const Token& startToken);
-    Node readExpression(Token&& firstToken, const Token* afterToken = nullptr);
-
-public:
-    void setTabSize(int tabSize) {
-        this->tabSize = tabSize;
-    }
-    void setGreedy(bool greedy) {
-        this->greedy = greedy;
-    }
-    void setErrorCallback(Functor<void(const ParseError& err)>&& cb) {
-        this->errorCallback = std::move(cb);
-    }
-    bool anyError() const {
-        return this->anyError_;
-    }
-
-    struct Result {
-        Node root;
-        TokenLocationMap tokenLocMap;
-        u32 numBytes = 0;
-    };
-
+    // Parsing
+    ParseResult parse(StringView path, StringView srcView);
+    bool anyError() const;
     void dumpError(const ParseError& error, Stream& out) const;
-
-    Result parse(StringView path, StringView srcView);
 };
 
 //  ▄▄    ▄▄        ▄▄  ▄▄

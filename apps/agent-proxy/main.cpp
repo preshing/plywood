@@ -77,9 +77,9 @@ static bool loadSettings() {
         getStdErr().format("Could not load known providers: {}\n", providersPath);
         return false;
     }
-    json::Parser parser;
-    json::Parser::Result result = parser.parse(providersPath, jsonText);
-    if (parser.anyError() || !result.root.isArray() || result.root.arrayView().isEmpty()) {
+    Owned<json::Parser> parser = json::Parser::create();
+    json::ParseResult result = parser->parse(providersPath, jsonText);
+    if (parser->anyError() || !result.root.isArray() || result.root.arrayView().isEmpty()) {
         getStdErr().format("Failed to parse known providers: {}\n", providersPath);
         return false;
     }

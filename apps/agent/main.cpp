@@ -567,10 +567,10 @@ static String formatToolCall(StringView raw) {
     if (brace < 0)
         return raw;
     StringView name = raw.left(brace);
-    json::Parser parser;
-    parser.setErrorCallback([](const json::ParseError&) {});
-    parser.setGreedy(false);
-    json::Parser::Result result = parser.parse({}, raw.substr(brace));
+    Owned<json::Parser> parser = json::Parser::create();
+    parser->setErrorCallback([](const json::ParseError&) {});
+    parser->setGreedy(false);
+    json::ParseResult result = parser->parse({}, raw.substr(brace));
     MemStream out;
     out.format("{}", name);
     if (result.root.isObject()) {
@@ -1271,9 +1271,9 @@ static bool loadSettingsWithIncludes(StringView settingsPath, Array<String>& inc
     }
 
     // Parse and validate the root node.
-    json::Parser parser;
-    json::Parser::Result result = parser.parse(settingsPath, jsonText);
-    if (parser.anyError() || !result.root.isObject()) {
+    Owned<json::Parser> parser = json::Parser::create();
+    json::ParseResult result = parser->parse(settingsPath, jsonText);
+    if (parser->anyError() || !result.root.isObject()) {
         getStdErr().format("Failed to parse configuration file: {}\n", settingsPath);
         return false;
     }
@@ -1477,9 +1477,9 @@ static bool resolveEndPoint(Agent::EndPoint& endPoint, bool useProxy, u16 proxyP
         getStdErr().format("Could not load provider routes: {}\n", routesPath);
         return false;
     }
-    json::Parser parser;
-    json::Parser::Result result = parser.parse(routesPath, jsonText);
-    if (parser.anyError() || !result.root.isArray()) {
+    Owned<json::Parser> parser = json::Parser::create();
+    json::ParseResult result = parser->parse(routesPath, jsonText);
+    if (parser->anyError() || !result.root.isArray()) {
         getStdErr().format("Failed to parse provider routes: {}\n", routesPath);
         return false;
     }

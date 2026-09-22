@@ -51,15 +51,64 @@ void Node::remove(StringView key) {
 }
 
 //  ▄▄▄▄▄
-//  ██  ██  ▄▄▄▄  ▄▄▄▄▄   ▄▄▄▄   ▄▄▄▄
-//  ██▀▀▀   ▄▄▄██ ██  ▀▀ ▀█▄▄▄  ██▄▄██
-//  ██     ▀█▄▄██ ██      ▄▄▄█▀ ▀█▄▄▄
+//  ██  ██  ▄▄▄▄  ▄▄▄▄▄   ▄▄▄▄   ▄▄▄▄  ▄▄▄▄▄
+//  ██▀▀▀   ▄▄▄██ ██  ▀▀ ▀█▄▄▄  ██▄▄██ ██  ▀▀
+//  ██     ▀█▄▄██ ██      ▄▄▄█▀ ▀█▄▄▄  ██
 //
+
+//-----------------------------------------------------------
+// Helpers
+//-----------------------------------------------------------
 
 bool isAlnumUnit(u32 c) {
     return (c == '_') || (c == '$') || (c == '-') || (c == '.') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
            (c >= '0' && c <= '9') || (c >= 128);
 }
+
+struct Token {
+    enum Type {
+        Invalid,
+        OpenCurly,
+        CloseCurly,
+        OpenSquare,
+        CloseSquare,
+        Colon,
+        Equals,
+        Comma,
+        Semicolon,
+        Text,
+        Junk,
+        NewLine,
+        EndOfFile,
+    };
+    Type type = Invalid;
+    u32 fileOfs = 0;
+    String text;
+    bool wasQuoted = false;
+
+    bool isValid() const {
+        return type != Type::Invalid;
+    }
+};
+
+struct ParserImpl : Parser {
+    Functor<void(const ParseError& err)> errorCallback;
+    TokenLocationMap tokenLocMap;
+    bool anyError_ = false;
+    // The parser expects only a single JSON expression as input.
+    // If greedy is true and there are more tokens after the initial expression, it logs an error.
+    bool greedy = true;
+    StringView srcView;
+    u32 readOfs = 0;
+    s32 nextUnit = 0;
+    u32 tabSize = 4;
+    Token pushBackToken;
+    Array<ParseError::Scope> context;
+
+    void pushBack(Token&& token) {
+        pushBackToken = std::move(token);
+    }
+};
 
 // Returns true only when the entire literal parses as a number.
 bool tryParseNumber(StringView text, double* value) {
@@ -68,186 +117,20 @@ bool tryParseNumber(StringView text, double* value) {
     return !in.inputError && (in.curByte == in.endByte);
 }
 
-void Parser::dumpError(const ParseError& error, Stream& out) const {
-    TokenLocation errorLoc = this->tokenLocMap.getLocationFromOffset(error.fileOfs);
-    out.format("({}, {}): error: {}\n", errorLoc.lineNumber, errorLoc.columnNumber, error.message);
-    for (u32 i = 0; i < error.context.numItems(); i++) {
-        const ParseError::Scope& scope = error.context.back(-(s32) i - 1);
-        TokenLocation contextLoc = this->tokenLocMap.getLocationFromOffset(scope.fileOfs);
-        out.format("({}, {}) ", contextLoc.lineNumber, contextLoc.columnNumber);
-        switch (scope.type) {
-            case ParseError::Scope::Object:
-                out.write("while reading object started here");
-                break;
-
-            case ParseError::Scope::Property:
-                out.format("while reading property {} started here", scope.name);
-                break;
-
-            case ParseError::Scope::Duplicate:
-                out.write("existing property was defined here");
-                break;
-
-            case ParseError::Scope::Array:
-                out.format("while reading item {} of the array started here (index is zero-based)", scope.index);
-                break;
-        }
-        out.write('\n');
+void error(ParserImpl* parser, u32 fileOfs, String&& message) {
+    if (parser->errorCallback) {
+        ParseError err{fileOfs, std::move(message), parser->context};
+        parser->errorCallback(err);
     }
+    parser->anyError_ = true;
 }
 
-void Parser::error(u32 fileOfs, String&& message) {
-    if (this->errorCallback) {
-        ParseError err{fileOfs, std::move(message), context};
-        this->errorCallback(err);
-    }
-    this->anyError_ = true;
-}
-
-void Parser::advanceChar() {
-    if (this->readOfs + 1 < this->srcView.numBytes()) {
-        this->readOfs++;
-        this->nextUnit = this->srcView.bytes()[this->readOfs];
+void advanceChar(ParserImpl* parser) {
+    if (parser->readOfs + 1 < parser->srcView.numBytes()) {
+        parser->readOfs++;
+        parser->nextUnit = parser->srcView.bytes()[parser->readOfs];
     } else {
-        this->nextUnit = -1;
-    }
-}
-
-Parser::Token Parser::readPlainToken(Token::Type type) {
-    Token result = {type, this->readOfs, {}};
-    this->advanceChar();
-    return result;
-}
-
-Parser::Token Parser::readLiteral() {
-    PLY_ASSERT(isAlnumUnit(this->nextUnit));
-
-    if (this->nextUnit == '-' || (this->nextUnit >= '0' && this->nextUnit <= '9')) {
-        Token token = {Token::Text, this->readOfs, {}};
-        u32 startOfs = this->readOfs;
-
-        if (this->nextUnit == '-') {
-            this->advanceChar();
-        }
-
-        if (this->nextUnit == '0') {
-            this->advanceChar();
-        } else {
-            while (this->nextUnit >= '0' && this->nextUnit <= '9') {
-                this->advanceChar();
-            }
-        }
-
-        if (this->nextUnit == '.') {
-            this->advanceChar();
-            while (this->nextUnit >= '0' && this->nextUnit <= '9') {
-                this->advanceChar();
-            }
-        }
-
-        if ((this->nextUnit | 0x20) == 'e') {
-            this->advanceChar();
-            if (this->nextUnit == '+' || this->nextUnit == '-') {
-                this->advanceChar();
-            }
-            while (this->nextUnit >= '0' && this->nextUnit <= '9') {
-                this->advanceChar();
-            }
-        }
-
-        token.text = StringView{(char*) this->srcView.bytes() + startOfs, this->readOfs - startOfs};
-        return token;
-    }
-
-    Token token = {Token::Text, this->readOfs, {}};
-    u32 startOfs = this->readOfs;
-
-    while (isAlnumUnit(this->nextUnit)) {
-        this->advanceChar();
-    }
-
-    token.text = StringView{(char*) this->srcView.bytes() + startOfs, this->readOfs - startOfs};
-    return token;
-}
-
-Parser::Token Parser::readToken(bool tokenizeNewLine) {
-    if (this->pushBackToken.isValid()) {
-        Token token = std::move(this->pushBackToken);
-        this->pushBackToken = {};
-        return token;
-    }
-
-    for (;;) {
-        switch (this->nextUnit) {
-            case ' ':
-            case '\t':
-            case '\r':
-                this->advanceChar();
-                break;
-
-            case '\n': {
-                u32 newLineOfs = this->readOfs;
-                this->advanceChar();
-                if (tokenizeNewLine)
-                    return {Token::NewLine, newLineOfs, {}};
-                break;
-            }
-
-            case -1:
-                return {Token::EndOfFile, this->readOfs, {}};
-            case '{':
-                return this->readPlainToken(Token::OpenCurly);
-            case '}':
-                return this->readPlainToken(Token::CloseCurly);
-            case '[':
-                return this->readPlainToken(Token::OpenSquare);
-            case ']':
-                return this->readPlainToken(Token::CloseSquare);
-            case ':':
-                return this->readPlainToken(Token::Colon);
-            case '=':
-                return this->readPlainToken(Token::Equals);
-            case ',':
-                return this->readPlainToken(Token::Comma);
-            case ';':
-                return this->readPlainToken(Token::Semicolon);
-
-            case '"':
-            case '\'': {
-                Token token = {Token::Text, this->readOfs, {}};
-                token.wasQuoted = true;
-                ViewStream in{this->srcView.substr(this->readOfs)};
-                token.text = readQuotedString(in, QuotedStringType::JSON, true,
-                    [this, &in](QuotedStringError errorCode) {
-                        u32 fileOfs = numericCast<u32>(in.curByte - this->srcView.bytes());
-                        switch (errorCode) {
-                            case QuotedStringError::UnexpectedEndOfLine:
-                                this->error(fileOfs, "Unexpected end of line in string literal");
-                                break;
-                            case QuotedStringError::UnexpectedEndOfFile:
-                                this->error(fileOfs, "Unexpected end of file in string literal");
-                                break;
-                            case QuotedStringError::BadEscapeSequence:
-                                this->error(fileOfs, "Bad escape sequence in string literal");
-                                break;
-                            case QuotedStringError::NoOpeningQuote:
-                                this->error(fileOfs, "Expected opening quote in string literal");
-                                break;
-                        }
-                    });
-                this->readOfs = numericCast<u32>(in.curByte - this->srcView.bytes());
-                this->nextUnit = (this->readOfs < this->srcView.numBytes()) ? this->srcView[this->readOfs] : -1;
-                if (in.inputError)
-                    return {};
-                return token;
-            }
-
-            default:
-                if (isAlnumUnit(this->nextUnit))
-                    return this->readLiteral();
-                else
-                    return {Token::Junk, this->readOfs, {}};
-        }
+        parser->nextUnit = -1;
     }
 }
 
@@ -258,7 +141,7 @@ String escape(StringView str) {
     return out.moveToString();
 }
 
-String Parser::toString(const Token& token) {
+String describeToken(const Token& token) {
     switch (token.type) {
         case Token::OpenCurly:
             return "\"{\"";
@@ -290,7 +173,7 @@ String Parser::toString(const Token& token) {
     }
 }
 
-String Parser::toString(const Node& node) {
+String describeNode(const Node& node) {
     if (node.var.is<Node::Object>()) {
         return "object";
     } else if (node.var.is<Node::Array>()) {
@@ -306,16 +189,180 @@ String Parser::toString(const Node& node) {
     return "???";
 }
 
-Node Parser::readObject(const Token& startToken) {
+//-----------------------------------------------------------
+// Internal functions
+//-----------------------------------------------------------
+
+Token readPlainToken(ParserImpl* parser, Token::Type type) {
+    Token result = {type, parser->readOfs, {}};
+    advanceChar(parser);
+    return result;
+}
+
+Token readLiteral(ParserImpl* parser) {
+    PLY_ASSERT(isAlnumUnit(parser->nextUnit));
+
+    if (parser->nextUnit == '-' || (parser->nextUnit >= '0' && parser->nextUnit <= '9')) {
+        Token token = {Token::Text, parser->readOfs, {}};
+        u32 startOfs = parser->readOfs;
+
+        if (parser->nextUnit == '-') {
+            advanceChar(parser);
+        }
+
+        if (parser->nextUnit == '0') {
+            advanceChar(parser);
+        } else {
+            while (parser->nextUnit >= '0' && parser->nextUnit <= '9') {
+                advanceChar(parser);
+            }
+        }
+
+        if (parser->nextUnit == '.') {
+            advanceChar(parser);
+            while (parser->nextUnit >= '0' && parser->nextUnit <= '9') {
+                advanceChar(parser);
+            }
+        }
+
+        if ((parser->nextUnit | 0x20) == 'e') {
+            advanceChar(parser);
+            if (parser->nextUnit == '+' || parser->nextUnit == '-') {
+                advanceChar(parser);
+            }
+            while (parser->nextUnit >= '0' && parser->nextUnit <= '9') {
+                advanceChar(parser);
+            }
+        }
+
+        token.text = StringView{(char*) parser->srcView.bytes() + startOfs, parser->readOfs - startOfs};
+        return token;
+    }
+
+    Token token = {Token::Text, parser->readOfs, {}};
+    u32 startOfs = parser->readOfs;
+
+    while (isAlnumUnit(parser->nextUnit)) {
+        advanceChar(parser);
+    }
+
+    token.text = StringView{(char*) parser->srcView.bytes() + startOfs, parser->readOfs - startOfs};
+    return token;
+}
+
+Token readToken(ParserImpl* parser, bool tokenizeNewLine = false) {
+    if (parser->pushBackToken.isValid()) {
+        Token token = std::move(parser->pushBackToken);
+        parser->pushBackToken = {};
+        return token;
+    }
+
+    for (;;) {
+        switch (parser->nextUnit) {
+            case ' ':
+            case '\t':
+            case '\r':
+                advanceChar(parser);
+                break;
+
+            case '\n': {
+                u32 newLineOfs = parser->readOfs;
+                advanceChar(parser);
+                if (tokenizeNewLine)
+                    return {Token::NewLine, newLineOfs, {}};
+                break;
+            }
+
+            case -1:
+                return {Token::EndOfFile, parser->readOfs, {}};
+            case '{':
+                return readPlainToken(parser, Token::OpenCurly);
+            case '}':
+                return readPlainToken(parser, Token::CloseCurly);
+            case '[':
+                return readPlainToken(parser, Token::OpenSquare);
+            case ']':
+                return readPlainToken(parser, Token::CloseSquare);
+            case ':':
+                return readPlainToken(parser, Token::Colon);
+            case '=':
+                return readPlainToken(parser, Token::Equals);
+            case ',':
+                return readPlainToken(parser, Token::Comma);
+            case ';':
+                return readPlainToken(parser, Token::Semicolon);
+
+            case '"':
+            case '\'': {
+                Token token = {Token::Text, parser->readOfs, {}};
+                token.wasQuoted = true;
+                ViewStream in{parser->srcView.substr(parser->readOfs)};
+                token.text =
+                    readQuotedString(in, QuotedStringType::JSON, true, [parser, &in](QuotedStringError errorCode) {
+                        u32 fileOfs = numericCast<u32>(in.curByte - parser->srcView.bytes());
+                        switch (errorCode) {
+                            case QuotedStringError::UnexpectedEndOfLine:
+                                error(parser, fileOfs, "Unexpected end of line in string literal");
+                                break;
+                            case QuotedStringError::UnexpectedEndOfFile:
+                                error(parser, fileOfs, "Unexpected end of file in string literal");
+                                break;
+                            case QuotedStringError::BadEscapeSequence:
+                                error(parser, fileOfs, "Bad escape sequence in string literal");
+                                break;
+                            case QuotedStringError::NoOpeningQuote:
+                                error(parser, fileOfs, "Expected opening quote in string literal");
+                                break;
+                        }
+                    });
+                parser->readOfs = numericCast<u32>(in.curByte - parser->srcView.bytes());
+                parser->nextUnit =
+                    (parser->readOfs < parser->srcView.numBytes()) ? parser->srcView[parser->readOfs] : -1;
+                if (in.inputError)
+                    return {};
+                return token;
+            }
+
+            default:
+                if (isAlnumUnit(parser->nextUnit))
+                    return readLiteral(parser);
+                else
+                    return {Token::Junk, parser->readOfs, {}};
+        }
+    }
+}
+
+Node readExpression(ParserImpl* parser, Token&& firstToken, const Token* afterToken);
+
+struct ScopeHandler {
+    ParserImpl& parser;
+    u32 index;
+
+    ScopeHandler(ParserImpl& parser, ParseError::Scope&& scope) : parser{parser}, index{parser.context.numItems()} {
+        parser.context.append(std::move(scope));
+    }
+    ~ScopeHandler() {
+        // parser.context can be empty when Parse_Error is thrown
+        if (!parser.context.isEmpty()) {
+            PLY_ASSERT(parser.context.numItems() == index + 1);
+            parser.context.pop();
+        }
+    }
+    ParseError::Scope& get() {
+        return parser.context[index];
+    }
+};
+
+Node readObject(ParserImpl* parser, const Token& startToken) {
     PLY_ASSERT(startToken.type == Token::OpenCurly);
-    ScopeHandler objectScope{*this, ParseError::Scope::object(startToken.fileOfs)};
+    ScopeHandler objectScope{*parser, ParseError::Scope::object(startToken.fileOfs)};
     Node node{Node::Object{}, startToken.fileOfs};
     Token prevProperty = {};
     for (;;) {
         bool gotSeparator = false;
         Token firstToken = {};
         for (;;) {
-            firstToken = this->readToken(true);
+            firstToken = readToken(parser, true);
             switch (firstToken.type) {
                 case Token::CloseCurly:
                     return node;
@@ -334,38 +381,41 @@ Node Parser::readObject(const Token& startToken) {
     breakOuter:
         if (firstToken.type == Token::Text) {
             if (prevProperty.isValid() && !gotSeparator) {
-                this->error(firstToken.fileOfs, String::format("Expected a comma, semicolon or newline "
-                                                               "separator between properties \"{}\" and \"{}\"",
-                                                               escape(prevProperty.text), escape(firstToken.text)));
+                error(parser, firstToken.fileOfs,
+                      String::format("Expected a comma, semicolon or newline "
+                                     "separator between properties \"{}\" and \"{}\"",
+                                     escape(prevProperty.text), escape(firstToken.text)));
                 return {};
             }
         } else if (prevProperty.isValid()) {
-            this->error(firstToken.fileOfs, String::format("Unexpected {} after property \"{}\"", toString(firstToken),
-                                                           escape(prevProperty.text)));
+            error(parser, firstToken.fileOfs,
+                  String::format("Unexpected {} after property \"{}\"", describeToken(firstToken),
+                                 escape(prevProperty.text)));
             return {};
         } else {
-            this->error(firstToken.fileOfs, String::format("Expected property, got {}", toString(firstToken)));
+            error(parser, firstToken.fileOfs, String::format("Expected property, got {}", describeToken(firstToken)));
             return {};
         }
 
         const Node& existingNode = node.get(firstToken.text);
         if (existingNode.isValid()) {
-            ScopeHandler duplicateScope{*this, ParseError::Scope::duplicate(existingNode.fileOfs)};
-            this->error(firstToken.fileOfs, String::format("Duplicate property \"{}\"", escape(firstToken.text)));
+            ScopeHandler duplicateScope{*parser, ParseError::Scope::duplicate(existingNode.fileOfs)};
+            error(parser, firstToken.fileOfs, String::format("Duplicate property \"{}\"", escape(firstToken.text)));
             return {};
         }
 
-        Token colon = this->readToken();
+        Token colon = readToken(parser);
         if (colon.type != Token::Colon && colon.type != Token::Equals) {
-            this->error(colon.fileOfs, String::format("Expected \":\" or \"=\" after \"{}\", got {}",
-                                                      escape(firstToken.text), toString(colon)));
+            error(parser, colon.fileOfs,
+                  String::format("Expected \":\" or \"=\" after \"{}\", got {}", escape(firstToken.text),
+                                 describeToken(colon)));
             return {};
         }
 
         {
             // Read value of property
-            ScopeHandler propertyScope{*this, ParseError::Scope::property(firstToken.fileOfs, firstToken.text)};
-            Node value = this->readExpression(this->readToken(), &colon);
+            ScopeHandler propertyScope{*parser, ParseError::Scope::property(firstToken.fileOfs, firstToken.text)};
+            Node value = readExpression(parser, readToken(parser), &colon);
             if (!value.isValid())
                 return value;
             node.set(firstToken.text, std::move(value));
@@ -376,14 +426,14 @@ Node Parser::readObject(const Token& startToken) {
     return {};
 }
 
-Node Parser::readArray(const Token& startToken) {
+Node readArray(ParserImpl* parser, const Token& startToken) {
     PLY_ASSERT(startToken.type == Token::OpenSquare);
-    ScopeHandler arrayScope{*this, ParseError::Scope::array(startToken.fileOfs, 0)};
+    ScopeHandler arrayScope{*parser, ParseError::Scope::array(startToken.fileOfs, 0)};
     Node arrayNode{Node::Array{}, startToken.fileOfs};
     Token sepTokenHolder;
     Token* sepToken = nullptr;
     for (;;) {
-        Token token = this->readToken(true);
+        Token token = readToken(parser, true);
         switch (token.type) {
             case Token::CloseSquare:
                 return arrayNode;
@@ -396,7 +446,7 @@ Node Parser::readArray(const Token& startToken) {
                 break;
 
             default: {
-                Node value = this->readExpression(std::move(token), sepToken);
+                Node value = readExpression(parser, std::move(token), sepToken);
                 if (!value.isValid())
                     return value;
                 arrayNode.array().append(std::move(value));
@@ -408,13 +458,13 @@ Node Parser::readArray(const Token& startToken) {
     }
 }
 
-Node Parser::readExpression(Token&& firstToken, const Token* afterToken) {
+Node readExpression(ParserImpl* parser, Token&& firstToken, const Token* afterToken = nullptr) {
     switch (firstToken.type) {
         case Token::OpenCurly:
-            return this->readObject(firstToken);
+            return readObject(parser, firstToken);
 
         case Token::OpenSquare:
-            return this->readArray(firstToken);
+            return readArray(parser, firstToken);
 
         case Token::Text: {
             // Quoted tokens are always JSON strings, even when their contents look like primitives.
@@ -439,33 +489,93 @@ Node Parser::readExpression(Token&& firstToken, const Token* afterToken) {
 
         default: {
             MemStream mout;
-            mout.format("Unexpected {} after {}", toString(firstToken), afterToken ? toString(*afterToken) : "");
-            this->error(firstToken.fileOfs, mout.moveToString());
+            mout.format("Unexpected {} after {}", describeToken(firstToken),
+                        afterToken ? describeToken(*afterToken) : "");
+            error(parser, firstToken.fileOfs, mout.moveToString());
             return {};
         }
     }
 }
 
-Parser::Result Parser::parse(StringView path, StringView srcView) {
-    this->srcView = srcView;
-    this->nextUnit = this->srcView.numBytes() > 0 ? this->srcView[0] : -1;
+//-----------------------------------------------------------
+// Public API
+//-----------------------------------------------------------
 
-    this->tokenLocMap = TokenLocationMap::createFromString(srcView);
+Owned<Parser> Parser::create() {
+    return Heap::create<ParserImpl>();
+}
 
-    Token rootToken = this->readToken();
-    Node root = this->readExpression(std::move(rootToken));
+void Parser::destroy() {
+    Heap::destroy(static_cast<ParserImpl*>(this));
+}
+
+void Parser::setTabSize(int tabSize) {
+    static_cast<ParserImpl*>(this)->tabSize = tabSize;
+}
+
+void Parser::setGreedy(bool greedy) {
+    static_cast<ParserImpl*>(this)->greedy = greedy;
+}
+
+void Parser::setErrorCallback(Functor<void(const ParseError& err)>&& cb) {
+    static_cast<ParserImpl*>(this)->errorCallback = std::move(cb);
+}
+
+ParseResult Parser::parse(StringView path, StringView srcView) {
+    ParserImpl* parser = static_cast<ParserImpl*>(this);
+    parser->srcView = srcView;
+    parser->nextUnit = parser->srcView.numBytes() > 0 ? parser->srcView[0] : -1;
+
+    parser->tokenLocMap = TokenLocationMap::createFromString(srcView);
+
+    Token rootToken = readToken(parser);
+    Node root = readExpression(parser, std::move(rootToken));
     if (!root.isValid())
-        return {{}, std::move(this->tokenLocMap), this->readOfs};
+        return {{}, std::move(parser->tokenLocMap), parser->readOfs};
 
-    if (this->greedy) {
-        Token nextToken = this->readToken();
+    if (parser->greedy) {
+        Token nextToken = readToken(parser);
         if (nextToken.type != Token::EndOfFile) {
-            this->error(nextToken.fileOfs, String::format("Unexpected {} after {}", toString(nextToken), toString(root)));
-            return {{}, std::move(this->tokenLocMap), this->readOfs};
+            error(parser, nextToken.fileOfs,
+                  String::format("Unexpected {} after {}", describeToken(nextToken), describeNode(root)));
+            return {{}, std::move(parser->tokenLocMap), parser->readOfs};
         }
     }
 
-    return {std::move(root), std::move(this->tokenLocMap), this->readOfs};
+    return {std::move(root), std::move(parser->tokenLocMap), parser->readOfs};
+}
+
+bool Parser::anyError() const {
+    return static_cast<const ParserImpl*>(this)->anyError_;
+}
+
+void Parser::dumpError(const ParseError& error, Stream& out) const {
+    const ParserImpl* parser = static_cast<const ParserImpl*>(this);
+    TokenLocation errorLoc = parser->tokenLocMap.getLocationFromOffset(error.fileOfs);
+    out.format("({}, {}): error: {}\n", errorLoc.lineNumber, errorLoc.columnNumber, error.message);
+    for (u32 i = 0; i < error.context.numItems(); i++) {
+        const ParseError::Scope& scope = error.context.back(-(s32) i - 1);
+        TokenLocation contextLoc = parser->tokenLocMap.getLocationFromOffset(scope.fileOfs);
+        out.format("({}, {}) ", contextLoc.lineNumber, contextLoc.columnNumber);
+        switch (scope.type) {
+            case ParseError::Scope::Object:
+                out.write("while reading object started here");
+                break;
+
+            case ParseError::Scope::Property:
+                out.format("while reading property {} started here", scope.name);
+                break;
+
+            case ParseError::Scope::Duplicate:
+                out.write("existing property was defined here");
+                break;
+
+            case ParseError::Scope::Array:
+                out.format("while reading item {} of the array started here (index is zero-based)", scope.index);
+                break;
+        }
+        out.write('\n');
+    }
 }
 
 //  ▄▄    ▄▄        ▄▄  ▄▄

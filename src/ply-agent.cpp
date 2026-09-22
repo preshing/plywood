@@ -377,7 +377,7 @@ static u32 toolCallIDForMessage(Agent::Impl* impl, Transcript::Message* toolCall
 // followed by a JSON object of arguments (e.g. read{"path":"sample.txt"}). name is set
 // to the substring before the first '{'. argsOut receives the parsed JSON object.
 // Returns false if no JSON object could be parsed (name still holds the prefix).
-static bool parseToolCallText(const Transcript::Buffer& content, StringView& name, json::Parser::Result& argsOut) {
+static bool parseToolCallText(const Transcript::Buffer& content, StringView& name, json::ParseResult& argsOut) {
     PLY_ASSERT(content.lines.numItems() <= 1);
     StringView text;
     if (content.lines) {
@@ -389,10 +389,10 @@ static bool parseToolCallText(const Transcript::Buffer& content, StringView& nam
         return false;
     }
     name = text.left(brace);
-    json::Parser parser;
-    parser.setErrorCallback([](const json::ParseError&) {});
-    parser.setGreedy(false);
-    argsOut = parser.parse({}, text.substr(brace));
+    Owned<json::Parser> parser = json::Parser::create();
+    parser->setErrorCallback([](const json::ParseError&) {});
+    parser->setGreedy(false);
+    argsOut = parser->parse({}, text.substr(brace));
     return argsOut.root.isObject();
 }
 
@@ -506,7 +506,7 @@ String CompletionsProtocolHandler::makeRequestBody() {
                     // Tool call. Parse the name and arguments out of the message text.
                     toolCallID++;
                     StringView tcName;
-                    json::Parser::Result parsedArgs;
+                    json::ParseResult parsedArgs;
                     parseToolCallText(msg->content, tcName, parsedArgs);
 
                     // Ensure we have a "tool_calls" JSON array in which to put the object.
@@ -593,10 +593,10 @@ void CompletionsProtocolHandler::receiveLine(StringView line) {
     }
 
     // Parse json message
-    json::Parser parser;
-    parser.setErrorCallback([](const json::ParseError&) {});
-    parser.setGreedy(false);
-    json::Parser::Result result = parser.parse({}, line);
+    Owned<json::Parser> parser = json::Parser::create();
+    parser->setErrorCallback([](const json::ParseError&) {});
+    parser->setGreedy(false);
+    json::ParseResult result = parser->parse({}, line);
 
     const json::Node& jChoices = result.root.get("choices");
     for (const json::Node& jChoice : jChoices.arrayView()) {
@@ -645,10 +645,10 @@ void CompletionsProtocolHandler::receiveLine(StringView line) {
                     jArgsObj.set(item.key, json::Node{item.value});
                 }
             } else if (jArgs.isText()) {
-                json::Parser argParser;
-                argParser.setErrorCallback([](const json::ParseError&) {});
-                argParser.setGreedy(false);
-                json::Parser::Result parsedArgs = argParser.parse({}, jArgs.text());
+                Owned<json::Parser> argParser = json::Parser::create();
+                argParser->setErrorCallback([](const json::ParseError&) {});
+                argParser->setGreedy(false);
+                json::ParseResult parsedArgs = argParser->parse({}, jArgs.text());
                 if (parsedArgs.root.isObject()) {
                     for (const auto& item : parsedArgs.root.object().items) {
                         jArgsObj.set(item.key, json::Node{item.value});
@@ -787,7 +787,7 @@ String ResponsesProtocolHandler::makeRequestBody() {
                     // Recreate the function call item and pair its completed output by call_id.
                     fallbackToolCallID++;
                     StringView tcName;
-                    json::Parser::Result parsedArgs;
+                    json::ParseResult parsedArgs;
                     parseToolCallText(msg->content, tcName, parsedArgs);
                     String arguments = parsedArgs.root.isObject() ? json::toString(parsedArgs.root, {false}) : "{}";
                     String callID = msg->providerToolCallID
@@ -805,9 +805,9 @@ String ResponsesProtocolHandler::makeRequestBody() {
 
             // Replay the endpoint's original output items, including encrypted reasoning context.
             for (StringView itemText : turn.providerOutputItems) {
-                json::Parser parser;
-                parser.setErrorCallback([](const json::ParseError&) {});
-                json::Parser::Result item = parser.parse({}, itemText);
+                Owned<json::Parser> parser = json::Parser::create();
+                parser->setErrorCallback([](const json::ParseError&) {});
+                json::ParseResult item = parser->parse({}, itemText);
                 if (item.root.isObject()) {
                     jInput.array().append(std::move(item.root));
                 }
@@ -863,10 +863,10 @@ void ResponsesProtocolHandler::receiveLine(StringView line) {
     Agent::Impl* impl = this->impl;
     // Parse Responses API data events; the event type is also present in each JSON object.
     if (line.startsWith("data: ")) {
-        json::Parser parser;
-        parser.setErrorCallback([](const json::ParseError&) {});
-        parser.setGreedy(false);
-        json::Parser::Result result = parser.parse({}, line.substr(6).trim());
+        Owned<json::Parser> parser = json::Parser::create();
+        parser->setErrorCallback([](const json::ParseError&) {});
+        parser->setGreedy(false);
+        json::ParseResult result = parser->parse({}, line.substr(6).trim());
 
         if (result.root.isObject()) {
             StringView eventType = result.root.get("type").text();
@@ -1043,7 +1043,7 @@ String AnthropicProtocolHandler::makeRequestBody() {
                     // Recreate tool blocks when opaque provider output isn't available.
                     fallbackToolCallID++;
                     StringView name;
-                    json::Parser::Result parsedArgs;
+                    json::ParseResult parsedArgs;
                     parseToolCallText(msg->content, name, parsedArgs);
                     String callID = msg->providerToolCallID
                                         ? msg->providerToolCallID
@@ -1067,9 +1067,9 @@ String AnthropicProtocolHandler::makeRequestBody() {
 
             // Replay original content blocks to preserve signed thinking context.
             for (StringView itemText : turn.providerOutputItems) {
-                json::Parser parser;
-                parser.setErrorCallback([](const json::ParseError&) {});
-                json::Parser::Result item = parser.parse({}, itemText);
+                Owned<json::Parser> parser = json::Parser::create();
+                parser->setErrorCallback([](const json::ParseError&) {});
+                json::ParseResult item = parser->parse({}, itemText);
                 if (item.root.isObject()) {
                     jAssistantContent.array().append(std::move(item.root));
                 }
@@ -1098,10 +1098,10 @@ void AnthropicProtocolHandler::receiveLine(StringView line) {
         return;
 
     // Parse the JSON payload; the SSE event name is duplicated in its type property.
-    json::Parser parser;
-    parser.setErrorCallback([](const json::ParseError&) {});
-    parser.setGreedy(false);
-    json::Parser::Result result = parser.parse({}, line.substr(6).trim());
+    Owned<json::Parser> parser = json::Parser::create();
+    parser->setErrorCallback([](const json::ParseError&) {});
+    parser->setGreedy(false);
+    json::ParseResult result = parser->parse({}, line.substr(6).trim());
     if (!result.root.isObject())
         return;
     StringView eventType = result.root.get("type").text();
@@ -1201,7 +1201,7 @@ void AnthropicProtocolHandler::receiveLine(StringView line) {
             }
             this->toolCall->content.flush();
             StringView name;
-            json::Parser::Result parsedArgs;
+            json::ParseResult parsedArgs;
             parseToolCallText(this->toolCall->content, name, parsedArgs);
             this->contentBlock.get("input") =
                 parsedArgs.root.isObject() ? std::move(parsedArgs.root) : json::Node{json::Node::Object{}};
@@ -1342,7 +1342,7 @@ String InteractionsProtocolHandler::makeRequestBody() {
                 } else if (msg->role == Transcript::Role::ToolCall) {
                     fallbackToolCallID++;
                     StringView name;
-                    json::Parser::Result parsedArgs;
+                    json::ParseResult parsedArgs;
                     parseToolCallText(msg->content, name, parsedArgs);
                     String callID = msg->providerToolCallID
                                         ? msg->providerToolCallID
@@ -1367,9 +1367,9 @@ String InteractionsProtocolHandler::makeRequestBody() {
 
             // Replay every signed model step exactly as it was assembled from the stream.
             for (StringView itemText : turn.providerOutputItems) {
-                json::Parser parser;
-                parser.setErrorCallback([](const json::ParseError&) {});
-                json::Parser::Result item = parser.parse({}, itemText);
+                Owned<json::Parser> parser = json::Parser::create();
+                parser->setErrorCallback([](const json::ParseError&) {});
+                json::ParseResult item = parser->parse({}, itemText);
                 if (item.root.isObject()) {
                     input.array().append(std::move(item.root));
                 }
@@ -1399,10 +1399,10 @@ void InteractionsProtocolHandler::receiveLine(StringView line) {
         return;
 
     // Parse one typed event from the Interactions SSE stream.
-    json::Parser parser;
-    parser.setErrorCallback([](const json::ParseError&) {});
-    parser.setGreedy(false);
-    json::Parser::Result result = parser.parse({}, line.substr(5).trim());
+    Owned<json::Parser> parser = json::Parser::create();
+    parser->setErrorCallback([](const json::ParseError&) {});
+    parser->setGreedy(false);
+    json::ParseResult result = parser->parse({}, line.substr(5).trim());
     if (!result.root.isObject())
         return;
 
@@ -1490,7 +1490,7 @@ void InteractionsProtocolHandler::receiveLine(StringView line) {
             }
             this->toolCall->content.flush();
             StringView name;
-            json::Parser::Result parsedArgs;
+            json::ParseResult parsedArgs;
             parseToolCallText(this->toolCall->content, name, parsedArgs);
             this->step.get("arguments") =
                 parsedArgs.root.isObject() ? std::move(parsedArgs.root) : json::Node{json::Node::Object{}};
@@ -1565,10 +1565,10 @@ static String makeHTTPErrorMessage(u32 statusCode, StringView responseBody, Stri
         httpMessage.format("The API key stored in {} was rejected by the server.\n", apiKeyEnv);
     }
     httpMessage.format("HTTP response code {}", statusCode);
-    json::Parser parser;
-    parser.setErrorCallback([](const json::ParseError&) {});
-    parser.setGreedy(false);
-    json::Parser::Result result = parser.parse({}, responseBody.trim());
+    Owned<json::Parser> parser = json::Parser::create();
+    parser->setErrorCallback([](const json::ParseError&) {});
+    parser->setGreedy(false);
+    json::ParseResult result = parser->parse({}, responseBody.trim());
     StringView message = result.root.get("error").get("message").text();
     if (!message) {
         message = result.root.get("message").text();
@@ -1899,7 +1899,7 @@ void runToolThread(Agent::Impl* impl) {
         // Re-parse the tool call's content to recover the tool name and its
         // JSON arguments, then look up the handler by name.
         StringView tcName;
-        json::Parser::Result parsedArgs;
+        json::ParseResult parsedArgs;
         parseToolCallText(toolCall->content, tcName, parsedArgs);
         const json::Node& arguments = parsedArgs.root;
 
