@@ -567,9 +567,7 @@ static String formatToolCall(StringView raw) {
     if (brace < 0)
         return raw;
     StringView name = raw.left(brace);
-    Owned<json::Parser> parser = json::Parser::create();
-    parser->setErrorCallback([](const json::ParseError&) {});
-    parser->setGreedy(false);
+    Owned<json::Parser> parser = json::Parser::create({});
     json::ParseResult result = parser->parse({}, raw.substr(brace));
     MemStream out;
     out.format("{}", name);
@@ -1271,7 +1269,9 @@ static bool loadSettingsWithIncludes(StringView settingsPath, Array<String>& inc
     }
 
     // Parse and validate the root node.
-    Owned<json::Parser> parser = json::Parser::create();
+    json::Parser::Options parserOptions;
+    parserOptions.trailingInput = json::Parser::Options::FatalError;
+    Owned<json::Parser> parser = json::Parser::create(parserOptions);
     json::ParseResult result = parser->parse(settingsPath, jsonText);
     if (parser->anyError() || !result.root.isObject()) {
         getStdErr().format("Failed to parse configuration file: {}\n", settingsPath);
@@ -1477,7 +1477,9 @@ static bool resolveEndPoint(Agent::EndPoint& endPoint, bool useProxy, u16 proxyP
         getStdErr().format("Could not load provider routes: {}\n", routesPath);
         return false;
     }
-    Owned<json::Parser> parser = json::Parser::create();
+    json::Parser::Options parserOptions;
+    parserOptions.trailingInput = json::Parser::Options::FatalError;
+    Owned<json::Parser> parser = json::Parser::create(parserOptions);
     json::ParseResult result = parser->parse(routesPath, jsonText);
     if (parser->anyError() || !result.root.isArray()) {
         getStdErr().format("Failed to parse provider routes: {}\n", routesPath);

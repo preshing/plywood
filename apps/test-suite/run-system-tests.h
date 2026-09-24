@@ -15,6 +15,7 @@ using namespace ply;
 struct RegisterTest {
     enum Group {
         System,
+        Json,
         Network,
         UnicodeLoading,
     };
@@ -31,6 +32,7 @@ struct RegisterTest {
     void PLY_CAT(PLY_CAT(test_, TEST_CASE_PREFIX), __LINE__)()
 
 #define TEST_CASE(name) TEST_CASE_IN_GROUP(name, RegisterTest::System)
+#define JSON_TEST_CASE(name) TEST_CASE_IN_GROUP(name, RegisterTest::Json)
 #define NETWORK_TEST_CASE(name) TEST_CASE_IN_GROUP(name, RegisterTest::Network)
 #define UNICODE_LOADING_TEST_CASE(name) TEST_CASE_IN_GROUP(name, RegisterTest::UnicodeLoading)
 

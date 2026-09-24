@@ -389,9 +389,7 @@ static bool parseToolCallText(const Transcript::Buffer& content, StringView& nam
         return false;
     }
     name = text.left(brace);
-    Owned<json::Parser> parser = json::Parser::create();
-    parser->setErrorCallback([](const json::ParseError&) {});
-    parser->setGreedy(false);
+    Owned<json::Parser> parser = json::Parser::create({});
     argsOut = parser->parse({}, text.substr(brace));
     return argsOut.root.isObject();
 }
@@ -593,9 +591,7 @@ void CompletionsProtocolHandler::receiveLine(StringView line) {
     }
 
     // Parse json message
-    Owned<json::Parser> parser = json::Parser::create();
-    parser->setErrorCallback([](const json::ParseError&) {});
-    parser->setGreedy(false);
+    Owned<json::Parser> parser = json::Parser::create({});
     json::ParseResult result = parser->parse({}, line);
 
     const json::Node& jChoices = result.root.get("choices");
@@ -645,9 +641,7 @@ void CompletionsProtocolHandler::receiveLine(StringView line) {
                     jArgsObj.set(item.key, json::Node{item.value});
                 }
             } else if (jArgs.isText()) {
-                Owned<json::Parser> argParser = json::Parser::create();
-                argParser->setErrorCallback([](const json::ParseError&) {});
-                argParser->setGreedy(false);
+                Owned<json::Parser> argParser = json::Parser::create({});
                 json::ParseResult parsedArgs = argParser->parse({}, jArgs.text());
                 if (parsedArgs.root.isObject()) {
                     for (const auto& item : parsedArgs.root.object().items) {
@@ -805,8 +799,9 @@ String ResponsesProtocolHandler::makeRequestBody() {
 
             // Replay the endpoint's original output items, including encrypted reasoning context.
             for (StringView itemText : turn.providerOutputItems) {
-                Owned<json::Parser> parser = json::Parser::create();
-                parser->setErrorCallback([](const json::ParseError&) {});
+                json::Parser::Options parserOptions;
+                parserOptions.trailingInput = json::Parser::Options::FatalError;
+                Owned<json::Parser> parser = json::Parser::create(parserOptions);
                 json::ParseResult item = parser->parse({}, itemText);
                 if (item.root.isObject()) {
                     jInput.array().append(std::move(item.root));
@@ -863,9 +858,7 @@ void ResponsesProtocolHandler::receiveLine(StringView line) {
     Agent::Impl* impl = this->impl;
     // Parse Responses API data events; the event type is also present in each JSON object.
     if (line.startsWith("data: ")) {
-        Owned<json::Parser> parser = json::Parser::create();
-        parser->setErrorCallback([](const json::ParseError&) {});
-        parser->setGreedy(false);
+        Owned<json::Parser> parser = json::Parser::create({});
         json::ParseResult result = parser->parse({}, line.substr(6).trim());
 
         if (result.root.isObject()) {
@@ -1067,8 +1060,9 @@ String AnthropicProtocolHandler::makeRequestBody() {
 
             // Replay original content blocks to preserve signed thinking context.
             for (StringView itemText : turn.providerOutputItems) {
-                Owned<json::Parser> parser = json::Parser::create();
-                parser->setErrorCallback([](const json::ParseError&) {});
+                json::Parser::Options parserOptions;
+                parserOptions.trailingInput = json::Parser::Options::FatalError;
+                Owned<json::Parser> parser = json::Parser::create(parserOptions);
                 json::ParseResult item = parser->parse({}, itemText);
                 if (item.root.isObject()) {
                     jAssistantContent.array().append(std::move(item.root));
@@ -1098,9 +1092,7 @@ void AnthropicProtocolHandler::receiveLine(StringView line) {
         return;
 
     // Parse the JSON payload; the SSE event name is duplicated in its type property.
-    Owned<json::Parser> parser = json::Parser::create();
-    parser->setErrorCallback([](const json::ParseError&) {});
-    parser->setGreedy(false);
+    Owned<json::Parser> parser = json::Parser::create({});
     json::ParseResult result = parser->parse({}, line.substr(6).trim());
     if (!result.root.isObject())
         return;
@@ -1367,8 +1359,9 @@ String InteractionsProtocolHandler::makeRequestBody() {
 
             // Replay every signed model step exactly as it was assembled from the stream.
             for (StringView itemText : turn.providerOutputItems) {
-                Owned<json::Parser> parser = json::Parser::create();
-                parser->setErrorCallback([](const json::ParseError&) {});
+                json::Parser::Options parserOptions;
+                parserOptions.trailingInput = json::Parser::Options::FatalError;
+                Owned<json::Parser> parser = json::Parser::create(parserOptions);
                 json::ParseResult item = parser->parse({}, itemText);
                 if (item.root.isObject()) {
                     input.array().append(std::move(item.root));
@@ -1399,9 +1392,7 @@ void InteractionsProtocolHandler::receiveLine(StringView line) {
         return;
 
     // Parse one typed event from the Interactions SSE stream.
-    Owned<json::Parser> parser = json::Parser::create();
-    parser->setErrorCallback([](const json::ParseError&) {});
-    parser->setGreedy(false);
+    Owned<json::Parser> parser = json::Parser::create({});
     json::ParseResult result = parser->parse({}, line.substr(5).trim());
     if (!result.root.isObject())
         return;
@@ -1565,9 +1556,7 @@ static String makeHTTPErrorMessage(u32 statusCode, StringView responseBody, Stri
         httpMessage.format("The API key stored in {} was rejected by the server.\n", apiKeyEnv);
     }
     httpMessage.format("HTTP response code {}", statusCode);
-    Owned<json::Parser> parser = json::Parser::create();
-    parser->setErrorCallback([](const json::ParseError&) {});
-    parser->setGreedy(false);
+    Owned<json::Parser> parser = json::Parser::create({});
     json::ParseResult result = parser->parse({}, responseBody.trim());
     StringView message = result.root.get("error").get("message").text();
     if (!message) {

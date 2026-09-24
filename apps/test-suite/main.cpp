@@ -15,7 +15,7 @@
 #include <ply-network.h>
 #endif
 
-#if WITH_SYSTEM_TESTS || WITH_NETWORK_TESTS || WITH_UNICODE_LOADING_TESTS
+#if WITH_SYSTEM_TESTS || WITH_JSON_TESTS || WITH_NETWORK_TESTS || WITH_UNICODE_LOADING_TESTS
 #include "run-system-tests.h"
 #endif
 
@@ -27,6 +27,7 @@ CommandLineOptions options;
 // Identifies a test suite and distinguishes normal C++ tests from golden-file generation.
 enum class TestSuite {
     System,
+    Json,
     Network,
     Unicode,
     Markdown,
@@ -48,19 +49,21 @@ static u32 getLogicalSuiteIndex(TestSuite suite) {
     switch (suite) {
         case TestSuite::System:
             return 0;
-        case TestSuite::Network:
+        case TestSuite::Json:
             return 1;
-        case TestSuite::Unicode:
+        case TestSuite::Network:
             return 2;
-        case TestSuite::Markdown:
+        case TestSuite::Unicode:
             return 3;
+        case TestSuite::Markdown:
+            return 4;
         case TestSuite::Cpp:
         case TestSuite::RegenCpp:
-            return 4;
-        case TestSuite::Transcript:
             return 5;
-        case TestSuite::Fragmentation:
+        case TestSuite::Transcript:
             return 6;
+        case TestSuite::Fragmentation:
+            return 7;
     }
     PLY_ASSERT(0);
     return 0;
@@ -75,6 +78,13 @@ static TestResult runTestSuite(TestSuite suite) {
                 getStdOut().write("\nSystem tests\n");
             }
             return runSystemTests();
+#endif
+#if WITH_JSON_TESTS
+        case TestSuite::Json:
+            if (options.verbose) {
+                getStdOut().write("\nJSON tests\n");
+            }
+            return runJsonTests();
 #endif
 #if WITH_NETWORK_TESTS
         case TestSuite::Network:
@@ -136,6 +146,9 @@ static void printTestSuiteResult(TestSuite suite, const TestResult& result) {
         case TestSuite::System:
             name = "System tests";
             break;
+        case TestSuite::Json:
+            name = "JSON tests";
+            break;
         case TestSuite::Network:
             name = "Network tests";
             break;
@@ -174,6 +187,9 @@ int main(int argc, const char* argv[]) {
     CommandLineParser parser({
 #if WITH_SYSTEM_TESTS
         {"-s", "--system", PLY_LOOKUP_MEMBER(CommandLineOptions, runSystem), "Run the system test suite"},
+#endif
+#if WITH_JSON_TESTS
+        {"-j", "--json", PLY_LOOKUP_MEMBER(CommandLineOptions, runJson), "Run the JSON parser test suite"},
 #endif
 #if WITH_NETWORK_TESTS
         {"-n", "--network", PLY_LOOKUP_MEMBER(CommandLineOptions, runNetwork), "Run the network test suite"},
@@ -226,6 +242,9 @@ int main(int argc, const char* argv[]) {
 #if WITH_SYSTEM_TESTS
         suites.append(TestSuite::System);
 #endif
+#if WITH_JSON_TESTS
+        suites.append(TestSuite::Json);
+#endif
 #if WITH_NETWORK_TESTS
         suites.append(TestSuite::Network);
 #endif
@@ -245,7 +264,7 @@ int main(int argc, const char* argv[]) {
         suites.append(TestSuite::Fragmentation);
 #endif
     } else {
-        bool selectedSuites[7] = {};
+        bool selectedSuites[8] = {};
         for (int i = 1; i < argc; i++) {
             StringView arg = argv[i];
             if (arg == "-v" || arg == "--verbose") {
@@ -254,6 +273,8 @@ int main(int argc, const char* argv[]) {
             TestSuite suite;
             if (arg == "-s" || arg == "--system") {
                 suite = TestSuite::System;
+            } else if (arg == "-j" || arg == "--json") {
+                suite = TestSuite::Json;
             } else if (arg == "-n" || arg == "--network") {
                 suite = TestSuite::Network;
             } else if (arg == "-u" || arg == "--unicode") {
@@ -314,6 +335,7 @@ int main(int argc, const char* argv[]) {
 
 PLY_STRUCT_BEGIN(CommandLineOptions)
 PLY_STRUCT_MEMBER(runSystem)
+PLY_STRUCT_MEMBER(runJson)
 PLY_STRUCT_MEMBER(runNetwork)
 PLY_STRUCT_MEMBER(runUnicode)
 PLY_STRUCT_MEMBER(runMarkdown)

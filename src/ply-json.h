@@ -37,9 +37,10 @@ struct Node {
     struct Object {
         Map<String, Node> items;
     };
+    struct Null {};
 
     u32 fileOfs = 0;
-    Variant<Bool, Number, Text, Array, Object> var;
+    Variant<Bool, Number, Text, Array, Object, Null> var;
 
     Node() {
     }
@@ -52,6 +53,8 @@ struct Node {
     Node(Array&& arr, u32 fileOfs = 0) : fileOfs{fileOfs}, var{std::move(arr)} {
     }
     Node(Object&& obj, u32 fileOfs = 0) : fileOfs{fileOfs}, var{std::move(obj)} {
+    }
+    Node(const Null& nullValue, u32 fileOfs = 0) : fileOfs{fileOfs}, var{nullValue} {
     }
 
     static Node InvalidNode;
@@ -116,6 +119,20 @@ struct Node {
 
     void setText(String&& text) {
         this->var = Text{std::move(text)};
+    }
+
+    //  ▄▄  ▄▄        ▄▄▄  ▄▄▄
+    //  ███▄██ ▄▄  ▄▄  ██   ██
+    //  ██▀███ ██  ██  ██   ██
+    //  ██  ██ ▀█▄▄██ ▄██▄ ▄██▄
+    //
+
+    bool isNull() const {
+        return this->var.is<Null>();
+    }
+
+    void setNull() {
+        this->var = Null{};
     }
 
     //-----------------------------------------------------------
@@ -190,7 +207,13 @@ struct ParseResult {
     u32 numBytes = 0;
 };
 
-struct ParseError {
+// Diagnostics only remain valid for the lifetime of the callback.
+struct Diagnostic {
+    enum Level {
+        Warning, // Non-fatal. Parsing continues.
+        Error,   // Fatal error. Parsing stops.
+    };
+
     struct Scope {
         enum Type {
             Object,
@@ -217,25 +240,50 @@ struct ParseError {
         }
     };
 
+    Level errorLevel = Error;
     u32 fileOfs;
     String message;
     const Array<Scope>& context;
 };
 
 struct Parser {
+    struct Options {
+        enum Policy {
+            Permissive,      // The extension is accepted without a diagnostic.
+            WarnAndContinue, // The extension is accepted with a warning.
+            FatalError,      // An error is logged and parsing stops.
+        };
+
+        u32 tabSize = 4;
+        // Permissive and WarnAndContinue return after the first value; the latter also logs a warning.
+        Policy trailingInput = Permissive;
+        Policy unquotedKeys = Permissive;
+        Policy unquotedStrings = Permissive;
+        Policy equalsSign = Permissive;          // Accepts {"foo" = 1}.
+        Policy alternateSeparators = Permissive; // Accepts ; as an alternate separator.
+        // Accepts missing commas (including newline separators) and redundant separators.
+        Policy looseSeparators = Permissive;
+        Policy singleQuotedStrings = Permissive;
+        Policy nonUTF8Strings = Permissive;
+        Policy unescapedControlChars = Permissive;
+        Policy arbitraryEscapeChars = Permissive;
+        Policy duplicateKeys = Permissive;
+        bool duplicateKeysOverrideEarlier = false; // If true, duplicate properties override earlier ones.
+
+        static Options makeStrict();
+    };
+
     // Create & destroy
-    static Owned<Parser> create();
+    static Owned<Parser> create(const Options& options);
     void destroy();
 
     // Settings
-    void setTabSize(int tabSize);
-    void setGreedy(bool greedy);
-    void setErrorCallback(Functor<void(const ParseError& err)>&& cb);
+    void setDiagnosticCallback(Functor<void(const Diagnostic& diagnostic)>&& cb);
 
     // Parsing
-    ParseResult parse(StringView path, StringView srcView);
+    ParseResult parse(StringView path, StringView srcView); // Single-use function.
     bool anyError() const;
-    void dumpError(const ParseError& error, Stream& out) const;
+    void printDiagnostic(const Diagnostic& diagnostic, Stream& out) const;
 };
 
 //  ▄▄    ▄▄        ▄▄  ▄▄

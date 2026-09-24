@@ -18,22 +18,22 @@ namespace ply {
 //  ██    ██ ▄██▄ ▀█▄▄▄  ▄▄▄▄▄ ██▄▄▄ ▀█▄▄█▀ ▀█▄▄▄ ▀█▄▄██  ▀█▄▄ ██ ▀█▄▄█▀ ██  ██ ▄▄▄▄▄ ██   ██ ▀█▄▄██ ██▄▄█▀
 //                                                                                                   ██
 
-inline void updateLineAndColumn(u32& lineNumber, u32& columnNumber, u32 codePoint) {
+inline void updateLineAndColumn(u32& lineNumber, u32& columnNumber, u32 codePoint, u32 tabSize) {
     if (codePoint == '\n') {
         lineNumber++;
         columnNumber = 1;
     } else if (codePoint == '\t') {
-        u32 tabSize = 4;
         columnNumber += tabSize - (columnNumber % tabSize);
     } else if (codePoint >= 32) {
         columnNumber++;
     }
 }
 
-TokenLocationMap TokenLocationMap::createFromString(StringView src) {
+TokenLocationMap TokenLocationMap::createFromString(StringView src, u32 tabSize) {
     ViewStream in{src};
     TokenLocationMap result;
     result.view = src;
+    result.tabSize = tabSize;
     u32 lineNumber = 1;
     u32 columnNumber = 1;
     u32 lineStartOfs = 0;
@@ -53,7 +53,7 @@ TokenLocationMap TokenLocationMap::createFromString(StringView src) {
         }
         ofs = nextOfs;
 
-        updateLineAndColumn(lineNumber, columnNumber, decoded.point);
+        updateLineAndColumn(lineNumber, columnNumber, decoded.point, tabSize);
         if (decoded.point == '\n') {
             lineStartOfs = ofs;
         }
@@ -85,7 +85,7 @@ TokenLocation TokenLocationMap::getLocationFromOffset(u32 fileOffset) const {
         DecodeResult decoded = decodeUnicode(src, UnicodeType::UTF8);
         src = src.substr(decoded.numBytes);
 
-        updateLineAndColumn(lineNumber, columnNumber, decoded.point);
+        updateLineAndColumn(lineNumber, columnNumber, decoded.point, this->tabSize);
     }
 }
 

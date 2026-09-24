@@ -35,8 +35,9 @@ struct TokenLocation {
 struct TokenLocationMap {
     Array<TokenLocation> table;
     StringView view;
+    u32 tabSize = 4;
 
-    static TokenLocationMap createFromString(StringView view);
+    static TokenLocationMap createFromString(StringView view, u32 tabSize = 4);
     TokenLocation getLocationFromOffset(u32 fileOffset) const;
 };
 

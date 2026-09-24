@@ -60,7 +60,8 @@ void Node::remove(StringView key) {
 // Helpers
 //-----------------------------------------------------------
 
-bool isAlnumUnit(u32 c) {
+// Note: nextUnit is -1 at the end of the input, so c is signed.
+bool isAlnumUnit(s32 c) {
     return (c == '_') || (c == '$') || (c == '-') || (c == '.') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
            (c >= '0' && c <= '9') || (c >= 128);
 }
@@ -87,26 +88,23 @@ struct Token {
     bool wasQuoted = false;
 
     bool isValid() const {
-        return type != Type::Invalid;
+        return this->type != Type::Invalid;
     }
 };
 
 struct ParserImpl : Parser {
-    Functor<void(const ParseError& err)> errorCallback;
+    Options options;
+    Functor<void(const Diagnostic& diagnostic)> diagnosticCallback;
     TokenLocationMap tokenLocMap;
     bool anyError_ = false;
-    // The parser expects only a single JSON expression as input.
-    // If greedy is true and there are more tokens after the initial expression, it logs an error.
-    bool greedy = true;
     StringView srcView;
     u32 readOfs = 0;
     s32 nextUnit = 0;
-    u32 tabSize = 4;
     Token pushBackToken;
-    Array<ParseError::Scope> context;
+    Array<Diagnostic::Scope> context;
 
     void pushBack(Token&& token) {
-        pushBackToken = std::move(token);
+        this->pushBackToken = std::move(token);
     }
 };
 
@@ -117,19 +115,42 @@ bool tryParseNumber(StringView text, double* value) {
     return !in.inputError && (in.curByte == in.endByte);
 }
 
-void error(ParserImpl* parser, u32 fileOfs, String&& message) {
-    if (parser->errorCallback) {
-        ParseError err{fileOfs, std::move(message), parser->context};
-        parser->errorCallback(err);
+// Forwards a diagnostic to the callback, if one is installed, and records fatal errors.
+void emitDiagnostic(ParserImpl* parser, Diagnostic::Level level, u32 fileOfs, String&& message) {
+    if (parser->diagnosticCallback) {
+        Diagnostic diagnostic{level, fileOfs, std::move(message), parser->context};
+        parser->diagnosticCallback(diagnostic);
     }
-    parser->anyError_ = true;
+    if (level == Diagnostic::Error)
+        parser->anyError_ = true;
+}
+
+// Emits a fatal error. Parsing stops and an invalid Node is returned to the caller.
+void error(ParserImpl* parser, u32 fileOfs, String&& message) {
+    emitDiagnostic(parser, Diagnostic::Error, fileOfs, std::move(message));
+}
+
+// Applies a parsing policy to a condition detected at fileOfs. Returns true if parsing may continue.
+bool checkPolicy(ParserImpl* parser, Parser::Options::Policy policy, u32 fileOfs, String&& message) {
+    switch (policy) {
+        case Parser::Options::Permissive:
+            return true;
+        case Parser::Options::WarnAndContinue:
+            emitDiagnostic(parser, Diagnostic::Warning, fileOfs, std::move(message));
+            return true;
+        default:
+            emitDiagnostic(parser, Diagnostic::Error, fileOfs, std::move(message));
+            return false;
+    }
 }
 
 void advanceChar(ParserImpl* parser) {
     if (parser->readOfs + 1 < parser->srcView.numBytes()) {
         parser->readOfs++;
-        parser->nextUnit = parser->srcView.bytes()[parser->readOfs];
+        parser->nextUnit = (u8) parser->srcView.bytes()[parser->readOfs];
     } else {
+        // Consume the last byte of the input.
+        parser->readOfs = parser->srcView.numBytes();
         parser->nextUnit = -1;
     }
 }
@@ -167,6 +188,8 @@ String describeToken(const Token& token) {
             return "newline";
         case Token::EndOfFile:
             return "end of file";
+        case Token::Invalid:
+            return "invalid token";
         default:
             PLY_ASSERT(0);
             return "???";
@@ -184,6 +207,8 @@ String describeNode(const Node& node) {
         return String::format("text \"{}\"", escape(txt->text));
     } else if (const Node::Bool* b = node.var.as<Node::Bool>()) {
         return String::format("bool {}", b->value ? "true" : "false");
+    } else if (node.var.is<Node::Null>()) {
+        return "null";
     }
     PLY_ASSERT(0);
     return "???";
@@ -219,7 +244,12 @@ Token readLiteral(ParserImpl* parser) {
         }
 
         if (parser->nextUnit == '.') {
+            u32 decimalOfs = parser->readOfs;
             advanceChar(parser);
+            if (!(parser->nextUnit >= '0' && parser->nextUnit <= '9')) {
+                error(parser, decimalOfs, "Expected digits after decimal point");
+                return {};
+            }
             while (parser->nextUnit >= '0' && parser->nextUnit <= '9') {
                 advanceChar(parser);
             }
@@ -248,6 +278,169 @@ Token readLiteral(ParserImpl* parser) {
 
     token.text = StringView{(char*) parser->srcView.bytes() + startOfs, parser->readOfs - startOfs};
     return token;
+}
+
+u32 hexDigitValue(s32 c) {
+    if (c >= '0' && c <= '9')
+        return c - '0';
+    c |= 0x20;
+    if (c >= 'a' && c <= 'f')
+        return c - 'a' + 10;
+    return 16;
+}
+
+// Reads exactly four hexadecimal digits from a JSON Unicode escape.
+bool readUnicodeEscape(ParserImpl* parser, u32& codePoint) {
+    codePoint = 0;
+    for (u32 i = 0; i < 4; i++) {
+        u32 digit = hexDigitValue(parser->nextUnit);
+        if (digit >= 16)
+            return false;
+        codePoint = (codePoint << 4) | digit;
+        advanceChar(parser);
+    }
+    return true;
+}
+
+// Rejects malformed, overlong, surrogate and out-of-range UTF-8 decodings.
+bool isValidUTF8Decode(u8 firstByte, const DecodeResult& decoded) {
+    if (decoded.status != DecodeStatus::OK)
+        return false;
+    if (decoded.numBytes == 2)
+        return firstByte >= 0xc2;
+    if (decoded.numBytes == 3)
+        return decoded.point >= 0x800 && !(decoded.point >= 0xd800 && decoded.point < 0xe000);
+    if (decoded.numBytes == 4)
+        return decoded.point >= 0x10000 && decoded.point <= 0x10ffff;
+    return decoded.numBytes == 1;
+}
+
+// Reads and decodes a quoted string while enforcing the configured string policies.
+Token readQuotedToken(ParserImpl* parser) {
+    Token token = {Token::Text, parser->readOfs, {}};
+    token.wasQuoted = true;
+    bool wasSingleQuoted = parser->nextUnit == '\'';
+    s32 quote = parser->nextUnit;
+    if (wasSingleQuoted &&
+        !checkPolicy(parser, parser->options.singleQuotedStrings, token.fileOfs, "Single-quoted string"))
+        return {};
+    advanceChar(parser);
+
+    // Decode the string while applying each independently configurable extension.
+    MemStream out;
+    for (;;) {
+        if (parser->nextUnit < 0) {
+            error(parser, parser->readOfs, "Unexpected end of file in string literal");
+            return {};
+        }
+        if (parser->nextUnit == quote) {
+            advanceChar(parser);
+            token.text = out.moveToString();
+            return token;
+        }
+
+        u32 charOfs = parser->readOfs;
+        u8 c = (u8) parser->nextUnit;
+        // Decode JSON escape sequences and diagnose any enabled nonstandard forms.
+        if (c == '\\') {
+            advanceChar(parser);
+            if (parser->nextUnit < 0) {
+                error(parser, parser->readOfs, "Unexpected end of file in string literal");
+                return {};
+            }
+            u8 escape = (u8) parser->nextUnit;
+            advanceChar(parser);
+            switch (escape) {
+                case '"':
+                case '\\':
+                case '/':
+                    out.write(escape);
+                    break;
+                case '\'':
+                    if (quote == '\'') {
+                        out.write(escape);
+                        break;
+                    }
+                    if (!checkPolicy(parser, parser->options.arbitraryEscapeChars, charOfs,
+                                     "Nonstandard escape sequence in string literal"))
+                        return {};
+                    out.write(escape);
+                    break;
+                case 'b':
+                    out.write('\b');
+                    break;
+                case 'f':
+                    out.write('\f');
+                    break;
+                case 'n':
+                    out.write('\n');
+                    break;
+                case 'r':
+                    out.write('\r');
+                    break;
+                case 't':
+                    out.write('\t');
+                    break;
+                case 'u': {
+                    u32 codePoint = 0;
+                    if (!readUnicodeEscape(parser, codePoint)) {
+                        error(parser, parser->readOfs, "Bad Unicode escape sequence in string literal");
+                        return {};
+                    }
+                    // Combine a valid UTF-16 surrogate pair into one Unicode code point.
+                    if (codePoint >= 0xd800 && codePoint < 0xdc00) {
+                        if (parser->nextUnit != '\\' || parser->readOfs + 1 >= parser->srcView.numBytes() ||
+                            parser->srcView[parser->readOfs + 1] != 'u') {
+                            error(parser, parser->readOfs, "Unpaired Unicode surrogate in string literal");
+                            return {};
+                        }
+                        advanceChar(parser);
+                        advanceChar(parser);
+                        u32 lowSurrogate = 0;
+                        if (!readUnicodeEscape(parser, lowSurrogate) || lowSurrogate < 0xdc00 ||
+                            lowSurrogate >= 0xe000) {
+                            error(parser, parser->readOfs, "Unpaired Unicode surrogate in string literal");
+                            return {};
+                        }
+                        codePoint = 0x10000 + (((codePoint - 0xd800) << 10) | (lowSurrogate - 0xdc00));
+                    } else if (codePoint >= 0xdc00 && codePoint < 0xe000) {
+                        error(parser, parser->readOfs, "Unpaired Unicode surrogate in string literal");
+                        return {};
+                    }
+                    encodeUnicode(out, UnicodeType::UTF8, codePoint);
+                    break;
+                }
+                default:
+                    if (!checkPolicy(parser, parser->options.arbitraryEscapeChars, charOfs,
+                                     "Nonstandard escape sequence in string literal"))
+                        return {};
+                    out.write(escape);
+                    break;
+            }
+            continue;
+        }
+
+        // Apply the configured policy to unescaped ASCII control characters.
+        if (c < 0x20) {
+            if (!checkPolicy(parser, parser->options.unescapedControlChars, charOfs,
+                             "Unescaped control character in string literal"))
+                return {};
+            out.write(c);
+            advanceChar(parser);
+            continue;
+        }
+
+        // Validate each source-encoded character but preserve its original bytes.
+        DecodeResult decoded = decodeUnicode(parser->srcView.substr(parser->readOfs), UnicodeType::UTF8);
+        if (!isValidUTF8Decode(c, decoded) &&
+            !checkPolicy(parser, parser->options.nonUTF8Strings, charOfs, "Invalid UTF-8 in string literal"))
+            return {};
+        u32 numBytes = max(decoded.numBytes, u32(1));
+        out.write(parser->srcView.substr(parser->readOfs, numBytes));
+        for (u32 i = 0; i < numBytes; i++) {
+            advanceChar(parser);
+        }
+    }
 }
 
 Token readToken(ParserImpl* parser, bool tokenizeNewLine = false) {
@@ -293,35 +486,8 @@ Token readToken(ParserImpl* parser, bool tokenizeNewLine = false) {
                 return readPlainToken(parser, Token::Semicolon);
 
             case '"':
-            case '\'': {
-                Token token = {Token::Text, parser->readOfs, {}};
-                token.wasQuoted = true;
-                ViewStream in{parser->srcView.substr(parser->readOfs)};
-                token.text =
-                    readQuotedString(in, QuotedStringType::JSON, true, [parser, &in](QuotedStringError errorCode) {
-                        u32 fileOfs = numericCast<u32>(in.curByte - parser->srcView.bytes());
-                        switch (errorCode) {
-                            case QuotedStringError::UnexpectedEndOfLine:
-                                error(parser, fileOfs, "Unexpected end of line in string literal");
-                                break;
-                            case QuotedStringError::UnexpectedEndOfFile:
-                                error(parser, fileOfs, "Unexpected end of file in string literal");
-                                break;
-                            case QuotedStringError::BadEscapeSequence:
-                                error(parser, fileOfs, "Bad escape sequence in string literal");
-                                break;
-                            case QuotedStringError::NoOpeningQuote:
-                                error(parser, fileOfs, "Expected opening quote in string literal");
-                                break;
-                        }
-                    });
-                parser->readOfs = numericCast<u32>(in.curByte - parser->srcView.bytes());
-                parser->nextUnit =
-                    (parser->readOfs < parser->srcView.numBytes()) ? parser->srcView[parser->readOfs] : -1;
-                if (in.inputError)
-                    return {};
-                return token;
-            }
+            case '\'':
+                return readQuotedToken(parser);
 
             default:
                 if (isAlnumUnit(parser->nextUnit))
@@ -338,40 +504,64 @@ struct ScopeHandler {
     ParserImpl& parser;
     u32 index;
 
-    ScopeHandler(ParserImpl& parser, ParseError::Scope&& scope) : parser{parser}, index{parser.context.numItems()} {
+    ScopeHandler(ParserImpl& parser, Diagnostic::Scope&& scope) : parser{parser}, index{parser.context.numItems()} {
         parser.context.append(std::move(scope));
     }
     ~ScopeHandler() {
-        // parser.context can be empty when Parse_Error is thrown
-        if (!parser.context.isEmpty()) {
-            PLY_ASSERT(parser.context.numItems() == index + 1);
-            parser.context.pop();
+        // parser.context can be empty when a fatal error is thrown
+        if (!this->parser.context.isEmpty()) {
+            PLY_ASSERT(this->parser.context.numItems() == this->index + 1);
+            this->parser.context.pop();
         }
     }
-    ParseError::Scope& get() {
-        return parser.context[index];
+    Diagnostic::Scope& get() {
+        return this->parser.context[this->index];
     }
 };
 
 Node readObject(ParserImpl* parser, const Token& startToken) {
     PLY_ASSERT(startToken.type == Token::OpenCurly);
-    ScopeHandler objectScope{*parser, ParseError::Scope::object(startToken.fileOfs)};
+    ScopeHandler objectScope{*parser, Diagnostic::Scope::object(startToken.fileOfs)};
     Node node{Node::Object{}, startToken.fileOfs};
     Token prevProperty = {};
     for (;;) {
-        bool gotSeparator = false;
+        // Consume separators until the next property or the end of the object is found.
+        bool gotComma = false; // A comma or semicolon was seen after the previous property.
         Token firstToken = {};
         for (;;) {
             firstToken = readToken(parser, true);
             switch (firstToken.type) {
-                case Token::CloseCurly:
+                case Token::CloseCurly: {
+                    if (gotComma) {
+                        // The object ends with a trailing separator.
+                        if (!checkPolicy(parser, parser->options.looseSeparators, firstToken.fileOfs,
+                                         "Separator not allowed before \"}\""))
+                            return {};
+                    }
                     return node;
+                }
 
                 case Token::Comma:
-                case Token::Semicolon:
-                case Token::NewLine:
-                    gotSeparator = true;
+                case Token::Semicolon: {
+                    if (firstToken.type == Token::Semicolon) {
+                        // Semicolons are governed by the alternateSeparators policy.
+                        if (!checkPolicy(parser, parser->options.alternateSeparators, firstToken.fileOfs,
+                                         "Semicolons are not allowed as separators"))
+                            return {};
+                    }
+                    if (gotComma || !prevProperty.isValid()) {
+                        // The separator is redundant or appears before the first property.
+                        if (!checkPolicy(parser, parser->options.looseSeparators, firstToken.fileOfs,
+                                         "Misplaced separator in object"))
+                            return {};
+                    }
+                    gotComma = true;
                     break;
+                }
+
+                case Token::NewLine: {
+                    break;
+                }
 
                 default:
                     goto breakOuter;
@@ -379,13 +569,21 @@ Node readObject(ParserImpl* parser, const Token& startToken) {
         }
 
     breakOuter:
+        if (firstToken.type == Token::Invalid)
+            return {};
         if (firstToken.type == Token::Text) {
-            if (prevProperty.isValid() && !gotSeparator) {
-                error(parser, firstToken.fileOfs,
-                      String::format("Expected a comma, semicolon or newline "
-                                     "separator between properties \"{}\" and \"{}\"",
-                                     escape(prevProperty.text), escape(firstToken.text)));
-                return {};
+            if (prevProperty.isValid() && !gotComma) {
+                // No separator between two properties.
+                if (!checkPolicy(parser, parser->options.looseSeparators, firstToken.fileOfs,
+                                 String::format("Expected a separator between properties \"{}\" and \"{}\"",
+                                                escape(prevProperty.text), escape(firstToken.text))))
+                    return {};
+            }
+            if (!firstToken.wasQuoted) {
+                // Unquoted property names are governed by the unquotedKeys policy.
+                if (!checkPolicy(parser, parser->options.unquotedKeys, firstToken.fileOfs,
+                                 String::format("Property name \"{}\" must be double-quoted", escape(firstToken.text))))
+                    return {};
             }
         } else if (prevProperty.isValid()) {
             error(parser, firstToken.fileOfs,
@@ -397,28 +595,38 @@ Node readObject(ParserImpl* parser, const Token& startToken) {
             return {};
         }
 
+        // Check for a duplicate property name.
         const Node& existingNode = node.get(firstToken.text);
-        if (existingNode.isValid()) {
-            ScopeHandler duplicateScope{*parser, ParseError::Scope::duplicate(existingNode.fileOfs)};
-            error(parser, firstToken.fileOfs, String::format("Duplicate property \"{}\"", escape(firstToken.text)));
-            return {};
+        bool isDuplicate = existingNode.isValid();
+        if (isDuplicate) {
+            ScopeHandler duplicateScope{*parser, Diagnostic::Scope::duplicate(existingNode.fileOfs)};
+            if (!checkPolicy(parser, parser->options.duplicateKeys, firstToken.fileOfs,
+                             String::format("Duplicate property \"{}\"", escape(firstToken.text))))
+                return {};
         }
 
         Token colon = readToken(parser);
-        if (colon.type != Token::Colon && colon.type != Token::Equals) {
+        if (colon.type == Token::Equals) {
+            // Using '=' instead of ':' is governed by the equalsSign policy.
+            if (!checkPolicy(parser, parser->options.equalsSign, colon.fileOfs,
+                             String::format("Property \"{}\" uses \"=\" instead of \":\"", escape(firstToken.text))))
+                return {};
+        } else if (colon.type != Token::Colon) {
             error(parser, colon.fileOfs,
-                  String::format("Expected \":\" or \"=\" after \"{}\", got {}", escape(firstToken.text),
-                                 describeToken(colon)));
+                  String::format("Expected \":\" after \"{}\", got {}", escape(firstToken.text), describeToken(colon)));
             return {};
         }
 
         {
-            // Read value of property
-            ScopeHandler propertyScope{*parser, ParseError::Scope::property(firstToken.fileOfs, firstToken.text)};
+            // Read the value of the property.
+            ScopeHandler propertyScope{*parser, Diagnostic::Scope::property(firstToken.fileOfs, firstToken.text)};
             Node value = readExpression(parser, readToken(parser), &colon);
             if (!value.isValid())
                 return value;
-            node.set(firstToken.text, std::move(value));
+            if (!isDuplicate || parser->options.duplicateKeysOverrideEarlier) {
+                // Either insert the property or override the earlier duplicate.
+                node.set(firstToken.text, std::move(value));
+            }
         }
 
         prevProperty = std::move(firstToken);
@@ -428,29 +636,65 @@ Node readObject(ParserImpl* parser, const Token& startToken) {
 
 Node readArray(ParserImpl* parser, const Token& startToken) {
     PLY_ASSERT(startToken.type == Token::OpenSquare);
-    ScopeHandler arrayScope{*parser, ParseError::Scope::array(startToken.fileOfs, 0)};
+    ScopeHandler arrayScope{*parser, Diagnostic::Scope::array(startToken.fileOfs, 0)};
     Node arrayNode{Node::Array{}, startToken.fileOfs};
     Token sepTokenHolder;
-    Token* sepToken = nullptr;
+    const Token* sepToken = nullptr;
+    bool gotAnyItem = false;
+    bool gotComma = false; // A comma or semicolon was seen after the previous item.
     for (;;) {
         Token token = readToken(parser, true);
         switch (token.type) {
-            case Token::CloseSquare:
+            case Token::CloseSquare: {
+                if (gotComma) {
+                    // The array ends with a trailing separator.
+                    if (!checkPolicy(parser, parser->options.looseSeparators, token.fileOfs,
+                                     "Separator not allowed before \"]\""))
+                        return {};
+                }
                 return arrayNode;
+            }
 
             case Token::Comma:
-            case Token::Semicolon:
-            case Token::NewLine:
+            case Token::Semicolon: {
+                if (token.type == Token::Semicolon) {
+                    // Semicolons are governed by the alternateSeparators policy.
+                    if (!checkPolicy(parser, parser->options.alternateSeparators, token.fileOfs,
+                                     "Semicolons are not allowed as separators"))
+                        return {};
+                }
+                if (gotComma || !gotAnyItem) {
+                    // The separator is redundant or appears before the first item.
+                    if (!checkPolicy(parser, parser->options.looseSeparators, token.fileOfs,
+                                     "Misplaced separator in array"))
+                        return {};
+                }
+                gotComma = true;
                 sepTokenHolder = std::move(token);
                 sepToken = &sepTokenHolder;
                 break;
+            }
+
+            case Token::NewLine: {
+                break;
+            }
 
             default: {
+                if (token.type == Token::Invalid)
+                    return {};
+                if (gotAnyItem && !gotComma) {
+                    // No separator between two items.
+                    if (!checkPolicy(parser, parser->options.looseSeparators, token.fileOfs,
+                                     String::format("Expected a separator before {}", describeToken(token))))
+                        return {};
+                }
                 Node value = readExpression(parser, std::move(token), sepToken);
                 if (!value.isValid())
                     return value;
                 arrayNode.array().append(std::move(value));
                 arrayScope.get().index++;
+                gotAnyItem = true;
+                gotComma = false;
                 sepToken = nullptr;
                 break;
             }
@@ -468,19 +712,21 @@ Node readExpression(ParserImpl* parser, Token&& firstToken, const Token* afterTo
 
         case Token::Text: {
             // Quoted tokens are always JSON strings, even when their contents look like primitives.
-            if (firstToken.wasQuoted) {
+            if (firstToken.wasQuoted)
                 return Node{Node::Text{std::move(firstToken.text)}, firstToken.fileOfs};
-            }
-            if (firstToken.text == "true") {
+            if (firstToken.text == "true")
                 return Node{Node::Bool{true}, firstToken.fileOfs};
-            }
-            if (firstToken.text == "false") {
+            if (firstToken.text == "false")
                 return Node{Node::Bool{false}, firstToken.fileOfs};
-            }
+            if (firstToken.text == "null")
+                return Node{Node::Null{}, firstToken.fileOfs};
             double value = 0;
-            if (tryParseNumber(firstToken.text, &value)) {
+            if (tryParseNumber(firstToken.text, &value))
                 return Node{Node::Number{value}, firstToken.fileOfs};
-            }
+            // An unquoted word that isn't a JSON primitive is governed by the unquotedStrings policy.
+            if (!checkPolicy(parser, parser->options.unquotedStrings, firstToken.fileOfs,
+                             String::format("Unquoted string \"{}\"", escape(firstToken.text))))
+                return {};
             return Node{Node::Text{std::move(firstToken.text)}, firstToken.fileOfs};
         }
 
@@ -490,7 +736,7 @@ Node readExpression(ParserImpl* parser, Token&& firstToken, const Token* afterTo
         default: {
             MemStream mout;
             mout.format("Unexpected {} after {}", describeToken(firstToken),
-                        afterToken ? describeToken(*afterToken) : "");
+                        afterToken ? describeToken(*afterToken) : "the start of the input");
             error(parser, firstToken.fileOfs, mout.moveToString());
             return {};
         }
@@ -501,45 +747,73 @@ Node readExpression(ParserImpl* parser, Token&& firstToken, const Token* afterTo
 // Public API
 //-----------------------------------------------------------
 
-Owned<Parser> Parser::create() {
-    return Heap::create<ParserImpl>();
+Parser::Options Parser::Options::makeStrict() {
+    // In strict mode, every permissive extension of standard JSON is rejected.
+    Options options;
+    options.trailingInput = FatalError;
+    options.unquotedKeys = FatalError;
+    options.unquotedStrings = FatalError;
+    options.equalsSign = FatalError;
+    options.alternateSeparators = FatalError;
+    options.looseSeparators = FatalError;
+    options.singleQuotedStrings = FatalError;
+    options.nonUTF8Strings = FatalError;
+    options.unescapedControlChars = FatalError;
+    options.arbitraryEscapeChars = FatalError;
+    options.duplicateKeys = FatalError;
+    return options;
+}
+
+Owned<Parser> Parser::create(const Options& options) {
+    ParserImpl* parser = Heap::create<ParserImpl>();
+    parser->options = options;
+    return parser;
 }
 
 void Parser::destroy() {
     Heap::destroy(static_cast<ParserImpl*>(this));
 }
 
-void Parser::setTabSize(int tabSize) {
-    static_cast<ParserImpl*>(this)->tabSize = tabSize;
-}
-
-void Parser::setGreedy(bool greedy) {
-    static_cast<ParserImpl*>(this)->greedy = greedy;
-}
-
-void Parser::setErrorCallback(Functor<void(const ParseError& err)>&& cb) {
-    static_cast<ParserImpl*>(this)->errorCallback = std::move(cb);
+void Parser::setDiagnosticCallback(Functor<void(const Diagnostic& diagnostic)>&& cb) {
+    static_cast<ParserImpl*>(this)->diagnosticCallback = std::move(cb);
 }
 
 ParseResult Parser::parse(StringView path, StringView srcView) {
     ParserImpl* parser = static_cast<ParserImpl*>(this);
     parser->srcView = srcView;
-    parser->nextUnit = parser->srcView.numBytes() > 0 ? parser->srcView[0] : -1;
+    parser->readOfs = 0;
+    parser->nextUnit = parser->srcView.numBytes() > 0 ? (u8) parser->srcView[0] : -1;
 
-    parser->tokenLocMap = TokenLocationMap::createFromString(srcView);
+    parser->tokenLocMap = TokenLocationMap::createFromString(srcView, max(parser->options.tabSize, u32(1)));
 
     Token rootToken = readToken(parser);
     Node root = readExpression(parser, std::move(rootToken));
     if (!root.isValid())
         return {{}, std::move(parser->tokenLocMap), parser->readOfs};
 
-    if (parser->greedy) {
-        Token nextToken = readToken(parser);
-        if (nextToken.type != Token::EndOfFile) {
-            error(parser, nextToken.fileOfs,
-                  String::format("Unexpected {} after {}", describeToken(nextToken), describeNode(root)));
-            return {{}, std::move(parser->tokenLocMap), parser->readOfs};
+    u32 rootEnd = parser->readOfs;
+    if (parser->options.trailingInput != Options::FatalError) {
+        // Locate trailing input without tokenizing it, since accepted trailing bytes are outside the parsed value.
+        while (parser->nextUnit == ' ' || parser->nextUnit == '\t' || parser->nextUnit == '\r' ||
+               parser->nextUnit == '\n') {
+            advanceChar(parser);
         }
+        if (parser->nextUnit >= 0) {
+            checkPolicy(parser, parser->options.trailingInput, parser->readOfs,
+                        String::format("Unexpected trailing input after {}", describeNode(root)));
+            return {std::move(root), std::move(parser->tokenLocMap), rootEnd};
+        }
+        return {std::move(root), std::move(parser->tokenLocMap), parser->readOfs};
+    }
+
+    Token nextToken = readToken(parser);
+    if (!nextToken.isValid())
+        return {{}, std::move(parser->tokenLocMap), parser->readOfs};
+    if (nextToken.type != Token::EndOfFile) {
+        if (!checkPolicy(parser, parser->options.trailingInput, nextToken.fileOfs,
+                         String::format("Unexpected {} after {}", describeToken(nextToken), describeNode(root))))
+            return {{}, std::move(parser->tokenLocMap), parser->readOfs};
+        return {std::move(root), std::move(parser->tokenLocMap), rootEnd};
     }
 
     return {std::move(root), std::move(parser->tokenLocMap), parser->readOfs};
@@ -549,28 +823,29 @@ bool Parser::anyError() const {
     return static_cast<const ParserImpl*>(this)->anyError_;
 }
 
-void Parser::dumpError(const ParseError& error, Stream& out) const {
+void Parser::printDiagnostic(const Diagnostic& diagnostic, Stream& out) const {
     const ParserImpl* parser = static_cast<const ParserImpl*>(this);
-    TokenLocation errorLoc = parser->tokenLocMap.getLocationFromOffset(error.fileOfs);
-    out.format("({}, {}): error: {}\n", errorLoc.lineNumber, errorLoc.columnNumber, error.message);
-    for (u32 i = 0; i < error.context.numItems(); i++) {
-        const ParseError::Scope& scope = error.context.back(-(s32) i - 1);
+    TokenLocation diagnosticLoc = parser->tokenLocMap.getLocationFromOffset(diagnostic.fileOfs);
+    out.format("({}, {}): {}: {}\n", diagnosticLoc.lineNumber, diagnosticLoc.columnNumber,
+               diagnostic.errorLevel == Diagnostic::Warning ? "warning" : "error", diagnostic.message);
+    for (u32 i = 0; i < diagnostic.context.numItems(); i++) {
+        const Diagnostic::Scope& scope = diagnostic.context.back(-(s32) i - 1);
         TokenLocation contextLoc = parser->tokenLocMap.getLocationFromOffset(scope.fileOfs);
         out.format("({}, {}) ", contextLoc.lineNumber, contextLoc.columnNumber);
         switch (scope.type) {
-            case ParseError::Scope::Object:
+            case Diagnostic::Scope::Object:
                 out.write("while reading object started here");
                 break;
 
-            case ParseError::Scope::Property:
+            case Diagnostic::Scope::Property:
                 out.format("while reading property {} started here", scope.name);
                 break;
 
-            case ParseError::Scope::Duplicate:
+            case Diagnostic::Scope::Duplicate:
                 out.write("existing property was defined here");
                 break;
 
-            case ParseError::Scope::Array:
+            case Diagnostic::Scope::Array:
                 out.format("while reading item {} of the array started here (index is zero-based)", scope.index);
                 break;
         }

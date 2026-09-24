@@ -17,6 +17,7 @@ using namespace ply;
 // Stores the command-line options shared by every compiled-in test suite.
 struct CommandLineOptions {
     bool runSystem = false;
+    bool runJson = false;
     bool runNetwork = false;
     bool runUnicode = false;
     bool runMarkdown = false;
@@ -55,6 +56,9 @@ struct TestResult {
 
 #if WITH_SYSTEM_TESTS
 TestResult runSystemTests();
+#endif
+#if WITH_JSON_TESTS
+TestResult runJsonTests();
 #endif
 #if WITH_NETWORK_TESTS
 TestResult runNetworkTests();

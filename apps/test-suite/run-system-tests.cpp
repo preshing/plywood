@@ -86,6 +86,11 @@ TestResult runSystemTests() {
     return runTestGroup(RegisterTest::System);
 }
 
+// Runs the JSON parser tests.
+TestResult runJsonTests() {
+    return runTestGroup(RegisterTest::Json);
+}
+
 // Runs the network test suite.
 TestResult runNetworkTests() {
     return runTestGroup(RegisterTest::Network);
