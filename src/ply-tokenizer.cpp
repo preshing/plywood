@@ -224,19 +224,77 @@ inline void error(Tokenizer& tkr, const char* pos, String&& message) {
     }
 }
 
-void readNumericLiteral(ViewStream& in) {
-    // FIXME: Optionally skip line continuations inside numeric literals.
-    if (in.makeReadable() && (*in.curByte == '0')) {
+Tokenizer::Config Tokenizer::Config::cppMode() {
+    return {};
+}
+
+Tokenizer::Config Tokenizer::Config::jsonMode() {
+    // Recognize permissive JSON tokens; the parser determines which extensions are accepted.
+    Config config;
+    config.tokenizeCompoundPunctuation = false;
+    config.allowStringPrefixes = false;
+    config.allowUnescapedNewlinesInStrings = true;
+    config.allowLeadingMinusInNumbers = true;
+    config.tokenizeHexadecimalNumbers = false;
+    config.allowNumericSuffixes = false;
+    config.allowLeadingZerosInNumbers = false;
+    config.requireDigitsAfterDecimalPoint = true;
+    config.allowHyphensInIdentifiers = true;
+    config.allowDotsInIdentifiers = true;
+    config.tokenizeRightShift = false;
+    config.tokenizePreprocessorDirectives = false;
+    config.tokenizeCStyleComments = false;
+    config.tokenizeLineComments = false;
+    config.allowLineContinuations = false;
+    return config;
+}
+
+void readNumericLiteral(Tokenizer& tkr, ViewStream& in) {
+    // Scan the spelling without converting its value or changing the stream's error state.
+    auto isDigit = [&]() { return in.makeReadable() && *in.curByte >= '0' && *in.curByte <= '9'; };
+    if (in.makeReadable() && *in.curByte == '-') {
         in.curByte++;
-        if (in.makeReadable() && (*in.curByte == 'x')) {
+    }
+    bool leadingZero = in.makeReadable() && *in.curByte == '0';
+    if (leadingZero) {
+        in.curByte++;
+        if (tkr.config.tokenizeHexadecimalNumbers && in.makeReadable() && *in.curByte == 'x') {
             in.curByte++;
-            readU64FromText(in, 16); // FIXME: Wasteful to compute the number and not use it
+            while (in.makeReadable()) {
+                char c = *in.curByte;
+                if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')))
+                    break;
+                in.curByte++;
+            }
             goto suffix;
         }
     }
-
-    readDoubleFromText(in);
+    if (!leadingZero || tkr.config.allowLeadingZerosInNumbers) {
+        while (isDigit()) {
+            in.curByte++;
+        }
+    }
+    if (in.makeReadable() && *in.curByte == '.') {
+        const char* decimal = in.curByte++;
+        if (tkr.config.requireDigitsAfterDecimalPoint && !isDigit()) {
+            error(tkr, decimal, "expected digits after decimal point");
+        }
+        while (isDigit()) {
+            in.curByte++;
+        }
+    }
+    if (in.makeReadable() && (*in.curByte == 'e' || *in.curByte == 'E')) {
+        in.curByte++;
+        if (in.makeReadable() && (*in.curByte == '+' || *in.curByte == '-')) {
+            in.curByte++;
+        }
+        while (isDigit()) {
+            in.curByte++;
+        }
+    }
 suffix:
+    if (!tkr.config.allowNumericSuffixes)
+        return;
     if (in.makeReadable() && (*in.curByte == 'f')) {
         in.curByte++;
     } else {
@@ -253,7 +311,7 @@ suffix:
 }
 
 void readStringLiteral(Tokenizer& tkr, ViewStream& in, char quotePunc) {
-    PLY_ASSERT((quotePunc == '"') || (quotePunc = '\''));
+    PLY_ASSERT((quotePunc == '"') || (quotePunc == '\''));
     for (;;) {
         if (!in.makeReadable()) {
             error(tkr, in.curByte, "unexpected end-of-file in string literal");
@@ -267,7 +325,7 @@ void readStringLiteral(Tokenizer& tkr, ViewStream& in, char quotePunc) {
                 break;
             }
             in.curByte++;
-        } else if (c == '\n') {
+        } else if (c == '\n' && !tkr.config.allowUnescapedNewlinesInStrings) {
             error(tkr, in.curByte, "unexpected end-of-line in string literal");
             break;
         } else if (c == quotePunc)
@@ -353,6 +411,13 @@ Token::Type readIdentifierOrLiteral(Tokenizer& tkr, ViewStream& in) {
     mask[1] |= 0x10;      // '$'
     mask[1] |= 0x3ff0000; // accept digits (we already know the first character is non-digit)
 
+    if (tkr.config.allowHyphensInIdentifiers) {
+        mask[1] |= 1u << ('-' & 31);
+    }
+    if (tkr.config.allowDotsInIdentifiers) {
+        mask[1] |= 1u << ('.' & 31);
+    }
+
     const char* startByte = in.curByte;
     for (;;) {
         if (!in.makeReadable()) {
@@ -360,8 +425,8 @@ Token::Type readIdentifierOrLiteral(Tokenizer& tkr, ViewStream& in) {
             return Token::Identifier;
         }
         char c = *in.curByte;
-        if ((mask[(u8) c >> 5] & (1 << ((u8) c & 31))) == 0) {
-            if (c == '"') {
+        if ((mask[(u8) c >> 5] & (1u << ((u8) c & 31))) == 0) {
+            if (c == '"' && tkr.config.allowStringPrefixes && tkr.config.tokenizeDoubleQuotedStrings) {
                 if (in.curByte == startByte + 1 && *startByte == 'R') {
                     readDelimiterAndRawStringLiteral(tkr, in);
                 } else {
@@ -397,12 +462,12 @@ Token readToken(Tokenizer& tkr, ViewStream& in) {
     tkr.startByte = in.curByte;
     bool wasAtStartOfLine = tkr.state.atStartOfLine;
     tkr.state.atStartOfLine = false;
-    auto can_read_2nd_char = [&]() {
-        if (tkr.config.allowLineContinuationsInAllTokens && (in.numRemainingBytes() >= 2) && (*in.curByte == '\\') &&
+    auto canReadSecondChar = [&](bool compound = true) {
+        if (tkr.config.allowLineContinuations && (in.numRemainingBytes() >= 2) && (*in.curByte == '\\') &&
             (*(in.curByte + 1) == '\n')) {
             in.curByte += 2;
         }
-        return in.makeReadable();
+        return (!compound || tkr.config.tokenizeCompoundPunctuation) && in.makeReadable();
     };
 
 retry:
@@ -425,7 +490,7 @@ retry:
                         in.curByte++;
                         break;
                     case '\\':
-                        if (tkr.config.allowLineContinuationsInAllTokens && (in.numRemainingBytes() >= 2) &&
+                        if (tkr.config.allowLineContinuations && (in.numRemainingBytes() >= 2) &&
                             (in.curByte[1] == '\n')) {
                             in.curByte += 2;
                             break;
@@ -456,7 +521,7 @@ retry:
                 }
                 tkr.state.atStartOfLine = true;
             } else {
-                if (can_read_2nd_char() && (*in.curByte == '#')) {
+                if (canReadSecondChar() && (*in.curByte == '#')) {
                     in.curByte++;
                     token.type = Token::DoubleHash;
                 } else {
@@ -469,7 +534,7 @@ retry:
         case '/': {
             in.curByte++;
             token.type = Token::ForwardSlash;
-            if (can_read_2nd_char()) {
+            if (canReadSecondChar(false)) {
                 if ((*in.curByte == '/') && tkr.config.tokenizeLineComments) {
                     in.curByte++;
                     token.type = Token::LineComment;
@@ -495,7 +560,7 @@ retry:
                             in.curByte++;
                         }
                     }
-                } else if (*in.curByte == '=') {
+                } else if (tkr.config.tokenizeCompoundPunctuation && *in.curByte == '=') {
                     token.type = Token::SlashEqual;
                     in.curByte++;
                 }
@@ -536,7 +601,7 @@ retry:
         case '<': {
             token.type = Token::OpenAngle;
             in.curByte++;
-            if (can_read_2nd_char()) {
+            if (canReadSecondChar()) {
                 if (*in.curByte == '<') {
                     token.type = Token::LeftShift;
                     in.curByte++;
@@ -551,7 +616,7 @@ retry:
         case '>': {
             token.type = Token::CloseAngle;
             in.curByte++;
-            if (can_read_2nd_char()) {
+            if (canReadSecondChar()) {
                 if (tkr.config.tokenizeRightShift && (*in.curByte == '>')) {
                     token.type = Token::RightShift;
                     in.curByte++;
@@ -578,7 +643,7 @@ retry:
         case ':': {
             token.type = Token::SingleColon;
             in.curByte++;
-            if (can_read_2nd_char()) {
+            if (canReadSecondChar()) {
                 if (*in.curByte == ':') {
                     token.type = Token::DoubleColon;
                     in.curByte++;
@@ -602,7 +667,7 @@ retry:
         case '=': {
             token.type = Token::SingleEqual;
             in.curByte++;
-            if (can_read_2nd_char()) {
+            if (canReadSecondChar()) {
                 if (*in.curByte == '=') {
                     token.type = Token::DoubleEqual;
                     in.curByte++;
@@ -614,7 +679,7 @@ retry:
         case '*': {
             in.curByte++;
             token.type = Token::Star;
-            if (can_read_2nd_char()) {
+            if (canReadSecondChar()) {
                 if (*in.curByte == '=') {
                     token.type = Token::StarEqual;
                     in.curByte++;
@@ -632,7 +697,7 @@ retry:
         case '&': {
             token.type = Token::SingleAmpersand;
             in.curByte++;
-            if (can_read_2nd_char()) {
+            if (canReadSecondChar()) {
                 if (*in.curByte == '&') {
                     token.type = Token::DoubleAmpersand;
                     in.curByte++;
@@ -644,7 +709,7 @@ retry:
         case '|': {
             token.type = Token::SingleVerticalBar;
             in.curByte++;
-            if (can_read_2nd_char()) {
+            if (canReadSecondChar()) {
                 if (*in.curByte == '|') {
                     token.type = Token::DoubleVerticalBar;
                     in.curByte++;
@@ -656,7 +721,7 @@ retry:
         case '+': {
             token.type = Token::SinglePlus;
             in.curByte++;
-            if (can_read_2nd_char()) {
+            if (canReadSecondChar()) {
                 if (*in.curByte == '+') {
                     token.type = Token::DoublePlus;
                     in.curByte++;
@@ -669,9 +734,18 @@ retry:
         }
 
         case '-': {
+            if (tkr.config.allowLeadingMinusInNumbers) {
+                token.type = Token::NumericLiteral;
+                readNumericLiteral(tkr, in);
+                break;
+            }
+            if (tkr.config.allowHyphensInIdentifiers) {
+                token.type = readIdentifierOrLiteral(tkr, in);
+                break;
+            }
             token.type = Token::SingleMinus;
             in.curByte++;
-            if (can_read_2nd_char()) {
+            if (canReadSecondChar()) {
                 if (*in.curByte == '-') {
                     token.type = Token::DoubleMinus;
                     in.curByte++;
@@ -687,10 +761,14 @@ retry:
         }
 
         case '.': {
+            if (tkr.config.allowDotsInIdentifiers) {
+                token.type = readIdentifierOrLiteral(tkr, in);
+                break;
+            }
             token.type = Token::Dot;
             in.curByte++;
-            if (can_read_2nd_char()) {
-                if (in.curByte[0] == '.' && in.curByte[1] == '.') {
+            if (canReadSecondChar()) {
+                if (in.numRemainingBytes() >= 2 && in.curByte[0] == '.' && in.curByte[1] == '.') {
                     token.type = Token::Ellipsis;
                     in.curByte += 2;
                 }
@@ -713,7 +791,7 @@ retry:
         case '!': {
             token.type = Token::Bang;
             in.curByte++;
-            if (can_read_2nd_char()) {
+            if (canReadSecondChar()) {
                 if (*in.curByte == '=') {
                     token.type = Token::NotEqual;
                     in.curByte++;
@@ -741,8 +819,7 @@ retry:
         }
 
         case '\\': {
-            if (tkr.config.allowLineContinuationsInAllTokens && (in.numRemainingBytes() >= 2) &&
-                (in.curByte[1] == '\n')) {
+            if (tkr.config.allowLineContinuations && (in.numRemainingBytes() >= 2) && (in.curByte[1] == '\n')) {
                 in.curByte += 2;
                 goto retry;
             }
@@ -753,7 +830,7 @@ retry:
     if (token.type == Token::Unrecognized) {
         if (c >= '0' && c <= '9') {
             token.type = Token::NumericLiteral;
-            readNumericLiteral(in);
+            readNumericLiteral(tkr, in);
         } else {
             token.type = readIdentifierOrLiteral(tkr, in);
         }

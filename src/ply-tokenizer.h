@@ -131,13 +131,27 @@ StringView getPunctuationString(Token::Type tok);
 
 struct Tokenizer {
     struct Config {
+        // Token boundaries and literal syntax are independently configurable.
+        bool tokenizeCompoundPunctuation = true;
+        bool allowStringPrefixes = true;
+        bool allowUnescapedNewlinesInStrings = false;
+        bool allowLeadingMinusInNumbers = false;
+        bool tokenizeHexadecimalNumbers = true;
+        bool allowNumericSuffixes = true;
+        bool allowLeadingZerosInNumbers = true;
+        bool requireDigitsAfterDecimalPoint = false;
+        bool allowHyphensInIdentifiers = false;
+        bool allowDotsInIdentifiers = false;
         bool tokenizeRightShift = true;
         bool tokenizePreprocessorDirectives = false;
         bool tokenizeCStyleComments = true;
         bool tokenizeLineComments = true;
         bool tokenizeSingleQuotedStrings = true;
         bool tokenizeDoubleQuotedStrings = true;
-        bool allowLineContinuationsInAllTokens = false;
+        bool allowLineContinuations = false;
+
+        static Config cppMode();
+        static Config jsonMode();
     };
     struct State {
         bool atStartOfLine = true;
