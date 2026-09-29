@@ -1,7 +1,7 @@
 Introduction
 ============
 
-Plywood is a cross-platform C++ runtime library that can be used as an alternative to the C and C++ Standard Libraries. It aims to deliver everything you need from a runtime library in a small amount of code with an easy-to-use API.
+Plywood is a cross-platform C++ runtime library. It aims to deliver everything you need from a runtime library in a small amount of code with an easy-to-use API.
 
 Plywood comes bundled with several higher-level C++ libraries, including a full [agent harness](/docs/high-level/agent-harness.md), providing an easy way to add agentic AI capabilities to existing C++ programs.
 

@@ -122,7 +122,7 @@ The settings file must contain a single JSON object with these optional properti
 | `shellAuthorizer` | Configures the "authorizer" agent that reviews each `shell` request. |
 | `include` | A settings file path or array of paths to inherit, relative to the declaring file's directory. |
 
-The `shellAuthorizer` subobject is used to configure a `ShellToolSettings` instance as described in the [Agent Harness library](/docs/high-level/agent-harness#tools). It accepts the following optional properties:
+The `shellAuthorizer` subobject is used to configure a `ShellAuthorizationPolicy` instance as described in the [Agent Harness library](/docs/high-level/agent-harness#tools). It accepts the following optional properties:
 
 | Property | Description |
 |---|---|

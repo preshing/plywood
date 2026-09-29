@@ -1796,41 +1796,42 @@ void runAgentThread(Agent::Impl* impl) {
     // Iterate making inference requests until the main thread requests exit
     // or there are no more tool responses to send back.
     for (u32 turnNumber = 1;; turnNumber++) {
-        // Perform one inference request.
+        // Perform a round-trip HTTP request to the inference provider.
         performInferenceRequest(impl, turnNumber);
 
         {
             // Consume tool response events and check whether the loop should continue running.
             LockGuard<Mutex> guard{impl->toolCtx.mutex};
 
-            // A canceled inference is incomplete and therefore has no EndTurn event.
+            // Exit early if the user has cancelled the conversation.
             if (impl->toolCtx.isCanceled())
                 break;
 
-            // Finalize every completed inference, including the last one.
+            // Log the end of this turn.
             endTurn(impl);
+
+            // If there are no more tool calls, the conversation ends.
             if (!impl->anyToolCallsThisTurn)
                 break;
 
-            // Create the destination turn before starting the next inference.
+            // Log the start of a new turn.
             beginTurn(impl);
         }
     }
 
-    // The inference thread is exiting: set `inferenceEnded` (protected by toolCtx.mutex)
-    // and wake the tool thread so it observes it, drains any remaining tool queue, sets
-    // toolEnded and wakes the client condvars (including the completion condvar). We do
-    // NOT signal the client condvars here: inferenceEnded alone does not make the agent
-    // "stopped" (toolEnded is still false), so waking waitForEvents/waitForCompletion now
-    // would only be a spurious wakeup. They are released by the tool thread instead.
+    // All HTTP requests have now completed and the inference thread has finished.
+    // Wake the tool thread so it can process any remaining tool requests in the queue.
+    // If a client thread is blocked inside Agent::waitForCompletion(), it will be released
+    // by the tool thread after all tool requests have completed.
     {
         LockGuard<Mutex> guard{impl->toolCtx.mutex};
         impl->inferenceEnded = true;
         impl->toolCondVar.wakeAll();
     }
 
-    // The inference thread's Reference<Agent::Impl> (captured by the thread functor)
-    // is released when this function returns and the functor is destroyed.
+    // The inference thread no longer needs access to the Agent::Impl.
+    // Release its reference here.
+    // The underlying storage will be freed when all threads release their reference.
     impl->decRefCount();
 }
 
@@ -2014,7 +2015,6 @@ Agent::Agent(const Settings& settings) {
 Agent::~Agent() {
     // Request cancellation, then return without joining the background threads. They
     // hold their own references to Agent::Impl, so it stays alive until both exit.
-
     this->cancel();
 }
 
@@ -2148,9 +2148,13 @@ String ToolContext::checkPathPermission(StringView path, bool withWriteAccess) c
 #if PLY_WITH_SUBPROCESS
 
 // Runs a short-lived agent that decides whether a complete shell expression is permitted.
-static bool authorizeShellCommand(ToolContext* toolCtx, StringView command, const ShellToolSettings& settings) {
-    if (!settings.authorizerEndPoint.url || settings.authorizerEndPoint.protocol == Agent::Protocol::Unset ||
-        !settings.authorizerEndPoint.model) {
+bool ShellAuthorizationPolicy::authorizeCommand(ToolContext* toolCtx, StringView command) const {
+    // An unrestricted policy permits everything without consulting an authorizer.
+    if (this->unrestricted)
+        return true;
+
+    if (!this->authorizerEndPoint.url || this->authorizerEndPoint.protocol == Agent::Protocol::Unset ||
+        !this->authorizerEndPoint.model) {
         return false;
     }
 
@@ -2168,7 +2172,7 @@ static bool authorizeShellCommand(ToolContext* toolCtx, StringView command, cons
     Agent::Capabilities capabilities;
     capabilities.workingDir = toolCtx->getWorkingDirectory();
     capabilities.readableDirs = readableDirs;
-    capabilities.tools = settings.authorizerTools;
+    capabilities.tools = this->authorizerTools;
     MemStream systemPrompt;
     systemPrompt.write(
         "Your job is to approve or reject shell commands by deciding whether they're allowed by policy details given "
@@ -2184,7 +2188,7 @@ static bool authorizeShellCommand(ToolContext* toolCtx, StringView command, cons
         bool writable = find(mainCapabilities.writableDirs, dir) >= 0;
         systemPrompt.format("\n- {} ({})", dir, writable ? "read and write access" : "read only access");
     }
-    systemPrompt.format("\n\nAdditional policy details:\n{}", settings.policy ? settings.policy : "(none)");
+    systemPrompt.format("\n\nAdditional policy details:\n{}", this->policy ? this->policy : "(none)");
     capabilities.systemPrompt = systemPrompt.moveToString();
 
     // Present the command as user data in a fresh transcript.
@@ -2200,14 +2204,14 @@ static bool authorizeShellCommand(ToolContext* toolCtx, StringView command, cons
     // Run the authorizer while forwarding cancellation from the main agent.
     Agent::Settings agentSettings;
     agentSettings.startTranscript = &startTranscript;
-    agentSettings.endPoint = settings.authorizerEndPoint;
+    agentSettings.endPoint = this->authorizerEndPoint;
     agentSettings.capabilities = std::move(capabilities);
     Owned<Agent> authorizer = Heap::create<Agent>(agentSettings);
     if (!toolCtx->setCancelCallback([authorizer = authorizer.get()]() { authorizer->cancel(); })) {
         authorizer->cancel();
     }
-    if (settings.authorizerHook) {
-        settings.authorizerHook(authorizer);
+    if (this->loggingHook) {
+        this->loggingHook(authorizer);
     } else {
         while (authorizer->isWorking()) {
             authorizer->waitForEvents();
@@ -2284,8 +2288,8 @@ static void executeShellCommand(ToolContext* toolCtx, Transcript::Message* toolC
     toolCtx->appendResponse(toolCall, response.moveToString());
 }
 
-Owned<ToolDefinition> createShellTool(const ShellToolSettings& settings) {
-    // Create a handler that owns an immutable copy of the final authorization settings.
+Owned<ToolDefinition> createShellTool(Functor<bool(ToolContext* toolCtx, StringView shellCommand)>&& authorizer) {
+    // Create a handler that defers the authorization decision to the supplied functor.
     Owned<ToolDefinition> shellTool = Heap::create<ToolDefinition>();
     shellTool->name = "shell";
     shellTool->readOnly = false;
@@ -2297,7 +2301,8 @@ Owned<ToolDefinition> createShellTool(const ShellToolSettings& settings) {
     shellTool->parameters.back().description = "Shell command to execute";
     shellTool->parameters.back().type = "string";
     shellTool->parameters.back().required = true;
-    shellTool->handler = [settings](ToolContext* toolCtx, Transcript::Message* toolCall, const json::Node& arguments) {
+    shellTool->handler = [authorizer = std::move(authorizer)](ToolContext* toolCtx, Transcript::Message* toolCall,
+                                                             const json::Node& arguments) {
         // Validate the command before consulting the authorizer.
         const json::Node& commandArg = arguments.get("command");
         if (!commandArg.isText()) {
@@ -2305,13 +2310,16 @@ Owned<ToolDefinition> createShellTool(const ShellToolSettings& settings) {
             return;
         }
 
-        // Fail closed unless unrestricted execution was explicitly requested.
-        if (!settings.unrestricted && !authorizeShellCommand(toolCtx, commandArg.text(), settings)) {
+        // Fail closed unless the authorizer approves the command.
+        if (!authorizer || !authorizer(toolCtx, commandArg.text())) {
             if (!toolCtx->isCanceled()) {
                 toolCtx->appendResponse(toolCall, "Error: Shell command denied by authorizer.");
             }
             return;
         }
+        // Authorization may have blocked while cancellation was requested.
+        if (toolCtx->isCanceled())
+            return;
         executeShellCommand(toolCtx, toolCall, commandArg.text());
     };
     return shellTool;

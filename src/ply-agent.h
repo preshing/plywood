@@ -124,14 +124,14 @@ struct Transcript : RefCounted<Transcript> {
     PLY_DECLARE_TYPE_INFO(Transcript)
 };
 
-// Applies a streamed event directly to the supplied transcript.
+// Applies a streamed event directly to the given transcript.
 void applyTranscriptEvent(Transcript* transcript, const Transcript::Event& event);
 
 #if !PLY_AGENT_TRANSCRIPT_ONLY
 
 struct ToolContext;
 
-// Describes a single tool call that an agent can use.
+// Describes a single tool that an agent can use.
 struct ToolDefinition {
     struct Parameter {
         String name;
@@ -231,12 +231,12 @@ struct Agent {
 //    ██   ▀█▄▄█▀ ▀█▄▄█▀ ▄██▄  ▄▄▄█▀
 //
 
-// Structure passed to tool handlers.
+// Runtime interface passed to tool handlers as additional context.
 struct ToolContext {
-    // The agent's working directory.
+    // Returns the agent's working directory.
     StringView getWorkingDirectory() const;
 
-    // Returns an absolute path if the specified access is permitted; otherwise returns an empty string.
+    // If access is permitted, returns an absolute path; otherwise returns an empty string.
     String checkPathPermission(StringView path, bool withWriteAccess) const;
 
     // Returns whether cancellation has been requested. Should be checked periodically for long-running tools.
@@ -254,17 +254,31 @@ struct ToolContext {
     void clearCancelCallback();
 };
 
-// Individual tool creation functions.
 #if PLY_WITH_SUBPROCESS
-struct ShellToolSettings {
+//--------------------------------------
+// Built-in shell tool
+//--------------------------------------
+
+// Every shell tool requires an authorization callback, which is stored in the ToolDefinition.
+Owned<ToolDefinition> createShellTool(Functor<bool(ToolContext* toolCtx, StringView shellCommand)>&& authorizer);
+
+// Helper class to implement authorization policies for the shell tool.
+struct ShellAuthorizationPolicy {
     String policy;
     Agent::EndPoint authorizerEndPoint;
     Set<Owned<ToolDefinition>> authorizerTools;
-    Functor<void(Agent*)> authorizerHook;
+    Functor<void(Agent*)> loggingHook; // Optional. Must consume the agent's events until it finishes.
     bool unrestricted = false; // Bypasses all permission checking.
+
+    // Determines whether a shell command is permitted by this policy. If `unrestricted` is set, every
+    // command is allowed without consulting the authorizer. Returns false when authorization is unavailable.
+    bool authorizeCommand(ToolContext* toolCtx, StringView shellCommand) const;
 };
-Owned<ToolDefinition> createShellTool(const ShellToolSettings& settings = {});
 #endif // PLY_WITH_SUBPROCESS
+
+//--------------------------------------
+// Other available built-in tools
+//--------------------------------------
 Owned<ToolDefinition> createReadTool();
 Owned<ToolDefinition> createWriteTool();
 Owned<ToolDefinition> createListDirTool();

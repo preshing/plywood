@@ -62,7 +62,7 @@ CommandLineOptions options;
 AppSettings appSettings;
 Agent::Settings agentSettings;
 #if PLY_WITH_SUBPROCESS
-ShellToolSettings shellToolSettings;
+ShellAuthorizationPolicy shellAuthorizationPolicy;
 #endif
 AppState appState;
 
@@ -1376,11 +1376,11 @@ static bool loadSettingsWithIncludes(StringView settingsPath, Array<String>& inc
                 getStdErr().format("policy must be a string in: {}\n", authorizerPath);
                 return false;
             }
-            shellToolSettings.policy = jPolicy.text();
+            shellAuthorizationPolicy.policy = jPolicy.text();
         }
 
         // Load EndPoint.
-        if (!loadEndPoint(jShellAuthorizer, authorizerPath, shellToolSettings.authorizerEndPoint))
+        if (!loadEndPoint(jShellAuthorizer, authorizerPath, shellAuthorizationPolicy.authorizerEndPoint))
             return false;
 
         // Load tool names.
@@ -1574,7 +1574,7 @@ static bool resolveSettings() {
 #if PLY_WITH_SUBPROCESS
     // The authorizer endpoint is needed only when the main agent has the shell tool.
     if (find(appSettings.toolNames, StringView{"shell"}) >= 0) {
-        Agent::EndPoint& authorizerEndPoint = shellToolSettings.authorizerEndPoint;
+        Agent::EndPoint& authorizerEndPoint = shellAuthorizationPolicy.authorizerEndPoint;
         bool hasAuthorizerEndPoint = authorizerEndPoint.provider || authorizerEndPoint.url ||
                                      authorizerEndPoint.protocol != Agent::Protocol::Unset ||
                                      authorizerEndPoint.apiKeyEnv || authorizerEndPoint.model;
@@ -1602,8 +1602,13 @@ static Owned<ToolDefinition> createConfiguredTool(StringView name) {
     if (name == "find_in_files")
         return createFindInFilesTool();
 #if PLY_WITH_SUBPROCESS
-    if (name == "shell")
-        return createShellTool(shellToolSettings);
+    if (name == "shell") {
+        // Move the configured policy into the tool's authorizer.
+        return createShellTool([policy = std::move(shellAuthorizationPolicy)](ToolContext* toolCtx,
+                                                                            StringView shellCommand) {
+            return policy.authorizeCommand(toolCtx, shellCommand);
+        });
+    }
 #endif
     return {};
 }
@@ -1634,7 +1639,7 @@ static bool createTools(ArrayView<const String> toolNames, Set<Owned<ToolDefinit
 // Build both tool sets once the complete configuration has been finalized.
 static bool createConfiguredTools() {
 #if PLY_WITH_SUBPROCESS
-    if (!createTools(appSettings.shellAuthorizerToolNames, shellToolSettings.authorizerTools, true))
+    if (!createTools(appSettings.shellAuthorizerToolNames, shellAuthorizationPolicy.authorizerTools, true))
         return false;
 #endif
     return createTools(appSettings.toolNames, agentSettings.capabilities.tools);
@@ -1767,7 +1772,7 @@ int main(int argc, const char* argv[]) {
     applyCommandLineOptions();
 #if PLY_WITH_SUBPROCESS
     if (options.enableAuthorizerLog) {
-        shellToolSettings.authorizerHook = logAuthorizerTranscript;
+        shellAuthorizationPolicy.loggingHook = logAuthorizerTranscript;
     }
 #endif
     if (!resolveSettings() || !createConfiguredTools())
