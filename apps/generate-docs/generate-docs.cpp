@@ -205,6 +205,21 @@ void printHighlightedTableDeclaration(Stream& out, ArrayView<const TokenSpan> sp
     out.write("</code>");
 }
 
+// Requires a complete, error-free declaration of exactly one named entity.
+bool isNamedEntityDeclaration(StringView text) {
+    String source = text.trim();
+    if (!source.endsWith(";")) {
+        source += ";";
+    }
+    Owned<Parser> parser = Parser::create();
+    ParseResult result = parser->parseFile({}, source);
+    auto* entity = (result.declarations.numItems() == 1)
+                       ? result.declarations[0].var.as<Declaration::Entity>()
+                       : nullptr;
+    return result.success && entity && (entity->initDeclarators.numItems() == 1) &&
+           !entity->initDeclarators[0].qid.isEmpty();
+}
+
 // Highlights one blank-heading declaration/description table, leaving all other tables unchanged.
 void highlightMemberTable(markdown::Block::Table* table) {
     if (table->childBlocks.numItems() < 2)
@@ -233,14 +248,7 @@ void highlightMemberTable(markdown::Block::Table* table) {
         if (!declarationCode)
             return;
 
-        // Require a complete, error-free declaration with exactly one named entity declarator.
-        Owned<Parser> validationParser = Parser::create();
-        ParseResult parseResult = validationParser->parseFile({}, declarationCode->text + ";");
-        auto* validatedEntity = (parseResult.declarations.numItems() == 1)
-                                    ? parseResult.declarations[0].var.as<Declaration::Entity>()
-                                    : nullptr;
-        if (!parseResult.success || !validatedEntity || (validatedEntity->initDeclarators.numItems() != 1) ||
-            validatedEntity->initDeclarators[0].qid.isEmpty())
+        if (!isNamedEntityDeclaration(declarationCode->text))
             return;
 
         declarationSpans.append(declarationCell->spans[0]);
@@ -578,7 +586,25 @@ private:
         return index;
     }
 
-    // Emits all pending blocks, converting matching paragraph+blockquote runs to api_defs HTML.
+    // Emits standalone code paragraphs only when every span is a valid named C++ declaration.
+    bool emitStandaloneDeclarations(const markdown::Block* block) {
+        Array<String> declarations;
+        if (!parseApiDeclarationParagraph(block, &declarations))
+            return false;
+
+        // Validate the entire paragraph before writing anything; names and expressions stay plain code.
+        for (const String& text : declarations) {
+            if (!isNamedEntityDeclaration(text))
+                return false;
+        }
+
+        this->out.write("<p>");
+        printApiDeclarationsAsTitle(this->out, declarations);
+        this->out.write("</p>\n");
+        return true;
+    }
+
+    // Emits all pending blocks, highlighting standalone declarations and API description runs.
     void emitPendingBlocks() {
         // Pull a structured page title out before rendering the remaining Markdown tree.
         this->emitSplitPageTitle();
@@ -600,7 +626,9 @@ private:
                 this->pendingBlocks[index + 1]->var.is<markdown::Block::BlockQuote>()) {
                 index = this->emitApiDescriptionRun(index);
             } else {
-                convertToHtml(&this->out, this->pendingBlocks[index], this->options);
+                if (!this->emitStandaloneDeclarations(this->pendingBlocks[index])) {
+                    convertToHtml(&this->out, this->pendingBlocks[index], this->options);
+                }
                 index++;
             }
         }

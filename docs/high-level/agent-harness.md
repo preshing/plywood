@@ -233,12 +233,21 @@ void addByteCountTool(Agent::Capabilities* capabilities) {
 
 ## Tool Monitoring
 
-Every `shell` tool request made by an agent is passed through an application-defined callback. This allows the application to monitor tool requests and automatically approve, reject and/or bring requests to the user's attention according to application-defined policies.
+The `shell` tool is dangerous because it gives agents the ability to run arbitrary shell commands on the user's behalf. At the same time, it's a convenient way to give agents access to system applications, such as compilers and debuggers, so that they can automate large tasks end-to-end.
 
-`Owned<ToolDefinition> createShellTool(Functor<bool(ToolContext* toolCtx, StringView shellCommand)>&& authorizer);`
-> Creates a new `shell` tool instance. The `authorizer` callback is moved to the `ToolDefinition` and will be invoked for every `shell` tool request made by the agent. If `authorizer` returns `true`, the shell command is permitted; if it returns `false`, permission is denied and an error is reported back to the agent.
+In Plywood, every `shell` request made by the agent is first passed to an application-defined callback, which must be specified when `createShellTool` is called:
 
-One way to monitor tool requests is to use a second "authorizer" agent to review the requests made by the first agent. For convenience, Plywood provides a `ShellAuthorizationPolicy` class to support this case. `ShellAuthorizationPolicy` has the following data members:
+`Owned<ToolDefinition> createShellTool(Functor<bool(ToolContext* toolCtx, StringView shellCommand)>&& authorizer)`
+
+The `authorizer` callback lets the application decide whether each shell command is allowed to run. If the callback returns `true`, the shell command executes normally; if it returns `false`, permission is denied and an error is reported back to the agent.
+
+The application responds to each tool request according to application-defined policies. If a shell command looks ambiguous, the application can even notify the user and await a response before returning from the callback. In addition, each tool request is automatically logged to the conversation transcript.
+
+`shell` tool monitoring should be seen as the first line of defense against AI agents performing unwanted actions. In environments where stronger security guarantees are needed, the application should be sandboxed and monitored at the operating system level.
+
+### `ShellAuthorizationPolicy`
+
+One way to implement the `authorizer` callback is to use a second agent to automatically review the requests made by the first agent. For convenience, Plywood provides a `ShellAuthorizationPolicy` helper class to support this case. It has the following public data members:
 
 | | |
 | --- | --- |
@@ -248,9 +257,22 @@ One way to monitor tool requests is to use a second "authorizer" agent to review
 | `Functor<void(Agent*)> loggingHook` | Optional hook for logging the authorizer's transcript. Must consume events from the provided agent until the agent finishes. |
 | `bool unrestricted` | If `true`, every command is allowed without consulting the authorizer. |
 
-To invoke the "authorizer" agent, initialize a `ShellAuthorizationPolicy` object and call `authorizeCommand()`. See the [`agent`](/docs/apps/agent.md) sample for an example of how it's used in practice.
+To run an authorizer agent, initialize a `ShellAuthorizationPolicy` object and call `authorizeCommand()`.
 
 `bool ShellAuthorizationPolicy::authorizeCommand(ToolContext* toolCtx, StringView shellCommand) const`
-> Returns `true` if the given `shellCommand` was determined to be allowed by the stated policy.
 
-Monitoring `shell` tool requests is only a first line of defense against agents performing unwanted actions. For simple workflows, where the agent is only allowed to run a limited set of shell commands, this is likely sufficient. In environments where stronger security guarantees are needed, the application should be sandboxed and monitored at the operating system level as well.
+For an example of `ShellAuthorizationPolicy` being used in practice, see the [`agent`](/docs/apps/agent.md) sample.
+
+```
+ShellAuthorizationPolicy shellAuthorizationPolicy;
+
+shellAuthorizationPolicy.policy = ...;
+shellAuthorizationPolicy.authorizerEndPoint = ...;
+shellAuthorizationPolicy.authorizerTools = ...;
+
+Owned<ToolDefinition> shellTool = createShellTool(
+    [policy = std::move(shellAuthorizationPolicy)](ToolContext* toolCtx,
+                                                   StringView shellCommand) {
+        return policy.authorizeCommand(toolCtx, shellCommand);
+    });
+```
