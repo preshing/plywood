@@ -77,6 +77,8 @@ Array<Owned<markdown::Block>> blocks = markdown::parse("Hello, *world!*");
 
 ## Coding Style
 
+These are the internal guidelines that the Plywood source code strives to follow. (Client applications can use any style they like.)
+
 - Use C++14 language features only.
 - Use the provided `.clang-format` for formatting.
 - Type and enumerator names in `PascalCase`; variable and function names in `camelCase`.
