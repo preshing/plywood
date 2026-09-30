@@ -259,6 +259,19 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
+// Clear the caret after native fragment navigation on a full-page load. Defer until the
+// load event has finished so the browser doesn't immediately restore the selection.
+window.addEventListener('load', function() {
+    if (article && location.hash !== '') {
+        window.setTimeout(function() {
+            var selection = window.getSelection();
+            if (selection) {
+                selection.removeAllRanges();
+            }
+        }, 0);
+    }
+});
+
 // Save scroll position on scroll
 window.onscroll = function() {
     savePageState();
