@@ -46,6 +46,7 @@ struct AppSettings {
     Array<String> toolNames;
 #if PLY_WITH_SUBPROCESS
     Array<String> shellAuthorizerToolNames;
+    bool unrestrictedShell = false;
 #endif
     u16 agentProxyPort = 8082;
     u16 webServerPort = 8081;
@@ -1370,22 +1371,39 @@ static bool loadSettingsWithIncludes(StringView settingsPath, Array<String>& inc
         }
         String authorizerPath = String::format("shellAuthorizer in {}", settingsPath);
 
-        // Load policy.
-        if (const json::Node& jPolicy = jShellAuthorizer.get("policy")) {
-            if (!jPolicy.isText()) {
-                getStdErr().format("policy must be a string in: {}\n", authorizerPath);
-                return false;
-            }
-            shellAuthorizationPolicy.policy = jPolicy.text();
+        // Each explicit shellAuthorizer object selects the mode, overriding inherited mode settings.
+        const json::Node& jUnrestricted = jShellAuthorizer.get("unrestricted");
+        if (jUnrestricted && !jUnrestricted.isBool()) {
+            getStdErr().format("unrestricted must be a boolean in: {}\n", authorizerPath);
+            return false;
         }
+        appSettings.unrestrictedShell = jUnrestricted.getBool();
+        if (appSettings.unrestrictedShell) {
+            for (const auto& item : jShellAuthorizer.object().items) {
+                if (item.key != "unrestricted") {
+                    getStdErr().format("unrestricted: true cannot be combined with other properties in: {}\n",
+                                       authorizerPath);
+                    return false;
+                }
+            }
+        } else {
+            // Load policy.
+            if (const json::Node& jPolicy = jShellAuthorizer.get("policy")) {
+                if (!jPolicy.isText()) {
+                    getStdErr().format("policy must be a string in: {}\n", authorizerPath);
+                    return false;
+                }
+                shellAuthorizationPolicy.policy = jPolicy.text();
+            }
 
-        // Load EndPoint.
-        if (!loadEndPoint(jShellAuthorizer, authorizerPath, shellAuthorizationPolicy.authorizerEndPoint))
-            return false;
+            // Load EndPoint.
+            if (!loadEndPoint(jShellAuthorizer, authorizerPath, shellAuthorizationPolicy.authorizerEndPoint))
+                return false;
 
-        // Load tool names.
-        if (!loadToolNames(jShellAuthorizer, authorizerPath, appSettings.shellAuthorizerToolNames))
-            return false;
+            // Load tool names.
+            if (!loadToolNames(jShellAuthorizer, authorizerPath, appSettings.shellAuthorizerToolNames))
+                return false;
+        }
     }
 #endif
 
@@ -1573,7 +1591,7 @@ static bool resolveSettings() {
 
 #if PLY_WITH_SUBPROCESS
     // The authorizer endpoint is needed only when the main agent has the shell tool.
-    if (find(appSettings.toolNames, StringView{"shell"}) >= 0) {
+    if (!appSettings.unrestrictedShell && find(appSettings.toolNames, StringView{"shell"}) >= 0) {
         Agent::EndPoint& authorizerEndPoint = shellAuthorizationPolicy.authorizerEndPoint;
         bool hasAuthorizerEndPoint = authorizerEndPoint.provider || authorizerEndPoint.url ||
                                      authorizerEndPoint.protocol != Agent::Protocol::Unset ||
@@ -1603,6 +1621,10 @@ static Owned<ToolDefinition> createConfiguredTool(StringView name) {
         return createFindInFilesTool();
 #if PLY_WITH_SUBPROCESS
     if (name == "shell") {
+        // Is it an unrestricted shell?
+        if (appSettings.unrestrictedShell)
+            return createShellTool([](ToolContext*, StringView) { return true; });
+
         // Move the configured policy into the tool's authorizer.
         return createShellTool([policy = std::move(shellAuthorizationPolicy)](ToolContext* toolCtx,
                                                                             StringView shellCommand) {
@@ -1639,7 +1661,8 @@ static bool createTools(ArrayView<const String> toolNames, Set<Owned<ToolDefinit
 // Build both tool sets once the complete configuration has been finalized.
 static bool createConfiguredTools() {
 #if PLY_WITH_SUBPROCESS
-    if (!createTools(appSettings.shellAuthorizerToolNames, shellAuthorizationPolicy.authorizerTools, true))
+    if (!appSettings.unrestrictedShell &&
+        !createTools(appSettings.shellAuthorizerToolNames, shellAuthorizationPolicy.authorizerTools, true))
         return false;
 #endif
     return createTools(appSettings.toolNames, agentSettings.capabilities.tools);

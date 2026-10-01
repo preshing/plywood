@@ -268,10 +268,8 @@ struct ShellAuthorizationPolicy {
     Agent::EndPoint authorizerEndPoint;
     Set<Owned<ToolDefinition>> authorizerTools;
     Functor<void(Agent*)> loggingHook; // Optional. Must consume the agent's events until it finishes.
-    bool unrestricted = false; // Bypasses all permission checking.
 
-    // Determines whether a shell command is permitted by this policy. If `unrestricted` is set, every
-    // command is allowed without consulting the authorizer. Returns false when authorization is unavailable.
+    // Determines whether a shell command is permitted by this policy.
     bool authorizeCommand(ToolContext* toolCtx, StringView shellCommand) const;
 };
 #endif // PLY_WITH_SUBPROCESS

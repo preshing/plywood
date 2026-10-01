@@ -255,7 +255,6 @@ One way to implement the `authorizer` callback is to use a second agent to autom
 | `Agent::EndPoint authorizerEndPoint` | The authorizer's provider, protocol and model. |
 | `Set<Owned<ToolDefinition>> authorizerTools` | The tools available to the authorizer. |
 | `Functor<void(Agent*)> loggingHook` | Optional hook for logging the authorizer's transcript. Must consume events from the provided agent until the agent finishes. |
-| `bool unrestricted` | If `true`, every command is allowed without consulting the authorizer. |
 
 To run an authorizer agent, initialize a `ShellAuthorizationPolicy` object and call `authorizeCommand()`.
 

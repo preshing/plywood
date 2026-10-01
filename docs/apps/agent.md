@@ -126,6 +126,7 @@ The `shellAuthorizer` subobject is used to configure a `ShellAuthorizationPolicy
 
 | Property | Description |
 |---|---|
+| `unrestricted` | If `true`, allows every shell command without running an authorizer agent. No other properties may appear in the same object. |
 | `policy` | Additional natural-language rules describing the shell actions the main agent may take. |
 | `provider` | Selects a preset from `known-providers.json`. It must be a nonempty string and cannot be combined with `url`, `protocol`, or `apiKeyEnv`. |
 | `url` | The URL of a custom inference endpoint. Custom endpoints must also specify `protocol`, `apiKeyEnv`, and `model`. |

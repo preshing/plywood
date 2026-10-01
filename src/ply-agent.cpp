@@ -2149,10 +2149,6 @@ String ToolContext::checkPathPermission(StringView path, bool withWriteAccess) c
 
 // Runs a short-lived agent that decides whether a complete shell expression is permitted.
 bool ShellAuthorizationPolicy::authorizeCommand(ToolContext* toolCtx, StringView command) const {
-    // An unrestricted policy permits everything without consulting an authorizer.
-    if (this->unrestricted)
-        return true;
-
     if (!this->authorizerEndPoint.url || this->authorizerEndPoint.protocol == Agent::Protocol::Unset ||
         !this->authorizerEndPoint.model) {
         return false;
