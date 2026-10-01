@@ -67,6 +67,8 @@ bool isTextToken(const Token& token) {
 
 struct ParserImpl : Parser {
     Options options;
+    EventHandler* eventHandler = nullptr;
+    bool discardReturnValue = false;
     Functor<void(const Diagnostic& diagnostic)> diagnosticCallback;
     TokenLocationMap tokenLocMap;
     bool anyError_ = false;
@@ -364,6 +366,15 @@ Node readObject(ParserImpl* parser, const Token& startToken) {
     PLY_ASSERT(startToken.type == Token::OpenCurly);
     ScopeHandler objectScope{*parser, Diagnostic::Scope::object(startToken.inputOffset)};
     Node node{Node::Object{}, startToken.inputOffset};
+    EventHandler* handler = parser->eventHandler;
+    if (handler) {
+        handler->beginObject();
+    }
+    PLY_ON_SCOPE_EXIT({
+        if (handler) {
+            handler->endObject();
+        }
+    });
     String prevProperty;
     bool gotAnyProperty = false;
     for (;;) {
@@ -379,6 +390,10 @@ Node readObject(ParserImpl* parser, const Token& startToken) {
                         if (!checkPolicy(parser, parser->options.looseSeparators, firstToken.inputOffset,
                                          "Separator not allowed before \"}\""))
                             return {};
+                    }
+                    if (handler) {
+                        handler->endObject();
+                        handler = nullptr;
                     }
                     return node;
                 }
@@ -443,7 +458,9 @@ Node readObject(ParserImpl* parser, const Token& startToken) {
         }
 
         // Check for a duplicate property name.
-        const Node& existingNode = node.get(propertyName);
+        const Node& existingNode = parser->discardReturnValue && parser->options.duplicateKeysOverrideEarlier
+                                       ? Node::InvalidNode
+                                       : node.get(propertyName);
         bool isDuplicate = existingNode.isValid();
         if (isDuplicate) {
             ScopeHandler duplicateScope{*parser, Diagnostic::Scope::duplicate(existingNode.fileOfs)};
@@ -467,12 +484,31 @@ Node readObject(ParserImpl* parser, const Token& startToken) {
         {
             // Read the value of the property.
             ScopeHandler propertyScope{*parser, Diagnostic::Scope::property(firstToken.inputOffset, propertyName)};
+            // Discarded duplicate values are still parsed and validated, without emitting events.
+            if (isDuplicate && !parser->options.duplicateKeysOverrideEarlier) {
+                parser->eventHandler = nullptr;
+            }
+            PLY_ON_SCOPE_EXIT({ parser->eventHandler = handler; });
+            EventHandler* propertyHandler = parser->eventHandler;
+            if (propertyHandler) {
+                propertyHandler->beginProperty(propertyName);
+            }
+            PLY_ON_SCOPE_EXIT({
+                if (propertyHandler) {
+                    propertyHandler->endProperty();
+                }
+            });
             Node value = readExpression(parser, readToken(parser), &colon);
             if (!value.isValid())
                 return value;
             if (!isDuplicate || parser->options.duplicateKeysOverrideEarlier) {
                 // Either insert the property or override the earlier duplicate.
-                node.set(propertyName, std::move(value));
+                if (!parser->discardReturnValue) {
+                    node.set(propertyName, std::move(value));
+                } else if (!parser->options.duplicateKeysOverrideEarlier) {
+                    // Retain only the name and offset for duplicate detection.
+                    node.set(propertyName, Node{Node::Null{}, value.fileOfs});
+                }
             }
         }
 
@@ -486,6 +522,15 @@ Node readArray(ParserImpl* parser, const Token& startToken) {
     PLY_ASSERT(startToken.type == Token::OpenSquare);
     ScopeHandler arrayScope{*parser, Diagnostic::Scope::array(startToken.inputOffset, 0)};
     Node arrayNode{Node::Array{}, startToken.inputOffset};
+    EventHandler* handler = parser->eventHandler;
+    if (handler) {
+        handler->beginArray();
+    }
+    PLY_ON_SCOPE_EXIT({
+        if (handler) {
+            handler->endArray();
+        }
+    });
     Token sepTokenHolder;
     const Token* sepToken = nullptr;
     bool gotAnyItem = false;
@@ -499,6 +544,10 @@ Node readArray(ParserImpl* parser, const Token& startToken) {
                     if (!checkPolicy(parser, parser->options.looseSeparators, token.inputOffset,
                                      "Separator not allowed before \"]\""))
                         return {};
+                }
+                if (handler) {
+                    handler->endArray();
+                    handler = nullptr;
                 }
                 return arrayNode;
             }
@@ -535,7 +584,8 @@ Node readArray(ParserImpl* parser, const Token& startToken) {
                 Node value = readExpression(parser, token, sepToken);
                 if (!value.isValid())
                     return value;
-                arrayNode.array().append(std::move(value));
+                if (!parser->discardReturnValue)
+                    arrayNode.array().append(std::move(value));
                 arrayScope.get().index++;
                 gotAnyItem = true;
                 gotComma = false;
@@ -547,6 +597,8 @@ Node readArray(ParserImpl* parser, const Token& startToken) {
 }
 
 Node readExpression(ParserImpl* parser, const Token& firstToken, const Token* afterToken = nullptr) {
+    // Read containers recursively and construct primitive values for event dispatch.
+    Node node;
     switch (firstToken.type) {
         case Token::OpenCurly:
             return readObject(parser, firstToken);
@@ -559,25 +611,29 @@ Node readExpression(ParserImpl* parser, const Token& firstToken, const Token* af
             String text;
             if (!decodeString(parser, firstToken, text))
                 return {};
-            return Node{Node::Text{std::move(text)}, firstToken.inputOffset};
+            node = Node{Node::Text{std::move(text)}, firstToken.inputOffset};
+            break;
         }
 
         case Token::Identifier:
         case Token::NumericLiteral: {
-            if (firstToken.text == "true")
-                return Node{Node::Bool{true}, firstToken.inputOffset};
-            if (firstToken.text == "false")
-                return Node{Node::Bool{false}, firstToken.inputOffset};
-            if (firstToken.text == "null")
-                return Node{Node::Null{}, firstToken.inputOffset};
-            double value = 0;
-            if (tryParseNumber(firstToken.text, &value))
-                return Node{Node::Number{value}, firstToken.inputOffset};
-            // An unquoted word that isn't a JSON primitive is governed by the unquotedStrings policy.
-            if (!checkPolicy(parser, parser->options.unquotedStrings, firstToken.inputOffset,
-                             String::format("Unquoted string \"{}\"", escape(firstToken.text))))
-                return {};
-            return Node{Node::Text{String{firstToken.text}}, firstToken.inputOffset};
+            if (firstToken.text == "true" || firstToken.text == "false") {
+                node = Node{Node::Bool{firstToken.text == "true"}, firstToken.inputOffset};
+            } else if (firstToken.text == "null") {
+                node = Node{Node::Null{}, firstToken.inputOffset};
+            } else {
+                double value = 0;
+                if (tryParseNumber(firstToken.text, &value)) {
+                    node = Node{Node::Number{value}, firstToken.inputOffset};
+                } else {
+                    // An unquoted word that isn't a JSON primitive is governed by the unquotedStrings policy.
+                    if (!checkPolicy(parser, parser->options.unquotedStrings, firstToken.inputOffset,
+                                     String::format("Unquoted string \"{}\"", escape(firstToken.text))))
+                        return {};
+                    node = Node{Node::Text{String{firstToken.text}}, firstToken.inputOffset};
+                }
+            }
+            break;
         }
 
         case Token::Invalid:
@@ -591,6 +647,21 @@ Node readExpression(ParserImpl* parser, const Token& firstToken, const Token* af
             return {};
         }
     }
+
+    // Containers emit their own events; dispatch completed primitive values here.
+    EventHandler* handler = parser->eventHandler;
+    if (handler && node.isValid()) {
+        if (const auto* text = node.var.as<Node::Text>()) {
+            handler->string(text->text);
+        } else if (const auto* boolean = node.var.as<Node::Bool>()) {
+            handler->bool_(boolean->value);
+        } else if (const auto* number = node.var.as<Node::Number>()) {
+            handler->number(number->value);
+        } else if (node.isNull()) {
+            handler->null_();
+        }
+    }
+    return node;
 }
 
 //-----------------------------------------------------------
@@ -628,6 +699,14 @@ void Parser::setDiagnosticCallback(Functor<void(const Diagnostic& diagnostic)>&&
     static_cast<ParserImpl*>(this)->diagnosticCallback = std::move(cb);
 }
 
+void Parser::setEventHandler(EventHandler* handler) {
+    static_cast<ParserImpl*>(this)->eventHandler = handler;
+}
+
+void Parser::discardReturnValue() {
+    static_cast<ParserImpl*>(this)->discardReturnValue = true;
+}
+
 ParseResult Parser::parse(StringView path, StringView srcView) {
     ParserImpl* parser = static_cast<ParserImpl*>(this);
     parser->readOfs = 0;
@@ -659,9 +738,9 @@ ParseResult Parser::parse(StringView path, StringView srcView) {
         if (parser->input.hasRemainingBytes()) {
             checkPolicy(parser, parser->options.trailingInput, parser->readOfs,
                         String::format("Unexpected trailing input after {}", describeNode(root)));
-            return {std::move(root), std::move(parser->tokenLocMap), rootEnd};
+            return {parser->discardReturnValue ? Node{} : std::move(root), std::move(parser->tokenLocMap), rootEnd};
         }
-        return {std::move(root), std::move(parser->tokenLocMap), parser->readOfs};
+        return {parser->discardReturnValue ? Node{} : std::move(root), std::move(parser->tokenLocMap), parser->readOfs};
     }
 
     Token nextToken = readToken(parser);
@@ -671,10 +750,10 @@ ParseResult Parser::parse(StringView path, StringView srcView) {
         if (!checkPolicy(parser, parser->options.trailingInput, nextToken.inputOffset,
                          String::format("Unexpected {} after {}", describeToken(nextToken), describeNode(root))))
             return {{}, std::move(parser->tokenLocMap), parser->readOfs};
-        return {std::move(root), std::move(parser->tokenLocMap), rootEnd};
+        return {parser->discardReturnValue ? Node{} : std::move(root), std::move(parser->tokenLocMap), rootEnd};
     }
 
-    return {std::move(root), std::move(parser->tokenLocMap), parser->readOfs};
+    return {parser->discardReturnValue ? Node{} : std::move(root), std::move(parser->tokenLocMap), parser->readOfs};
 }
 
 bool Parser::anyError() const {
@@ -717,92 +796,148 @@ void Parser::printDiagnostic(const Diagnostic& diagnostic, Stream& out) const {
 //   ██▀▀██  ██     ██  ▀█▄▄ ▀█▄▄▄
 //
 
-struct WriteContext {
+// Serialize events incrementally, tracking separators and indentation for each container.
+struct Writer : EventHandler {
+    struct Scope {
+        bool object;
+        bool hasItems = false;
+    };
     Stream& out;
     WriteOptions options;
-    u32 indentLevel = 0;
+    Array<Scope> scopes;
 
-    WriteContext(Stream& out, const WriteOptions& options) : out{out}, options{options} {
+    Writer(Stream& out, const WriteOptions& options) : out{out}, options{options} {
     }
 
+    // Write indentation for the current container depth.
     void indent() {
         if (this->options.includeWhitespace) {
-            for (u32 i = 0; i < this->indentLevel; i++) {
+            for (u32 i = 0; i < this->scopes.numItems(); i++) {
                 this->out.write("  ");
             }
         }
     }
 
-    void write(const Node& node) {
-        if (!node.isValid()) {
-            this->out.write("null");
-            return;
+    // Separate successive children and indent the next one.
+    void separator() {
+        Scope& scope = this->scopes.back();
+        if (scope.hasItems) {
+            this->out.write(',');
+            if (this->options.includeWhitespace) {
+                this->out.write('\n');
+            }
         }
+        scope.hasItems = true;
+        this->indent();
+    }
 
-        if (const Node::Object* obj = node.var.as<Node::Object>()) {
-            this->out.write('{');
-            if (this->options.includeWhitespace) {
-                this->out.write('\n');
-            }
-            this->indentLevel++;
-            ArrayView<const Map<String, Node>::Item> items = obj->items.items();
-            for (u32 itemIndex = 0; itemIndex < items.numItems(); itemIndex++) {
-                const auto& objItem = items[itemIndex];
-                indent();
-                this->out.format("\"{}\":", escape(objItem.key));
-                if (this->options.includeWhitespace) {
-                    this->out.write(' ');
-                }
-                write(objItem.value);
-                if (itemIndex < items.numItems() - 1) {
-                    this->out.write(',');
-                }
-                if (this->options.includeWhitespace) {
-                    this->out.write('\n');
-                }
-            }
-            this->indentLevel--;
-            indent();
-            this->out.write('}');
-        } else if (const Node::Array* arr = node.var.as<Node::Array>()) {
-            this->out.write('[');
-            if (this->options.includeWhitespace) {
-                this->out.write('\n');
-            }
-            this->indentLevel++;
-            for (u32 i = 0; i < arr->items.numItems(); i++) {
-                indent();
-                write(arr->items[i]);
-                if (i < arr->items.numItems() - 1) {
-                    this->out.write(',');
-                }
-                if (this->options.includeWhitespace) {
-                    this->out.write('\n');
-                }
-            }
-            this->indentLevel--;
-            indent();
-            this->out.write(']');
-        } else if (const Node::Number* n = node.var.as<Node::Number>()) {
-            // Emit exactly representable integers without a fractional suffix for strict JSON schemas.
-            if (isRepresentable<s64>(n->value)) {
-                printNumber(this->out, (s64) n->value);
-            } else {
-                printNumber(this->out, n->value);
-            }
-        } else if (const Node::Bool* b = node.var.as<Node::Bool>()) {
-            this->out.write(b->value ? "true" : "false");
-        } else if (const Node::Text* txt = node.var.as<Node::Text>()) {
-            this->out.format("\"{}\"", escape(txt->text));
-        } else {
-            this->out.write("null");
+    // Array values carry their own separators; object properties emit theirs.
+    void beginValue() {
+        if (!this->scopes.isEmpty() && !this->scopes.back().object) {
+            this->separator();
         }
+    }
+
+    // Open a container and track its children.
+    void beginContainer(bool object) {
+        this->beginValue();
+        this->out.write(object ? '{' : '[');
+        if (this->options.includeWhitespace) {
+            this->out.write('\n');
+        }
+        this->scopes.append({object});
+    }
+
+    // Close the container at its parent indentation level.
+    void endContainer(bool object) {
+        PLY_ASSERT(!this->scopes.isEmpty() && this->scopes.back().object == object);
+        if (this->options.includeWhitespace && this->scopes.back().hasItems) {
+            this->out.write('\n');
+        }
+        this->scopes.pop();
+        this->indent();
+        this->out.write(object ? '}' : ']');
+    }
+
+    void beginObject() override {
+        this->beginContainer(true);
+    }
+    void endObject() override {
+        this->endContainer(true);
+    }
+    void beginArray() override {
+        this->beginContainer(false);
+    }
+    void endArray() override {
+        this->endContainer(false);
+    }
+    void beginProperty(StringView name) override {
+        PLY_ASSERT(!this->scopes.isEmpty() && this->scopes.back().object);
+        this->separator();
+        this->out.format("\"{}\":", escape(name));
+        if (this->options.includeWhitespace) {
+            this->out.write(' ');
+        }
+    }
+    void string(StringView str) override {
+        this->beginValue();
+        this->out.format("\"{}\"", escape(str));
+    }
+    void bool_(bool value) override {
+        this->beginValue();
+        this->out.write(value ? "true" : "false");
+    }
+    void number(double value) override {
+        this->beginValue();
+        // Emit exactly representable integers without a fractional suffix for strict JSON schemas.
+        if (isRepresentable<s64>(value)) {
+            printNumber(this->out, (s64) value);
+        } else {
+            printNumber(this->out, value);
+        }
+    }
+    void null_() override {
+        this->beginValue();
+        this->out.write("null");
     }
 };
 
+Owned<EventHandler> createWriter(Stream* out, const WriteOptions& options) {
+    PLY_ASSERT(out);
+    return Heap::create<Writer>(*out, options);
+}
+
+void write(EventHandler* handler, const Node& node) {
+    PLY_ASSERT(handler);
+    // Traverse containers in stored order and dispatch primitive values.
+    if (const auto* obj = node.var.as<Node::Object>()) {
+        handler->beginObject();
+        for (const auto& item : obj->items.items()) {
+            handler->beginProperty(item.key);
+            write(handler, item.value);
+            handler->endProperty();
+        }
+        handler->endObject();
+    } else if (const auto* arr = node.var.as<Node::Array>()) {
+        handler->beginArray();
+        for (const Node& item : arr->items) {
+            write(handler, item);
+        }
+        handler->endArray();
+    } else if (const auto* number = node.var.as<Node::Number>()) {
+        handler->number(number->value);
+    } else if (const auto* boolean = node.var.as<Node::Bool>()) {
+        handler->bool_(boolean->value);
+    } else if (const auto* text = node.var.as<Node::Text>()) {
+        handler->string(text->text);
+    } else {
+        handler->null_();
+    }
+}
+
 void write(Stream& out, const Node& node, const WriteOptions& options) {
-    WriteContext ctx{out, options};
-    ctx.write(node);
+    Owned<EventHandler> handler = createWriter(&out, options);
+    write(handler, node);
 }
 
 String toString(const Node& node, const WriteOptions& options) {

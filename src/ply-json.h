@@ -195,6 +195,36 @@ struct Node {
     }
 };
 
+//  ▄▄▄▄▄                        ▄▄   ▄▄  ▄▄                   ▄▄ ▄▄▄
+//  ██    ▄▄   ▄▄  ▄▄▄▄  ▄▄▄▄▄  ▄██▄▄ ██  ██  ▄▄▄▄  ▄▄▄▄▄   ▄▄▄██  ██   ▄▄▄▄  ▄▄▄▄▄
+//  ██▀▀  ▀█▄ ▄█▀ ██▄▄██ ██  ██  ██   ██▀▀██  ▄▄▄██ ██  ██ ██  ██  ██  ██▄▄██ ██  ▀▀
+//  ██▄▄▄   ▀█▀   ▀█▄▄▄  ██  ██  ▀█▄▄ ██  ██ ▀█▄▄██ ██  ██ ▀█▄▄██ ▄██▄ ▀█▄▄▄  ██
+//
+
+struct EventHandler {
+    virtual ~EventHandler() = default;
+    virtual void beginObject() {
+    }
+    virtual void endObject() {
+    }
+    virtual void beginProperty(StringView name) {
+    }
+    virtual void endProperty() {
+    }
+    virtual void beginArray() {
+    }
+    virtual void endArray() {
+    }
+    virtual void string(StringView str) {
+    }
+    virtual void bool_(bool value) {
+    }
+    virtual void number(double value) {
+    }
+    virtual void null_() {
+    }
+};
+
 //  ▄▄▄▄▄
 //  ██  ██  ▄▄▄▄  ▄▄▄▄▄   ▄▄▄▄   ▄▄▄▄  ▄▄▄▄▄
 //  ██▀▀▀   ▄▄▄██ ██  ▀▀ ▀█▄▄▄  ██▄▄██ ██  ▀▀
@@ -280,6 +310,14 @@ struct Parser {
     // Settings
     void setDiagnosticCallback(Functor<void(const Diagnostic& diagnostic)>&& cb);
 
+    // The handler is borrowed and must remain alive through parse(). nullptr disables events.
+    void setEventHandler(EventHandler* handler);
+
+    // Call before parse() to discard the result tree.
+    // Duplicate detection is skipped when duplicateKeysOverrideEarlier is true.
+    // Ignore the returned ParseResult and use anyError() to check for failure.
+    void discardReturnValue();
+
     // Parsing
     ParseResult parse(StringView path, StringView srcView); // Single-use function.
     bool anyError() const;
@@ -296,6 +334,9 @@ struct WriteOptions {
     bool includeWhitespace = true;
 };
 
+// out must remain alive for the lifetime of the returned handler.
+Owned<EventHandler> createWriter(Stream* out, const WriteOptions& options = {});
+void write(EventHandler* handler, const Node& node);
 void write(Stream& out, const Node& node, const WriteOptions& options = {});
 String toString(const Node& node, const WriteOptions& options = {});
 

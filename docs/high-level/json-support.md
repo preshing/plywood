@@ -72,6 +72,15 @@ Malformed Unicode escapes and unpaired surrogates are always errors. In single-q
 > Installs the callback used for warnings and errors. The `Diagnostic` object is only valid for the duration of
 > the callback.
 
+`void Parser::setEventHandler(EventHandler* handler)`
+> Installs an event handler, or disables events when passed `nullptr`. The handler must continue to exist for the lifetime of the parser.
+
+`void Parser::discardReturnValue()`
+> Call before `parse()` to discard parsed values after their events are emitted instead of retaining a result tree.
+> Ignore the returned `ParseResult` and use `anyError()` to check for failure. Events are unchanged.
+> Property names are retained for duplicate detection only when `duplicateKeysOverrideEarlier` is false.
+> When it is true, duplicate-key diagnostics are skipped.
+
 `ParseResult Parser::parse(StringView path, StringView srcView)`
 > Parses the root JSON expression from `srcView`. A fatal error returns an invalid root. `ParseResult` contains the following data members:
 
@@ -216,21 +225,54 @@ root.set("numbers", std::move(numbers));
 > Returns the underlying object storage. The mutable overload requires an object node; the const overload returns an
 > empty object for another node type.
 
+## `EventHandler`
+
+A virtual interface for transmitting structured JSON data. The `write()` function uses this internally.
+
+`EventHandler` defines several virtual member functions that are meant to be overridden by subclasses:
+
+`virtual void EventHandler::beginObject()`
+`virtual void EventHandler::endObject()`
+> Enters and exits the scope of an object.
+
+`virtual void EventHandler::beginProperty(StringView name)`
+`virtual void EventHandler::endProperty()`
+> Begins and ends an object property. The property's value is transmitted between these calls.
+
+`virtual void EventHandler::beginArray()`
+`virtual void EventHandler::endArray()`
+> Enters and exits the scope of an array. Its elements are transmitted in order between these calls.
+
+`virtual void EventHandler::string(StringView str)`
+> Transmits a string value. `str` contains the decoded text, without surrounding quotes or JSON escape sequences, and is only valid for the duration of the call.
+
+`virtual void EventHandler::bool_(bool value)`
+> Transmits a Boolean value: `true` or `false`.
+
+`virtual void EventHandler::number(double value)`
+> Transmits a numeric value as a `double`.
+
+`virtual void EventHandler::null_()`
+> Transmits a JSON null value. When writing a tree, an invalid `Node` also invokes this function.
+
 ## Writing JSON
 
-Objects are written in their stored order.
-
 `void write(Stream& out, const Node& node, const WriteOptions& options = {})`
-> Serializes `node` directly to `out`.
+> Writes formatted JSON data to an output stream. `WriteOptions` has the following data members:
+>
+> | Name | Description |
+> | --- | --- |
+> | `bool includeWhitespace` | Writes indented, multi-line JSON when true and compact JSON when false. Default is true. |
+
+`Owned<EventHandler> createWriter(Stream* out, const WriteOptions& options = {})`
+> Creates an `EventHandler` for writing formatted JSON data to `out`. The stream must exist for the lifetime of the `EventHandler`.
+
+`void write(EventHandler* handler, const Node& node)`
+> Writes formatted JSON data to an `EventHandler`.
 
 `String toString(const Node& node, const WriteOptions& options = {})`
-> Serializes `node` and returns the resulting string.
+> Writes formatted JSON data to a string and returns it.
 
-`WriteOptions` has the following data members:
-
-| Name | Description |
-| --- | --- |
-| `bool includeWhitespace` | Writes indented, multi-line JSON when true and compact JSON when false. Default is true. |
 
 
 ```cpp
