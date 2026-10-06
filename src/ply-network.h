@@ -75,15 +75,14 @@ struct TCPConnection;
 
 struct PipeWinsock : Pipe {
     SOCKET socket = INVALID_SOCKET;
+    Atomic<bool> disabled = false;
 
-    PipeWinsock() {
-    }
-    PipeWinsock(SOCKET s, u32 flags) : socket{s} {
-        this->flags = flags;
-    }
+    PipeWinsock();
+    PipeWinsock(SOCKET s, u32 flags);
     virtual ~PipeWinsock();
-    virtual void close() override;
     virtual u32 read(MutStringView buf) override;
+    virtual ReadResult tryRead(MutStringView buf) override;
+    virtual void disable() override;
     virtual bool write(StringView buf) override;
     virtual void flush(bool) override;
 };
@@ -219,7 +218,7 @@ struct HTTPClient {
     bool isRequestInProgress() const;
     // Drives the request, delivering response events to the request's callback. If an event is available, it invokes
     // the callback and returns immediately. If no event is available, it waits up to timeOutMillis for data to arrive,
-    // but can be interrupted by other threads calling wakeUp. Returns false if no request is in progress; true
+    // but can be disabled by other threads calling wakeUp. Returns false if no request is in progress; true
     // otherwise.
     bool receiveResponse(u32 timeOutMillis = 1000);
     // Can be called from any thread. If receiveResponse is currently blocked in another thread, it returns immediately;

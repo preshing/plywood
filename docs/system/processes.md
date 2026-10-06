@@ -57,6 +57,11 @@ s32 exitCode = process->join();
 `Pipe* Subprocess::getStdInWriter() const`
 > Returns a pipe that writes to the subprocess's stdin, or `nullptr` if stdin wasn't opened.
 
+`void Subprocess::closeStdIn()`
+> Gracefully closes the subprocess's standard input, allowing it to observe end-of-file. This
+> destroys the owned writer and invalidates any pointer previously returned by `getStdInWriter()`.
+> Does nothing if standard input is already closed or wasn't opened.
+
 `Pipe* Subprocess::getStdOutReader() const`
 > Returns a pipe that reads the subprocess's stdout, or `nullptr` if stdout wasn't opened.
 

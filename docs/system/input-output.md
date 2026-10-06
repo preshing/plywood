@@ -47,10 +47,18 @@ A `Stream` wraps a `Pipe` and provides buffered I/O operations. Streams handle t
 > Flushes and closes the stream. If the stream owns the pipe, the pipe is destroyed.
 
 `bool Stream::makeReadable(u32 minBytes = 1)`
-> Ensures at least `minBytes` are available in the read buffer. Returns `false` if end-of-file is reached.
+> This function blocks until `minBytes` are available, in which case it returns `true`.
+> If end-of-file is reached before `minBytes` is available, returns `false`. `minBytes` must be greater than 0.
+
+`bool Stream::tryMakeReadable()`
+> This function makes as much data as possible readable without blocking.
+> Returns `true` if one or more bytes of data are made readable.
+> A `false` result can mean that no data is immediately available, end-of-file was reached or an
+> I/O error occurred. Inspect `atEof` and `inputError` to distinguish those cases.
 
 `bool Stream::makeWritable(u32 minBytes = 1)`
 > Ensures at least `minBytes` of space are available in the write buffer.
+> May block until the underlying destination is ready to receive.
 
 `bool Stream::hasRemainingBytes() bool`
 > Returns `true` if there are any bytes remaining in the read buffer.
@@ -109,33 +117,54 @@ A `ViewStream` reads from a fixed memory buffer (a `StringView`). This is useful
 
 ## `Pipe`
 
-`Pipe` is the abstract base class for all I/O providers. Concrete implementations include file pipes, socket pipes, and memory pipes. You rarely need to work with pipes directly—use `Stream` instead.
+`Pipe` is the abstract base class for all I/O providers.
+Concrete implementations include file pipes, socket pipes, and memory pipes.
+The underlying implementation is closed by the `Pipe`'s destructor.
+Only one thread may call `read`, `tryRead`, `write`, `flush` or `seekTo` at a time,
+but it's safe to call `disable` at any time from any thread.
+Not all member functions are supported by every `Pipe` instance; it depends how the instance was created.
 
-`void Pipe::close()`
-> Closes the pipe without destroying it. No other member function should be called after this.
+`u64 Pipe::getFileSize()`
+> Returns the total size of the underlying file. Only supported by suitable seekable pipes.
+
+`u32 Pipe::getFlags() const`
+> Returns the pipe's capability flags.
+>
+> | Flag | Meaning |
+> | ---- | ------- |
+> | `HasReadPermission` | The pipe supports `read` and `tryRead`. |
+> | `HasWritePermission` | The pipe supports `write` and `flush`. |
+> | `CanSeek` | The pipe supports `seekTo` and `getFileSize`. |
 
 `u32 Pipe::read(MutStringView buf)`
-> Reads up to `buf.numBytes` bytes into `buf`. Returns the number of bytes actually read. Returns 0 at end-of-file.
+> Reads up to `buf.numBytes` bytes into `buf`. Returns the number of bytes actually read.
+> The calling thread will block until at least one byte is successfully read from the underlying data source.
+> Returns 0 when no more data can be read because of end-of-file, the pipe being disabled, or an I/O error.
+> Use `tryRead` to distinguish an I/O error from end-of-file/the pipe being disabled.
+> `buf` must not be empty.
+
+`Pipe::ReadResult Pipe::tryRead(MutStringView buf)`
+> Reads as much data as possible without blocking. `buf` must not be empty. The result kind is
+> `Data` (with `numBytes` set), `EndOfFile`, `WouldBlock` or `Error`. `numBytes` is only valid for
+> `Data`; all other kinds mean that no bytes were written to `buf`.
 
 `bool Pipe::write(StringView buf)`
 > Writes the bytes in `buf`. Returns `true` on success.
 
-`void Pipe::flush(bool toDevice = false)`
-> Flushes any buffered writes. If `toDevice` is true, ensures data reaches the physical device.
-
-`u64 Pipe::getFileSize()`
-> Returns the total size of the underlying file, or 0 if not applicable.
-
 `void Pipe::seekTo(s64 offset)`
 > Seeks to the specified byte offset. Only supported by seekable pipes.
 
-`u32 Pipe::getFlags() const`
-> Returns the pipe's capability flags (readable, writable, seekable, etc.).
+`void Pipe::flush(bool toDevice = false)`
+> Flushes any buffered writes. If `toDevice` is true, ensures data reaches the physical device.
+
+`void Pipe::disable()`
+> Disables communication on this pipe. It's safe to call this from any thread at any time.
+> If another thread is blocked inside `read` or `write`, `disable` unblocks it.
+> After `disable` returns, readers will encounter end-of-file quickly, though a small amount
+> of trailing data may remain available to read.
 
 `String readAllRemainingData(Pipe* inPipe)`
 > Reads and returns all remaining data from `inPipe` through end-of-file. This function may block until the pipe's writer closes. It does not close the pipe.
-
-Plywood provides utility functions for reading and writing text data.
 
 ## Reading Text
 

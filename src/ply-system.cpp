@@ -22,6 +22,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <poll.h>
 #include <signal.h>
 #include <dirent.h>
 #include <fcntl.h>
@@ -2433,13 +2434,14 @@ u32 getBestNumHashIndices(u32 numItems) {
 //  ██     ██ ██▄▄█▀ ▀█▄▄▄
 //            ██
 
-// Define static constexpr members for ODR-usage
-constexpr u32 Pipe::HAS_READ_PERMISSION;
-constexpr u32 Pipe::HAS_WRITE_PERMISSION;
-constexpr u32 Pipe::CAN_SEEK;
+// Define static constexpr members for ODR-usage.
+constexpr u32 Pipe::HasReadPermission;
+constexpr u32 Pipe::HasWritePermission;
+constexpr u32 Pipe::CanSeek;
 
-void Pipe::close() {
+u64 Pipe::getFileSize() {
     PLY_ASSERT(0);
+    return 0;
 }
 
 u32 Pipe::read(MutStringView buf) {
@@ -2447,123 +2449,362 @@ u32 Pipe::read(MutStringView buf) {
     return 0;
 }
 
+Pipe::ReadResult Pipe::tryRead(MutStringView buf) {
+    PLY_ASSERT(0);
+    return {Pipe::ReadResult::Error, 0};
+}
+
 bool Pipe::write(StringView buf) {
     PLY_ASSERT(0);
     return false;
-}
-
-void Pipe::flush(bool toDevice) {
-    PLY_ASSERT(0);
-}
-
-u64 Pipe::getFileSize() {
-    // This method is unsupported by the subclass. Do not call.
-    PLY_ASSERT(0);
-    return 0;
 }
 
 void Pipe::seekTo(s64 offset) {
     PLY_ASSERT(0);
 }
 
-#if defined(PLY_WINDOWS)
-
-PipeHandle::~PipeHandle() {
-    this->close();
+void Pipe::flush(bool toDevice) {
+    PLY_ASSERT(0);
 }
 
-void PipeHandle::close() {
-    // Release the handle once, leaving the pipe safe to destroy later.
+void Pipe::disable() {
+    PLY_ASSERT(0);
+}
+
+#if defined(PLY_WINDOWS)
+
+// Construct from an owned Win32 handle.
+PipeHandle::PipeHandle(HANDLE h, u32 flags) : handle{h} {
+    this->flags = flags;
+}
+
+// Close the owned handle.
+PipeHandle::~PipeHandle() {
+    LockGuard<Mutex> lock{this->operationMutex};
+    PLY_ASSERT(!this->operationActive);
+    PLY_ASSERT(this->operationThread == NULL);
     if (this->handle != INVALID_HANDLE_VALUE) {
         CloseHandle(this->handle);
         this->handle = INVALID_HANDLE_VALUE;
     }
 }
 
-u32 PipeHandle::read(MutStringView buf) {
-    DWORD readBytes;
-    BOOL rc = ReadFile(this->handle, buf.bytes, buf.numBytes, &readBytes, NULL);
-    if (!rc) // Handles ERROR_BROKEN_PIPE and other errors.
-        return 0;
-    return readBytes; // 0 when attempting to read past EOF.
-}
-
-bool PipeHandle::write(StringView buf) {
-    while (buf.numBytes() > 0) {
-        DWORD desiredBytes = min<DWORD>(buf.numBytes(), UINT32_MAX);
-        DWORD writtenBytes;
-        BOOL rc = WriteFile(this->handle, buf.bytes(), desiredBytes, &writtenBytes, NULL);
-        if (!rc) // Handles ERROR_NO_DATA and other errors.
-            return false;
-        buf = buf.substr(writtenBytes);
-    }
-    return true;
-}
-
-void PipeHandle::flush(bool toDevice) {
-    if (toDevice) {
-        FlushFileBuffers(this->handle);
-    }
-}
-
+// Return the total size of the underlying file.
 u64 PipeHandle::getFileSize() {
     LARGE_INTEGER fileSize;
     GetFileSizeEx(this->handle, &fileSize);
     return fileSize.QuadPart;
 }
 
+// Flush the operating system's write buffers if toDevice is true.
+void PipeHandle::flush(bool toDevice) {
+    if (toDevice) {
+        FlushFileBuffers(this->handle);
+    }
+}
+
+// Publish the current thread as the one performing a blocking operation, so that disable()
+// can cancel it from another thread via CancelSynchronousIo. Returns false if the pipe is
+// already disabled or closed.
+bool PipeHandle::beginOperation() {
+    LockGuard<Mutex> lock{this->operationMutex};
+    if (this->disabled.load(MemoryOrder::Acquire) || this->handle == INVALID_HANDLE_VALUE)
+        return false;
+    PLY_ASSERT(!this->operationActive);
+    PLY_ASSERT(this->operationThread == NULL);
+    HANDLE currentProcess = GetCurrentProcess();
+    BOOL rc = DuplicateHandle(currentProcess, GetCurrentThread(), currentProcess, &this->operationThread,
+                              THREAD_TERMINATE, FALSE, 0);
+    if (!rc)
+        return false;
+    this->operationActive = true;
+    return true;
+}
+
+// Retract the thread published by beginOperation() and wake disable() if it's waiting for that.
+void PipeHandle::endOperation() {
+    LockGuard<Mutex> lock{this->operationMutex};
+    PLY_ASSERT(this->operationActive);
+    PLY_ASSERT(this->operationThread != NULL);
+    CloseHandle(this->operationThread);
+    this->operationThread = NULL;
+    this->operationActive = false;
+    this->operationChanged.wakeAll();
+}
+
+// Blocking read. The published thread handle lets disable() cancel a ReadFile blocked in the kernel.
+u32 PipeHandle::read(MutStringView buf) {
+    PLY_ASSERT(buf.numBytes > 0);
+    if (!this->beginOperation())
+        return 0;
+
+    DWORD readBytes = 0;
+    BOOL rc = FALSE;
+    // This second check avoids entering the kernel when disable() ran immediately after the
+    // operation was published. disable() also retries cancellation to cover the remaining race.
+    if (!this->disabled.load(MemoryOrder::Acquire))
+        rc = ReadFile(this->handle, buf.bytes, buf.numBytes, &readBytes, nullptr);
+    this->endOperation();
+    return rc && !this->disabled.load(MemoryOrder::Acquire) ? readBytes : 0;
+}
+
+// Nonblocking read. Pipes report the number of immediately available bytes via PeekNamedPipe,
+// while disk files always complete reads without blocking. Console input is reported as
+// WouldBlock, since there's no reliable way to poll for a single character.
+Pipe::ReadResult PipeHandle::tryRead(MutStringView buf) {
+    PLY_ASSERT(buf.numBytes > 0);
+    if (!this->beginOperation())
+        return {Pipe::ReadResult::EndOfFile, 0};
+
+    auto errorToReadResult = [](DWORD error) {
+        return error == ERROR_BROKEN_PIPE || error == ERROR_HANDLE_EOF || error == ERROR_NO_DATA
+                   ? Pipe::ReadResult{Pipe::ReadResult::EndOfFile, 0}
+                   : Pipe::ReadResult{Pipe::ReadResult::Error, 0};
+    };
+    Pipe::ReadResult result{Pipe::ReadResult::Error, 0};
+    DWORD fileType = GetFileType(this->handle);
+    // Pipes: peek at the number of immediately available bytes so the read can never block.
+    if (fileType == FILE_TYPE_PIPE) {
+        DWORD available = 0;
+        if (!PeekNamedPipe(this->handle, nullptr, 0, nullptr, &available, nullptr)) {
+            // The peek failed: report the error, or end-of-file if the peer closed the pipe.
+            result = errorToReadResult(GetLastError());
+        } else if (available == 0) {
+            // No bytes are available right now.
+            result = {Pipe::ReadResult::WouldBlock, 0};
+        } else {
+            // Read only the bytes that are already available.
+            buf.numBytes = min<u32>(buf.numBytes, available);
+            DWORD readBytes = 0;
+            BOOL rc = ReadFile(this->handle, buf.bytes, buf.numBytes, &readBytes, nullptr);
+            result = rc ? (readBytes ? Pipe::ReadResult{Pipe::ReadResult::Data, readBytes}
+                                     : Pipe::ReadResult{Pipe::ReadResult::EndOfFile, 0})
+                        : errorToReadResult(GetLastError());
+        }
+    } else if (fileType == FILE_TYPE_CHAR) {
+        // In line-input mode, queued console events don't imply that a character read can finish.
+        result = {Pipe::ReadResult::WouldBlock, 0};
+    } else if (fileType == FILE_TYPE_DISK) {
+        // Disk files never block, so just read directly.
+        DWORD readBytes = 0;
+        BOOL rc = ReadFile(this->handle, buf.bytes, buf.numBytes, &readBytes, nullptr);
+        result = rc ? (readBytes ? Pipe::ReadResult{Pipe::ReadResult::Data, readBytes}
+                                 : Pipe::ReadResult{Pipe::ReadResult::EndOfFile, 0})
+                    : errorToReadResult(GetLastError());
+    }
+
+    this->endOperation();
+    return this->disabled.load(MemoryOrder::Acquire)
+               ? Pipe::ReadResult{Pipe::ReadResult::EndOfFile, 0}
+               : result;
+}
+
+// Blocking write of the whole buffer. Returns false if an error occurs or disable() is called.
+bool PipeHandle::write(StringView buf) {
+    if (buf.isEmpty())
+        return !this->disabled.load(MemoryOrder::Acquire);
+    if (!this->beginOperation())
+        return false;
+
+    bool succeeded = true;
+    while (buf.numBytes() > 0 && !this->disabled.load(MemoryOrder::Acquire)) {
+        DWORD desiredBytes = min<DWORD>(buf.numBytes(), UINT32_MAX);
+        DWORD writtenBytes = 0;
+        BOOL rc = WriteFile(this->handle, buf.bytes(), desiredBytes, &writtenBytes, nullptr);
+        if (!rc || writtenBytes == 0) {
+            succeeded = false;
+            break;
+        }
+        buf = buf.substr(writtenBytes);
+    }
+    this->endOperation();
+    return succeeded && !this->disabled.load(MemoryOrder::Acquire) && buf.isEmpty();
+}
+
+// Move the file pointer to the given offset.
 void PipeHandle::seekTo(s64 offset) {
+    PLY_ASSERT(offset >= 0);
+    if (!this->beginOperation())
+        return;
     LARGE_INTEGER distance;
     distance.QuadPart = offset;
     SetFilePointerEx(this->handle, distance, NULL, FILE_BEGIN);
+    this->endOperation();
+}
+
+// Disable the pipe: cancel the blocking operation currently in flight on the published thread,
+// if any, and wait until it acknowledges that it has finished.
+void PipeHandle::disable() {
+    LockGuard<Mutex> lock{this->operationMutex};
+    this->disabled.exchange(true, MemoryOrder::AcqRel);
+    while (this->operationActive) {
+        // ERROR_NOT_FOUND is expected when the operation was published just before entering the
+        // kernel. Keep retrying until the operation acknowledges that it has finished.
+        CancelSynchronousIo(this->operationThread);
+        this->operationChanged.timedWait(lock, 1);
+    }
 }
 
 #elif defined(PLY_POSIX)
 
-PipeFD::~PipeFD() {
-    this->close();
+// Set the given fcntl flags on a file descriptor, retrying if interrupted by a signal.
+static bool setFDFlags(int fd, int command, int flags) {
+    int rc;
+    do {
+        rc = fcntl(fd, command, flags);
+    } while (rc < 0 && errno == EINTR);
+    return rc == 0;
 }
 
-void PipeFD::close() {
-    // Release the descriptor once, leaving the pipe safe to destroy later.
+// Create the nonblocking, close-on-exec wakeup pipe used by PipeFD::disable(). Writing a byte to
+// disableWriteFD makes disableReadFD readable, which unblocks any poll() waiting on the data fd.
+static void createDisablePipe(int* readFD, int* writeFD) {
+    int fds[2];
+    int rc = pipe(fds);
+    PLY_ASSERT(rc == 0);
+    if (rc != 0)
+        return;
+
+    int readStatusFlags = fcntl(fds[0], F_GETFL, 0);
+    int writeStatusFlags = fcntl(fds[1], F_GETFL, 0);
+    bool success = readStatusFlags >= 0 && writeStatusFlags >= 0 &&
+                   setFDFlags(fds[0], F_SETFL, readStatusFlags | O_NONBLOCK) &&
+                   setFDFlags(fds[1], F_SETFL, writeStatusFlags | O_NONBLOCK) &&
+                   setFDFlags(fds[0], F_SETFD, FD_CLOEXEC) && setFDFlags(fds[1], F_SETFD, FD_CLOEXEC);
+    PLY_ASSERT(success);
+    if (!success) {
+        ::close(fds[0]);
+        ::close(fds[1]);
+        return;
+    }
+    *readFD = fds[0];
+    *writeFD = fds[1];
+}
+
+//----------------------------------------------------------
+// PipeFD
+//----------------------------------------------------------
+
+// Construct an empty pipe with no data descriptor, only the wakeup pipe.
+PipeFD::PipeFD() {
+    createDisablePipe(&this->disableReadFD, &this->disableWriteFD);
+}
+
+// Construct from an owned file descriptor.
+PipeFD::PipeFD(int fd, u32 flags) : fd{fd} {
+    this->flags = flags;
+    createDisablePipe(&this->disableReadFD, &this->disableWriteFD);
+}
+
+// Close the data descriptor and the wakeup pipe.
+PipeFD::~PipeFD() {
     if (this->fd >= 0) {
         int rc = ::close(this->fd);
         PLY_ASSERT(rc == 0);
         PLY_UNUSED(rc);
         this->fd = -1;
     }
-}
-
-u32 PipeFD::read(MutStringView buf) {
-    PLY_ASSERT(this->fd >= 0);
-    // Retry as long as read() keeps failing due to EINTR caused by the debugger:
-    s32 rc;
-    do {
-        rc = (s32)::read(this->fd, buf.bytes, buf.numBytes);
-    } while (rc == -1 && errno == EINTR);
-    PLY_ASSERT(rc >= 0); // Note: Will probably need to detect closed pipes here
-    if (rc < 0)
-        return 0;
-    return rc;
-}
-
-bool PipeFD::write(StringView buf) {
-    PLY_ASSERT(this->fd >= 0);
-    while (buf.numBytes() > 0) {
-        s32 sent = (s32)::write(this->fd, buf.bytes(), buf.numBytes());
-        if (sent <= 0)
-            return false;
-        PLY_ASSERT((u32) sent <= buf.numBytes());
-        buf = buf.substr(sent);
+    if (this->disableReadFD >= 0) {
+        ::close(this->disableReadFD);
+        this->disableReadFD = -1;
     }
-    return true;
+    if (this->disableWriteFD >= 0) {
+        ::close(this->disableWriteFD);
+        this->disableWriteFD = -1;
+    }
 }
 
-void PipeFD::flush(bool toDevice) {
-    // FIXME: Implement as per
-    // https://github.com/libuv/libuv/issues/1579#issue-262113760
+// Temporarily put a file descriptor in nonblocking mode for the duration of the scope, then
+// restore the original flags.
+class ScopedNonBlockingFD {
+public:
+    int fd;
+    int oldFlags = -1;
+    bool changed = false;
+
+    // Enable nonblocking mode if it isn't already.
+    ScopedNonBlockingFD(int fd) : fd{fd} {
+        do {
+            this->oldFlags = fcntl(fd, F_GETFL, 0);
+        } while (this->oldFlags < 0 && errno == EINTR);
+        if (this->oldFlags >= 0 && !(this->oldFlags & O_NONBLOCK)) {
+            this->changed = setFDFlags(fd, F_SETFL, this->oldFlags | O_NONBLOCK);
+        }
+    }
+
+    // Restore the original flags.
+    ~ScopedNonBlockingFD() {
+        if (this->changed) {
+            bool success = setFDFlags(this->fd, F_SETFL, this->oldFlags);
+            PLY_ASSERT(success);
+            PLY_UNUSED(success);
+        }
+    }
+
+    // Whether the descriptor is usable in nonblocking mode.
+    bool isValid() const {
+        return this->oldFlags >= 0 && ((this->oldFlags & O_NONBLOCK) || this->changed);
+    }
+};
+
+// Read from a PipeFD with an optional timeout: timeoutMillis < 0 blocks until data arrives,
+// timeoutMillis == 0 returns WouldBlock when no data is immediately available. Used to implement
+// both PipeFD::read and PipeFD::tryRead. The wakeup pipe makes a blocked poll() return
+// immediately when disable() is called from another thread.
+static Pipe::ReadResult readFromPipeFD(PipeFD* pipe, MutStringView buf, int timeoutMillis) {
+    PLY_ASSERT(pipe->fd >= 0);
+    PLY_ASSERT(buf.numBytes > 0);
+    if (pipe->disabled.load(MemoryOrder::Acquire))
+        return {Pipe::ReadResult::EndOfFile, 0};
+
+    // Keeping the data descriptor nonblocking during the operation closes the race between observing
+    // readiness and disable(): the data syscall itself can never strand the caller after the wakeup.
+    ScopedNonBlockingFD nonBlocking{pipe->fd};
+    if (!nonBlocking.isValid())
+        return {Pipe::ReadResult::Error, 0};
+
+    for (;;) {
+        pollfd pollFDs[2] = {{pipe->fd, POLLIN, 0}, {pipe->disableReadFD, POLLIN, 0}};
+        int pollRC;
+        do {
+            pollRC = poll(pollFDs, 2, timeoutMillis);
+        } while (pollRC < 0 && errno == EINTR);
+        if (pollRC < 0)
+            // The poll itself failed.
+            return {Pipe::ReadResult::Error, 0};
+        if (pipe->disabled.load(MemoryOrder::Acquire) || pollFDs[1].revents != 0)
+            // disable() was called from another thread, or a previous call's wake byte is still
+            // pending in the wakeup pipe.
+            return {Pipe::ReadResult::EndOfFile, 0};
+        if (pollRC == 0)
+            // The timeout elapsed without the data descriptor becoming readable.
+            return {Pipe::ReadResult::WouldBlock, 0};
+        if (pollFDs[0].revents & POLLNVAL)
+            // The data descriptor is invalid.
+            return {Pipe::ReadResult::Error, 0};
+
+        ssize_t rc = ::read(pipe->fd, buf.bytes, buf.numBytes);
+        if (pipe->disabled.load(MemoryOrder::Acquire))
+            // disable() was called during the read; treat it as end-of-file.
+            return {Pipe::ReadResult::EndOfFile, 0};
+        if (rc > 0)
+            // Data arrived: hand it to the caller.
+            return {Pipe::ReadResult::Data, numericCast<u32>(rc)};
+        if (rc == 0)
+            // The peer closed its end of the data descriptor.
+            return {Pipe::ReadResult::EndOfFile, 0};
+        if (errno != EINTR && errno != EAGAIN && errno != EWOULDBLOCK)
+            // The read failed with an unexpected error.
+            return {Pipe::ReadResult::Error, 0};
+        // Another user of the same open file description may have consumed the readiness. A blocking
+        // call polls again; a nonblocking call returns promptly.
+        if (timeoutMillis == 0)
+            // The readiness was consumed and no data arrived; don't block waiting for more.
+            return {Pipe::ReadResult::WouldBlock, 0};
+    }
 }
 
+// Return the total size of the underlying file.
 u64 PipeFD::getFileSize() {
     PLY_ASSERT(this->fd >= 0);
     struct stat buf;
@@ -2573,11 +2814,106 @@ u64 PipeFD::getFileSize() {
     return buf.st_size;
 }
 
+// Blocking read; returns 0 at end-of-file or when disabled.
+u32 PipeFD::read(MutStringView buf) {
+    Pipe::ReadResult result = readFromPipeFD(this, buf, -1);
+    return result.kind == Pipe::ReadResult::Data ? result.numBytes : 0;
+}
+
+// Nonblocking read; returns immediately.
+Pipe::ReadResult PipeFD::tryRead(MutStringView buf) {
+    return readFromPipeFD(this, buf, 0);
+}
+
+// Blocking write of the whole buffer. Returns false if an error occurs or disable() is called.
+bool PipeFD::write(StringView buf) {
+    PLY_ASSERT(this->fd >= 0);
+    if (this->disabled.load(MemoryOrder::Acquire))
+        return false;
+
+    // Keeping the data descriptor nonblocking during the operation closes the race between observing
+    // readiness and disable(): the data syscall itself can never strand the caller after the wakeup.
+    ScopedNonBlockingFD nonBlocking{this->fd};
+    if (!nonBlocking.isValid())
+        return false;
+
+    // Write the whole buffer in a loop, waiting for the descriptor to become writable between
+    // chunks. The wakeup pipe makes each poll() return promptly when disable() is called.
+    while (buf.numBytes() > 0) {
+        pollfd pollFDs[2] = {{this->fd, POLLOUT, 0}, {this->disableReadFD, POLLIN, 0}};
+        int pollRC;
+        do {
+            pollRC = poll(pollFDs, 2, -1);
+        } while (pollRC < 0 && errno == EINTR);
+        // Fail if the poll itself failed, the descriptor is invalid, or disable() was called (or a
+        // previous call's wake byte is still pending in the wakeup pipe).
+        if (pollRC < 0 || this->disabled.load(MemoryOrder::Acquire) || pollFDs[1].revents != 0 ||
+            (pollFDs[0].revents & POLLNVAL))
+            return false;
+        ssize_t sent = ::write(this->fd, buf.bytes(), buf.numBytes());
+        if (sent < 0) {
+            // A spurious wakeup or interrupted syscall: poll for writability and try again.
+            if (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK)
+                continue;
+            // The write failed with an unexpected error.
+            return false;
+        }
+        // A zero-byte write can't make progress.
+        if (sent == 0)
+            return false;
+        PLY_ASSERT((u32) sent <= buf.numBytes());
+        buf = buf.substr(numericCast<u32>(sent));
+    }
+    // Report failure if disable() raced with the final chunk.
+    return !this->disabled.load(MemoryOrder::Acquire);
+}
+
+// Move the file descriptor's offset to the given position.
 void PipeFD::seekTo(s64 offset) {
     PLY_ASSERT(this->fd >= 0);
     off_t rc = lseek(this->fd, numericCast<off_t>(offset), SEEK_SET);
     PLY_ASSERT(rc == 0);
     PLY_UNUSED(rc);
+}
+
+// Flush the operating system's write buffers for seekable files if toDevice is true.
+void PipeFD::flush(bool toDevice) {
+    // PipeFD has no user-space buffering, and only seekable file descriptors have device buffers
+    // that can be flushed with fsync; sockets and pipes have nothing to do here.
+    if (!toDevice || !(this->flags & Pipe::CanSeek))
+        return;
+
+    PLY_ASSERT(this->fd >= 0);
+    int rc;
+#if defined(PLY_APPLE)
+    // Unlike fsync, F_FULLFSYNC asks the drive to flush its hardware write cache. Some file
+    // systems and external devices don't support it, so fall back to fsync on any failure.
+    do {
+        rc = fcntl(this->fd, F_FULLFSYNC);
+    } while (rc < 0 && errno == EINTR);
+    if (rc == 0)
+        return;
+#endif
+    do {
+        rc = fsync(this->fd);
+    } while (rc < 0 && errno == EINTR);
+    PLY_ASSERT(rc == 0);
+    PLY_UNUSED(rc);
+}
+
+// Disable the pipe: write a byte to the wakeup pipe so that any poll() waiting on the data
+// descriptor unblocks and reports end-of-file. Idempotent.
+void PipeFD::disable() {
+    if (this->disabled.exchange(true, MemoryOrder::AcqRel))
+        return;
+
+    char byte = 0;
+    ssize_t rc;
+    do {
+        rc = ::write(this->disableWriteFD, &byte, 1);
+    } while (rc < 0 && errno == EINTR);
+    // EAGAIN means that a previous wake byte is already making the descriptor readable.
+    PLY_ASSERT(rc == 1 || (rc < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)));
 }
 
 #endif
@@ -2631,15 +2967,15 @@ public:
 
     InPipeNewLineFilter(Stream&& in) : in{std::move(in)} {
         PLY_ASSERT(this->in.hasReadPermission);
-        this->flags = Pipe::HAS_READ_PERMISSION;
+        this->flags = Pipe::HasReadPermission;
     }
     virtual u32 read(MutStringView buf) override;
-    virtual void close() override {
-        // Closing the stream preserves ownership of its underlying pipe.
-        this->in.close();
-    }
+    virtual ReadResult tryRead(MutStringView buf) override;
+    virtual void disable() override;
 };
 
+// Blocking read: filter newlines from the wrapped stream until at least one byte is produced.
+// Returns 0 at end-of-file.
 u32 InPipeNewLineFilter::read(MutStringView buf) {
     PLY_ASSERT(buf.numBytes > 0);
 
@@ -2662,6 +2998,44 @@ u32 InPipeNewLineFilter::read(MutStringView buf) {
     }
 }
 
+// Nonblocking read: like read(), but reports WouldBlock when the wrapped stream runs out of
+// immediately available data instead of waiting for more.
+Pipe::ReadResult InPipeNewLineFilter::tryRead(MutStringView buf) {
+    PLY_ASSERT(buf.numBytes > 0);
+
+    NewLineFilter::Params params;
+    params.dstByte = buf.bytes;
+    params.dstEndByte = buf.bytes + buf.numBytes;
+    for (;;) {
+        params.srcByte = this->in.curByte;
+        params.srcEndByte = this->in.endByte;
+        this->filter.process(&params);
+        this->in.curByte = const_cast<char*>(params.srcByte);
+
+        u32 numBytesWritten = numericCast<u32>(params.dstByte - buf.bytes);
+        if (numBytesWritten > 0)
+            return {Pipe::ReadResult::Data, numBytesWritten};
+
+        PLY_ASSERT(!this->in.hasRemainingBytes());
+        if (!this->in.tryMakeReadable()) {
+            if (this->in.inputError)
+                return {Pipe::ReadResult::Error, 0};
+            if (this->in.atEof)
+                return {Pipe::ReadResult::EndOfFile, 0};
+            return {Pipe::ReadResult::WouldBlock, 0};
+        }
+    }
+}
+
+// Forwards disable() to the wrapped pipe. Note that after this is called, the wrapped pipe
+// may still deliver a small amount of trailing data that was already buffered, which this filter
+// will keep serving until end-of-file.
+void InPipeNewLineFilter::disable() {
+    if (this->in.type == Stream::Type::Pipe) {
+        this->in.pipe.pipe->disable();
+    }
+}
+
 //-----------------------------------------------------------------------
 
 class OutPipeNewLineFilter : public Pipe {
@@ -2671,20 +3045,28 @@ public:
 
     OutPipeNewLineFilter(Stream&& out, bool writeCrlf) : out{std::move(out)} {
         PLY_ASSERT(this->out.hasWritePermission);
-        this->flags = Pipe::HAS_WRITE_PERMISSION;
+        this->flags = Pipe::HasWritePermission;
         this->filter.crlf = writeCrlf;
+    }
+    virtual ~OutPipeNewLineFilter() {
+        // Stream's destructor flushes buffered bytes and releases an owned pipe.
+        // Flush through this filter first so a pending CRLF suffix is emitted.
+        if (this->out.type != Stream::Type::None)
+            this->flush(false);
     }
     virtual bool write(StringView buf) override;
     virtual void flush(bool toDevice) override;
-    virtual void close() override {
-        // Flush once before releasing the embedded stream and any owned pipe.
-        if (this->out.type != Stream::Type::None) {
-            this->flush(false);
-            this->out.close();
+    virtual void disable() override {
+        // Forwards disable() to the wrapped pipe. Buffered output is not guaranteed to be flushed;
+        // like read(), disable() just prevents any new data from being written.
+        if (this->out.type == Stream::Type::Pipe) {
+            this->out.pipe.pipe->disable();
         }
     }
 };
 
+// Blocking write: convert newlines to the target convention while streaming into the wrapped
+// stream. Returns false if an error occurs.
 bool OutPipeNewLineFilter::write(StringView buf) {
     u32 desiredTotalBytesRead = buf.numBytes();
     u32 totalBytesRead = 0;
@@ -2733,8 +3115,8 @@ Stream::Stream(Pipe* pipe, bool isPipeOwner) {
         this->pipe.buffer = (char*) Heap::alloc(BUFFER_SIZE);
         this->curByte = this->pipe.buffer;
         this->endByte = this->pipe.buffer;
-        this->hasReadPermission = (pipe->getFlags() & Pipe::HAS_READ_PERMISSION) != 0;
-        this->hasWritePermission = (pipe->getFlags() & Pipe::HAS_WRITE_PERMISSION) != 0;
+        this->hasReadPermission = (pipe->getFlags() & Pipe::HasReadPermission) != 0;
+        this->hasWritePermission = (pipe->getFlags() & Pipe::HasWritePermission) != 0;
     }
 }
 
@@ -2848,8 +3230,72 @@ void Stream::flushMemWrites() {
     }
 }
 
+// Prepare the read buffer for reading without ever blocking, pulling as much data as possible
+// from the wrapped pipe. Sets atEof or inputError when appropriate. Returns true if any bytes
+// were made readable.
+bool Stream::tryMakeReadable() {
+    PLY_ASSERT(this->hasReadPermission);
+
+    if (this->type == Type::Pipe) {
+        // Once EOF has been observed, only bytes already in the buffer can still be returned.
+        if (this->atEof && this->mode == Mode::Reading && !this->hasRemainingBytes())
+            return false;
+
+        // Switching a duplex stream from writing normally flushes its output. Avoid that operation
+        // here because the underlying pipe may not currently be writable.
+        if (this->mode == Mode::Writing) {
+            if (this->curByte != this->pipe.buffer)
+                return false;
+            this->pipe.seekPosAtBuffer += (this->curByte - this->pipe.buffer);
+        }
+
+        // Enter read mode with an empty buffer, or compact unread bytes to the start so the largest
+        // possible contiguous region is available for newly arriving data.
+        if (this->mode != Mode::Reading) {
+            this->curByte = this->pipe.buffer;
+            this->endByte = this->pipe.buffer;
+            this->mode = Mode::Reading;
+        } else {
+            u32 numToPreserve = this->numRemainingBytes();
+            if (numToPreserve > 0 && this->curByte != this->pipe.buffer) {
+                memmove(this->pipe.buffer, this->curByte, numToPreserve);
+            }
+            this->pipe.seekPosAtBuffer += (this->curByte - this->pipe.buffer);
+            this->curByte = this->pipe.buffer;
+            this->endByte = this->pipe.buffer + numToPreserve;
+        }
+
+        // Keep reading until the buffer is full or the pipe reports that no more data can be
+        // obtained immediately. This handles sources that return available data in short chunks.
+        while (this->endByte < this->pipe.buffer + BUFFER_SIZE) {
+            Pipe::ReadResult result = this->pipe.pipe->tryRead(
+                {this->endByte, numericCast<u32>(this->pipe.buffer + BUFFER_SIZE - this->endByte)});
+            if (result.kind == Pipe::ReadResult::Data) {
+                PLY_ASSERT(result.numBytes > 0);
+                PLY_ASSERT(this->endByte + result.numBytes <= this->pipe.buffer + BUFFER_SIZE);
+                this->endByte += result.numBytes;
+                continue;
+            }
+
+            // Preserve terminal state separately from the return value: buffered bytes remain
+            // readable even when this call also discovers EOF or an error.
+            if (result.kind == Pipe::ReadResult::EndOfFile) {
+                this->atEof = true;
+            } else if (result.kind == Pipe::ReadResult::Error) {
+                this->inputError = true;
+            }
+            break;
+        }
+        return this->hasRemainingBytes();
+    }
+
+    // Memory and view streams cannot block; their regular buffer transition is already nonblocking.
+    return this->makeReadableInternal(1);
+}
+
 bool Stream::makeReadableInternal(u32 minBytes) {
     PLY_ASSERT(this->hasReadPermission);
+    PLY_ASSERT(minBytes > 0);
     PLY_ASSERT(minBytes <= MAX_CONSECUTIVE_BYTES);
     if ((this->mode == Mode::Reading) && (this->numRemainingBytes() >= minBytes))
         return true;
@@ -3094,7 +3540,7 @@ u64 Stream::getSeekPos() {
 
 void Stream::seekTo(u64 seekPos) {
     if (this->type == Type::Pipe) {
-        PLY_ASSERT((this->pipe.pipe->getFlags() & Pipe::CAN_SEEK) != 0);
+        PLY_ASSERT((this->pipe.pipe->getFlags() & Pipe::CanSeek) != 0);
         s64 relativeToBuffer = seekPos - this->pipe.seekPosAtBuffer;
         u32 numBytesInBuffer = numericCast<u32>(this->endByte - this->pipe.buffer);
         if (relativeToBuffer >= 0 && relativeToBuffer <= numBytesInBuffer) {
@@ -4486,34 +4932,34 @@ void formatWithArgs(Stream& out, StringView fmt, ArrayView<const FormatArg> args
 #if defined(PLY_WINDOWS)
 
 Pipe* getStdInPipe() {
-    static PipeHandle inPipe{GetStdHandle(STD_INPUT_HANDLE), Pipe::HAS_READ_PERMISSION};
+    static PipeHandle inPipe{GetStdHandle(STD_INPUT_HANDLE), Pipe::HasReadPermission};
     return &inPipe;
 }
 
 Pipe* getStdOutPipe() {
-    static PipeHandle outPipe{GetStdHandle(STD_OUTPUT_HANDLE), Pipe::HAS_WRITE_PERMISSION};
+    static PipeHandle outPipe{GetStdHandle(STD_OUTPUT_HANDLE), Pipe::HasWritePermission};
     return &outPipe;
 }
 
 Pipe* getStdErrPipe() {
-    static PipeHandle errorPipe{GetStdHandle(STD_ERROR_HANDLE), Pipe::HAS_WRITE_PERMISSION};
+    static PipeHandle errorPipe{GetStdHandle(STD_ERROR_HANDLE), Pipe::HasWritePermission};
     return &errorPipe;
 }
 
 #elif defined(PLY_POSIX)
 
 Pipe* getStdInPipe() {
-    static PipeFD inPipe{STDIN_FILENO, Pipe::HAS_READ_PERMISSION};
+    static PipeFD inPipe{STDIN_FILENO, Pipe::HasReadPermission};
     return &inPipe;
 }
 
 Pipe* getStdOutPipe() {
-    static PipeFD outPipe{STDOUT_FILENO, Pipe::HAS_WRITE_PERMISSION};
+    static PipeFD outPipe{STDOUT_FILENO, Pipe::HasWritePermission};
     return &outPipe;
 }
 
 Pipe* getStdErrPipe() {
-    static PipeFD errorPipe{STDERR_FILENO, Pipe::HAS_WRITE_PERMISSION};
+    static PipeFD errorPipe{STDERR_FILENO, Pipe::HasWritePermission};
     return &errorPipe;
 }
 
@@ -4811,11 +5257,6 @@ bool copyFromShim(Stream& dstOut, StringView& shimUsed) {
     return false;
 }
 
-void InPipeConvertUnicode::close() {
-    // Closing the stream preserves ownership of its underlying pipe.
-    this->in.close();
-}
-
 // Fill dstBuf with UTF-8-encoded data.
 u32 InPipeConvertUnicode::read(MutStringView dstBuf) {
     ViewStream dstOut{dstBuf};
@@ -4848,12 +5289,73 @@ u32 InPipeConvertUnicode::read(MutStringView dstBuf) {
     return numericCast<u32>(dstOut.curByte - dstBuf.bytes);
 }
 
-void OutPipeConvertUnicode::close() {
-    // Finalize any partial sequence before releasing the stream and any owned pipe.
-    if (this->childOut.type != Stream::Type::None) {
-        this->flush();
-        this->childOut.close();
+// Nonblocking read: like read(), but reports WouldBlock when the wrapped stream runs out of
+// immediately available data instead of waiting for more.
+Pipe::ReadResult InPipeConvertUnicode::tryRead(MutStringView dstBuf) {
+    PLY_ASSERT(dstBuf.numBytes > 0);
+    ViewStream dstOut{dstBuf};
+
+    if (copyFromShim(dstOut, this->shimUsed))
+        return {Pipe::ReadResult::Data, dstBuf.numBytes};
+
+    for (;;) {
+        bool hasInput = this->in.tryMakeReadable();
+        if (!hasInput) {
+            u32 numBytesWritten = numericCast<u32>(dstOut.curByte - dstBuf.bytes);
+            if (numBytesWritten > 0)
+                return {Pipe::ReadResult::Data, numBytesWritten};
+            if (this->in.inputError)
+                return {Pipe::ReadResult::Error, 0};
+            if (this->in.atEof)
+                return {Pipe::ReadResult::EndOfFile, 0};
+            return {Pipe::ReadResult::WouldBlock, 0};
+        }
+
+        DecodeResult decoded = decodeUnicode(this->in.viewRemainingBytes(), this->srcType, this->extParams);
+        if (decoded.status == DecodeStatus::NotEnoughData && !this->in.atEof) {
+            u32 numBytesWritten = numericCast<u32>(dstOut.curByte - dstBuf.bytes);
+            if (numBytesWritten > 0)
+                return {Pipe::ReadResult::Data, numBytesWritten};
+            return {this->in.inputError ? Pipe::ReadResult::Error : Pipe::ReadResult::WouldBlock, 0};
+        }
+        if (decoded.point < 0) {
+            u32 numBytesWritten = numericCast<u32>(dstOut.curByte - dstBuf.bytes);
+            return numBytesWritten ? Pipe::ReadResult{Pipe::ReadResult::Data, numBytesWritten}
+                                   : Pipe::ReadResult{Pipe::ReadResult::EndOfFile, 0};
+        }
+        this->in.curByte += decoded.numBytes;
+
+        u32 writableBytes = dstOut.numRemainingBytes();
+        if (writableBytes >= 4) {
+            encodeUnicode(dstOut, UnicodeType::UTF8, decoded.point);
+        } else {
+            ViewStream shimOut{this->shimStorage.mutStringView()};
+            encodeUnicode(shimOut, UnicodeType::UTF8, decoded.point);
+            this->shimUsed = StringView{this->shimStorage.items(),
+                                        numericCast<u32>(shimOut.curByte - this->shimStorage.items())};
+            if (copyFromShim(dstOut, this->shimUsed))
+                return {Pipe::ReadResult::Data, dstBuf.numBytes};
+        }
+
+        if (!dstOut.hasRemainingBytes())
+            return {Pipe::ReadResult::Data, dstBuf.numBytes};
     }
+}
+
+// Forwards disable() to the wrapped pipe. After this is called, the wrapped pipe may still
+// deliver a small amount of trailing data that was already buffered, which this filter will
+// keep serving until end-of-file.
+void InPipeConvertUnicode::disable() {
+    if (this->in.type == Stream::Type::Pipe) {
+        this->in.pipe.pipe->disable();
+    }
+}
+
+OutPipeConvertUnicode::~OutPipeConvertUnicode() {
+    // Finalize any partial sequence before childOut's destructor flushes buffered bytes and
+    // releases an owned pipe.
+    if (this->childOut.type != Stream::Type::None)
+        this->flush();
 }
 
 // srcBuf expects UTF-8-encoded data.
@@ -4893,6 +5395,7 @@ bool OutPipeConvertUnicode::write(StringView srcBuf) {
     return true;
 }
 
+// Forward flush command down the output chain.
 void OutPipeConvertUnicode::flush(bool toDevice) {
     // The shim may still contain an incomplete (thus invalid) UTF-8 sequence.
     for (u32 i = 0; i < this->shimUsed; i++) {
@@ -4903,6 +5406,14 @@ void OutPipeConvertUnicode::flush(bool toDevice) {
 
     // Forward flush command down the output chain.
     this->childOut.flush(toDevice);
+}
+
+// Forwards disable() to the wrapped pipe. Like read(), disable() just prevents any new data
+// from being written; buffered output is not guaranteed to be flushed.
+void OutPipeConvertUnicode::disable() {
+    if (this->childOut.type == Stream::Type::Pipe) {
+        this->childOut.pipe.pipe->disable();
+    }
 }
 
 //  ▄▄▄▄▄▄                ▄▄         ▄▄▄▄▄                                ▄▄
@@ -6244,10 +6755,12 @@ ExistsResult FileSystem::exists(StringView path) {
     }
 }
 
-HANDLE FileSystem::openHandleForRead(StringView path) {
+// Open a Win32 file handle for reading with the given extra flags, translating errors into
+// FileSystem::setLastResult(). Returns INVALID_HANDLE_VALUE on failure.
+static HANDLE openHandleForReadWin32(StringView path, DWORD flags) {
     // Should this use FILE_SHARE_DELETE or FILE_SHARE_WRITE?
     HANDLE handle = CreateFileW(win32_path_arg(path), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING,
-                                FILE_ATTRIBUTE_NORMAL, NULL);
+                                FILE_ATTRIBUTE_NORMAL | flags, NULL);
     if (handle != INVALID_HANDLE_VALUE) {
         FileSystem::setLastResult(FSResult::OK);
     } else {
@@ -6274,20 +6787,28 @@ HANDLE FileSystem::openHandleForRead(StringView path) {
         }
     }
     return handle;
+}
+
+// Open the given file for reading as a raw Win32 handle.
+HANDLE FileSystem::openHandleForRead(StringView path) {
+    return openHandleForReadWin32(path, 0);
 }
 
 Owned<Pipe> FileSystem::openPipeForRead(StringView path) {
-    HANDLE handle = openHandleForRead(path);
+    HANDLE handle = openHandleForReadWin32(path, 0);
     if (handle == INVALID_HANDLE_VALUE)
         return nullptr;
-    return Heap::create<PipeHandle>(handle, Pipe::HAS_READ_PERMISSION | Pipe::CAN_SEEK);
+    return Heap::create<PipeHandle>(handle, Pipe::HasReadPermission | Pipe::CanSeek);
 }
 
-HANDLE FileSystem::openHandleForWrite(StringView path) {
+// Open a Win32 file handle for writing with the given extra flags, creating or truncating the
+// file, and translating errors into FileSystem::setLastResult(). Returns INVALID_HANDLE_VALUE on
+// failure.
+static HANDLE openHandleForWriteWin32(StringView path, DWORD flags) {
     // FIXME: Needs graceful handling of ERROR_SHARING_VIOLATION
     // Should this use FILE_SHARE_DELETE | FILE_SHARE_READ | FILE_SHARE_WRITE?
-    HANDLE handle =
-        CreateFileW(win32_path_arg(path), GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    HANDLE handle = CreateFileW(win32_path_arg(path), GENERIC_WRITE, 0, NULL, CREATE_ALWAYS,
+                                FILE_ATTRIBUTE_NORMAL | flags, NULL);
     if (handle != INVALID_HANDLE_VALUE) {
         FileSystem::setLastResult(FSResult::OK);
     } else {
@@ -6316,11 +6837,16 @@ HANDLE FileSystem::openHandleForWrite(StringView path) {
     return handle;
 }
 
+// Open the given file for writing as a raw Win32 handle.
+HANDLE FileSystem::openHandleForWrite(StringView path) {
+    return openHandleForWriteWin32(path, 0);
+}
+
 Owned<Pipe> FileSystem::openPipeForWrite(StringView path) {
-    HANDLE handle = openHandleForWrite(path);
+    HANDLE handle = openHandleForWriteWin32(path, 0);
     if (handle == INVALID_HANDLE_VALUE)
         return nullptr;
-    return Heap::create<PipeHandle>(handle, Pipe::HAS_WRITE_PERMISSION | Pipe::CAN_SEEK);
+    return Heap::create<PipeHandle>(handle, Pipe::HasWritePermission | Pipe::CanSeek);
 }
 
 FSResult FileSystem::moveFile(StringView srcPath, StringView dstPath) {
@@ -6594,7 +7120,7 @@ Owned<Pipe> FileSystem::openPipeForRead(StringView path) {
     int fd = openFdForRead(path);
     if (fd == -1)
         return nullptr;
-    return Heap::create<PipeFD>(fd, Pipe::HAS_READ_PERMISSION | Pipe::CAN_SEEK);
+    return Heap::create<PipeFD>(fd, Pipe::HasReadPermission | Pipe::CanSeek);
 }
 
 int FileSystem::openFdForWrite(StringView path) {
@@ -6624,7 +7150,7 @@ Owned<Pipe> FileSystem::openPipeForWrite(StringView path) {
     int fd = openFdForWrite(path);
     if (fd == -1)
         return nullptr;
-    return Heap::create<PipeFD>(fd, Pipe::HAS_WRITE_PERMISSION | Pipe::CAN_SEEK);
+    return Heap::create<PipeFD>(fd, Pipe::HasWritePermission | Pipe::CanSeek);
 }
 
 FSResult FileSystem::moveFile(StringView srcPath, StringView dstPath) {
@@ -6895,6 +7421,12 @@ Pipe* Subprocess::getStdInWriter() const {
     return static_cast<const SubprocessImpl*>(this)->stdInWriter.get();
 }
 
+// Gracefully close the subprocess's standard input by destroying the owned writer pipe,
+// allowing the subprocess to observe end-of-file. Harmless if already closed or never opened.
+void Subprocess::closeStdIn() {
+    static_cast<SubprocessImpl*>(this)->stdInWriter = {};
+}
+
 Pipe* Subprocess::getStdOutReader() const {
     return static_cast<const SubprocessImpl*>(this)->stdOutReader.get();
 }
@@ -7112,11 +7644,10 @@ static Owned<Subprocess> execWin32(WString commandLine, StringView initialDir, c
         PLY_ASSERT(rc != 0);
         PLY_ASSERT(childStdInRead != INVALID_HANDLE_VALUE);
         PLY_ASSERT(childStdInWrite != INVALID_HANDLE_VALUE);
-        // Ensure the write handle to the pipe for stdin is not inherited.
         rc = SetHandleInformation(childStdInWrite, HANDLE_FLAG_INHERIT, 0);
         PLY_ASSERT(rc != 0);
         startupInfo.hStdInput = childStdInRead;
-        writeToChildStdIn = Heap::create<PipeHandle>(childStdInWrite, Pipe::HAS_WRITE_PERMISSION);
+        writeToChildStdIn = Heap::create<PipeHandle>(childStdInWrite, Pipe::HasWritePermission);
     }
 
     //-----------------------------------------------------------
@@ -7140,11 +7671,10 @@ static Owned<Subprocess> execWin32(WString commandLine, StringView initialDir, c
         PLY_ASSERT(rc != 0);
         PLY_ASSERT(childStdOutRead != INVALID_HANDLE_VALUE);
         PLY_ASSERT(childStdOutWrite != INVALID_HANDLE_VALUE);
-        // Ensure the read handle to the pipe for stdout is not inherited.
         rc = SetHandleInformation(childStdOutRead, HANDLE_FLAG_INHERIT, 0);
         PLY_ASSERT(rc != 0);
         startupInfo.hStdOutput = childStdOutWrite;
-        readFromChildStdOut = Heap::create<PipeHandle>(childStdOutRead, Pipe::HAS_READ_PERMISSION);
+        readFromChildStdOut = Heap::create<PipeHandle>(childStdOutRead, Pipe::HasReadPermission);
     }
 
     //-----------------------------------------------------------
@@ -7170,11 +7700,10 @@ static Owned<Subprocess> execWin32(WString commandLine, StringView initialDir, c
         PLY_ASSERT(childStdErrRead != INVALID_HANDLE_VALUE);
         PLY_ASSERT(childStdErrWrite != INVALID_HANDLE_VALUE);
         PLY_ASSERT(rc != 0);
-        // Ensure the read handle to the pipe for stderr is not inherited.
         rc = SetHandleInformation(childStdErrRead, HANDLE_FLAG_INHERIT, 0);
         PLY_ASSERT(rc != 0);
         startupInfo.hStdError = childStdErrWrite;
-        readFromChildStdErr = Heap::create<PipeHandle>(childStdErrRead, Pipe::HAS_READ_PERMISSION);
+        readFromChildStdErr = Heap::create<PipeHandle>(childStdErrRead, Pipe::HasReadPermission);
     }
 
     // Create the child process.
@@ -7601,13 +8130,13 @@ Owned<Subprocess> Subprocess::exec(StringView exePath, ArrayView<const StringVie
     PLY_ASSERT(rc == 0);
     Owned<Pipe> writeToChildStdIn;
     if (childStdInFD[1] >= 0) {
-        writeToChildStdIn = Heap::create<PipeFD>(childStdInFD[1], Pipe::HAS_WRITE_PERMISSION);
+        writeToChildStdIn = Heap::create<PipeFD>(childStdInFD[1], Pipe::HasWritePermission);
     }
     rc = close(childStdOutFD[1]);
     PLY_ASSERT(rc == 0);
     Owned<Pipe> readFromChildStdOut;
     if (childStdOutFD[0] >= 0) {
-        readFromChildStdOut = Heap::create<PipeFD>(childStdOutFD[0], Pipe::HAS_READ_PERMISSION);
+        readFromChildStdOut = Heap::create<PipeFD>(childStdOutFD[0], Pipe::HasReadPermission);
     }
     if (childStdOutFD[1] != childStdErrFD[1]) {
         rc = close(childStdErrFD[1]);
@@ -7616,7 +8145,7 @@ Owned<Subprocess> Subprocess::exec(StringView exePath, ArrayView<const StringVie
     PLY_UNUSED(rc);
     Owned<Pipe> readFromChildStdErr;
     if (childStdErrFD[0] >= 0) {
-        readFromChildStdErr = Heap::create<PipeFD>(childStdErrFD[0], Pipe::HAS_READ_PERMISSION);
+        readFromChildStdErr = Heap::create<PipeFD>(childStdErrFD[0], Pipe::HasReadPermission);
     }
 
     // Return immediately if fork failed, after closing every pipe created for this attempt.

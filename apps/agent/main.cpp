@@ -77,7 +77,7 @@ struct MultiPipe : Pipe {
     Array<Pipe*> pipes;
 
     MultiPipe() {
-        this->flags = Pipe::HAS_WRITE_PERMISSION;
+        this->flags = Pipe::HasWritePermission;
     }
 
     virtual bool write(StringView buf) override {
@@ -93,6 +93,12 @@ struct MultiPipe : Pipe {
     virtual void flush(bool toDevice = false) override {
         for (Pipe* pipe : this->pipes) {
             pipe->flush(toDevice);
+        }
+    }
+
+    virtual void disable() override {
+        for (Pipe* pipe : this->pipes) {
+            pipe->disable();
         }
     }
 };

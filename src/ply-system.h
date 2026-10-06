@@ -4007,6 +4007,11 @@ u32 binarySearch(Arr& arr, const Key& desiredKey, FindType findType) {
 //  ██     ██ ██▄▄█▀ ▀█▄▄▄
 //            ██
 
+// Pipe is the abstract base class for all I/O operations.
+// Concrete implementations include file pipes, socket pipes, and memory pipes.
+// The underlying implementation is closed in the destructor.
+// Only one thread may call read, tryRead, write, flush or seekTo at a time.
+// It's safe to call disable at any time from any thread.
 class Pipe {
 protected:
     u64 seekPos = 0;
@@ -4015,23 +4020,52 @@ protected:
     Pipe() = default;
 
 public:
-    static constexpr u32 HAS_READ_PERMISSION = 0x1;
-    static constexpr u32 HAS_WRITE_PERMISSION = 0x2;
-    static constexpr u32 CAN_SEEK = 0x4;
+    // Return value of tryRead().
+    struct ReadResult {
+        enum Kind {
+            Data,       // numBytes were written to the destination buffer.
+            EndOfFile,  // The source is exhausted; no more data will arrive.
+            WouldBlock, // No data is available right now, but more may arrive later.
+            Error,      // The read failed due to an I/O error.
+        };
+        Kind kind = EndOfFile;
+        u32 numBytes = 0; // Number of bytes written. Only valid when kind is Data.
+    };
 
+    static constexpr u32 HasReadPermission = 0x1;
+    static constexpr u32 HasWritePermission = 0x2;
+    static constexpr u32 CanSeek = 0x4;
+
+    // Virtual destructor.
     virtual ~Pipe() = default;
-    // Release resources without destroying the pipe. Only close() or destruction is supported afterward.
-    // Close any surrounding buffered Stream first; borrowed pipes remain open when their stream closes.
-    virtual void close();
-    // read() only returns 0 at EOF. Otherwise, it blocks until data is available.
-    virtual u32 read(MutStringView buf);
-    virtual bool write(StringView buf);
-    virtual void flush(bool toDevice = false);
+
+    // Pipe properties.
     virtual u64 getFileSize();
-    virtual void seekTo(s64 offset);
     u32 getFlags() const {
         return this->flags;
     }
+
+    // read() blocks until data becomes available and returns 0 when no more data can be read due to
+    // end-of-file, disabling or an I/O error. buf must not be empty.
+    virtual u32 read(MutStringView buf);
+
+    // tryRead() doesn't block. buf must not be empty.
+    virtual ReadResult tryRead(MutStringView buf);
+
+    // If the recipient on the other end of the Pipe isn't ready, write() may block until they become ready.
+    virtual bool write(StringView buf);
+
+    // Seek to the specified file offset, if the subclass supports it.
+    virtual void seekTo(s64 offset);
+
+    // Let the Pipe instance perform an optional flush to device.
+    // For files, this performs an operating system flush.
+    virtual void flush(bool toDevice = false);
+
+    // disable() can be safely called by any thread at any time, if the subclass supports it.
+    // Any thread blocked inside read() or write() will be immediately unblocked.
+    // Some data may remain internally buffered for read, but no new data will be added after disable() returns.
+    virtual void disable();
 };
 
 // Reads from a pipe until EOF and returns all remaining data.
@@ -4040,19 +4074,28 @@ String readAllRemainingData(Pipe* inPipe);
 #if defined(PLY_WINDOWS)
 
 class PipeHandle : public Pipe {
+private:
+    Atomic<bool> disabled = false;
+    Mutex operationMutex;
+    ConditionVariable operationChanged;
+    HANDLE operationThread = NULL;
+    bool operationActive = false;
+
+    bool beginOperation();
+    void endOperation();
+
 public:
     HANDLE handle = INVALID_HANDLE_VALUE;
 
-    PipeHandle(HANDLE h, u32 flags) : handle(h) {
-        this->flags = flags;
-    }
+    PipeHandle(HANDLE h, u32 flags);
     virtual ~PipeHandle();
-    virtual void close() override;
-    virtual u32 read(MutStringView buf) override;
-    virtual bool write(StringView buf) override;
-    virtual void flush(bool toDevice = false) override;
     virtual u64 getFileSize() override;
+    virtual u32 read(MutStringView buf) override;
+    virtual ReadResult tryRead(MutStringView buf) override;
+    virtual bool write(StringView buf) override;
     virtual void seekTo(s64 offset) override;
+    virtual void flush(bool toDevice = false) override;
+    virtual void disable() override;
 };
 
 #elif defined(PLY_POSIX)
@@ -4060,19 +4103,20 @@ public:
 class PipeFD : public Pipe {
 public:
     int fd = -1;
+    int disableReadFD = -1;
+    int disableWriteFD = -1;
+    Atomic<bool> disabled = false;
 
-    PipeFD() {
-    }
-    PipeFD(int fd, u32 flags) : fd{fd} {
-        this->flags = flags;
-    }
+    PipeFD();
+    PipeFD(int fd, u32 flags);
     virtual ~PipeFD();
-    virtual void close() override;
-    virtual u32 read(MutStringView buf) override;
-    virtual bool write(StringView buf) override;
-    virtual void flush(bool toDevice = false) override;
     virtual u64 getFileSize() override;
+    virtual u32 read(MutStringView buf) override;
+    virtual ReadResult tryRead(MutStringView buf) override;
+    virtual bool write(StringView buf) override;
     virtual void seekTo(s64 offset) override;
+    virtual void flush(bool toDevice = false) override;
+    virtual void disable() override;
 };
 
 #endif
@@ -4163,6 +4207,7 @@ struct Stream {
         else
             return makeReadableInternal(minBytes);
     }
+    bool tryMakeReadable();
     bool makeWritable(u32 minBytes = 1) {
         if ((this->mode == Mode::Writing) && (this->curByte + minBytes <= this->endByte))
             return true;
@@ -4499,11 +4544,12 @@ public:
 
     InPipeConvertUnicode(Stream&& in, UnicodeType type = UnicodeType::None) : in{std::move(in)}, srcType{type} {
         PLY_ASSERT(this->in.hasReadPermission);
-        this->flags = Pipe::HAS_READ_PERMISSION;
+        this->flags = Pipe::HasReadPermission;
     }
     // Fill dstBuf with UTF-8-encoded data.
     virtual u32 read(MutStringView dstBuf) override;
-    virtual void close() override;
+    virtual ReadResult tryRead(MutStringView dstBuf) override;
+    virtual void disable() override;
 };
 
 class OutPipeConvertUnicode : public Pipe {
@@ -4519,12 +4565,13 @@ public:
     OutPipeConvertUnicode(Stream&& childOut, UnicodeType type = UnicodeType::None)
         : childOut{std::move(childOut)}, dstType{type} {
         PLY_ASSERT(this->childOut.hasWritePermission);
-        this->flags = Pipe::HAS_WRITE_PERMISSION;
+        this->flags = Pipe::HasWritePermission;
     }
+    virtual ~OutPipeConvertUnicode() override;
     // srcBuf expects UTF-8-encoded data.
     virtual bool write(StringView srcBuf) override;
     virtual void flush(bool toDevice = false) override;
-    virtual void close() override;
+    virtual void disable() override;
 };
 
 //  ▄▄▄▄▄▄                ▄▄   ▄▄▄▄▄                                ▄▄
@@ -4928,6 +4975,10 @@ struct Subprocess {
 
     // Returns the pipe that writes to the subprocess's stdin, or nullptr when stdin wasn't opened.
     Pipe* getStdInWriter() const;
+    // Gracefully closes the subprocess's stdin, allowing it to observe end-of-file. This destroys
+    // the owned writer and invalidates any pointer previously returned by getStdInWriter().
+    // Does nothing when stdin is already closed or wasn't opened.
+    void closeStdIn();
     // Returns the pipe that reads the subprocess's stdout, or nullptr when stdout wasn't opened.
     Pipe* getStdOutReader() const;
     // Returns the pipe that reads the subprocess's stderr, or nullptr when stderr wasn't opened.

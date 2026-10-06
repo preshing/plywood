@@ -2137,6 +2137,134 @@ TEST_CASE("Decode truncated UTF-8") {
     check(result == StringView{"\xe3\x00\x80\x00", 4});
 }
 
+#if defined(PLY_POSIX)
+
+TEST_CASE("Nonblocking Unicode conversion preserves fragmented input") {
+    int fds[2];
+    check(pipe(fds) == 0);
+    InPipeConvertUnicode conv{Stream{Heap::create<PipeFD>(fds[0], Pipe::HasReadPermission), true},
+                              UnicodeType::UTF8};
+    char dst[8];
+
+    Pipe::ReadResult result = conv.tryRead({dst, sizeof(dst)});
+    check(result.kind == Pipe::ReadResult::WouldBlock);
+    check(::write(fds[1], "\xe3", 1) == 1);
+    result = conv.tryRead({dst, sizeof(dst)});
+    check(result.kind == Pipe::ReadResult::WouldBlock);
+    check(::write(fds[1], "\x80\x82", 2) == 2);
+    result = conv.tryRead({dst, sizeof(dst)});
+    check(result.kind == Pipe::ReadResult::Data);
+    check(result.numBytes == 3);
+    check(StringView{dst, result.numBytes} == StringView{"\xe3\x80\x82", 3});
+
+    check(::close(fds[1]) == 0);
+    result = conv.tryRead({dst, sizeof(dst)});
+    check(result.kind == Pipe::ReadResult::EndOfFile);
+}
+
+#endif
+
+//  ▄▄▄▄▄  ▄▄
+//  ██  ██ ▄▄ ▄▄▄▄▄   ▄▄▄▄
+//  ██▀▀▀  ██ ██  ██ ██▄▄██
+//  ██     ██ ██▄▄█▀ ▀█▄▄▄
+//            ██
+
+#undef TEST_CASE_PREFIX
+#define TEST_CASE_PREFIX Pipe_
+
+#if defined(PLY_POSIX)
+
+TEST_CASE("tryRead reports data, would-block and EOF") {
+    int fds[2];
+    check(pipe(fds) == 0);
+    PipeFD reader{fds[0], Pipe::HasReadPermission};
+    char bytes[8];
+
+    Pipe::ReadResult result = reader.tryRead({bytes, sizeof(bytes)});
+    check(result.kind == Pipe::ReadResult::WouldBlock);
+    check(::write(fds[1], "abc", 3) == 3);
+    result = reader.tryRead({bytes, sizeof(bytes)});
+    check(result.kind == Pipe::ReadResult::Data);
+    check(result.numBytes == 3);
+    check(StringView{bytes, result.numBytes} == "abc");
+    check(reader.tryRead({bytes, sizeof(bytes)}).kind == Pipe::ReadResult::WouldBlock);
+
+    check(::close(fds[1]) == 0);
+    check(reader.tryRead({bytes, sizeof(bytes)}).kind == Pipe::ReadResult::EndOfFile);
+}
+
+TEST_CASE("Stream::tryMakeReadable fills without blocking") {
+    int fds[2];
+    check(pipe(fds) == 0);
+    PipeFD reader{fds[0], Pipe::HasReadPermission};
+    Stream in{&reader, false};
+
+    check(!in.tryMakeReadable());
+    check(!in.atEof);
+    check(::write(fds[1], "abc", 3) == 3);
+    check(in.tryMakeReadable());
+    check(in.viewRemainingBytes() == "abc");
+    in.curByte = in.endByte;
+    check(!in.tryMakeReadable());
+    check(!in.atEof);
+
+    check(::close(fds[1]) == 0);
+    check(!in.tryMakeReadable());
+    check(in.atEof);
+    check(!in.inputError);
+}
+
+TEST_CASE("disable releases a blocking read and is terminal") {
+    int fds[2];
+    check(pipe(fds) == 0);
+    PipeFD reader{fds[0], Pipe::HasReadPermission};
+    Atomic<bool> started = false;
+    u32 numBytesRead = 1;
+    Thread thread{[&]() {
+        started.store(true, MemoryOrder::Release);
+        char byte;
+        numBytesRead = reader.read({&byte, 1});
+    }};
+    while (!started.load(MemoryOrder::Acquire)) {
+    }
+    sleepMillis(20);
+    reader.disable();
+    reader.disable();
+    thread.join();
+
+    char byte;
+    check(numBytesRead == 0);
+    check(reader.read({&byte, 1}) == 0);
+    check(reader.tryRead({&byte, 1}).kind == Pipe::ReadResult::EndOfFile);
+    check(::close(fds[1]) == 0);
+}
+
+TEST_CASE("disable releases a blocking write") {
+    int fds[2];
+    check(pipe(fds) == 0);
+    PipeFD writer{fds[1], Pipe::HasWritePermission};
+    String payload = String::allocate(4 * 1024 * 1024);
+    memset(payload.bytes(), 'x', payload.numBytes());
+    Atomic<bool> started = false;
+    bool writeSucceeded = true;
+    Thread thread{[&]() {
+        started.store(true, MemoryOrder::Release);
+        writeSucceeded = writer.write(payload);
+    }};
+    while (!started.load(MemoryOrder::Acquire)) {
+    }
+    sleepMillis(20);
+    writer.disable();
+    thread.join();
+
+    check(!writeSucceeded);
+    check(!writer.write("x"));
+    check(::close(fds[0]) == 0);
+}
+
+#endif
+
 //  ▄▄▄▄▄▄                ▄▄   ▄▄▄▄▄                                ▄▄
 //    ██    ▄▄▄▄  ▄▄  ▄▄ ▄██▄▄ ██     ▄▄▄▄  ▄▄▄▄▄  ▄▄▄▄▄▄▄   ▄▄▄▄  ▄██▄▄
 //    ██   ██▄▄██  ▀██▀   ██   ██▀▀  ██  ██ ██  ▀▀ ██ ██ ██  ▄▄▄██  ██
@@ -2555,11 +2683,12 @@ TEST_CASE("joinWithTimeout() supports timeouts and retries") {
 
         // Exercise bounded completion, polling an exited child, and an indefinite wait after termination.
         if (mode == 0) {
-            process->getStdInWriter()->close();
+            process->closeStdIn();
+            process->closeStdIn(); // Closing an already closed input endpoint is harmless.
             Subprocess::JoinResult result = process->joinWithTimeout(5000);
             check(result.joined && result.exitCode == expectedExitCode);
         } else if (mode == 1) {
-            process->getStdInWriter()->close();
+            process->closeStdIn();
             char byte;
             check(process->getStdOutReader()->read({&byte, 1}) == 0);
             startTicks = getCpuTicks();

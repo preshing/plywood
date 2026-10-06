@@ -74,38 +74,90 @@ ThreadLocal<NetResult> Network::lastResult_;
 // Windows
 //----------------------------------------------------------
 
-PipeWinsock::~PipeWinsock() {
-    this->close();
+// Construct an empty pipe with no socket.
+PipeWinsock::PipeWinsock() {
 }
 
-void PipeWinsock::close() {
-    // Release the socket once, leaving the pipe safe to destroy later.
+// Construct from an owned socket.
+PipeWinsock::PipeWinsock(SOCKET s, u32 flags) : socket{s} {
+    this->flags = flags;
+}
+
+// Close the owned socket.
+PipeWinsock::~PipeWinsock() {
     if (this->socket != INVALID_SOCKET) {
         ::closesocket(this->socket);
         this->socket = INVALID_SOCKET;
     }
 }
 
+// Blocking read. shutdown() makes a blocked recv return when disable() is called from another thread.
 u32 PipeWinsock::read(MutStringView buf) {
-    int rc = recv(this->socket, (char*) buf.bytes, int(buf.numBytes), 0);
-    if (rc == 0 || rc == SOCKET_ERROR)
+    PLY_ASSERT(buf.numBytes > 0);
+    if (this->disabled.load(MemoryOrder::Acquire) || this->socket == INVALID_SOCKET)
         return 0;
-    PLY_ASSERT(rc > 0);
-    return rc;
+
+    int readBytes = recv(this->socket, (char*) buf.bytes, min<u32>(buf.numBytes, INT_MAX), 0);
+    if (readBytes == SOCKET_ERROR || this->disabled.load(MemoryOrder::Acquire))
+        return 0;
+    return numericCast<u32>(readBytes);
 }
 
+// Nonblocking read: ask Winsock whether the socket is readable before borrowing the caller's
+// buffer. A readable socket either has data or has reached end-of-file, so recv won't block.
+Pipe::ReadResult PipeWinsock::tryRead(MutStringView buf) {
+    PLY_ASSERT(buf.numBytes > 0);
+    if (this->disabled.load(MemoryOrder::Acquire) || this->socket == INVALID_SOCKET)
+        return {Pipe::ReadResult::EndOfFile, 0};
+
+    fd_set readSet;
+    FD_ZERO(&readSet);
+    FD_SET(this->socket, &readSet);
+    timeval timeout = {};
+    int selectRC = select(0, &readSet, nullptr, nullptr, &timeout);
+    if (selectRC == SOCKET_ERROR)
+        return {Pipe::ReadResult::Error, 0};
+    if (selectRC == 0)
+        return {Pipe::ReadResult::WouldBlock, 0};
+
+    int readBytes = recv(this->socket, (char*) buf.bytes, min<u32>(buf.numBytes, INT_MAX), 0);
+    if (this->disabled.load(MemoryOrder::Acquire))
+        return {Pipe::ReadResult::EndOfFile, 0};
+    if (readBytes == SOCKET_ERROR) {
+        int error = WSAGetLastError();
+        if (error == WSAEWOULDBLOCK)
+            return {Pipe::ReadResult::WouldBlock, 0};
+        bool isEOF = error == WSAECONNRESET || error == WSAECONNABORTED || error == WSAESHUTDOWN ||
+                     error == WSAENOTCONN || error == WSAEDISCON;
+        return {isEOF ? Pipe::ReadResult::EndOfFile : Pipe::ReadResult::Error, 0};
+    }
+    return readBytes ? Pipe::ReadResult{Pipe::ReadResult::Data, numericCast<u32>(readBytes)}
+                     : Pipe::ReadResult{Pipe::ReadResult::EndOfFile, 0};
+}
+
+// Disable both directions of the socket, unblocking recv or send in another thread.
+void PipeWinsock::disable() {
+    if (!this->disabled.exchange(true, MemoryOrder::AcqRel)) {
+        if (this->socket != INVALID_SOCKET)
+            ::shutdown(this->socket, SD_BOTH);
+    }
+}
+
+// Blocking write of the whole buffer. shutdown() makes a blocked send return when disable() is
+// called from another thread.
 bool PipeWinsock::write(StringView buf) {
+    if (this->disabled.load(MemoryOrder::Acquire) || this->socket == INVALID_SOCKET)
+        return false;
     while (buf.numBytes() > 0) {
-        int rc = send(this->socket, (const char*) buf.bytes(), (DWORD) buf.numBytes(), 0);
-        if (rc == SOCKET_ERROR) // FIXME: Test to make sure that disconnected sockets return
-                                // SOCKET_ERROR and not 0
+        int writtenBytes = send(this->socket, buf.bytes(), min<u32>(buf.numBytes(), INT_MAX), 0);
+        if (writtenBytes == SOCKET_ERROR || writtenBytes == 0 || this->disabled.load(MemoryOrder::Acquire))
             return false;
-        PLY_ASSERT(rc >= 0 && u32(rc) <= buf.numBytes());
-        buf = buf.substr(rc);
+        buf = buf.substr(numericCast<u32>(writtenBytes));
     }
     return true;
 }
 
+// Sockets are unbuffered, so there's nothing to flush.
 void PipeWinsock::flush(bool) {
 }
 
@@ -258,7 +310,7 @@ Owned<TCPConnection> TCPListener::accept() {
         tcpConn->remoteAddr = IPAddress::fromIPv4(remoteAddrV4->sin_addr.s_addr);
     }
     tcpConn->remotePort = convertBigEndian(remoteAddr.sin6_port);
-    tcpConn->pipe = Heap::create<PipeWinsock>(hostSocket, Pipe::HAS_READ_PERMISSION | Pipe::HAS_WRITE_PERMISSION);
+    tcpConn->pipe = Heap::create<PipeWinsock>(hostSocket, Pipe::HasReadPermission | Pipe::HasWritePermission);
     Network::lastResult_.store(NetResult::OK);
     return tcpConn;
 }
@@ -411,7 +463,7 @@ Owned<TCPConnection> TCPConnection::connectTo(const IPAddress& address, u16 port
         tcpConn->remoteAddr = address;
         tcpConn->remotePort = port;
         tcpConn->pipe =
-            Heap::create<PipeWinsock>(connectSocket, Pipe::HAS_READ_PERMISSION | Pipe::HAS_WRITE_PERMISSION);
+            Heap::create<PipeWinsock>(connectSocket, Pipe::HasReadPermission | Pipe::HasWritePermission);
         Network::lastResult_.store(NetResult::OK);
         return tcpConn;
     }
@@ -540,7 +592,7 @@ Owned<TCPConnection> createAcceptedTCPConnection(int hostSocket,
         tcpConn->remoteAddr = IPAddress::fromIPv4(remoteAddrV4->sin_addr.s_addr);
         tcpConn->remotePort = convertBigEndian(remoteAddrV4->sin_port);
     }
-    tcpConn->pipe = Heap::create<PipeFD>(hostSocket, Pipe::HAS_READ_PERMISSION | Pipe::HAS_WRITE_PERMISSION);
+    tcpConn->pipe = Heap::create<PipeFD>(hostSocket, Pipe::HasReadPermission | Pipe::HasWritePermission);
     Network::lastResult_.store(NetResult::OK);
     return tcpConn;
 }
@@ -922,7 +974,7 @@ Owned<TCPConnection> TCPConnection::connectTo(const IPAddress& address, u16 port
         TCPConnection* tcpConn = Heap::create<TCPConnection>();
         tcpConn->remoteAddr = address;
         tcpConn->remotePort = port;
-        tcpConn->pipe = Heap::create<PipeFD>(connectSocket, Pipe::HAS_READ_PERMISSION | Pipe::HAS_WRITE_PERMISSION);
+        tcpConn->pipe = Heap::create<PipeFD>(connectSocket, Pipe::HasReadPermission | Pipe::HasWritePermission);
         Network::lastResult_.store(NetResult::OK);
         return tcpConn;
     }
