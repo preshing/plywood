@@ -103,7 +103,17 @@ A `Mutex` provides mutual exclusion to protect shared data. Use `LockGuard` for 
 `void Mutex::unlock()`
 > Releases the mutex.
 
-`LockGuard<MutexType>` is a RAII wrapper that locks a mutex in its constructor and unlocks it in its destructor:
+`LockGuard<MutexType>` is a RAII wrapper that locks a mutex in its constructor and unlocks it in its destructor.
+
+`LockGuard<MutexType>::LockGuard(MutexType& mutex)`
+> Locks `mutex`. The mutex is unlocked when the guard is destroyed.
+
+`LockGuard<MutexType>::LockGuard(MutexType* mutex)`
+> If `mutex` is non-null, locks it and unlocks it when the guard is destroyed. If `mutex` is null,
+> the guard performs no locking or unlocking. A guard constructed with a null mutex can't be passed
+> to `ConditionVariable`.
+
+For example:
 
 ```
 LockGuard<Mutex> guard{myMutex};  // The mutex is locked here.

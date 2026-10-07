@@ -1327,14 +1327,24 @@ public:
 //
 
 template <typename MutexType>
-struct LockGuard {
-    MutexType& mutex;
+class LockGuard {
+private:
+    friend class ConditionVariable;
+    MutexType* mutex;
 
-    LockGuard(MutexType& mutex) : mutex{mutex} {
-        this->mutex.lock();
+public:
+    LockGuard(MutexType* mutex) : mutex{mutex} {
+        if (this->mutex) {
+            this->mutex->lock();
+        }
+    }
+    LockGuard(MutexType& mutex) : mutex{&mutex} {
+        this->mutex->lock();
     }
     ~LockGuard() {
-        this->mutex.unlock();
+        if (this->mutex) {
+            this->mutex->unlock();
+        }
     }
 };
 
@@ -1357,11 +1367,13 @@ public:
         InitializeConditionVariable(&condVar);
     }
     void wait(LockGuard<Mutex>& lockGuard) {
-        SleepConditionVariableSRW(&condVar, &lockGuard.mutex.srwlock, INFINITE, 0);
+        PLY_ASSERT(lockGuard.mutex);
+        SleepConditionVariableSRW(&condVar, &lockGuard.mutex->srwlock, INFINITE, 0);
     }
     void timedWait(LockGuard<Mutex>& lockGuard, u32 waitMillis) {
         if (waitMillis > 0) {
-            SleepConditionVariableSRW(&condVar, &lockGuard.mutex.srwlock, waitMillis, 0);
+            PLY_ASSERT(lockGuard.mutex);
+            SleepConditionVariableSRW(&condVar, &lockGuard.mutex->srwlock, waitMillis, 0);
         }
     }
     void wakeOne() {
@@ -1388,7 +1400,8 @@ public:
         pthread_cond_destroy(&cond);
     }
     void wait(LockGuard<Mutex>& lockGuard) {
-        pthread_cond_wait(&cond, &lockGuard.mutex.mutex);
+        PLY_ASSERT(lockGuard.mutex);
+        pthread_cond_wait(&cond, &lockGuard.mutex->mutex);
     }
     void timedWait(LockGuard<Mutex>& lockGuard, u32 waitMillis) {
         if (waitMillis > 0) {
@@ -1401,7 +1414,8 @@ public:
                 ts.tv_sec++;
                 ts.tv_nsec -= 1000000000;
             }
-            pthread_cond_timedwait(&cond, &lockGuard.mutex.mutex, &ts);
+            PLY_ASSERT(lockGuard.mutex);
+            pthread_cond_timedwait(&cond, &lockGuard.mutex->mutex, &ts);
         }
     }
     void wakeOne() {
