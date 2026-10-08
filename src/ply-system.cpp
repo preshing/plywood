@@ -2435,8 +2435,8 @@ u32 getBestNumHashIndices(u32 numItems) {
 //            ██
 
 // Define static constexpr members for ODR-usage.
-constexpr u32 Pipe::HasReadPermission;
-constexpr u32 Pipe::HasWritePermission;
+constexpr u32 Pipe::CanRead;
+constexpr u32 Pipe::CanWrite;
 constexpr u32 Pipe::CanSeek;
 
 u64 Pipe::getFileSize() {
@@ -2474,8 +2474,8 @@ void Pipe::disable() {
 #if defined(PLY_WINDOWS)
 
 // Construct from an owned Win32 handle.
-PipeHandle::PipeHandle(HANDLE h, u32 flags) : handle{h} {
-    this->flags = flags;
+PipeHandle::PipeHandle(HANDLE h, u32 permissions) : handle{h} {
+    this->permissions = permissions;
 }
 
 // Close the owned handle.
@@ -2691,8 +2691,8 @@ PipeFD::PipeFD() {
 }
 
 // Construct from an owned file descriptor.
-PipeFD::PipeFD(int fd, u32 flags) : fd{fd} {
-    this->flags = flags;
+PipeFD::PipeFD(int fd, u32 permissions) : fd{fd} {
+    this->permissions = permissions;
     createDisablePipe(&this->disableReadFD, &this->disableWriteFD);
 }
 
@@ -2880,7 +2880,7 @@ void PipeFD::seekTo(s64 offset) {
 void PipeFD::flush(bool toDevice) {
     // PipeFD has no user-space buffering, and only seekable file descriptors have device buffers
     // that can be flushed with fsync; sockets and pipes have nothing to do here.
-    if (!toDevice || !(this->flags & Pipe::CanSeek))
+    if (!toDevice || !(this->permissions & Pipe::CanSeek))
         return;
 
     PLY_ASSERT(this->fd >= 0);
@@ -2966,8 +2966,8 @@ public:
     NewLineFilter filter;
 
     InPipeNewLineFilter(Stream&& in) : in{std::move(in)} {
-        PLY_ASSERT(this->in.hasReadPermission);
-        this->flags = Pipe::HasReadPermission;
+        PLY_ASSERT((this->in.getPermissions() & Stream::CanRead) != 0);
+        this->permissions = Pipe::CanRead;
     }
     virtual u32 read(MutStringView buf) override;
     virtual ReadResult tryRead(MutStringView buf) override;
@@ -3031,9 +3031,7 @@ Pipe::ReadResult InPipeNewLineFilter::tryRead(MutStringView buf) {
 // may still deliver a small amount of trailing data that was already buffered, which this filter
 // will keep serving until end-of-file.
 void InPipeNewLineFilter::disable() {
-    if (this->in.type == Stream::Type::Pipe) {
-        this->in.pipe.pipe->disable();
-    }
+    this->in.disablePipe();
 }
 
 //-----------------------------------------------------------------------
@@ -3044,14 +3042,14 @@ public:
     NewLineFilter filter;
 
     OutPipeNewLineFilter(Stream&& out, bool writeCrlf) : out{std::move(out)} {
-        PLY_ASSERT(this->out.hasWritePermission);
-        this->flags = Pipe::HasWritePermission;
+        PLY_ASSERT((this->out.getPermissions() & Stream::CanWrite) != 0);
+        this->permissions = Pipe::CanWrite;
         this->filter.crlf = writeCrlf;
     }
     virtual ~OutPipeNewLineFilter() {
         // Stream's destructor flushes buffered bytes and releases an owned pipe.
         // Flush through this filter first so a pending CRLF suffix is emitted.
-        if (this->out.type != Stream::Type::None)
+        if (this->out.isOpen())
             this->flush(false);
     }
     virtual bool write(StringView buf) override;
@@ -3059,9 +3057,7 @@ public:
     virtual void disable() override {
         // Forwards disable() to the wrapped pipe. Buffered output is not guaranteed to be flushed;
         // like read(), disable() just prevents any new data from being written.
-        if (this->out.type == Stream::Type::Pipe) {
-            this->out.pipe.pipe->disable();
-        }
+        this->out.disablePipe();
     }
 };
 
@@ -3103,20 +3099,54 @@ void OutPipeNewLineFilter::flush(bool toDevice) {
 //  ▀█▄▄█▀  ▀█▄▄ ██     ▀█▄▄▄  ▀█▄▄██ ██ ██ ██
 //
 
+// Define static constexpr members for ODR-usage.
+constexpr u32 Stream::CanRead;
+constexpr u32 Stream::CanWrite;
+constexpr u32 Stream::CanSeek;
+
+struct ScratchBuffer {
+    char* bytes = nullptr;
+    u32 offset = 0;
+};
+
+struct Stream::MemData {
+    u32 chunkSize = 0;         // Constant for MemStream lifetime.
+
+    Array<char*> chunks;
+    u32 currentChunkIndex = 0;   // Index of current chunk at seek position.
+    u32 numBytesInLastChunk = 0; // Affects file size calculation.
+
+    // Scratch storage used for cross-chunk views.
+    ScratchBuffer scratch;
+
+    ~MemData() {
+        for (char* chunk : this->chunks) {
+            Heap::free(chunk);
+        }
+        Heap::free(this->scratch.bytes);
+    }
+};
+
 Stream::Stream() {
 }
 
-Stream::Stream(Pipe* pipe, bool isPipeOwner) {
+Stream::Stream(Pipe* pipe, bool isPipeOwner)
+    : Stream{pipe, isPipeOwner, pipe ? pipe->getPermissions() : 0} {
+}
+
+Stream::Stream(Pipe* pipe, bool isPipeOwner, u32 permissions) {
+    PLY_ASSERT(pipe || permissions == 0);
     if (pipe) {
+        PLY_ASSERT((permissions & ~(CanRead | CanWrite | CanSeek)) == 0);
+        PLY_ASSERT((permissions & ~pipe->getPermissions()) == 0);
         this->type = Type::Pipe;
         new (&this->pipe) PipeData;
         this->pipe.pipe = pipe;
         this->isPipeOwner = isPipeOwner;
-        this->pipe.buffer = (char*) Heap::alloc(BUFFER_SIZE);
+        this->pipe.buffer = (char*) Heap::alloc(BufferSize);
         this->curByte = this->pipe.buffer;
         this->endByte = this->pipe.buffer;
-        this->hasReadPermission = (pipe->getFlags() & Pipe::HasReadPermission) != 0;
-        this->hasWritePermission = (pipe->getFlags() & Pipe::HasWritePermission) != 0;
+        this->permissions = permissions;
     }
 }
 
@@ -3126,24 +3156,30 @@ Stream::Stream(Stream&& other) {
     this->type = other.type;
     this->mode = other.mode;
     this->isPipeOwner = other.isPipeOwner;
-    this->hasReadPermission = other.hasReadPermission;
-    this->hasWritePermission = other.hasWritePermission;
+    this->usingScratchBuffer = other.usingScratchBuffer;
+    this->permissions = other.permissions;
     this->atEof = other.atEof;
     this->inputError = other.inputError;
     if (this->type == Type::Pipe) {
         new (&this->pipe) PipeData{std::move(other.pipe)};
     } else if (this->type == Type::Mem) {
-        new (&this->mem) MemData{std::move(other.mem)};
+        new (&this->mem) Owned<MemData>{std::move(other.mem)};
     } else if (this->type == Type::View) {
         new (&this->view) ViewData{std::move(other.view)};
     }
     new (&other) Stream;
 }
 
+void Stream::disablePipe() {
+    if (this->type == Type::Pipe) {
+        this->pipe.pipe->disable();
+    }
+}
+
 Stream::~Stream() {
     if (this->type == Type::Pipe) {
         PLY_ASSERT(this->pipe.pipe);
-        if (this->hasWritePermission) {
+        if (this->permissions & CanWrite) {
             this->flush();
         }
         if (this->isPipeOwner) {
@@ -3151,82 +3187,76 @@ Stream::~Stream() {
         }
         Heap::free(this->pipe.buffer);
     } else if (this->type == Type::Mem) {
-        for (char* buf : this->mem.buffers) {
-            Heap::free(buf);
-        }
-        if (this->mem.tempBuffer) {
-            Heap::free(this->mem.tempBuffer);
-        }
-        this->mem.~MemData();
+        this->mem.~Owned<MemData>();
     }
 }
 
 // Maps a logical memory-stream position to its corresponding backing chunk and byte pointers.
-static void setMemStreamBackingPos(Stream* stream, u64 seekPos) {
-    PLY_ASSERT(stream->type == Stream::Type::Mem);
-    u64 storedBytes = u64(stream->mem.buffers.numItems() - 1) * stream->mem.chunkSize +
-                      stream->mem.numBytesInLastBuffer;
+void Stream::setMemBackingPos(u64 seekPos) {
+    PLY_ASSERT(this->type == Type::Mem);
+    u64 storedBytes = u64(this->mem->chunks.numItems() - 1) * this->mem->chunkSize +
+                      this->mem->numBytesInLastChunk;
     PLY_ASSERT(seekPos <= storedBytes);
 
     // Select the backing chunk, representing the end of a full final chunk using that chunk's end pointer.
-    u32 bufferIndex = numericCast<u32>(seekPos / stream->mem.chunkSize);
-    u32 offsetInBuffer = numericCast<u32>(seekPos - u64(bufferIndex) * stream->mem.chunkSize);
-    if (bufferIndex == stream->mem.buffers.numItems()) {
+    u32 currentChunkIndex = numericCast<u32>(seekPos / this->mem->chunkSize);
+    u32 offsetInBuffer = numericCast<u32>(seekPos - u64(currentChunkIndex) * this->mem->chunkSize);
+    if (currentChunkIndex == this->mem->chunks.numItems()) {
         PLY_ASSERT(offsetInBuffer == 0);
-        bufferIndex--;
-        offsetInBuffer = stream->mem.chunkSize;
+        currentChunkIndex--;
+        offsetInBuffer = this->mem->chunkSize;
     }
-    stream->mem.bufferIndex = bufferIndex;
-    char* buffer = stream->mem.buffers[bufferIndex];
-    u32 numBytesInBuffer = (bufferIndex + 1 < stream->mem.buffers.numItems())
-                               ? stream->mem.chunkSize
-                               : stream->mem.numBytesInLastBuffer;
+    this->mem->currentChunkIndex = currentChunkIndex;
+    char* buffer = this->mem->chunks[currentChunkIndex];
+    u32 numBytesInBuffer = (currentChunkIndex + 1 < this->mem->chunks.numItems())
+                               ? this->mem->chunkSize
+                               : this->mem->numBytesInLastChunk;
     PLY_ASSERT(offsetInBuffer <= numBytesInBuffer);
-    stream->curByte = buffer + offsetInBuffer;
-    stream->endByte = buffer + numBytesInBuffer;
-    stream->usingTempBuffer = false;
+    this->curByte = buffer + offsetInBuffer;
+    this->endByte = buffer + numBytesInBuffer;
+    this->usingScratchBuffer = false;
 }
 
 void Stream::flushMemWrites() {
     PLY_ASSERT(this->type == Type::Mem);
     if (this->mode == Mode::Writing) {
-        if (this->usingTempBuffer) {
+        if (this->usingScratchBuffer) {
             // Copy pending temporary writes across as many backing chunks as necessary.
-            u32 numBytesWritten = numericCast<u32>(this->curByte - this->mem.tempBuffer);
+            u32 numBytesWritten = numericCast<u32>(this->curByte - this->mem->scratch.bytes);
             u32 srcOffset = 0;
-            u32 bufferIndex = this->mem.bufferIndex;
-            u32 offsetInBuffer = this->mem.tempBufferOffset;
+            u32 currentChunkIndex = this->mem->currentChunkIndex;
+            u32 offsetInBuffer = this->mem->scratch.offset;
             while (srcOffset < numBytesWritten) {
-                if (bufferIndex >= this->mem.buffers.numItems()) {
-                    this->mem.buffers.append((char*) Heap::alloc(this->mem.chunkSize));
-                    this->mem.numBytesInLastBuffer = 0;
+                if (currentChunkIndex >= this->mem->chunks.numItems()) {
+                    this->mem->chunks.append((char*) Heap::alloc(this->mem->chunkSize));
+                    this->mem->numBytesInLastChunk = 0;
                 }
-                u32 numBytes = min(numBytesWritten - srcOffset, this->mem.chunkSize - offsetInBuffer);
-                memcpy(this->mem.buffers[bufferIndex] + offsetInBuffer, this->mem.tempBuffer + srcOffset, numBytes);
-                if (bufferIndex + 1 == this->mem.buffers.numItems()) {
-                    this->mem.numBytesInLastBuffer = max(this->mem.numBytesInLastBuffer, offsetInBuffer + numBytes);
+                u32 numBytes = min(numBytesWritten - srcOffset, this->mem->chunkSize - offsetInBuffer);
+                memcpy(this->mem->chunks[currentChunkIndex] + offsetInBuffer, this->mem->scratch.bytes + srcOffset, numBytes);
+                if (currentChunkIndex + 1 == this->mem->chunks.numItems()) {
+                    this->mem->numBytesInLastChunk = max(this->mem->numBytesInLastChunk, offsetInBuffer + numBytes);
                 }
                 srcOffset += numBytes;
                 offsetInBuffer += numBytes;
                 if (srcOffset < numBytesWritten) {
-                    bufferIndex++;
+                    currentChunkIndex++;
                     offsetInBuffer = 0;
                 }
             }
-            this->mem.bufferIndex = bufferIndex;
-            this->curByte = this->mem.buffers[bufferIndex] + offsetInBuffer;
-            this->endByte = this->mem.buffers[bufferIndex] + this->mem.chunkSize;
-            this->usingTempBuffer = false;
+            this->mem->currentChunkIndex = currentChunkIndex;
+            this->curByte = this->mem->chunks[currentChunkIndex] + offsetInBuffer;
+            this->endByte = this->mem->chunks[currentChunkIndex] + this->mem->chunkSize;
+            this->usingScratchBuffer = false;
         } else {
-            if (this->mem.bufferIndex + 1 == this->mem.buffers.numItems()) {
+            if (this->mem->currentChunkIndex + 1 == this->mem->chunks.numItems()) {
                 // Extend number of bytes in the last buffer.
-                this->mem.numBytesInLastBuffer =
-                    max(this->mem.numBytesInLastBuffer, numericCast<u32>(this->curByte - this->mem.buffers.back()));
+                this->mem->numBytesInLastChunk =
+                    max(this->mem->numBytesInLastChunk, numericCast<u32>(this->curByte - this->mem->chunks.back()));
             }
         }
-    } else if ((this->mode == Mode::Reading) && this->usingTempBuffer) {
+    } else if ((this->mode == Mode::Reading) && this->usingScratchBuffer) {
         // Restore the backing-buffer position after reading through a temporary cross-chunk view.
-        setMemStreamBackingPos(this, this->getSeekPos());
+        this->setMemBackingPos(this->getSeekPos());
     }
 }
 
@@ -3234,7 +3264,7 @@ void Stream::flushMemWrites() {
 // from the wrapped pipe. Sets atEof or inputError when appropriate. Returns true if any bytes
 // were made readable.
 bool Stream::tryMakeReadable() {
-    PLY_ASSERT(this->hasReadPermission);
+    PLY_ASSERT(this->permissions & CanRead);
 
     if (this->type == Type::Pipe) {
         // Once EOF has been observed, only bytes already in the buffer can still be returned.
@@ -3267,12 +3297,12 @@ bool Stream::tryMakeReadable() {
 
         // Keep reading until the buffer is full or the pipe reports that no more data can be
         // obtained immediately. This handles sources that return available data in short chunks.
-        while (this->endByte < this->pipe.buffer + BUFFER_SIZE) {
+        while (this->endByte < this->pipe.buffer + BufferSize) {
             Pipe::ReadResult result = this->pipe.pipe->tryRead(
-                {this->endByte, numericCast<u32>(this->pipe.buffer + BUFFER_SIZE - this->endByte)});
+                {this->endByte, numericCast<u32>(this->pipe.buffer + BufferSize - this->endByte)});
             if (result.kind == Pipe::ReadResult::Data) {
                 PLY_ASSERT(result.numBytes > 0);
-                PLY_ASSERT(this->endByte + result.numBytes <= this->pipe.buffer + BUFFER_SIZE);
+                PLY_ASSERT(this->endByte + result.numBytes <= this->pipe.buffer + BufferSize);
                 this->endByte += result.numBytes;
                 continue;
             }
@@ -3294,9 +3324,9 @@ bool Stream::tryMakeReadable() {
 }
 
 bool Stream::makeReadableInternal(u32 minBytes) {
-    PLY_ASSERT(this->hasReadPermission);
+    PLY_ASSERT(this->permissions & CanRead);
     PLY_ASSERT(minBytes > 0);
-    PLY_ASSERT(minBytes <= MAX_CONSECUTIVE_BYTES);
+    PLY_ASSERT(minBytes <= MaxConsecutiveBytes);
     if ((this->mode == Mode::Reading) && (this->numRemainingBytes() >= minBytes))
         return true;
 
@@ -3324,7 +3354,7 @@ bool Stream::makeReadableInternal(u32 minBytes) {
 
         do {
             // Load data into the buffer.
-            u32 numBytesLoaded = this->pipe.pipe->read({this->endByte, BUFFER_SIZE - this->numRemainingBytes()});
+            u32 numBytesLoaded = this->pipe.pipe->read({this->endByte, BufferSize - this->numRemainingBytes()});
             if (numBytesLoaded == 0) {
                 if (!this->hasRemainingBytes()) {
                     this->atEof = true;
@@ -3340,44 +3370,44 @@ bool Stream::makeReadableInternal(u32 minBytes) {
         this->flushMemWrites();
 
         if (!this->hasRemainingBytes()) {
-            if (this->mem.bufferIndex + 1 < this->mem.buffers.numItems()) {
-                this->mem.bufferIndex++;
-                this->curByte = this->mem.buffers[this->mem.bufferIndex];
-                if (this->mem.bufferIndex + 1 < this->mem.buffers.numItems()) {
-                    this->endByte = this->curByte + this->mem.chunkSize;
+            if (this->mem->currentChunkIndex + 1 < this->mem->chunks.numItems()) {
+                this->mem->currentChunkIndex++;
+                this->curByte = this->mem->chunks[this->mem->currentChunkIndex];
+                if (this->mem->currentChunkIndex + 1 < this->mem->chunks.numItems()) {
+                    this->endByte = this->curByte + this->mem->chunkSize;
                 } else {
-                    this->endByte = this->curByte + this->mem.numBytesInLastBuffer;
+                    this->endByte = this->curByte + this->mem->numBytesInLastChunk;
                 }
             }
         } else if (this->numRemainingBytes() < minBytes) {
-            if (this->mem.bufferIndex + 1 < this->mem.buffers.numItems()) {
+            if (this->mem->currentChunkIndex + 1 < this->mem->chunks.numItems()) {
                 // Gather a consecutive view from as many backing chunks as necessary.
-                u64 storedBytes = u64(this->mem.buffers.numItems() - 1) * this->mem.chunkSize +
-                                  this->mem.numBytesInLastBuffer;
-                u64 seekPos = u64(this->mem.bufferIndex) * this->mem.chunkSize +
-                              (this->curByte - this->mem.buffers[this->mem.bufferIndex]);
+                u64 storedBytes = u64(this->mem->chunks.numItems() - 1) * this->mem->chunkSize +
+                                  this->mem->numBytesInLastChunk;
+                u64 seekPos = u64(this->mem->currentChunkIndex) * this->mem->chunkSize +
+                              (this->curByte - this->mem->chunks[this->mem->currentChunkIndex]);
                 u32 numBytesToExpose = numericCast<u32>(min<u64>(minBytes, storedBytes - seekPos));
-                if (!this->mem.tempBuffer) {
-                    this->mem.tempBuffer = (char*) Heap::alloc(MAX_CONSECUTIVE_BYTES);
+                if (!this->mem->scratch.bytes) {
+                    this->mem->scratch.bytes = (char*) Heap::alloc(MaxConsecutiveBytes);
                 }
-                this->mem.tempBufferOffset = numericCast<u32>(this->curByte - this->mem.buffers[this->mem.bufferIndex]);
+                this->mem->scratch.offset = numericCast<u32>(this->curByte - this->mem->chunks[this->mem->currentChunkIndex]);
                 u32 dstOffset = 0;
-                u32 bufferIndex = this->mem.bufferIndex;
-                u32 offsetInBuffer = this->mem.tempBufferOffset;
+                u32 currentChunkIndex = this->mem->currentChunkIndex;
+                u32 offsetInBuffer = this->mem->scratch.offset;
                 while (dstOffset < numBytesToExpose) {
-                    u32 numBytesInBuffer = (bufferIndex + 1 < this->mem.buffers.numItems())
-                                               ? this->mem.chunkSize
-                                               : this->mem.numBytesInLastBuffer;
+                    u32 numBytesInBuffer = (currentChunkIndex + 1 < this->mem->chunks.numItems())
+                                               ? this->mem->chunkSize
+                                               : this->mem->numBytesInLastChunk;
                     u32 numBytes = min(numBytesToExpose - dstOffset, numBytesInBuffer - offsetInBuffer);
-                    memcpy(this->mem.tempBuffer + dstOffset, this->mem.buffers[bufferIndex] + offsetInBuffer,
+                    memcpy(this->mem->scratch.bytes + dstOffset, this->mem->chunks[currentChunkIndex] + offsetInBuffer,
                            numBytes);
                     dstOffset += numBytes;
-                    bufferIndex++;
+                    currentChunkIndex++;
                     offsetInBuffer = 0;
                 }
-                this->usingTempBuffer = true;
-                this->curByte = this->mem.tempBuffer;
-                this->endByte = this->mem.tempBuffer + numBytesToExpose;
+                this->usingScratchBuffer = true;
+                this->curByte = this->mem->scratch.bytes;
+                this->endByte = this->mem->scratch.bytes + numBytesToExpose;
             }
         }
         if (!this->hasRemainingBytes()) {
@@ -3397,8 +3427,8 @@ bool Stream::makeReadableInternal(u32 minBytes) {
 }
 
 bool Stream::makeWritableInternal(u32 minBytes) {
-    PLY_ASSERT(this->hasWritePermission);
-    PLY_ASSERT(minBytes <= MAX_CONSECUTIVE_BYTES);
+    PLY_ASSERT(this->permissions & CanWrite);
+    PLY_ASSERT(minBytes <= MaxConsecutiveBytes);
     if ((this->mode == Mode::Writing) && (this->numRemainingBytes() >= minBytes))
         return true;
 
@@ -3411,28 +3441,28 @@ bool Stream::makeWritableInternal(u32 minBytes) {
 
         // Make entire buffer available for writing.
         this->curByte = this->pipe.buffer;
-        this->endByte = this->curByte + BUFFER_SIZE;
+        this->endByte = this->curByte + BufferSize;
         this->atEof = false;
     } else if (this->type == Type::Mem) {
         this->flushMemWrites();
 
         if (!this->hasRemainingBytes()) {
-            this->mem.bufferIndex++;
-            if (this->mem.bufferIndex >= this->mem.buffers.numItems()) {
-                this->mem.buffers.append((char*) Heap::alloc(this->mem.chunkSize));
-                this->mem.numBytesInLastBuffer = 0;
+            this->mem->currentChunkIndex++;
+            if (this->mem->currentChunkIndex >= this->mem->chunks.numItems()) {
+                this->mem->chunks.append((char*) Heap::alloc(this->mem->chunkSize));
+                this->mem->numBytesInLastChunk = 0;
             }
-            this->curByte = this->mem.buffers[this->mem.bufferIndex];
-            this->endByte = this->curByte + this->mem.chunkSize;
+            this->curByte = this->mem->chunks[this->mem->currentChunkIndex];
+            this->endByte = this->curByte + this->mem->chunkSize;
         }
         if (this->numRemainingBytes() < minBytes) {
-            if (!this->mem.tempBuffer) {
-                this->mem.tempBuffer = (char*) Heap::alloc(MAX_CONSECUTIVE_BYTES);
+            if (!this->mem->scratch.bytes) {
+                this->mem->scratch.bytes = (char*) Heap::alloc(MaxConsecutiveBytes);
             }
-            this->mem.tempBufferOffset = numericCast<u32>(this->curByte - this->mem.buffers[this->mem.bufferIndex]);
-            this->usingTempBuffer = true;
-            this->curByte = this->mem.tempBuffer;
-            this->endByte = this->mem.tempBuffer + minBytes;
+            this->mem->scratch.offset = numericCast<u32>(this->curByte - this->mem->chunks[this->mem->currentChunkIndex]);
+            this->usingScratchBuffer = true;
+            this->curByte = this->mem->scratch.bytes;
+            this->endByte = this->mem->scratch.bytes + minBytes;
         }
         this->atEof = false;
     } else if (this->type == Type::View) {
@@ -3475,6 +3505,20 @@ u32 Stream::readInternal(MutStringView dst) {
     return numBytesRead;
 }
 
+u32 Stream::tryReadInternal(MutStringView dst) {
+    u32 numBytesRead = 0;
+    while (dst.numBytes > 0) {
+        if (!this->tryMakeReadable())
+            break;
+        u32 toCopy = min(dst.numBytes, this->numRemainingBytes());
+        memcpy(dst.bytes, this->curByte, toCopy);
+        this->curByte += toCopy;
+        dst = dst.subview(toCopy);
+        numBytesRead += toCopy;
+    }
+    return numBytesRead;
+}
+
 u32 Stream::skipInternal(u32 numBytes) {
     u32 numBytesSkipped = 0;
     while (numBytes > 0) {
@@ -3489,12 +3533,12 @@ u32 Stream::skipInternal(u32 numBytes) {
 }
 
 void Stream::flush(bool toDevice) {
-    PLY_ASSERT(this->hasWritePermission);
+    PLY_ASSERT(this->permissions & CanWrite);
     if (this->mode != Mode::Writing)
         return;
     if (this->type == Type::Pipe) {
         PLY_ASSERT(this->pipe.pipe);
-        PLY_ASSERT(this->pipe.buffer + BUFFER_SIZE == this->endByte);
+        PLY_ASSERT(this->pipe.buffer + BufferSize == this->endByte);
 
         // Write buffered data to the pipe.
         this->pipe.pipe->write({this->pipe.buffer, this->curByte});
@@ -3524,12 +3568,12 @@ u64 Stream::getSeekPos() {
     if (this->type == Type::Pipe) {
         return this->pipe.seekPosAtBuffer + (this->curByte - this->pipe.buffer);
     } else if (this->type == Type::Mem) {
-        if (this->usingTempBuffer) {
-            return (u64(this->mem.bufferIndex) * this->mem.chunkSize) + this->mem.tempBufferOffset +
-                   (this->curByte - this->mem.tempBuffer);
+        if (this->usingScratchBuffer) {
+            return (u64(this->mem->currentChunkIndex) * this->mem->chunkSize) + this->mem->scratch.offset +
+                   (this->curByte - this->mem->scratch.bytes);
         } else {
-            char* buf = this->mem.buffers[this->mem.bufferIndex];
-            return (u64(this->mem.bufferIndex) * this->mem.chunkSize) + (this->curByte - buf);
+            char* buf = this->mem->chunks[this->mem->currentChunkIndex];
+            return (u64(this->mem->currentChunkIndex) * this->mem->chunkSize) + (this->curByte - buf);
         }
     } else if (this->type == Type::View) {
         return (this->curByte - this->view.startByte);
@@ -3539,8 +3583,8 @@ u64 Stream::getSeekPos() {
 }
 
 void Stream::seekTo(u64 seekPos) {
+    PLY_ASSERT(this->permissions & CanSeek);
     if (this->type == Type::Pipe) {
-        PLY_ASSERT((this->pipe.pipe->getFlags() & Pipe::CanSeek) != 0);
         s64 relativeToBuffer = seekPos - this->pipe.seekPosAtBuffer;
         u32 numBytesInBuffer = numericCast<u32>(this->endByte - this->pipe.buffer);
         if (relativeToBuffer >= 0 && relativeToBuffer <= numBytesInBuffer) {
@@ -3552,7 +3596,7 @@ void Stream::seekTo(u64 seekPos) {
         }
     } else if (this->type == Type::Mem) {
         this->flushMemWrites();
-        setMemStreamBackingPos(this, seekPos);
+        this->setMemBackingPos(seekPos);
     } else if (this->type == Type::View) {
         PLY_ASSERT(seekPos <= numericCast<uptr>(this->endByte - this->view.startByte));
         this->curByte = this->view.startByte + seekPos;
@@ -3567,110 +3611,72 @@ void Stream::seekTo(u64 seekPos) {
 MemStream::MemStream(u32 chunkSize) {
     PLY_ASSERT(chunkSize > 0);
     this->type = Type::Mem;
-    new (&this->mem) MemData;
-    this->mem.chunkSize = chunkSize;
+    new (&this->mem) Owned<MemData>{Heap::create<MemData>()};
+    this->mem->chunkSize = chunkSize;
     char* buf = (char*) Heap::alloc(chunkSize);
-    this->mem.buffers.append(buf);
+    this->mem->chunks.append(buf);
     this->curByte = buf;
     this->endByte = buf + chunkSize;
-    this->hasReadPermission = true;
-    this->hasWritePermission = true;
+    this->permissions = CanRead | CanWrite | CanSeek;
 }
 
 // Creates an independent copy with the same contents, mode and seek position.
-MemStream::MemStream(const MemStream& other) : Stream{other.duplicate()} {
+MemStream::MemStream(const MemStream& other) : Stream{other.deepCopy()} {
 }
 
 // Replaces this stream with an independent copy of another memory stream.
 MemStream& MemStream::operator=(const MemStream& other) {
     if (this != &other) {
-        MemStream copy = other.duplicate();
+        MemStream copy = other.deepCopy();
         Stream::operator=(std::move(copy));
     }
     return *this;
 }
 
 // Creates an independent copy with the same contents, mode and seek position.
-MemStream MemStream::duplicate() const {
+MemStream MemStream::deepCopy() const {
     PLY_ASSERT(this->type == Type::Mem);
-    MemStream result{this->mem.chunkSize};
+    MemStream result{this->mem->chunkSize};
 
-    // Replace the destination's initial buffer with copies of all source storage buffers.
-    Heap::free(result.mem.buffers[0]);
-    result.mem.buffers.clear();
-    u32 lastBufferIndex = this->mem.buffers.numItems() - 1;
-    u32 numBytesInLastBuffer = this->mem.numBytesInLastBuffer;
+    // Replace the destination's initial buffer with copies of all source storage chunks.
+    Heap::free(result.mem->chunks[0]);
+    result.mem->chunks.clear();
+    u32 lastBufferIndex = this->mem->chunks.numItems() - 1;
+    u32 numBytesInLastChunk = this->mem->numBytesInLastChunk;
 
-    // Include last-buffer writes that haven't updated numBytesInLastBuffer yet.
-    if ((this->mode == Mode::Writing) && !this->usingTempBuffer &&
-        (this->mem.bufferIndex == lastBufferIndex)) {
-        numBytesInLastBuffer =
-            max(numBytesInLastBuffer,
-                numericCast<u32>(this->curByte - this->mem.buffers[this->mem.bufferIndex]));
+    // Include last-buffer writes that haven't updated numBytesInLastChunk yet.
+    if ((this->mode == Mode::Writing) && !this->usingScratchBuffer &&
+        (this->mem->currentChunkIndex == lastBufferIndex)) {
+        numBytesInLastChunk =
+            max(numBytesInLastChunk,
+                numericCast<u32>(this->curByte - this->mem->chunks[this->mem->currentChunkIndex]));
     }
-    for (u32 i = 0; i < this->mem.buffers.numItems(); i++) {
-        char* buffer = (char*) Heap::alloc(this->mem.chunkSize);
-        u32 numBytes = (i == lastBufferIndex) ? numBytesInLastBuffer : this->mem.chunkSize;
-        memcpy(buffer, this->mem.buffers[i], numBytes);
-        result.mem.buffers.append(buffer);
+    for (u32 i = 0; i < this->mem->chunks.numItems(); i++) {
+        char* buffer = (char*) Heap::alloc(this->mem->chunkSize);
+        u32 numBytes = (i == lastBufferIndex) ? numBytesInLastChunk : this->mem->chunkSize;
+        memcpy(buffer, this->mem->chunks[i], numBytes);
+        result.mem->chunks.append(buffer);
     }
 
     // Copy memory-stream bookkeeping and any active cross-buffer temporary view.
-    result.mem.bufferIndex = this->mem.bufferIndex;
-    result.mem.numBytesInLastBuffer = this->mem.numBytesInLastBuffer;
-    result.mem.tempBufferOffset = this->mem.tempBufferOffset;
+    result.mem->currentChunkIndex = this->mem->currentChunkIndex;
+    result.mem->numBytesInLastChunk = this->mem->numBytesInLastChunk;
+    result.mem->scratch.offset = this->mem->scratch.offset;
     result.mode = this->mode;
     result.atEof = this->atEof;
     result.inputError = this->inputError;
-    result.usingTempBuffer = this->usingTempBuffer;
-    if (this->usingTempBuffer) {
-        result.mem.tempBuffer = (char*) Heap::alloc(MAX_CONSECUTIVE_BYTES);
-        u32 numBytes = numericCast<u32>(this->endByte - this->mem.tempBuffer);
-        memcpy(result.mem.tempBuffer, this->mem.tempBuffer, numBytes);
-        result.curByte = result.mem.tempBuffer + (this->curByte - this->mem.tempBuffer);
-        result.endByte = result.mem.tempBuffer + numBytes;
+    result.usingScratchBuffer = this->usingScratchBuffer;
+    if (this->usingScratchBuffer) {
+        result.mem->scratch.bytes = (char*) Heap::alloc(MaxConsecutiveBytes);
+        u32 numBytes = numericCast<u32>(this->endByte - this->mem->scratch.bytes);
+        memcpy(result.mem->scratch.bytes, this->mem->scratch.bytes, numBytes);
+        result.curByte = result.mem->scratch.bytes + (this->curByte - this->mem->scratch.bytes);
+        result.endByte = result.mem->scratch.bytes + numBytes;
     } else {
-        char* srcBuffer = this->mem.buffers[this->mem.bufferIndex];
-        char* dstBuffer = result.mem.buffers[result.mem.bufferIndex];
+        char* srcBuffer = this->mem->chunks[this->mem->currentChunkIndex];
+        char* dstBuffer = result.mem->chunks[result.mem->currentChunkIndex];
         result.curByte = dstBuffer + (this->curByte - srcBuffer);
         result.endByte = dstBuffer + (this->endByte - srcBuffer);
-    }
-    return result;
-}
-
-// Helper function to copy a memory stream's backing buffers and any pending temporary writes into a new string.
-static String copyMemStreamToString(const MemStream& stream) {
-    // Determine the stored length, including direct writes that haven't updated the last buffer's length yet.
-    u32 lastBufferIndex = stream.mem.buffers.numItems() - 1;
-    u64 storedBytes = u64(lastBufferIndex) * stream.mem.chunkSize + stream.mem.numBytesInLastBuffer;
-    if ((stream.mode == Stream::Mode::Writing) && !stream.usingTempBuffer &&
-        (stream.mem.bufferIndex == lastBufferIndex)) {
-        storedBytes = max(storedBytes, u64(lastBufferIndex) * stream.mem.chunkSize +
-                                           (stream.curByte - stream.mem.buffers[lastBufferIndex]));
-    }
-
-    // An active write temporary buffer can extend or overwrite the stored contents across a buffer boundary.
-    u32 numTempBytes = 0;
-    u64 tempOffset = 0;
-    u64 totalBytes = storedBytes;
-    if ((stream.mode == Stream::Mode::Writing) && stream.usingTempBuffer) {
-        numTempBytes = numericCast<u32>(stream.curByte - stream.mem.tempBuffer);
-        tempOffset = u64(stream.mem.bufferIndex) * stream.mem.chunkSize + stream.mem.tempBufferOffset;
-        totalBytes = max(totalBytes, tempOffset + numTempBytes);
-    }
-
-    // Copy the backing buffers directly into the final allocation.
-    String result = String::allocate(numericCast<u32>(totalBytes));
-    u64 dstOffset = 0;
-    for (u32 i = 0; (i < stream.mem.buffers.numItems()) && (dstOffset < storedBytes); i++) {
-        u32 numBytes = numericCast<u32>(min<u64>(stream.mem.chunkSize, storedBytes - dstOffset));
-        memcpy(result.bytes() + dstOffset, stream.mem.buffers[i], numBytes);
-        dstOffset += numBytes;
-    }
-
-    // Overlay pending temporary writes without flushing or otherwise modifying the source stream.
-    if (numTempBytes > 0) {
-        memcpy(result.bytes() + tempOffset, stream.mem.tempBuffer, numTempBytes);
     }
     return result;
 }
@@ -3678,7 +3684,40 @@ static String copyMemStreamToString(const MemStream& stream) {
 // Copies the stream's complete contents to a contiguous string without modifying the stream.
 String MemStream::copyToString() const {
     PLY_ASSERT(this->type == Type::Mem);
-    return copyMemStreamToString(*this);
+    const MemStream& stream = *this;
+    // Determine the stored length, including direct writes that haven't updated the last buffer's length yet.
+    u32 lastBufferIndex = stream.mem->chunks.numItems() - 1;
+    u64 storedBytes = u64(lastBufferIndex) * stream.mem->chunkSize + stream.mem->numBytesInLastChunk;
+    if ((stream.mode == Stream::Mode::Writing) && !stream.usingScratchBuffer &&
+        (stream.mem->currentChunkIndex == lastBufferIndex)) {
+        storedBytes = max(storedBytes, u64(lastBufferIndex) * stream.mem->chunkSize +
+                                           (stream.curByte - stream.mem->chunks[lastBufferIndex]));
+    }
+
+    // An active write temporary buffer can extend or overwrite the stored contents across a buffer boundary.
+    u32 numTempBytes = 0;
+    u64 tempOffset = 0;
+    u64 totalBytes = storedBytes;
+    if ((stream.mode == Stream::Mode::Writing) && stream.usingScratchBuffer) {
+        numTempBytes = numericCast<u32>(stream.curByte - stream.mem->scratch.bytes);
+        tempOffset = u64(stream.mem->currentChunkIndex) * stream.mem->chunkSize + stream.mem->scratch.offset;
+        totalBytes = max(totalBytes, tempOffset + numTempBytes);
+    }
+
+    // Copy the backing chunks directly into the final allocation.
+    String result = String::allocate(numericCast<u32>(totalBytes));
+    u64 dstOffset = 0;
+    for (u32 i = 0; (i < stream.mem->chunks.numItems()) && (dstOffset < storedBytes); i++) {
+        u32 numBytes = numericCast<u32>(min<u64>(stream.mem->chunkSize, storedBytes - dstOffset));
+        memcpy(result.bytes() + dstOffset, stream.mem->chunks[i], numBytes);
+        dstOffset += numBytes;
+    }
+
+    // Overlay pending temporary writes without flushing or otherwise modifying the source stream.
+    if (numTempBytes > 0) {
+        memcpy(result.bytes() + tempOffset, stream.mem->scratch.bytes, numTempBytes);
+    }
+    return result;
 }
 
 // Moves the stream's complete contents to a string and closes the stream.
@@ -3686,22 +3725,22 @@ String MemStream::moveToString() {
     PLY_ASSERT(this->type == Type::Mem);
 
     // Preserve the zero-copy path when the backing storage consists of a single buffer without temporary writes.
-    if ((this->mode == Mode::Writing) && !this->usingTempBuffer &&
-        (this->mem.bufferIndex + 1 == this->mem.buffers.numItems())) {
+    if ((this->mode == Mode::Writing) && !this->usingScratchBuffer &&
+        (this->mem->currentChunkIndex + 1 == this->mem->chunks.numItems())) {
         // Extend number of bytes in the last buffer.
-        this->mem.numBytesInLastBuffer =
-            max(this->mem.numBytesInLastBuffer, numericCast<u32>(this->curByte - this->mem.buffers.back()));
+        this->mem->numBytesInLastChunk =
+            max(this->mem->numBytesInLastChunk, numericCast<u32>(this->curByte - this->mem->chunks.back()));
     }
-    if ((this->mem.buffers.numItems() == 1) && !this->usingTempBuffer) {
-        u32 numBytes = this->mem.numBytesInLastBuffer;
-        char* bytes = (char*) Heap::realloc(this->mem.buffers[0], numBytes);
-        this->mem.~MemData();
-        new (this) Stream;
+    if ((this->mem->chunks.numItems() == 1) && !this->usingScratchBuffer) {
+        u32 numBytes = this->mem->numBytesInLastChunk;
+        char* bytes = (char*) Heap::realloc(this->mem->chunks[0], numBytes);
+        this->mem->chunks.clear();
+        this->close();
         return String::adopt(bytes, numBytes);
     }
 
     // Copy multi-buffer contents and pending temporary writes before releasing the stream's backing storage.
-    String result = copyMemStreamToString(*this);
+    String result = this->copyToString();
     this->close();
     return result;
 }
@@ -3713,7 +3752,7 @@ ViewStream::ViewStream(StringView view) {
     this->view.startByte = const_cast<char*>(view.bytes());
     this->curByte = this->view.startByte;
     this->endByte = this->curByte + view.numBytes();
-    this->hasReadPermission = true;
+    this->permissions = CanRead | CanSeek;
 }
 
 ViewStream::ViewStream(MutStringView view) {
@@ -3722,8 +3761,7 @@ ViewStream::ViewStream(MutStringView view) {
     this->view.startByte = view.bytes;
     this->curByte = this->view.startByte;
     this->endByte = this->curByte + view.numBytes;
-    this->hasReadPermission = true;
-    this->hasWritePermission = true;
+    this->permissions = CanRead | CanWrite | CanSeek;
 }
 
 //  ▄▄▄▄▄                    ▄▄ ▄▄                   ▄▄▄▄▄▄                ▄▄
@@ -4932,34 +4970,34 @@ void formatWithArgs(Stream& out, StringView fmt, ArrayView<const FormatArg> args
 #if defined(PLY_WINDOWS)
 
 Pipe* getStdInPipe() {
-    static PipeHandle inPipe{GetStdHandle(STD_INPUT_HANDLE), Pipe::HasReadPermission};
+    static PipeHandle inPipe{GetStdHandle(STD_INPUT_HANDLE), Pipe::CanRead};
     return &inPipe;
 }
 
 Pipe* getStdOutPipe() {
-    static PipeHandle outPipe{GetStdHandle(STD_OUTPUT_HANDLE), Pipe::HasWritePermission};
+    static PipeHandle outPipe{GetStdHandle(STD_OUTPUT_HANDLE), Pipe::CanWrite};
     return &outPipe;
 }
 
 Pipe* getStdErrPipe() {
-    static PipeHandle errorPipe{GetStdHandle(STD_ERROR_HANDLE), Pipe::HasWritePermission};
+    static PipeHandle errorPipe{GetStdHandle(STD_ERROR_HANDLE), Pipe::CanWrite};
     return &errorPipe;
 }
 
 #elif defined(PLY_POSIX)
 
 Pipe* getStdInPipe() {
-    static PipeFD inPipe{STDIN_FILENO, Pipe::HasReadPermission};
+    static PipeFD inPipe{STDIN_FILENO, Pipe::CanRead};
     return &inPipe;
 }
 
 Pipe* getStdOutPipe() {
-    static PipeFD outPipe{STDOUT_FILENO, Pipe::HasWritePermission};
+    static PipeFD outPipe{STDOUT_FILENO, Pipe::CanWrite};
     return &outPipe;
 }
 
 Pipe* getStdErrPipe() {
-    static PipeFD errorPipe{STDERR_FILENO, Pipe::HasWritePermission};
+    static PipeFD errorPipe{STDERR_FILENO, Pipe::CanWrite};
     return &errorPipe;
 }
 
@@ -5346,15 +5384,13 @@ Pipe::ReadResult InPipeConvertUnicode::tryRead(MutStringView dstBuf) {
 // deliver a small amount of trailing data that was already buffered, which this filter will
 // keep serving until end-of-file.
 void InPipeConvertUnicode::disable() {
-    if (this->in.type == Stream::Type::Pipe) {
-        this->in.pipe.pipe->disable();
-    }
+    this->in.disablePipe();
 }
 
 OutPipeConvertUnicode::~OutPipeConvertUnicode() {
     // Finalize any partial sequence before childOut's destructor flushes buffered bytes and
     // releases an owned pipe.
-    if (this->childOut.type != Stream::Type::None)
+    if (this->childOut.isOpen())
         this->flush();
 }
 
@@ -5411,9 +5447,7 @@ void OutPipeConvertUnicode::flush(bool toDevice) {
 // Forwards disable() to the wrapped pipe. Like read(), disable() just prevents any new data
 // from being written; buffered output is not guaranteed to be flushed.
 void OutPipeConvertUnicode::disable() {
-    if (this->childOut.type == Stream::Type::Pipe) {
-        this->childOut.pipe.pipe->disable();
-    }
+    this->childOut.disablePipe();
 }
 
 //  ▄▄▄▄▄▄                ▄▄         ▄▄▄▄▄                                ▄▄
@@ -6798,7 +6832,7 @@ Owned<Pipe> FileSystem::openPipeForRead(StringView path) {
     HANDLE handle = openHandleForReadWin32(path, 0);
     if (handle == INVALID_HANDLE_VALUE)
         return nullptr;
-    return Heap::create<PipeHandle>(handle, Pipe::HasReadPermission | Pipe::CanSeek);
+    return Heap::create<PipeHandle>(handle, Pipe::CanRead | Pipe::CanSeek);
 }
 
 // Open a Win32 file handle for writing with the given extra flags, creating or truncating the
@@ -6846,7 +6880,7 @@ Owned<Pipe> FileSystem::openPipeForWrite(StringView path) {
     HANDLE handle = openHandleForWriteWin32(path, 0);
     if (handle == INVALID_HANDLE_VALUE)
         return nullptr;
-    return Heap::create<PipeHandle>(handle, Pipe::HasWritePermission | Pipe::CanSeek);
+    return Heap::create<PipeHandle>(handle, Pipe::CanWrite | Pipe::CanSeek);
 }
 
 FSResult FileSystem::moveFile(StringView srcPath, StringView dstPath) {
@@ -7120,7 +7154,7 @@ Owned<Pipe> FileSystem::openPipeForRead(StringView path) {
     int fd = openFdForRead(path);
     if (fd == -1)
         return nullptr;
-    return Heap::create<PipeFD>(fd, Pipe::HasReadPermission | Pipe::CanSeek);
+    return Heap::create<PipeFD>(fd, Pipe::CanRead | Pipe::CanSeek);
 }
 
 int FileSystem::openFdForWrite(StringView path) {
@@ -7150,7 +7184,7 @@ Owned<Pipe> FileSystem::openPipeForWrite(StringView path) {
     int fd = openFdForWrite(path);
     if (fd == -1)
         return nullptr;
-    return Heap::create<PipeFD>(fd, Pipe::HasWritePermission | Pipe::CanSeek);
+    return Heap::create<PipeFD>(fd, Pipe::CanWrite | Pipe::CanSeek);
 }
 
 FSResult FileSystem::moveFile(StringView srcPath, StringView dstPath) {
@@ -7647,7 +7681,7 @@ static Owned<Subprocess> execWin32(WString commandLine, StringView initialDir, c
         rc = SetHandleInformation(childStdInWrite, HANDLE_FLAG_INHERIT, 0);
         PLY_ASSERT(rc != 0);
         startupInfo.hStdInput = childStdInRead;
-        writeToChildStdIn = Heap::create<PipeHandle>(childStdInWrite, Pipe::HasWritePermission);
+        writeToChildStdIn = Heap::create<PipeHandle>(childStdInWrite, Pipe::CanWrite);
     }
 
     //-----------------------------------------------------------
@@ -7674,7 +7708,7 @@ static Owned<Subprocess> execWin32(WString commandLine, StringView initialDir, c
         rc = SetHandleInformation(childStdOutRead, HANDLE_FLAG_INHERIT, 0);
         PLY_ASSERT(rc != 0);
         startupInfo.hStdOutput = childStdOutWrite;
-        readFromChildStdOut = Heap::create<PipeHandle>(childStdOutRead, Pipe::HasReadPermission);
+        readFromChildStdOut = Heap::create<PipeHandle>(childStdOutRead, Pipe::CanRead);
     }
 
     //-----------------------------------------------------------
@@ -7703,7 +7737,7 @@ static Owned<Subprocess> execWin32(WString commandLine, StringView initialDir, c
         rc = SetHandleInformation(childStdErrRead, HANDLE_FLAG_INHERIT, 0);
         PLY_ASSERT(rc != 0);
         startupInfo.hStdError = childStdErrWrite;
-        readFromChildStdErr = Heap::create<PipeHandle>(childStdErrRead, Pipe::HasReadPermission);
+        readFromChildStdErr = Heap::create<PipeHandle>(childStdErrRead, Pipe::CanRead);
     }
 
     // Create the child process.
@@ -8130,13 +8164,13 @@ Owned<Subprocess> Subprocess::exec(StringView exePath, ArrayView<const StringVie
     PLY_ASSERT(rc == 0);
     Owned<Pipe> writeToChildStdIn;
     if (childStdInFD[1] >= 0) {
-        writeToChildStdIn = Heap::create<PipeFD>(childStdInFD[1], Pipe::HasWritePermission);
+        writeToChildStdIn = Heap::create<PipeFD>(childStdInFD[1], Pipe::CanWrite);
     }
     rc = close(childStdOutFD[1]);
     PLY_ASSERT(rc == 0);
     Owned<Pipe> readFromChildStdOut;
     if (childStdOutFD[0] >= 0) {
-        readFromChildStdOut = Heap::create<PipeFD>(childStdOutFD[0], Pipe::HasReadPermission);
+        readFromChildStdOut = Heap::create<PipeFD>(childStdOutFD[0], Pipe::CanRead);
     }
     if (childStdOutFD[1] != childStdErrFD[1]) {
         rc = close(childStdErrFD[1]);
@@ -8145,7 +8179,7 @@ Owned<Subprocess> Subprocess::exec(StringView exePath, ArrayView<const StringVie
     PLY_UNUSED(rc);
     Owned<Pipe> readFromChildStdErr;
     if (childStdErrFD[0] >= 0) {
-        readFromChildStdErr = Heap::create<PipeFD>(childStdErrFD[0], Pipe::HasReadPermission);
+        readFromChildStdErr = Heap::create<PipeFD>(childStdErrFD[0], Pipe::CanRead);
     }
 
     // Return immediately if fork failed, after closing every pipe created for this attempt.

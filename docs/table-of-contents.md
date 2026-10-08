@@ -15,7 +15,7 @@
     - [Generic Algorithms](/docs/system/algorithms.md)
     - [Random Numbers](/docs/system/random-numbers.md)
     - [Time and Date](/docs/system/time-and-date.md)
-    - [Input/Output](/docs/system/input-output.md)
+    - [Input and Output](/docs/system/input-output.md)
     - [File System](/docs/system/file-system.md)
     - [Multithreading](/docs/system/multithreading.md)
     - [Processes](/docs/system/processes.md)

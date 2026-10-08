@@ -4906,7 +4906,7 @@ Parser* duplicate(Parser* parser) {
     PLY_ASSERT(!parser->tableBlock || result->tableBlock);
 
     // Give the duplicate its own copy of the unfinished leaf text.
-    result->rawLeafText = parser->rawLeafText.duplicate();
+    result->rawLeafText = parser->rawLeafText;
     return result;
 }
 

@@ -2142,7 +2142,7 @@ TEST_CASE("Decode truncated UTF-8") {
 TEST_CASE("Nonblocking Unicode conversion preserves fragmented input") {
     int fds[2];
     check(pipe(fds) == 0);
-    InPipeConvertUnicode conv{Stream{Heap::create<PipeFD>(fds[0], Pipe::HasReadPermission), true},
+    InPipeConvertUnicode conv{Stream{Heap::create<PipeFD>(fds[0], Pipe::CanRead), true},
                               UnicodeType::UTF8};
     char dst[8];
 
@@ -2178,7 +2178,7 @@ TEST_CASE("Nonblocking Unicode conversion preserves fragmented input") {
 TEST_CASE("tryRead reports data, would-block and EOF") {
     int fds[2];
     check(pipe(fds) == 0);
-    PipeFD reader{fds[0], Pipe::HasReadPermission};
+    PipeFD reader{fds[0], Pipe::CanRead};
     char bytes[8];
 
     Pipe::ReadResult result = reader.tryRead({bytes, sizeof(bytes)});
@@ -2197,7 +2197,7 @@ TEST_CASE("tryRead reports data, would-block and EOF") {
 TEST_CASE("Stream::tryMakeReadable fills without blocking") {
     int fds[2];
     check(pipe(fds) == 0);
-    PipeFD reader{fds[0], Pipe::HasReadPermission};
+    PipeFD reader{fds[0], Pipe::CanRead};
     Stream in{&reader, false};
 
     check(!in.tryMakeReadable());
@@ -2215,10 +2215,39 @@ TEST_CASE("Stream::tryMakeReadable fills without blocking") {
     check(!in.inputError);
 }
 
+TEST_CASE("Stream::tryRead copies without blocking") {
+    int fds[2];
+    check(pipe(fds) == 0);
+    PipeFD reader{fds[0], Pipe::CanRead};
+    Stream in{&reader, false};
+    char bytes[8];
+    memset(bytes, '-', sizeof(bytes));
+
+    check(in.tryRead({bytes, sizeof(bytes)}) == 0);
+    check(StringView{bytes, sizeof(bytes)} == "--------");
+    check(!in.atEof);
+
+    check(::write(fds[1], "abc", 3) == 3);
+    check(in.tryRead({bytes, sizeof(bytes)}) == 3);
+    check(StringView{bytes, sizeof(bytes)} == "abc-----");
+    check(!in.atEof);
+
+    check(::write(fds[1], "defghijkl", 9) == 9);
+    check(in.tryRead({bytes, sizeof(bytes)}) == sizeof(bytes));
+    check(StringView{bytes, sizeof(bytes)} == "defghijk");
+    check(in.tryRead({bytes, sizeof(bytes)}) == 1);
+    check(bytes[0] == 'l');
+
+    check(::close(fds[1]) == 0);
+    check(in.tryRead({bytes, sizeof(bytes)}) == 0);
+    check(in.atEof);
+    check(!in.inputError);
+}
+
 TEST_CASE("disable releases a blocking read and is terminal") {
     int fds[2];
     check(pipe(fds) == 0);
-    PipeFD reader{fds[0], Pipe::HasReadPermission};
+    PipeFD reader{fds[0], Pipe::CanRead};
     Atomic<bool> started = false;
     u32 numBytesRead = 1;
     Thread thread{[&]() {
@@ -2243,7 +2272,7 @@ TEST_CASE("disable releases a blocking read and is terminal") {
 TEST_CASE("disable releases a blocking write") {
     int fds[2];
     check(pipe(fds) == 0);
-    PipeFD writer{fds[1], Pipe::HasWritePermission};
+    PipeFD writer{fds[1], Pipe::CanWrite};
     String payload = String::allocate(4 * 1024 * 1024);
     memset(payload.bytes(), 'x', payload.numBytes());
     Atomic<bool> started = false;
@@ -2376,12 +2405,12 @@ TEST_CASE("Mem stream temp buffer") {
     Random random{0};
     for (u32 i = 0; i < 100; i++) {
         MemStream mem;
-        u32 fileSize = Stream::BUFFER_SIZE * 10;
+        u32 fileSize = Stream::BufferSize * 10;
         u32 offset = 0;
         while (offset < fileSize) {
             check(offset == mem.getSeekPos());
             u32 numConsecutiveBytes =
-                (random.generateU32() % (Stream::MAX_CONSECUTIVE_BYTES / 2)) + (Stream::MAX_CONSECUTIVE_BYTES / 2);
+                (random.generateU32() % (Stream::MaxConsecutiveBytes / 2)) + (Stream::MaxConsecutiveBytes / 2);
             check(mem.makeWritable(min(numConsecutiveBytes, fileSize - offset)));
             while (mem.curByte < mem.endByte) {
                 *mem.curByte++ = (u8) shuffleBits(offset++);
@@ -2394,7 +2423,7 @@ TEST_CASE("Mem stream temp buffer") {
         while (offset < fileSize) {
             check(offset == mem.getSeekPos());
             u32 numConsecutiveBytes =
-                (random.generateU32() % (Stream::MAX_CONSECUTIVE_BYTES / 2)) + (Stream::MAX_CONSECUTIVE_BYTES / 2);
+                (random.generateU32() % (Stream::MaxConsecutiveBytes / 2)) + (Stream::MaxConsecutiveBytes / 2);
             mem.makeReadable(numConsecutiveBytes);
             check(mem.atEof == !mem.hasRemainingBytes());
             if (mem.atEof)
@@ -2420,7 +2449,7 @@ TEST_CASE("MemStream::copyToString") {
     check(small.getSeekPos() == smallSeekPos);
 
     // Copy a stream spanning multiple backing buffers.
-    String largeText = String::allocate(Stream::BUFFER_SIZE * 2 + 17);
+    String largeText = String::allocate(Stream::BufferSize * 2 + 17);
     for (u32 i = 0; i < largeText.numBytes(); i++) {
         largeText.bytes()[i] = (char) shuffleBits(i);
     }
@@ -2436,7 +2465,7 @@ TEST_CASE("MemStream::copyToString") {
     MemStream custom{3000};
     custom.write(customText);
     check(custom.copyToString() == customText);
-    MemStream customDuplicate = custom.duplicate();
+    MemStream customDuplicate = custom;
     check(customDuplicate.copyToString() == customText);
 
     // Read a consecutive view that spans several small custom chunks.
@@ -2460,7 +2489,7 @@ TEST_CASE("MemStream::copyToString") {
     check(tinyWrite.copyToString() == "abcde12345678901234567890");
 
     // Copy pending writes held in the temporary cross-buffer view.
-    String prefix = String::allocate(Stream::BUFFER_SIZE - 4);
+    String prefix = String::allocate(Stream::BufferSize - 4);
     memset(prefix.bytes(), 'a', prefix.numBytes());
     MemStream crossing;
     crossing.write(prefix);
@@ -2501,7 +2530,7 @@ TEST_CASE("MemStream copy operations") {
 
 // Verifies that moving a memory stream includes pending writes held in a cross-buffer temporary view.
 TEST_CASE("MemStream::moveToString with pending writes") {
-    String prefix = String::allocate(Stream::BUFFER_SIZE - 4);
+    String prefix = String::allocate(Stream::BufferSize - 4);
     memset(prefix.bytes(), 'a', prefix.numBytes());
     MemStream crossing;
     crossing.write(prefix);

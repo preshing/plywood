@@ -78,7 +78,7 @@ struct PipeWinsock : Pipe {
     Atomic<bool> disabled = false;
 
     PipeWinsock();
-    PipeWinsock(SOCKET s, u32 flags);
+    PipeWinsock(SOCKET s, u32 permissions);
     virtual ~PipeWinsock();
     virtual u32 read(MutStringView buf) override;
     virtual ReadResult tryRead(MutStringView buf) override;
@@ -138,15 +138,11 @@ struct TCPConnection {
 
     Stream createInStream() {
         // Borrow the socket with a separate buffer and read-only access.
-        Stream in{this->pipe, false};
-        in.hasWritePermission = false;
-        return in;
+        return {this->pipe, false, Stream::CanRead};
     }
     Stream createOutStream() {
         // Borrow the socket with a separate buffer and write-only access.
-        Stream out{this->pipe, false};
-        out.hasReadPermission = false;
-        return out;
+        return {this->pipe, false, Stream::CanWrite};
     }
 };
 

@@ -79,8 +79,8 @@ PipeWinsock::PipeWinsock() {
 }
 
 // Construct from an owned socket.
-PipeWinsock::PipeWinsock(SOCKET s, u32 flags) : socket{s} {
-    this->flags = flags;
+PipeWinsock::PipeWinsock(SOCKET s, u32 permissions) : socket{s} {
+    this->permissions = permissions;
 }
 
 // Close the owned socket.
@@ -310,7 +310,7 @@ Owned<TCPConnection> TCPListener::accept() {
         tcpConn->remoteAddr = IPAddress::fromIPv4(remoteAddrV4->sin_addr.s_addr);
     }
     tcpConn->remotePort = convertBigEndian(remoteAddr.sin6_port);
-    tcpConn->pipe = Heap::create<PipeWinsock>(hostSocket, Pipe::HasReadPermission | Pipe::HasWritePermission);
+    tcpConn->pipe = Heap::create<PipeWinsock>(hostSocket, Pipe::CanRead | Pipe::CanWrite);
     Network::lastResult_.store(NetResult::OK);
     return tcpConn;
 }
@@ -463,7 +463,7 @@ Owned<TCPConnection> TCPConnection::connectTo(const IPAddress& address, u16 port
         tcpConn->remoteAddr = address;
         tcpConn->remotePort = port;
         tcpConn->pipe =
-            Heap::create<PipeWinsock>(connectSocket, Pipe::HasReadPermission | Pipe::HasWritePermission);
+            Heap::create<PipeWinsock>(connectSocket, Pipe::CanRead | Pipe::CanWrite);
         Network::lastResult_.store(NetResult::OK);
         return tcpConn;
     }
@@ -592,7 +592,7 @@ Owned<TCPConnection> createAcceptedTCPConnection(int hostSocket,
         tcpConn->remoteAddr = IPAddress::fromIPv4(remoteAddrV4->sin_addr.s_addr);
         tcpConn->remotePort = convertBigEndian(remoteAddrV4->sin_port);
     }
-    tcpConn->pipe = Heap::create<PipeFD>(hostSocket, Pipe::HasReadPermission | Pipe::HasWritePermission);
+    tcpConn->pipe = Heap::create<PipeFD>(hostSocket, Pipe::CanRead | Pipe::CanWrite);
     Network::lastResult_.store(NetResult::OK);
     return tcpConn;
 }
@@ -974,7 +974,7 @@ Owned<TCPConnection> TCPConnection::connectTo(const IPAddress& address, u16 port
         TCPConnection* tcpConn = Heap::create<TCPConnection>();
         tcpConn->remoteAddr = address;
         tcpConn->remotePort = port;
-        tcpConn->pipe = Heap::create<PipeFD>(connectSocket, Pipe::HasReadPermission | Pipe::HasWritePermission);
+        tcpConn->pipe = Heap::create<PipeFD>(connectSocket, Pipe::CanRead | Pipe::CanWrite);
         Network::lastResult_.store(NetResult::OK);
         return tcpConn;
     }

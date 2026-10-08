@@ -4,7 +4,7 @@
 [Documentation coming soon.]
 
 <svg viewBox="0 0 624 214" style="display:block;width:624px;max-width:100%;height:auto;margin-inline:auto">
- <g fill="none" stroke="var(--text-muted)" stroke-width="1">
+ <g fill="none" stroke="var(--diagram-arrow-color)" stroke-width="1">
   <path d="m318.3 134.8-4.81 6.43-4.81-6.43"/>
   <path d="M313.5 141.9V115"/>
   <path d="m318.3 182.8-4.81 6.43-4.81-6.43"/>

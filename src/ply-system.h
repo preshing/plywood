@@ -4029,11 +4029,16 @@ u32 binarySearch(Arr& arr, const Key& desiredKey, FindType findType) {
 class Pipe {
 protected:
     u64 seekPos = 0;
-    u32 flags = 0;
+    u32 permissions = 0;
 
     Pipe() = default;
 
 public:
+    // Permission flags.
+    static constexpr u32 CanRead = 0x1;
+    static constexpr u32 CanWrite = 0x2;
+    static constexpr u32 CanSeek = 0x4;
+
     // Return value of tryRead().
     struct ReadResult {
         enum Kind {
@@ -4046,17 +4051,13 @@ public:
         u32 numBytes = 0; // Number of bytes written. Only valid when kind is Data.
     };
 
-    static constexpr u32 HasReadPermission = 0x1;
-    static constexpr u32 HasWritePermission = 0x2;
-    static constexpr u32 CanSeek = 0x4;
-
     // Virtual destructor.
     virtual ~Pipe() = default;
 
     // Pipe properties.
     virtual u64 getFileSize();
-    u32 getFlags() const {
-        return this->flags;
+    u32 getPermissions() const {
+        return this->permissions;
     }
 
     // read() blocks until data becomes available and returns 0 when no more data can be read due to
@@ -4101,7 +4102,7 @@ private:
 public:
     HANDLE handle = INVALID_HANDLE_VALUE;
 
-    PipeHandle(HANDLE h, u32 flags);
+    PipeHandle(HANDLE h, u32 permissions);
     virtual ~PipeHandle();
     virtual u64 getFileSize() override;
     virtual u32 read(MutStringView buf) override;
@@ -4122,7 +4123,7 @@ public:
     Atomic<bool> disabled = false;
 
     PipeFD();
-    PipeFD(int fd, u32 flags);
+    PipeFD(int fd, u32 permissions);
     virtual ~PipeFD();
     virtual u64 getFileSize() override;
     virtual u32 read(MutStringView buf) override;
@@ -4141,7 +4142,8 @@ public:
 //  ▀█▄▄█▀  ▀█▄▄ ██     ▀█▄▄▄  ▀█▄▄██ ██ ██ ██
 //
 
-struct Stream {
+class Stream {
+protected:
     enum class Type : u8 {
         None,
         Pipe,
@@ -4154,45 +4156,46 @@ struct Stream {
         Writing,
     };
 
-    static constexpr u32 BUFFER_SIZE = 32000;
-    static constexpr u32 MAX_CONSECUTIVE_BYTES = 2048;
-
     struct PipeData {
         Pipe* pipe = nullptr;
         char* buffer = nullptr;
         u64 seekPosAtBuffer = 0;
     };
-    struct MemData {
-        Array<char*> buffers;
-        u32 chunkSize = 0;
-        u32 bufferIndex = 0;
-        u32 numBytesInLastBuffer = 0;
-        // Temporary buffer used when caller requests consecutive bytes that straddle buffer boundaries:
-        char* tempBuffer = nullptr;
-        u32 tempBufferOffset = 0; // Offset of overlap buffer relative to storage buffer
-    };
+    struct MemData;
     struct ViewData {
         char* startByte = nullptr;
     };
 
-    char* curByte = nullptr;
-    char* endByte = nullptr;
     Type type = Type::None;
     Mode mode = Mode::None;
-    bool isPipeOwner = false; // only used if type == Type::Pipe
-    bool hasReadPermission = false;
-    bool hasWritePermission = false;
-    bool usingTempBuffer = false; // only used if type == Type::Mem
-    bool atEof = false;
-    bool inputError = false;
+    u32 permissions = 0;
     union {
         PipeData pipe; // if type == Type::Pipe
-        MemData mem;   // if type == Type::Mem
+        Owned<MemData> mem; // if type == Type::Mem
         ViewData view; // if type == Type::View
     };
+    bool isPipeOwner = false; // only used if type == Type::Pipe
+    bool usingScratchBuffer = false; // only used if type == Type::Mem
+
+public:
+    // Permission flags.
+    static constexpr u32 CanRead = Pipe::CanRead;
+    static constexpr u32 CanWrite = Pipe::CanWrite;
+    static constexpr u32 CanSeek = Pipe::CanSeek;
+
+    // Constants.
+    static constexpr u32 BufferSize = 32000;
+    static constexpr u32 MaxConsecutiveBytes = 2048;
+
+    // Public data members.
+    bool atEof = false;
+    bool inputError = false;
+    char* curByte = nullptr;
+    char* endByte = nullptr;
 
     Stream();
     Stream(Pipe* pipe, bool isPipeOwner);
+    Stream(Pipe* pipe, bool isPipeOwner, u32 permissions);
     Stream(Stream&& other);
     ~Stream();
     Stream& operator=(Stream&& other) {
@@ -4208,6 +4211,14 @@ struct Stream {
     explicit operator bool() const {
         return this->curByte != nullptr;
     }
+    u32 getPermissions() const {
+        return this->permissions;
+    }
+    Pipe* getPipe() const {
+        return this->type == Type::Pipe ? this->pipe.pipe : nullptr;
+    }
+    // Disables the underlying pipe, if any. Legal and harmless for non-pipe streams.
+    void disablePipe();
     void close() {
         this->~Stream();
         new (this) Stream; // Illegal to use after this.
@@ -4264,6 +4275,14 @@ struct Stream {
         } else
             return this->readInternal(dst);
     }
+    u32 tryRead(MutStringView dst) {
+        if ((this->mode == Mode::Reading) && (dst.numBytes <= this->numRemainingBytes())) {
+            memcpy(dst.bytes, this->curByte, dst.numBytes);
+            this->curByte += dst.numBytes;
+            return dst.numBytes;
+        } else
+            return this->tryReadInternal(dst);
+    }
     u32 skip(u32 numBytes) {
         if (numBytes <= this->numRemainingBytes()) {
             this->curByte += numBytes;
@@ -4294,8 +4313,10 @@ protected:
     bool makeWritableInternal(u32 numBytes);
     char peekByteInternal();
     char readByteInternal();
+    void setMemBackingPos(u64 seekPos);
     void flushMemWrites();
     u32 readInternal(MutStringView dst);
+    u32 tryReadInternal(MutStringView dst);
     u32 skipInternal(u32 numBytes);
 };
 
@@ -4314,27 +4335,30 @@ void nativeWrite(Stream& out, const T& value) {
 //--------------------------------------------
 class MemStream : public Stream {
 public:
-    static constexpr u32 DEFAULT_CHUNK_SIZE = 4000;
+    static constexpr u32 DefaultChunkSize = 4000;
 
     // Creates a memory stream using backing chunks of the specified size.
-    MemStream(u32 chunkSize = DEFAULT_CHUNK_SIZE);
-    // Creates an independent copy with the same contents, mode and seek position.
+    MemStream(u32 chunkSize = DefaultChunkSize);
+
+    // Copying creates an independent deep copy with the same contents, mode and seek position.
     MemStream(const MemStream& other);
     MemStream(MemStream&&) = default;
     MemStream& operator=(const MemStream& other);
     MemStream& operator=(MemStream&&) = default;
 
-    // Creates an independent copy with the same contents, mode and seek position.
-    MemStream duplicate() const;
     // Copies the stream's complete contents to a string without modifying the stream.
     String copyToString() const;
     // Moves the stream's complete contents to a string and closes the stream.
     // If the string fits within a chunk, the chunk itself is trimmed and returned directly, which avoids making a copy.
     String moveToString();
+
+private:
+    MemStream deepCopy() const;
 };
 
 //--------------------------------------------
-struct ViewStream : Stream {
+class ViewStream : public Stream {
+public:
     ViewStream() = default;
     explicit ViewStream(StringView view);
     explicit ViewStream(MutStringView view);
@@ -4557,8 +4581,8 @@ public:
     StringView shimUsed;
 
     InPipeConvertUnicode(Stream&& in, UnicodeType type = UnicodeType::None) : in{std::move(in)}, srcType{type} {
-        PLY_ASSERT(this->in.hasReadPermission);
-        this->flags = Pipe::HasReadPermission;
+        PLY_ASSERT((this->in.getPermissions() & Stream::CanRead) != 0);
+        this->permissions = Pipe::CanRead;
     }
     // Fill dstBuf with UTF-8-encoded data.
     virtual u32 read(MutStringView dstBuf) override;
@@ -4578,8 +4602,8 @@ public:
 
     OutPipeConvertUnicode(Stream&& childOut, UnicodeType type = UnicodeType::None)
         : childOut{std::move(childOut)}, dstType{type} {
-        PLY_ASSERT(this->childOut.hasWritePermission);
-        this->flags = Pipe::HasWritePermission;
+        PLY_ASSERT((this->childOut.getPermissions() & Stream::CanWrite) != 0);
+        this->permissions = Pipe::CanWrite;
     }
     virtual ~OutPipeConvertUnicode() override;
     // srcBuf expects UTF-8-encoded data.

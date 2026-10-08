@@ -77,7 +77,7 @@ struct MultiPipe : Pipe {
     Array<Pipe*> pipes;
 
     MultiPipe() {
-        this->flags = Pipe::HasWritePermission;
+        this->permissions = Pipe::CanWrite;
     }
 
     virtual bool write(StringView buf) override {
@@ -710,7 +710,7 @@ void TranscriptPrinter::appendMarkdown(StringView text) {
     MemStream predictedHtml;
     Owned<markdown::Parser> predictionParser = this->markdownParser;
     if (this->markdownLine.getSeekPos() > 0) {
-        MemStream partialLineCopy = this->markdownLine.duplicate();
+        MemStream partialLineCopy = this->markdownLine;
         String partialLine = partialLineCopy.moveToString();
         if (Owned<markdown::Block> block = markdown::parseLine(predictionParser, partialLine)) {
             this->appendMarkdownBlockHtml(&predictedHtml, std::move(block));
@@ -1752,9 +1752,9 @@ int main(int argc, const char* argv[]) {
     // Create the stream used for normal app output, optionally duplicating it to the app log.
     Stream consoleOutput = getStdOut();
     Owned<MultiPipe> multiPipe = Heap::create<MultiPipe>();
-    multiPipe->pipes.append(consoleOutput.pipe.pipe);
+    multiPipe->pipes.append(consoleOutput.getPipe());
     if (appState.appLogFile.isOpen()) {
-        multiPipe->pipes.append(appState.appLogFile.pipe.pipe);
+        multiPipe->pipes.append(appState.appLogFile.getPipe());
     }
     Stream appOutput{multiPipe.release(), true};
     if (options.printUsage) {
