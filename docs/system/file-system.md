@@ -64,13 +64,13 @@ The `FileSystem` class contains static methods for file and directory operations
 `static Stream FileSystem::openBinaryForWrite(StringView path)`
 > Opens a file for binary writing and returns a buffered stream.
 
-`static Stream FileSystem::openTextForRead(StringView path, const TextFormat& format = get_default_utf8_format())`
+`static Stream FileSystem::openTextForRead(StringView path, const TextFormat& format = getDefaultUTF8Format())`
 > Opens a file for text reading with the specified encoding.
 
 `static Stream FileSystem::openTextForReadAutodetect(StringView path, TextFormat* outFormat = nullptr)`
 > Opens a file for text reading, automatically detecting the encoding from byte-order marks.
 
-`static Stream FileSystem::openTextForWrite(StringView path, const TextFormat& format = get_default_utf8_format())`
+`static Stream FileSystem::openTextForWrite(StringView path, const TextFormat& format = getDefaultUTF8Format())`
 > Opens a file for text writing with the specified encoding.
 
 `static String FileSystem::loadBinary(StringView path)`
@@ -85,7 +85,7 @@ The `FileSystem` class contains static methods for file and directory operations
 `static FSResult FileSystem::saveBinary(StringView path, StringView contents)`
 > Writes raw bytes to a file, replacing any existing contents.
 
-`static FSResult FileSystem::saveText(StringView path, StringView strContents, const TextFormat& format = get_default_utf8_format())`
+`static FSResult FileSystem::saveText(StringView path, StringView strContents, const TextFormat& format = getDefaultUTF8Format())`
 > Writes text to a file with the specified encoding.
 
 ### `TextFormat`

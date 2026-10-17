@@ -5456,7 +5456,7 @@ void OutPipeConvertUnicode::disable() {
 //    ██   ▀█▄▄▄  ▄█▀▀█▄  ▀█▄▄ ▄▄▄▄▄ ██    ▀█▄▄█▀ ██     ██ ██ ██ ▀█▄▄██  ▀█▄▄
 //
 
-TextFormat get_default_utf8_format() {
+TextFormat getDefaultUTF8Format() {
     TextFormat tff;
 #if defined(PLY_WINDOWS)
     tff.newLine = TextFormat::NewLine::CRLF;

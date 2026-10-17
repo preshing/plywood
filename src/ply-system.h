@@ -4629,7 +4629,7 @@ struct TextFormat {
     bool bom = true;
 };
 
-TextFormat get_default_utf8_format();
+TextFormat getDefaultUTF8Format();
 TextFormat autodetectTextFormat(Stream& in);
 
 //  ▄▄▄▄▄ ▄▄ ▄▄▄              ▄▄▄▄                 ▄▄
@@ -4769,15 +4769,15 @@ struct FileSystem {
     static FSResult makeDirs(StringView path);
     static Stream openBinaryForRead(StringView path);
     static Stream openBinaryForWrite(StringView path);
-    static Stream openTextForRead(StringView path, const TextFormat& format = get_default_utf8_format());
+    static Stream openTextForRead(StringView path, const TextFormat& format = getDefaultUTF8Format());
     static Stream openTextForReadAutodetect(StringView path, TextFormat* outFormat = nullptr);
-    static Stream openTextForWrite(StringView path, const TextFormat& format = get_default_utf8_format());
+    static Stream openTextForWrite(StringView path, const TextFormat& format = getDefaultUTF8Format());
     static String loadBinary(StringView path);
-    static String loadText(StringView path, const TextFormat& format = get_default_utf8_format());
+    static String loadText(StringView path, const TextFormat& format = getDefaultUTF8Format());
     static String loadTextAutodetect(StringView path, TextFormat* outFormat = nullptr);
     static FSResult saveBinary(StringView path, StringView contents);
     static FSResult saveText(StringView path, StringView strContents,
-                             const TextFormat& format = get_default_utf8_format());
+                             const TextFormat& format = getDefaultUTF8Format());
 };
 
 //  ▄▄▄▄▄          ▄▄   ▄▄
