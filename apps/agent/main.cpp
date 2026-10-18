@@ -77,7 +77,7 @@ struct MultiPipe : Pipe {
     Array<Pipe*> pipes;
 
     MultiPipe() {
-        this->permissions = Pipe::CanWrite;
+        this->capabilities = Pipe::CanWrite;
     }
 
     virtual IOStatus write(StringView buf) override {

@@ -79,8 +79,8 @@ PipeWinsock::PipeWinsock() {
 }
 
 // Construct from an owned socket.
-PipeWinsock::PipeWinsock(SOCKET s, u32 permissions) : socket{s} {
-    this->permissions = permissions;
+PipeWinsock::PipeWinsock(SOCKET s, u32 capabilities) : socket{s} {
+    this->capabilities = capabilities;
 }
 
 // Close the owned socket.

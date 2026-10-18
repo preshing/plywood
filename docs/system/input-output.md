@@ -49,8 +49,8 @@ Only one thread may call `read`, `tryRead`, `write`, `flush` or `seekTo` at a ti
 `u64 Pipe::getFileSize()`
 > Returns the total size of the underlying file.
 
-`u32 Pipe::getPermissions() const`
-> Returns the pipe's permissions.
+`u32 Pipe::getCapabilities() const`
+> Returns the pipe's capability flags.
 >
 > | Flag | Meaning |
 > | ---- | ------- |
@@ -129,7 +129,7 @@ writing, call `makeWritable()` first.
 `Stream::Stream(Pipe* pipe, bool isPipeOwner)`
 > Constructs a stream from a pipe. If `isPipeOwner` is true, the stream will destroy the pipe when closed.
 
-`Stream::Stream(Pipe* pipe, bool isPipeOwner, u32 permissions)`
+`Stream::Stream(Pipe* pipe, bool isPipeOwner, u32 capabilities)`
 > Constructs a stream with a restricted subset of the pipe's capabilities.
 
 `Stream::Stream(Stream&& other)`
@@ -144,8 +144,8 @@ writing, call `makeWritable()` first.
 `explicit Stream::operator bool()`
 > Same as `isOpen()`.
 
-`u32 Stream::getPermissions() const`
-> Returns the stream's permissions.
+`u32 Stream::getCapabilities() const`
+> Returns the stream's capability flags.
 >
 > | Flag | Meaning |
 > | ---- | ------- |

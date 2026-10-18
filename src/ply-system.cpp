@@ -2474,8 +2474,8 @@ void Pipe::disable() {
 #if defined(PLY_WINDOWS)
 
 // Construct from an owned Win32 handle.
-PipeHandle::PipeHandle(HANDLE h, u32 permissions) : handle{h} {
-    this->permissions = permissions;
+PipeHandle::PipeHandle(HANDLE h, u32 capabilities) : handle{h} {
+    this->capabilities = capabilities;
 }
 
 // Close the owned handle.
@@ -2696,8 +2696,8 @@ PipeFD::PipeFD() {
 }
 
 // Construct from an owned file descriptor.
-PipeFD::PipeFD(int fd, u32 permissions) : fd{fd} {
-    this->permissions = permissions;
+PipeFD::PipeFD(int fd, u32 capabilities) : fd{fd} {
+    this->capabilities = capabilities;
     createDisablePipe(&this->disableReadFD, &this->disableWriteFD);
 }
 
@@ -2886,7 +2886,7 @@ void PipeFD::seekTo(s64 offset) {
 void PipeFD::flush(bool toDevice) {
     // PipeFD has no user-space buffering, and only seekable file descriptors have device buffers
     // that can be flushed with fsync; sockets and pipes have nothing to do here.
-    if (!toDevice || !(this->permissions & Pipe::CanSeek))
+    if (!toDevice || !(this->capabilities & Pipe::CanSeek))
         return;
 
     PLY_ASSERT(this->fd >= 0);
@@ -2972,8 +2972,8 @@ public:
     NewLineFilter filter;
 
     InPipeNewLineFilter(Stream&& in) : in{std::move(in)} {
-        PLY_ASSERT((this->in.getPermissions() & Stream::CanRead) != 0);
-        this->permissions = Pipe::CanRead;
+        PLY_ASSERT((this->in.getCapabilities() & Stream::CanRead) != 0);
+        this->capabilities = Pipe::CanRead;
     }
     virtual IOStatus read(MutStringView buf) override;
     virtual IOStatus tryRead(MutStringView buf) override;
@@ -3043,8 +3043,8 @@ public:
     NewLineFilter filter;
 
     OutPipeNewLineFilter(Stream&& out, bool writeCrlf) : out{std::move(out)} {
-        PLY_ASSERT((this->out.getPermissions() & Stream::CanWrite) != 0);
-        this->permissions = Pipe::CanWrite;
+        PLY_ASSERT((this->out.getCapabilities() & Stream::CanWrite) != 0);
+        this->capabilities = Pipe::CanWrite;
         this->filter.crlf = writeCrlf;
     }
     virtual ~OutPipeNewLineFilter() {
@@ -3135,18 +3135,18 @@ Stream::Stream() {
 }
 
 Stream::Stream(Pipe* pipe, bool isPipeOwner)
-    : Stream{pipe, isPipeOwner, numericCast<u8>(pipe ? pipe->getPermissions() : 0)} {
+    : Stream{pipe, isPipeOwner, numericCast<u8>(pipe ? pipe->getCapabilities() : 0)} {
 }
 
-Stream::Stream(Pipe* pipe, bool isPipeOwner, u32 permissions) {
-    PLY_ASSERT(pipe || permissions == 0);
+Stream::Stream(Pipe* pipe, bool isPipeOwner, u32 capabilities) {
+    PLY_ASSERT(pipe || capabilities == 0);
     if (pipe) {
-        PLY_ASSERT((permissions & ~(CanRead | CanWrite | CanSeek)) == 0);
-        PLY_ASSERT((permissions & ~pipe->getPermissions()) == 0);
+        PLY_ASSERT((capabilities & ~(CanRead | CanWrite | CanSeek)) == 0);
+        PLY_ASSERT((capabilities & ~pipe->getCapabilities()) == 0);
         new (&this->pipe) PipeData;
         this->pipe.pipe = pipe;
         this->pipe.buffer = (char*) Heap::alloc(BufferSize);
-        this->permissions = numericCast<u8>(permissions);
+        this->capabilities = numericCast<u8>(capabilities);
         this->type = Type::Pipe;
         this->isPipeOwner = isPipeOwner;
         this->curByte = this->pipe.buffer;
@@ -3162,7 +3162,7 @@ Stream::Stream(Stream&& other) {
     } else if (other.type == Type::View) {
         new (&this->view) ViewData{std::move(other.view)};
     }
-    this->permissions = other.permissions;
+    this->capabilities = other.capabilities;
     this->type = other.type;
     this->mode = other.mode;
     this->status = other.status;
@@ -3182,7 +3182,7 @@ void Stream::disable() {
 Stream::~Stream() {
     if (this->type == Type::Pipe) {
         PLY_ASSERT(this->pipe.pipe);
-        if (this->permissions & CanWrite) {
+        if (this->capabilities & CanWrite) {
             this->flush();
         }
         if (this->isPipeOwner) {
@@ -3266,7 +3266,7 @@ void Stream::flushMemWrites() {
 // Prepare the read buffer for reading without ever blocking, pulling as much data as possible
 // from the wrapped pipe. Returns true if any bytes were made readable.
 bool Stream::tryMakeReadable() {
-    PLY_ASSERT(this->permissions & CanRead);
+    PLY_ASSERT(this->capabilities & CanRead);
 
     if (this->type == Type::Pipe) {
         // Once EOF has been observed, only bytes already in the buffer can still be returned.
@@ -3325,7 +3325,7 @@ bool Stream::tryMakeReadable() {
 }
 
 bool Stream::makeReadableInternal(u32 minBytes) {
-    PLY_ASSERT(this->permissions & CanRead);
+    PLY_ASSERT(this->capabilities & CanRead);
     PLY_ASSERT(minBytes > 0);
     PLY_ASSERT(minBytes <= MaxConsecutiveBytes);
     if ((this->mode == Mode::Reading) && (this->numRemainingBytes() >= minBytes))
@@ -3432,7 +3432,7 @@ bool Stream::makeReadableInternal(u32 minBytes) {
 }
 
 bool Stream::makeWritableInternal(u32 minBytes) {
-    PLY_ASSERT(this->permissions & CanWrite);
+    PLY_ASSERT(this->capabilities & CanWrite);
     PLY_ASSERT(minBytes <= MaxConsecutiveBytes);
     if ((this->mode == Mode::Writing) && (this->numRemainingBytes() >= minBytes))
         return true;
@@ -3545,7 +3545,7 @@ u32 Stream::skipInternal(u32 numBytes) {
 }
 
 void Stream::flush(bool toDevice) {
-    PLY_ASSERT(this->permissions & CanWrite);
+    PLY_ASSERT(this->capabilities & CanWrite);
     if (this->mode != Mode::Writing)
         return;
     if (this->type == Type::Pipe) {
@@ -3596,7 +3596,7 @@ u64 Stream::getSeekPos() {
 }
 
 void Stream::seekTo(u64 seekPos) {
-    PLY_ASSERT(this->permissions & CanSeek);
+    PLY_ASSERT(this->capabilities & CanSeek);
     if (this->type == Type::Pipe) {
         s64 relativeToBuffer = seekPos - this->pipe.seekPosAtBuffer;
         u32 numBytesInBuffer = numericCast<u32>(this->endByte - this->pipe.buffer);
@@ -3629,7 +3629,7 @@ MemStream::MemStream(u32 chunkSize) {
     this->mem->chunks.append(buf);
     this->curByte = buf;
     this->endByte = buf + chunkSize;
-    this->permissions = CanRead | CanWrite | CanSeek;
+    this->capabilities = CanRead | CanWrite | CanSeek;
 }
 
 // Creates an independent copy with the same contents, mode and seek position.
@@ -3763,7 +3763,7 @@ ViewStream::ViewStream(StringView view) {
     this->view.startByte = const_cast<char*>(view.bytes());
     this->curByte = this->view.startByte;
     this->endByte = this->curByte + view.numBytes();
-    this->permissions = CanRead | CanSeek;
+    this->capabilities = CanRead | CanSeek;
 }
 
 ViewStream::ViewStream(MutStringView view) {
@@ -3772,7 +3772,7 @@ ViewStream::ViewStream(MutStringView view) {
     this->view.startByte = view.bytes;
     this->curByte = this->view.startByte;
     this->endByte = this->curByte + view.numBytes;
-    this->permissions = CanRead | CanWrite | CanSeek;
+    this->capabilities = CanRead | CanWrite | CanSeek;
 }
 
 //  ▄▄▄▄▄                    ▄▄ ▄▄                   ▄▄▄▄▄▄                ▄▄

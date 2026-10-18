@@ -4043,7 +4043,7 @@ struct IOStatus {
 class Pipe {
 protected:
     u64 seekPos = 0;
-    u32 permissions = 0;
+    u32 capabilities = 0;
 
     Pipe() = default;
 
@@ -4058,8 +4058,8 @@ public:
 
     // Pipe properties.
     virtual u64 getFileSize();
-    u32 getPermissions() const {
-        return this->permissions;
+    u32 getCapabilities() const {
+        return this->capabilities;
     }
 
     // read() blocks until a non-zero amount of data becomes available. buf must not be empty.
@@ -4104,7 +4104,7 @@ private:
 public:
     HANDLE handle = INVALID_HANDLE_VALUE;
 
-    PipeHandle(HANDLE h, u32 permissions);
+    PipeHandle(HANDLE h, u32 capabilities);
     virtual ~PipeHandle();
     virtual u64 getFileSize() override;
     virtual IOStatus read(MutStringView buf) override;
@@ -4125,7 +4125,7 @@ public:
     Atomic<bool> disabled = false;
 
     PipeFD();
-    PipeFD(int fd, u32 permissions);
+    PipeFD(int fd, u32 capabilities);
     virtual ~PipeFD();
     virtual u64 getFileSize() override;
     virtual IOStatus read(MutStringView buf) override;
@@ -4175,7 +4175,7 @@ protected:
         ViewData view;      // if type == Type::View
     };
 
-    u8 permissions = 0;
+    u8 capabilities = 0;
     Type type = Type::None;
     Mode mode = Mode::None;
     IOStatus::ResultCode status = IOStatus::OK;
@@ -4198,7 +4198,7 @@ public:
 
     Stream();
     Stream(Pipe* pipe, bool isPipeOwner);
-    Stream(Pipe* pipe, bool isPipeOwner, u32 permissions);
+    Stream(Pipe* pipe, bool isPipeOwner, u32 capabilities);
     Stream(Stream&& other);
     ~Stream();
     Stream& operator=(Stream&& other) {
@@ -4214,8 +4214,8 @@ public:
     explicit operator bool() const {
         return this->curByte != nullptr;
     }
-    u32 getPermissions() const {
-        return this->permissions;
+    u32 getCapabilities() const {
+        return this->capabilities;
     }
     // Returns the status of the most recent call to makeReadable, tryMakeReadable or makeWritable.
     IOStatus::ResultCode getStatus() const {
@@ -4600,8 +4600,8 @@ public:
     StringView shimUsed;
 
     InPipeConvertUnicode(Stream&& in, UnicodeType type = UnicodeType::None) : in{std::move(in)}, srcType{type} {
-        PLY_ASSERT((this->in.getPermissions() & Stream::CanRead) != 0);
-        this->permissions = Pipe::CanRead;
+        PLY_ASSERT((this->in.getCapabilities() & Stream::CanRead) != 0);
+        this->capabilities = Pipe::CanRead;
     }
     // Fill dstBuf with UTF-8-encoded data.
     virtual IOStatus read(MutStringView dstBuf) override;
@@ -4621,8 +4621,8 @@ public:
 
     OutPipeConvertUnicode(Stream&& childOut, UnicodeType type = UnicodeType::None)
         : childOut{std::move(childOut)}, dstType{type} {
-        PLY_ASSERT((this->childOut.getPermissions() & Stream::CanWrite) != 0);
-        this->permissions = Pipe::CanWrite;
+        PLY_ASSERT((this->childOut.getCapabilities() & Stream::CanWrite) != 0);
+        this->capabilities = Pipe::CanWrite;
     }
     virtual ~OutPipeConvertUnicode() override;
     // srcBuf expects UTF-8-encoded data.

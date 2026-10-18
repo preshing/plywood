@@ -78,7 +78,7 @@ struct PipeWinsock : Pipe {
     Atomic<bool> disabled = false;
 
     PipeWinsock();
-    PipeWinsock(SOCKET s, u32 permissions);
+    PipeWinsock(SOCKET s, u32 capabilities);
     virtual ~PipeWinsock();
     virtual IOStatus read(MutStringView buf) override;
     virtual IOStatus tryRead(MutStringView buf) override;
