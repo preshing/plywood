@@ -1013,10 +1013,27 @@ TEST_CASE("String match float") {
 TEST_CASE("readDoubleFromText subnormal exponent") {
     // Ensure negative exponent scaling preserves representable subnormal values.
     ViewStream in{"1e-309"};
-    double value = readDoubleFromText(in);
-    check(!in.inputError);
+    ReadNumber<double> result = readDoubleFromText(in);
+    check(result.success);
     check(in.curByte == in.endByte);
-    check(value > 0);
+    check(result.value > 0);
+}
+
+TEST_CASE("readS64FromText signed limits") {
+    ViewStream minIn{"-9223372036854775808"};
+    ReadNumber<s64> minResult = readS64FromText(minIn);
+    check(minResult.success);
+    check(minResult.value == minRepresentableValue<s64>());
+
+    ViewStream maxIn{"9223372036854775807"};
+    ReadNumber<s64> maxResult = readS64FromText(maxIn);
+    check(maxResult.success);
+    check(maxResult.value == maxRepresentableValue<s64>());
+
+    ViewStream underflowIn{"-9223372036854775809"};
+    check(!readS64FromText(underflowIn).success);
+    ViewStream overflowIn{"9223372036854775808"};
+    check(!readS64FromText(overflowIn).success);
 }
 
 TEST_CASE("String match quoted string") {
@@ -1036,7 +1053,6 @@ TEST_CASE("String match quoted string escapes") {
 TEST_CASE("readQuotedString C strict hex and unicode escapes") {
     ViewStream in{"\"A\\x42\\u03c0\\U0001f600\""};
     String value = readQuotedString(in, QuotedStringType::C, true);
-    check(!in.inputError);
     check(in.curByte == in.endByte);
     check(value == "AB\xcf\x80\xf0\x9f\x98\x80");
 }
@@ -1044,7 +1060,6 @@ TEST_CASE("readQuotedString C strict hex and unicode escapes") {
 TEST_CASE("readQuotedString JavaScript strict unicode escapes") {
     ViewStream in{"\"A\\x42\\u03c0\\u{1f600}\""};
     String value = readQuotedString(in, QuotedStringType::JavaScript, true);
-    check(!in.inputError);
     check(in.curByte == in.endByte);
     check(value == "AB\xcf\x80\xf0\x9f\x98\x80");
 }
@@ -1052,7 +1067,6 @@ TEST_CASE("readQuotedString JavaScript strict unicode escapes") {
 TEST_CASE("readQuotedString JSON strict surrogate pairs") {
     ViewStream in{"\"\\uD83D\\uDE00\""};
     String value = readQuotedString(in, QuotedStringType::JSON, true);
-    check(!in.inputError);
     check(in.curByte == in.endByte);
     check(value == "\xf0\x9f\x98\x80");
 }
@@ -1060,36 +1074,40 @@ TEST_CASE("readQuotedString JSON strict surrogate pairs") {
 TEST_CASE("readQuotedString Python strict triple quoted multiline") {
     ViewStream in{"'''hello\n\"there\"'''"};
     String value = readQuotedString(in, QuotedStringType::Python, true);
-    check(!in.inputError);
     check(in.curByte == in.endByte);
     check(value == "hello\n\"there\"");
 }
 
 TEST_CASE("readQuotedString JSON strict rejects x escape") {
     ViewStream in{"\"\\x41\""};
-    String value = readQuotedString(in, QuotedStringType::JSON, true);
+    bool hadError = false;
+    String value = readQuotedString(in, QuotedStringType::JSON, true,
+                                    [&](QuotedStringError) { hadError = true; });
     PLY_UNUSED(value);
-    check(in.inputError);
+    check(hadError);
 }
 
 TEST_CASE("readQuotedString JavaScript strict rejects big U escape") {
     ViewStream in{"\"\\U0001F600\""};
-    String value = readQuotedString(in, QuotedStringType::JavaScript, true);
+    bool hadError = false;
+    String value = readQuotedString(in, QuotedStringType::JavaScript, true,
+                                    [&](QuotedStringError) { hadError = true; });
     PLY_UNUSED(value);
-    check(in.inputError);
+    check(hadError);
 }
 
 TEST_CASE("readQuotedString JSON strict rejects lone low surrogate") {
     ViewStream in{"\"\\uDE00\""};
-    String value = readQuotedString(in, QuotedStringType::JSON, true);
+    bool hadError = false;
+    String value = readQuotedString(in, QuotedStringType::JSON, true,
+                                    [&](QuotedStringError) { hadError = true; });
     PLY_UNUSED(value);
-    check(in.inputError);
+    check(hadError);
 }
 
 TEST_CASE("readQuotedString JSON permissive keeps invalid single-character escapes") {
     ViewStream in{"\"\\#\""};
     String value = readQuotedString(in, QuotedStringType::JSON, false);
-    check(!in.inputError);
     check(in.curByte == in.endByte);
     check(value == "#");
 }
@@ -1097,7 +1115,6 @@ TEST_CASE("readQuotedString JSON permissive keeps invalid single-character escap
 TEST_CASE("readQuotedString JSON permissive preserves malformed unicode escape text") {
     ViewStream in{"\"\\u12Z4\""};
     String value = readQuotedString(in, QuotedStringType::JSON, false);
-    check(!in.inputError);
     check(in.curByte == in.endByte);
     check(value == "\\u12Z4");
 }
@@ -1105,7 +1122,6 @@ TEST_CASE("readQuotedString JSON permissive preserves malformed unicode escape t
 TEST_CASE("readQuotedString C permissive preserves malformed big U escape text") {
     ViewStream in{"\"\\U0000G600\""};
     String value = readQuotedString(in, QuotedStringType::C, false);
-    check(!in.inputError);
     check(in.curByte == in.endByte);
     check(value == "\\U0000G600");
 }
@@ -1113,7 +1129,6 @@ TEST_CASE("readQuotedString C permissive preserves malformed big U escape text")
 TEST_CASE("readQuotedString JSON permissive preserves malformed surrogate text") {
     ViewStream in{"\"\\uD83Dx\""};
     String value = readQuotedString(in, QuotedStringType::JSON, false);
-    check(!in.inputError);
     check(in.curByte == in.endByte);
     check(value == "\\uD83Dx");
 }
@@ -2119,8 +2134,12 @@ TEST_CASE("Convert complete and fragmented UTF-8") {
 
     // Preserve all bytes when a multibyte point and following text cross writes.
     OutPipeConvertUnicode fragmented{MemStream{}, UnicodeType::UTF16LE};
-    fragmented.write(StringView{"\xe3", 1});
-    fragmented.write(StringView{"\x80\x82xyz", 5});
+    IOStatus firstWrite = fragmented.write(StringView{"\xe3", 1});
+    check(firstWrite.resultCode == IOStatus::OK);
+    check(firstWrite.numBytes == 1);
+    IOStatus secondWrite = fragmented.write(StringView{"\x80\x82xyz", 5});
+    check(secondWrite.resultCode == IOStatus::OK);
+    check(secondWrite.numBytes == 5);
     fragmented.flush(false);
     String fragmentedResult = static_cast<MemStream&>(fragmented.childOut).moveToString();
     check(fragmentedResult == StringView{"\x02\x30x\0y\0z\0", 8});
@@ -2146,20 +2165,20 @@ TEST_CASE("Nonblocking Unicode conversion preserves fragmented input") {
                               UnicodeType::UTF8};
     char dst[8];
 
-    Pipe::ReadResult result = conv.tryRead({dst, sizeof(dst)});
-    check(result.kind == Pipe::ReadResult::WouldBlock);
+    IOStatus result = conv.tryRead({dst, sizeof(dst)});
+    check(result.resultCode == IOStatus::WouldBlock);
     check(::write(fds[1], "\xe3", 1) == 1);
     result = conv.tryRead({dst, sizeof(dst)});
-    check(result.kind == Pipe::ReadResult::WouldBlock);
+    check(result.resultCode == IOStatus::WouldBlock);
     check(::write(fds[1], "\x80\x82", 2) == 2);
     result = conv.tryRead({dst, sizeof(dst)});
-    check(result.kind == Pipe::ReadResult::Data);
+    check(result.resultCode == IOStatus::OK);
     check(result.numBytes == 3);
     check(StringView{dst, result.numBytes} == StringView{"\xe3\x80\x82", 3});
 
     check(::close(fds[1]) == 0);
     result = conv.tryRead({dst, sizeof(dst)});
-    check(result.kind == Pipe::ReadResult::EndOfFile);
+    check(result.resultCode == IOStatus::EndOfFile);
 }
 
 #endif
@@ -2181,17 +2200,17 @@ TEST_CASE("tryRead reports data, would-block and EOF") {
     PipeFD reader{fds[0], Pipe::CanRead};
     char bytes[8];
 
-    Pipe::ReadResult result = reader.tryRead({bytes, sizeof(bytes)});
-    check(result.kind == Pipe::ReadResult::WouldBlock);
+    IOStatus result = reader.tryRead({bytes, sizeof(bytes)});
+    check(result.resultCode == IOStatus::WouldBlock);
     check(::write(fds[1], "abc", 3) == 3);
     result = reader.tryRead({bytes, sizeof(bytes)});
-    check(result.kind == Pipe::ReadResult::Data);
+    check(result.resultCode == IOStatus::OK);
     check(result.numBytes == 3);
     check(StringView{bytes, result.numBytes} == "abc");
-    check(reader.tryRead({bytes, sizeof(bytes)}).kind == Pipe::ReadResult::WouldBlock);
+    check(reader.tryRead({bytes, sizeof(bytes)}).resultCode == IOStatus::WouldBlock);
 
     check(::close(fds[1]) == 0);
-    check(reader.tryRead({bytes, sizeof(bytes)}).kind == Pipe::ReadResult::EndOfFile);
+    check(reader.tryRead({bytes, sizeof(bytes)}).resultCode == IOStatus::EndOfFile);
 }
 
 TEST_CASE("Stream::tryMakeReadable fills without blocking") {
@@ -2201,18 +2220,20 @@ TEST_CASE("Stream::tryMakeReadable fills without blocking") {
     Stream in{&reader, false};
 
     check(!in.tryMakeReadable());
-    check(!in.atEof);
+    check(in.getStatus() == IOStatus::WouldBlock);
+    check(!in.atEof());
     check(::write(fds[1], "abc", 3) == 3);
     check(in.tryMakeReadable());
     check(in.viewRemainingBytes() == "abc");
     in.curByte = in.endByte;
     check(!in.tryMakeReadable());
-    check(!in.atEof);
+    check(in.getStatus() == IOStatus::WouldBlock);
+    check(!in.atEof());
 
     check(::close(fds[1]) == 0);
     check(!in.tryMakeReadable());
-    check(in.atEof);
-    check(!in.inputError);
+    check(in.atEof());
+    check(in.getStatus() == IOStatus::EndOfFile);
 }
 
 TEST_CASE("Stream::tryRead copies without blocking") {
@@ -2225,12 +2246,12 @@ TEST_CASE("Stream::tryRead copies without blocking") {
 
     check(in.tryRead({bytes, sizeof(bytes)}) == 0);
     check(StringView{bytes, sizeof(bytes)} == "--------");
-    check(!in.atEof);
+    check(!in.atEof());
 
     check(::write(fds[1], "abc", 3) == 3);
     check(in.tryRead({bytes, sizeof(bytes)}) == 3);
     check(StringView{bytes, sizeof(bytes)} == "abc-----");
-    check(!in.atEof);
+    check(!in.atEof());
 
     check(::write(fds[1], "defghijkl", 9) == 9);
     check(in.tryRead({bytes, sizeof(bytes)}) == sizeof(bytes));
@@ -2240,8 +2261,8 @@ TEST_CASE("Stream::tryRead copies without blocking") {
 
     check(::close(fds[1]) == 0);
     check(in.tryRead({bytes, sizeof(bytes)}) == 0);
-    check(in.atEof);
-    check(!in.inputError);
+    check(in.atEof());
+    check(in.getStatus() == IOStatus::EndOfFile);
 }
 
 TEST_CASE("disable releases a blocking read and is terminal") {
@@ -2249,11 +2270,11 @@ TEST_CASE("disable releases a blocking read and is terminal") {
     check(pipe(fds) == 0);
     PipeFD reader{fds[0], Pipe::CanRead};
     Atomic<bool> started = false;
-    u32 numBytesRead = 1;
+    IOStatus readResult{IOStatus::OK, 1};
     Thread thread{[&]() {
         started.store(true, MemoryOrder::Release);
         char byte;
-        numBytesRead = reader.read({&byte, 1});
+        readResult = reader.read({&byte, 1});
     }};
     while (!started.load(MemoryOrder::Acquire)) {
     }
@@ -2263,9 +2284,13 @@ TEST_CASE("disable releases a blocking read and is terminal") {
     thread.join();
 
     char byte;
-    check(numBytesRead == 0);
-    check(reader.read({&byte, 1}) == 0);
-    check(reader.tryRead({&byte, 1}).kind == Pipe::ReadResult::EndOfFile);
+    check(readResult.resultCode == IOStatus::Disabled);
+    check(reader.read({&byte, 1}).resultCode == IOStatus::Disabled);
+    check(reader.tryRead({&byte, 1}).resultCode == IOStatus::Disabled);
+    Stream in{&reader, false};
+    check(!in.makeReadable());
+    check(in.getStatus() == IOStatus::Disabled);
+    check(in.atEof());
     check(::close(fds[1]) == 0);
 }
 
@@ -2276,10 +2301,10 @@ TEST_CASE("disable releases a blocking write") {
     String payload = String::allocate(4 * 1024 * 1024);
     memset(payload.bytes(), 'x', payload.numBytes());
     Atomic<bool> started = false;
-    bool writeSucceeded = true;
+    IOStatus writeStatus{IOStatus::OK, 0};
     Thread thread{[&]() {
         started.store(true, MemoryOrder::Release);
-        writeSucceeded = writer.write(payload);
+        writeStatus = writer.write(payload);
     }};
     while (!started.load(MemoryOrder::Acquire)) {
     }
@@ -2287,8 +2312,8 @@ TEST_CASE("disable releases a blocking write") {
     writer.disable();
     thread.join();
 
-    check(!writeSucceeded);
-    check(!writer.write("x"));
+    check(writeStatus.resultCode == IOStatus::Disabled);
+    check(writer.write("x").resultCode == IOStatus::Disabled);
     check(::close(fds[0]) == 0);
 }
 
@@ -2424,9 +2449,10 @@ TEST_CASE("Mem stream temp buffer") {
             check(offset == mem.getSeekPos());
             u32 numConsecutiveBytes =
                 (random.generateU32() % (Stream::MaxConsecutiveBytes / 2)) + (Stream::MaxConsecutiveBytes / 2);
-            mem.makeReadable(numConsecutiveBytes);
-            check(mem.atEof == !mem.hasRemainingBytes());
-            if (mem.atEof)
+            bool readable = mem.makeReadable(numConsecutiveBytes);
+            if (!readable)
+                check(mem.getStatus() == IOStatus::EndOfFile);
+            if (!mem.hasRemainingBytes())
                 break;
             while (mem.curByte < mem.endByte) {
                 check((u8) *mem.curByte++ == (u8) shuffleBits(offset++));
@@ -2719,7 +2745,7 @@ TEST_CASE("joinWithTimeout() supports timeouts and retries") {
         } else if (mode == 1) {
             process->closeStdIn();
             char byte;
-            check(process->getStdOutReader()->read({&byte, 1}) == 0);
+            check(process->getStdOutReader()->read({&byte, 1}).resultCode == IOStatus::EndOfFile);
             startTicks = getCpuTicks();
             Subprocess::JoinResult result;
             do {
@@ -2763,7 +2789,7 @@ TEST_CASE("terminate() stops an isolated process tree") {
     u64 startTicks = getCpuTicks();
     check(process->terminate());
     char byte;
-    check(process->getStdOutReader()->read({&byte, 1}) == 0);
+    check(process->getStdOutReader()->read({&byte, 1}).resultCode == IOStatus::EndOfFile);
     joinThread.join();
     check(joinReturned.load(MemoryOrder::Acquire));
     double elapsedMillis = (getCpuTicks() - startTicks) * 1000.0 / getCpuTicksPerSecond();

@@ -91,24 +91,27 @@ PipeWinsock::~PipeWinsock() {
     }
 }
 
-// Blocking read. shutdown() makes a blocked recv return when disable() is called from another thread.
-u32 PipeWinsock::read(MutStringView buf) {
+// Blocking read.
+IOStatus PipeWinsock::read(MutStringView buf) {
     PLY_ASSERT(buf.numBytes > 0);
     if (this->disabled.load(MemoryOrder::Acquire) || this->socket == INVALID_SOCKET)
-        return 0;
+        return {IOStatus::Disabled, 0};
 
     int readBytes = recv(this->socket, (char*) buf.bytes, min<u32>(buf.numBytes, INT_MAX), 0);
-    if (readBytes == SOCKET_ERROR || this->disabled.load(MemoryOrder::Acquire))
-        return 0;
-    return numericCast<u32>(readBytes);
+    if (this->disabled.load(MemoryOrder::Acquire))
+        return {IOStatus::Disabled, 0};
+    if (readBytes == SOCKET_ERROR)
+        return {IOStatus::Error, 0};
+    return readBytes ? IOStatus{IOStatus::OK, numericCast<u32>(readBytes)}
+                     : IOStatus{IOStatus::EndOfFile, 0};
 }
 
 // Nonblocking read: ask Winsock whether the socket is readable before borrowing the caller's
 // buffer. A readable socket either has data or has reached end-of-file, so recv won't block.
-Pipe::ReadResult PipeWinsock::tryRead(MutStringView buf) {
+IOStatus PipeWinsock::tryRead(MutStringView buf) {
     PLY_ASSERT(buf.numBytes > 0);
     if (this->disabled.load(MemoryOrder::Acquire) || this->socket == INVALID_SOCKET)
-        return {Pipe::ReadResult::EndOfFile, 0};
+        return {IOStatus::Disabled, 0};
 
     fd_set readSet;
     FD_ZERO(&readSet);
@@ -116,23 +119,23 @@ Pipe::ReadResult PipeWinsock::tryRead(MutStringView buf) {
     timeval timeout = {};
     int selectRC = select(0, &readSet, nullptr, nullptr, &timeout);
     if (selectRC == SOCKET_ERROR)
-        return {Pipe::ReadResult::Error, 0};
+        return {IOStatus::Error, 0};
     if (selectRC == 0)
-        return {Pipe::ReadResult::WouldBlock, 0};
+        return {IOStatus::WouldBlock, 0};
 
     int readBytes = recv(this->socket, (char*) buf.bytes, min<u32>(buf.numBytes, INT_MAX), 0);
     if (this->disabled.load(MemoryOrder::Acquire))
-        return {Pipe::ReadResult::EndOfFile, 0};
+        return {IOStatus::Disabled, 0};
     if (readBytes == SOCKET_ERROR) {
         int error = WSAGetLastError();
         if (error == WSAEWOULDBLOCK)
-            return {Pipe::ReadResult::WouldBlock, 0};
+            return {IOStatus::WouldBlock, 0};
         bool isEOF = error == WSAECONNRESET || error == WSAECONNABORTED || error == WSAESHUTDOWN ||
                      error == WSAENOTCONN || error == WSAEDISCON;
-        return {isEOF ? Pipe::ReadResult::EndOfFile : Pipe::ReadResult::Error, 0};
+        return {isEOF ? IOStatus::EndOfFile : IOStatus::Error, 0};
     }
-    return readBytes ? Pipe::ReadResult{Pipe::ReadResult::Data, numericCast<u32>(readBytes)}
-                     : Pipe::ReadResult{Pipe::ReadResult::EndOfFile, 0};
+    return readBytes ? IOStatus{IOStatus::OK, numericCast<u32>(readBytes)}
+                     : IOStatus{IOStatus::EndOfFile, 0};
 }
 
 // Disable both directions of the socket, unblocking recv or send in another thread.
@@ -143,18 +146,19 @@ void PipeWinsock::disable() {
     }
 }
 
-// Blocking write of the whole buffer. shutdown() makes a blocked send return when disable() is
-// called from another thread.
-bool PipeWinsock::write(StringView buf) {
-    if (this->disabled.load(MemoryOrder::Acquire) || this->socket == INVALID_SOCKET)
-        return false;
+// Blocking write of the whole buffer.
+IOStatus PipeWinsock::write(StringView buf) {
+    u32 totalBytesWritten = 0;
     while (buf.numBytes() > 0) {
+        if (this->disabled.load(MemoryOrder::Acquire) || this->socket == INVALID_SOCKET)
+            return {IOStatus::Disabled, totalBytesWritten};
         int writtenBytes = send(this->socket, buf.bytes(), min<u32>(buf.numBytes(), INT_MAX), 0);
-        if (writtenBytes == SOCKET_ERROR || writtenBytes == 0 || this->disabled.load(MemoryOrder::Acquire))
-            return false;
+        if (writtenBytes == SOCKET_ERROR || writtenBytes == 0)
+            return {IOStatus::Error, totalBytesWritten};
+        totalBytesWritten += writtenBytes;
         buf = buf.substr(numericCast<u32>(writtenBytes));
     }
-    return true;
+    return {IOStatus::OK, totalBytesWritten};
 }
 
 // Sockets are unbuffered, so there's nothing to flush.
@@ -1332,7 +1336,7 @@ bool readChunkedBody(Stream& in, String* body) {
     for (;;) {
         // Read and validate the next chunk-size line.
         String chunkHeader = readLine(in);
-        if (chunkHeader.isEmpty() && in.atEof)
+        if (chunkHeader.isEmpty() && in.atEof())
             return false;
         StringView chunkSizeText = chunkHeader.trim();
 
@@ -1345,9 +1349,10 @@ bool readChunkedBody(Stream& in, String* body) {
 
         // Parse the chunk size as hexadecimal text.
         ViewStream chunkSizeStream(chunkSizeText);
-        u64 chunkSize = readU64FromText(chunkSizeStream, 16);
-        if (chunkSizeStream.inputError)
+        ReadNumber<u64> chunkSizeResult = readU64FromText(chunkSizeStream, 16);
+        if (!chunkSizeResult.success)
             return false;
+        u64 chunkSize = chunkSizeResult.value;
 
         // Accept only trailing whitespace after the chunk size.
         while (chunkSizeStream.makeReadable()) {
@@ -1362,7 +1367,7 @@ bool readChunkedBody(Stream& in, String* body) {
             for (;;) {
                 // Stop once the trailer section terminator is found.
                 String trailerLine = readLine(in);
-                if (trailerLine.isEmpty() && in.atEof)
+                if (trailerLine.isEmpty() && in.atEof())
                     return false;
                 if (trailerLine.trim().isEmpty())
                     break;
@@ -1537,7 +1542,7 @@ void handleRequest(TCPConnection* tcpConn, const Functor<void(HTTPServer::Reques
         String requestLine;
         do {
             requestLine = readLine(in);
-            if (requestLine.isEmpty() && in.atEof) {
+            if (requestLine.isEmpty() && in.atEof()) {
                 request.sendGenericResponse(HTTPServer::Response::BadRequest);
                 return;
             }
@@ -1554,7 +1559,7 @@ void handleRequest(TCPConnection* tcpConn, const Functor<void(HTTPServer::Reques
         // Read HTTP headers.
         for (;;) {
             String line = readLine(in);
-            if (line.isEmpty() && in.atEof) {
+            if (line.isEmpty() && in.atEof()) {
                 request.sendGenericResponse(HTTPServer::Response::BadRequest);
                 return;
             }

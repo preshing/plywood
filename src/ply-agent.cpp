@@ -2255,7 +2255,11 @@ static void executeShellCommand(ToolContext* toolCtx, Transcript::Message* toolC
     u32 outputBytes = 0;
     char lastOutputByte = 0;
     bool outputTruncated = false;
-    while (u32 numBytes = process->getStdOutReader()->read({buffer, sizeof(buffer)})) {
+    for (;;) {
+        IOStatus readResult = process->getStdOutReader()->read({buffer, sizeof(buffer)});
+        if (readResult.resultCode != IOStatus::OK)
+            break;
+        u32 numBytes = readResult.numBytes;
         u32 numBytesToAppend = min(numBytes, OutputLimit - outputBytes);
         if (numBytesToAppend > 0) {
             toolCtx->appendResponse(toolCall, StringView{buffer, numBytesToAppend});
@@ -2638,10 +2642,8 @@ GitIgnoreContents loadGitIgnoreForDirectory(ToolContext* toolCtx, StringView abs
     contents.absRoot = absDirPath;
 
     ViewStream stream{StringView{text}};
-    for (;;) {
+    while (stream.hasRemainingBytes()) {
         StringView trimmed = readLine(stream).trim();
-        if (stream.atEof)
-            break;
 
         // If line is empty or a comment, continue.
         if (trimmed.isEmpty())

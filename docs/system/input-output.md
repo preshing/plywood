@@ -58,33 +58,18 @@ Only one thread may call `read`, `tryRead`, `write`, `flush` or `seekTo` at a ti
 > | `Pipe::CanWrite` | The pipe supports `write` and `flush`. |
 > | `Pipe::CanSeek` | The pipe supports `seekTo` and `getFileSize`. |
 
-`u32 Pipe::read(MutStringView buf)`
-> Reads up to `buf.numBytes` bytes into `buf`. Returns the number of bytes actually read.
+`IOStatus Pipe::read(MutStringView buf)`
+> Reads up to `buf.numBytes` bytes into `buf`.
 > The calling thread will block until at least one byte is successfully read from the underlying data source.
-> Returns 0 when no more data can be read because of end-of-file, the pipe being disabled, or an I/O error.
 > `buf` must not be empty.
 
-`Pipe::ReadResult Pipe::tryRead(MutStringView buf)`
-> Reads as much data as possible without blocking. `buf` must not be empty. `Pipe::ReadResult` has the following data members:
->
-> | Member | Description |
-> | ---- | ------- |
-> | `Kind kind` | Outcome of the read. |
-> | `u32 numBytes` | Number of bytes written to `buf`. Only valid when `kind` is `Data`. |
->
-> `Pipe::ReadResult::Kind` values:
->
-> | Value | Meaning |
-> | ---- | ------- |
-> | `Data` | `numBytes` bytes were written to the destination buffer. |
-> | `EndOfFile` | The source is exhausted; no more data will arrive. |
-> | `WouldBlock` | No data is available right now, but more may arrive later. |
-> | `Error` | The read failed due to an I/O error. |
->
-> Every value other than `Data` means that no bytes were written to `buf`.
+`IOStatus Pipe::tryRead(MutStringView buf)`
+> Reads as much data as possible without blocking. `buf` must not be empty.
 
-`bool Pipe::write(StringView buf)`
-> Writes the bytes in `buf`. Returns `true` if all bytes were written. Can return `false` if the pipe is disabled or the peer connection was closed. This function may block until the pipe's destination is ready to receive.
+`IOStatus Pipe::write(StringView buf)`
+> Writes the bytes in `buf`. Returns `OK` if all bytes were written, `Disabled` if the pipe was disabled,
+> or `Error` if the write failed. On a partial failure, `numBytes` gives the number of bytes actually
+> written. This function may block until the pipe's destination is ready to receive.
 
 `void Pipe::seekTo(s64 offset)`
 > Seeks to the specified byte offset. Only supported by seekable pipes.
@@ -95,11 +80,32 @@ Only one thread may call `read`, `tryRead`, `write`, `flush` or `seekTo` at a ti
 `void Pipe::disable()`
 > Disables communication on this pipe. It's safe to call this from any thread at any time.
 > If another thread is blocked inside `read` or `write`, `disable` unblocks it.
-> After `disable` returns, readers will encounter end-of-file quickly, though a small amount
-> of trailing data may remain available to read.
+> After `disable` returns, a pipe makes no further calls into the underlying operating system,
+> but handles remain open until the Pipe is destroyed.
 
 `String readAllRemainingData(Pipe* inPipe)`
 > Reads and returns all remaining data from `inPipe` through end-of-file. This function may block until the pipe's writer closes. It does not close the pipe.
+
+### `IOStatus`
+
+`IOStatus` is returned by `Pipe::read`, `Pipe::tryRead` and `Pipe::write`. It has the following data members:
+
+| Member | Description |
+| ---- | ------- |
+| `ResultCode resultCode` | Outcome of the operation. |
+| `u32 numBytes` | Number of bytes transferred. Only valid when `resultCode` is `OK`, or when a write partially completes before returning `Error` or `Disabled`. |
+
+`IOStatus::ResultCode` values:
+
+| Value | Meaning |
+| ---- | ------- |
+| `OK` | The operation completed successfully. `numBytes` bytes were transferred. |
+| `EndOfFile` | The source is exhausted; no more data will arrive. |
+| `WouldBlock` | No data is available right now, but more may arrive later. |
+| `Error` | The operation failed due to an I/O error. |
+| `Disabled` | The pipe was disabled. |
+
+Every value other than `OK` means that no bytes were transferred, except when a write partially completes before returning `Error` or `Disabled`. `WouldBlock` is returned only by `tryRead`.
 
 ## `Stream`
 
@@ -107,14 +113,12 @@ A `Stream` wraps a `Pipe` and provides buffered I/O operations. Streams handle t
 
 ### Buffered Access
 
-`Stream` exposes the following public data members.
+`Stream` exposes the following public buffer pointers.
 
 | Member | Description |
 | --- | --- |
 | `char* curByte` | Current position in the active buffer. After `makeReadable()` succeeds, read bytes beginning here and advance `curByte` by the number consumed. After `makeWritable()` succeeds, write bytes beginning here and advance `curByte` by the number produced. Never advance it past `endByte`. |
 | `char* endByte` | One past the end of the active readable or writable range. Callers may compare this with `curByte`, but should not change it. A call that refills, flushes, seeks, closes or otherwise changes the stream may invalidate the current buffer range. |
-| `bool atEof` | Set when the stream has observed end-of-file. Buffered bytes may still remain when this is true, so consume the range through `endByte` before treating the input as exhausted. Callers should inspect this value but should not modify it. |
-| `bool inputError` | Set when an input operation reports an error. This lets callers distinguish an error from would-block or ordinary end-of-file after `tryMakeReadable()` returns `false`. Callers should inspect this value but should not modify it. |
 
 For direct reading, call `makeReadable()` or `tryMakeReadable()` before using the range. For direct
 writing, call `makeWritable()` first.
@@ -149,12 +153,11 @@ writing, call `makeWritable()` first.
 > | `Stream::CanWrite` | The stream supports writing. |
 > | `Stream::CanSeek` | The stream supports `seekTo`. |
 
+`bool Stream::atEof() const`
+> Returns `true` when `getStatus()` is one of `EndOfFile`, `Error` or `Disabled`. Buffered bytes may still remain when a request for a larger readable range encountered end-of-file.
+
 `Pipe* Stream::getPipe() const`
 > Returns the underlying pipe for a pipe-backed stream, or `nullptr` for other stream types.
-
-`void Stream::disablePipe()`
-> Disables the underlying pipe, which can release operations blocked on that pipe. It's also legal to
-> call this function on a non-pipe stream, in which case it has no effect.
 
 `void Stream::close()`
 > Flushes and closes the stream. If the stream owns the pipe, the pipe is destroyed.
@@ -167,11 +170,19 @@ writing, call `makeWritable()` first.
 > This function makes as much data as possible readable without blocking.
 > Returns `true` if one or more bytes of data are made readable.
 > A `false` result can mean that no data is immediately available, end-of-file was reached or an
-> I/O error occurred. Inspect `atEof` and `inputError` to distinguish those cases.
+> I/O error occurred, or the pipe was disabled. Inspect `getStatus()` to distinguish those cases.
 
 `bool Stream::makeWritable(u32 minBytes = 1)`
 > Ensures at least `minBytes` of space are available in the write buffer.
 > May block until the underlying destination is ready to receive.
+
+`void Stream::disable()`
+> Disables the underlying pipe, which can release operations blocked on that pipe. It's also legal to
+> call this function on a non-pipe stream, in which case it has no effect. Any internally-buffered data will remain available for read after `disable()` returns, but `getStatus()` will eventually report
+> `Disabled` after it runs out.
+
+`IOStatus::ResultCode Stream::getStatus() const`
+> Returns the result code of the most recent call to `makeReadable`, `tryMakeReadable` or `makeWritable`.
 
 `bool Stream::hasRemainingBytes() bool`
 > Returns `true` if there are any bytes remaining in the read buffer.
@@ -208,8 +219,8 @@ writing, call `makeWritable()` first.
 `u32 Stream::tryRead(MutStringView dst)`
 > Reads as much data as possible without blocking, up to `dst.numBytes` bytes. Returns the number
 > of bytes actually read and leaves the rest of `dst` unchanged. A return value of 0 can mean that
-> no data is immediately available, end-of-file was reached or an I/O error occurred. Inspect
-> `atEof` and `inputError` to distinguish those cases.
+> no data is immediately available, end-of-file was reached, an I/O error occurred, or the pipe was
+> disabled. Inspect `getStatus()` to distinguish those cases.
 
 `u32 Stream::skip(u32 numBytes)`
 > Skips up to `numBytes` in the input. Returns the number of bytes actually skipped.
@@ -276,14 +287,14 @@ These functions parse common text patterns from input streams.
 `StringView readIdentifier(ViewStream& viewIn, u32 flags = 0)`
 > Reads a C-style identifier (letters, digits, underscores, starting with a non-digit).
 
-`u64 readU64FromText(Stream& in, u32 radix = 10)`
-> Parses an unsigned integer from the stream. The `radix` parameter specifies the number base (e.g., 10 for decimal, 16 for hexadecimal).
+`ReadNumber<u64> readU64FromText(Stream& in, u32 radix = 10)`
+> Parses an unsigned integer from the stream. The `radix` parameter specifies the number base (e.g., 10 for decimal, 16 for hexadecimal). The result contains the parsed `value` and a `success` flag that is false when there are no digits or the value overflows.
 
-`s64 readS64FromText(Stream& in, u32 radix = 10)`
-> Parses a signed integer from the stream. Handles optional leading `-` sign.
+`ReadNumber<s64> readS64FromText(Stream& in, u32 radix = 10)`
+> Parses a signed integer from the stream. Handles an optional leading `-` sign and reports invalid or out-of-range values through `success`.
 
-`double readDoubleFromText(Stream& in, u32 radix = 10)`
-> Parses a floating-point number from the stream.
+`ReadNumber<double> readDoubleFromText(Stream& in, u32 radix = 10)`
+> Parses a floating-point number from the stream. `success` is false if no digits were found.
 
 `String readQuotedString(Stream& in, QuotedStringType type = QuotedStringType::C, bool strict = true, Functor<void(QuotedStringError)> errorCallback = {})`
 > Reads a quoted string starting at its opening quote. The `type` parameter selects the string-literal grammar (`C`, `JavaScript`, `JSON` or `Python`). In strict mode, malformed escape sequences are rejected. In permissive mode, malformed escapes are recovered in a way that tries to preserve the original text. Calls `errorCallback` if parsing fails.

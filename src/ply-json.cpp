@@ -83,8 +83,9 @@ struct ParserImpl : Parser {
 // Returns true only when the entire literal parses as a number.
 bool tryParseNumber(StringView text, double* value) {
     ViewStream in{text};
-    *value = readDoubleFromText(in);
-    return !in.inputError && (in.curByte == in.endByte);
+    ReadNumber<double> result = readDoubleFromText(in);
+    *value = result.value;
+    return result.success && (in.curByte == in.endByte);
 }
 
 // Forwards a diagnostic to the callback, if one is installed, and records fatal errors.

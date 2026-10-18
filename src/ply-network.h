@@ -80,10 +80,10 @@ struct PipeWinsock : Pipe {
     PipeWinsock();
     PipeWinsock(SOCKET s, u32 permissions);
     virtual ~PipeWinsock();
-    virtual u32 read(MutStringView buf) override;
-    virtual ReadResult tryRead(MutStringView buf) override;
+    virtual IOStatus read(MutStringView buf) override;
+    virtual IOStatus tryRead(MutStringView buf) override;
     virtual void disable() override;
-    virtual bool write(StringView buf) override;
+    virtual IOStatus write(StringView buf) override;
     virtual void flush(bool) override;
 };
 

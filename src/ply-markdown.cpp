@@ -864,7 +864,7 @@ void parseNewMarkers(LineParser& lp) {
         } else if (parser->options.orderedLists && ctReader.point >= '0' && ctReader.point <= '9') {
             // Read number.
             ViewStream in(ctReader.viewRemaining());
-            u64 num = readU64FromText(in);
+            u64 num = readU64FromText(in).value;
             if (parser->leafBlock && num != 1) {
                 // If list item interrupts a paragraph, the start number must be 1.
                 goto notMarker;

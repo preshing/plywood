@@ -80,14 +80,11 @@ struct MultiPipe : Pipe {
         this->permissions = Pipe::CanWrite;
     }
 
-    virtual bool write(StringView buf) override {
-        bool succeeded = true;
+    virtual IOStatus write(StringView buf) override {
         for (Pipe* pipe : this->pipes) {
-            if (!pipe->write(buf)) {
-                succeeded = false;
-            }
+            pipe->write(buf); // Ignore all errors in underlying pipes.
         }
-        return succeeded;
+        return {IOStatus::OK, buf.numBytes()};
     }
 
     virtual void flush(bool toDevice = false) override {

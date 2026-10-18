@@ -4021,6 +4021,20 @@ u32 binarySearch(Arr& arr, const Key& desiredKey, FindType findType) {
 //  ██     ██ ██▄▄█▀ ▀█▄▄▄
 //            ██
 
+// Return value of Pipe::read(), tryRead() and write().
+struct IOStatus {
+    enum ResultCode : u8 {
+        OK,         // Operation was successful.
+        EndOfFile,  // End-of-file encountered. numBytes == 0.
+        Error,      // I/O error. numBytes == 0 except for partially-completed writes.
+        WouldBlock, // No data available yet, but may arrive later. Only returned by tryRead(). numBytes == 0.
+        Disabled,   // Pipe has been disabled. numBytes == 0 except for partially-completed writes.
+    };
+
+    ResultCode resultCode = EndOfFile;
+    u32 numBytes = 0; // Number of bytes successfully transferred.
+};
+
 // Pipe is the abstract base class for all I/O operations.
 // Concrete implementations include file pipes, socket pipes, and memory pipes.
 // The underlying implementation is closed in the destructor.
@@ -4039,18 +4053,6 @@ public:
     static constexpr u32 CanWrite = 0x2;
     static constexpr u32 CanSeek = 0x4;
 
-    // Return value of tryRead().
-    struct ReadResult {
-        enum Kind {
-            Data,       // numBytes were written to the destination buffer.
-            EndOfFile,  // The source is exhausted; no more data will arrive.
-            WouldBlock, // No data is available right now, but more may arrive later.
-            Error,      // The read failed due to an I/O error.
-        };
-        Kind kind = EndOfFile;
-        u32 numBytes = 0; // Number of bytes written. Only valid when kind is Data.
-    };
-
     // Virtual destructor.
     virtual ~Pipe() = default;
 
@@ -4060,15 +4062,15 @@ public:
         return this->permissions;
     }
 
-    // read() blocks until data becomes available and returns 0 when no more data can be read due to
-    // end-of-file, disabling or an I/O error. buf must not be empty.
-    virtual u32 read(MutStringView buf);
+    // read() blocks until a non-zero amount of data becomes available. buf must not be empty.
+    virtual IOStatus read(MutStringView buf);
 
     // tryRead() doesn't block. buf must not be empty.
-    virtual ReadResult tryRead(MutStringView buf);
+    virtual IOStatus tryRead(MutStringView buf);
 
     // If the recipient on the other end of the Pipe isn't ready, write() may block until they become ready.
-    virtual bool write(StringView buf);
+    // If IOStatus::resultCode is OK, it means all bytes were successfully written.
+    virtual IOStatus write(StringView buf);
 
     // Seek to the specified file offset, if the subclass supports it.
     virtual void seekTo(s64 offset);
@@ -4105,9 +4107,9 @@ public:
     PipeHandle(HANDLE h, u32 permissions);
     virtual ~PipeHandle();
     virtual u64 getFileSize() override;
-    virtual u32 read(MutStringView buf) override;
-    virtual ReadResult tryRead(MutStringView buf) override;
-    virtual bool write(StringView buf) override;
+    virtual IOStatus read(MutStringView buf) override;
+    virtual IOStatus tryRead(MutStringView buf) override;
+    virtual IOStatus write(StringView buf) override;
     virtual void seekTo(s64 offset) override;
     virtual void flush(bool toDevice = false) override;
     virtual void disable() override;
@@ -4126,9 +4128,9 @@ public:
     PipeFD(int fd, u32 permissions);
     virtual ~PipeFD();
     virtual u64 getFileSize() override;
-    virtual u32 read(MutStringView buf) override;
-    virtual ReadResult tryRead(MutStringView buf) override;
-    virtual bool write(StringView buf) override;
+    virtual IOStatus read(MutStringView buf) override;
+    virtual IOStatus tryRead(MutStringView buf) override;
+    virtual IOStatus write(StringView buf) override;
     virtual void seekTo(s64 offset) override;
     virtual void flush(bool toDevice = false) override;
     virtual void disable() override;
@@ -4166,15 +4168,18 @@ protected:
         char* startByte = nullptr;
     };
 
+    // Protected data members.
+    union {
+        PipeData pipe;      // if type == Type::Pipe
+        Owned<MemData> mem; // if type == Type::Mem
+        ViewData view;      // if type == Type::View
+    };
+
+    u8 permissions = 0;
     Type type = Type::None;
     Mode mode = Mode::None;
-    u32 permissions = 0;
-    union {
-        PipeData pipe; // if type == Type::Pipe
-        Owned<MemData> mem; // if type == Type::Mem
-        ViewData view; // if type == Type::View
-    };
-    bool isPipeOwner = false; // only used if type == Type::Pipe
+    IOStatus::ResultCode status = IOStatus::OK;
+    bool isPipeOwner = false;        // only used if type == Type::Pipe
     bool usingScratchBuffer = false; // only used if type == Type::Mem
 
 public:
@@ -4188,8 +4193,6 @@ public:
     static constexpr u32 MaxConsecutiveBytes = 2048;
 
     // Public data members.
-    bool atEof = false;
-    bool inputError = false;
     char* curByte = nullptr;
     char* endByte = nullptr;
 
@@ -4214,11 +4217,22 @@ public:
     u32 getPermissions() const {
         return this->permissions;
     }
+    // Returns the status of the most recent call to makeReadable, tryMakeReadable or makeWritable.
+    IOStatus::ResultCode getStatus() const {
+        return this->status;
+    }
+    // EndOfFile, Error and Disabled are all considered end-of-file conditions at the Stream API level.
+    bool atEof() const {
+        return (this->status == IOStatus::EndOfFile) || (this->status == IOStatus::Error) ||
+               (this->status == IOStatus::Disabled);
+    }
     Pipe* getPipe() const {
         return this->type == Type::Pipe ? this->pipe.pipe : nullptr;
     }
     // Disables the underlying pipe, if any. Legal and harmless for non-pipe streams.
-    void disablePipe();
+    // Internally buffered data will remain readable until consumed, at which point getStatus() will
+    // start returning Disabled.
+    void disable();
     void close() {
         this->~Stream();
         new (this) Stream; // Illegal to use after this.
@@ -4366,8 +4380,7 @@ public:
     void seekTo(char* byte) {
         PLY_ASSERT((byte >= this->view.startByte) && (byte <= this->endByte));
         this->curByte = byte;
-        this->atEof = false;
-        this->inputError = false;
+        this->status = IOStatus::OK;
     }
     template <typename... Args>
     bool match(StringView pattern, Args*... args);
@@ -4415,6 +4428,12 @@ enum class QuotedStringError {
     BadEscapeSequence,
 };
 
+template <typename T>
+struct ReadNumber {
+    T value;
+    bool success;
+};
+
 String readLine(Stream& in);
 StringView readLine(ViewStream& viewIn);
 String readWhitespace(Stream& in);
@@ -4422,9 +4441,9 @@ StringView readWhitespace(ViewStream& in);
 void skipWhitespace(Stream& in);
 String readIdentifier(Stream& in, u32 flags = 0);
 StringView readIdentifier(ViewStream& viewIn, u32 flags = 0);
-u64 readU64FromText(Stream& in, u32 radix = 10);
-s64 readS64FromText(Stream& in, u32 radix = 10);
-double readDoubleFromText(Stream& in, u32 radix = 10);
+ReadNumber<u64> readU64FromText(Stream& in, u32 radix = 10);
+ReadNumber<s64> readS64FromText(Stream& in, u32 radix = 10);
+ReadNumber<double> readDoubleFromText(Stream& in, u32 radix = 10);
 String readQuotedString(Stream& in, QuotedStringType type = QuotedStringType::C, bool strict = true,
                         Functor<void(QuotedStringError)> errorCallback = {});
 
@@ -4585,8 +4604,8 @@ public:
         this->permissions = Pipe::CanRead;
     }
     // Fill dstBuf with UTF-8-encoded data.
-    virtual u32 read(MutStringView dstBuf) override;
-    virtual ReadResult tryRead(MutStringView dstBuf) override;
+    virtual IOStatus read(MutStringView dstBuf) override;
+    virtual IOStatus tryRead(MutStringView dstBuf) override;
     virtual void disable() override;
 };
 
@@ -4607,7 +4626,7 @@ public:
     }
     virtual ~OutPipeConvertUnicode() override;
     // srcBuf expects UTF-8-encoded data.
-    virtual bool write(StringView srcBuf) override;
+    virtual IOStatus write(StringView srcBuf) override;
     virtual void flush(bool toDevice = false) override;
     virtual void disable() override;
 };
