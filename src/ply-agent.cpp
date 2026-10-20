@@ -2256,8 +2256,8 @@ static void executeShellCommand(ToolContext* toolCtx, Transcript::Message* toolC
     char lastOutputByte = 0;
     bool outputTruncated = false;
     for (;;) {
-        IOStatus readResult = process->getStdOutReader()->read({buffer, sizeof(buffer)});
-        if (readResult.resultCode != IOStatus::OK)
+        IOResult readResult = process->getStdOutReader()->read({buffer, sizeof(buffer)});
+        if (readResult.code != IOResult::OK)
             break;
         u32 numBytes = readResult.numBytes;
         u32 numBytesToAppend = min(numBytes, OutputLimit - outputBytes);

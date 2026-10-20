@@ -4022,8 +4022,8 @@ u32 binarySearch(Arr& arr, const Key& desiredKey, FindType findType) {
 //            ██
 
 // Return value of Pipe::read(), tryRead() and write().
-struct IOStatus {
-    enum ResultCode : u8 {
+struct IOResult {
+    enum Code : u8 {
         OK,         // Operation was successful.
         EndOfFile,  // End-of-file encountered. numBytes == 0.
         Error,      // I/O error. numBytes == 0 except for partially-completed writes.
@@ -4031,7 +4031,7 @@ struct IOStatus {
         Disabled,   // Pipe has been disabled. numBytes == 0 except for partially-completed writes.
     };
 
-    ResultCode resultCode = EndOfFile;
+    Code code = EndOfFile;
     u32 numBytes = 0; // Number of bytes successfully transferred.
 };
 
@@ -4063,14 +4063,14 @@ public:
     }
 
     // read() blocks until a non-zero amount of data becomes available. buf must not be empty.
-    virtual IOStatus read(MutStringView buf);
+    virtual IOResult read(MutStringView buf);
 
     // tryRead() doesn't block. buf must not be empty.
-    virtual IOStatus tryRead(MutStringView buf);
+    virtual IOResult tryRead(MutStringView buf);
 
     // If the recipient on the other end of the Pipe isn't ready, write() may block until they become ready.
-    // If IOStatus::resultCode is OK, it means all bytes were successfully written.
-    virtual IOStatus write(StringView buf);
+    // If IOResult::code is OK, it means all bytes were successfully written.
+    virtual IOResult write(StringView buf);
 
     // Seek to the specified file offset, if the subclass supports it.
     virtual void seekTo(s64 offset);
@@ -4107,9 +4107,9 @@ public:
     PipeHandle(HANDLE h, u32 capabilities);
     virtual ~PipeHandle();
     virtual u64 getFileSize() override;
-    virtual IOStatus read(MutStringView buf) override;
-    virtual IOStatus tryRead(MutStringView buf) override;
-    virtual IOStatus write(StringView buf) override;
+    virtual IOResult read(MutStringView buf) override;
+    virtual IOResult tryRead(MutStringView buf) override;
+    virtual IOResult write(StringView buf) override;
     virtual void seekTo(s64 offset) override;
     virtual void flush(bool toDevice = false) override;
     virtual void disable() override;
@@ -4128,9 +4128,9 @@ public:
     PipeFD(int fd, u32 capabilities);
     virtual ~PipeFD();
     virtual u64 getFileSize() override;
-    virtual IOStatus read(MutStringView buf) override;
-    virtual IOStatus tryRead(MutStringView buf) override;
-    virtual IOStatus write(StringView buf) override;
+    virtual IOResult read(MutStringView buf) override;
+    virtual IOResult tryRead(MutStringView buf) override;
+    virtual IOResult write(StringView buf) override;
     virtual void seekTo(s64 offset) override;
     virtual void flush(bool toDevice = false) override;
     virtual void disable() override;
@@ -4178,7 +4178,7 @@ protected:
     u8 capabilities = 0;
     Type type = Type::None;
     Mode mode = Mode::None;
-    IOStatus::ResultCode status = IOStatus::OK;
+    IOResult::Code status = IOResult::OK;
     bool isPipeOwner = false;        // only used if type == Type::Pipe
     bool usingScratchBuffer = false; // only used if type == Type::Mem
 
@@ -4218,13 +4218,13 @@ public:
         return this->capabilities;
     }
     // Returns the status of the most recent call to makeReadable, tryMakeReadable or makeWritable.
-    IOStatus::ResultCode getStatus() const {
+    IOResult::Code getStatus() const {
         return this->status;
     }
     // EndOfFile, Error and Disabled are all considered end-of-file conditions at the Stream API level.
     bool atEof() const {
-        return (this->status == IOStatus::EndOfFile) || (this->status == IOStatus::Error) ||
-               (this->status == IOStatus::Disabled);
+        return (this->status == IOResult::EndOfFile) || (this->status == IOResult::Error) ||
+               (this->status == IOResult::Disabled);
     }
     Pipe* getPipe() const {
         return this->type == Type::Pipe ? this->pipe.pipe : nullptr;
@@ -4380,7 +4380,7 @@ public:
     void seekTo(char* byte) {
         PLY_ASSERT((byte >= this->view.startByte) && (byte <= this->endByte));
         this->curByte = byte;
-        this->status = IOStatus::OK;
+        this->status = IOResult::OK;
     }
     template <typename... Args>
     bool match(StringView pattern, Args*... args);
@@ -4604,8 +4604,8 @@ public:
         this->capabilities = Pipe::CanRead;
     }
     // Fill dstBuf with UTF-8-encoded data.
-    virtual IOStatus read(MutStringView dstBuf) override;
-    virtual IOStatus tryRead(MutStringView dstBuf) override;
+    virtual IOResult read(MutStringView dstBuf) override;
+    virtual IOResult tryRead(MutStringView dstBuf) override;
     virtual void disable() override;
 };
 
@@ -4626,7 +4626,7 @@ public:
     }
     virtual ~OutPipeConvertUnicode() override;
     // srcBuf expects UTF-8-encoded data.
-    virtual IOStatus write(StringView srcBuf) override;
+    virtual IOResult write(StringView srcBuf) override;
     virtual void flush(bool toDevice = false) override;
     virtual void disable() override;
 };

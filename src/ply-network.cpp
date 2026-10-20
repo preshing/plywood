@@ -92,26 +92,26 @@ PipeWinsock::~PipeWinsock() {
 }
 
 // Blocking read.
-IOStatus PipeWinsock::read(MutStringView buf) {
+IOResult PipeWinsock::read(MutStringView buf) {
     PLY_ASSERT(buf.numBytes > 0);
     if (this->disabled.load(MemoryOrder::Acquire) || this->socket == INVALID_SOCKET)
-        return {IOStatus::Disabled, 0};
+        return {IOResult::Disabled, 0};
 
     int readBytes = recv(this->socket, (char*) buf.bytes, min<u32>(buf.numBytes, INT_MAX), 0);
     if (this->disabled.load(MemoryOrder::Acquire))
-        return {IOStatus::Disabled, 0};
+        return {IOResult::Disabled, 0};
     if (readBytes == SOCKET_ERROR)
-        return {IOStatus::Error, 0};
-    return readBytes ? IOStatus{IOStatus::OK, numericCast<u32>(readBytes)}
-                     : IOStatus{IOStatus::EndOfFile, 0};
+        return {IOResult::Error, 0};
+    return readBytes ? IOResult{IOResult::OK, numericCast<u32>(readBytes)}
+                     : IOResult{IOResult::EndOfFile, 0};
 }
 
 // Nonblocking read: ask Winsock whether the socket is readable before borrowing the caller's
 // buffer. A readable socket either has data or has reached end-of-file, so recv won't block.
-IOStatus PipeWinsock::tryRead(MutStringView buf) {
+IOResult PipeWinsock::tryRead(MutStringView buf) {
     PLY_ASSERT(buf.numBytes > 0);
     if (this->disabled.load(MemoryOrder::Acquire) || this->socket == INVALID_SOCKET)
-        return {IOStatus::Disabled, 0};
+        return {IOResult::Disabled, 0};
 
     fd_set readSet;
     FD_ZERO(&readSet);
@@ -119,23 +119,23 @@ IOStatus PipeWinsock::tryRead(MutStringView buf) {
     timeval timeout = {};
     int selectRC = select(0, &readSet, nullptr, nullptr, &timeout);
     if (selectRC == SOCKET_ERROR)
-        return {IOStatus::Error, 0};
+        return {IOResult::Error, 0};
     if (selectRC == 0)
-        return {IOStatus::WouldBlock, 0};
+        return {IOResult::WouldBlock, 0};
 
     int readBytes = recv(this->socket, (char*) buf.bytes, min<u32>(buf.numBytes, INT_MAX), 0);
     if (this->disabled.load(MemoryOrder::Acquire))
-        return {IOStatus::Disabled, 0};
+        return {IOResult::Disabled, 0};
     if (readBytes == SOCKET_ERROR) {
         int error = WSAGetLastError();
         if (error == WSAEWOULDBLOCK)
-            return {IOStatus::WouldBlock, 0};
+            return {IOResult::WouldBlock, 0};
         bool isEOF = error == WSAECONNRESET || error == WSAECONNABORTED || error == WSAESHUTDOWN ||
                      error == WSAENOTCONN || error == WSAEDISCON;
-        return {isEOF ? IOStatus::EndOfFile : IOStatus::Error, 0};
+        return {isEOF ? IOResult::EndOfFile : IOResult::Error, 0};
     }
-    return readBytes ? IOStatus{IOStatus::OK, numericCast<u32>(readBytes)}
-                     : IOStatus{IOStatus::EndOfFile, 0};
+    return readBytes ? IOResult{IOResult::OK, numericCast<u32>(readBytes)}
+                     : IOResult{IOResult::EndOfFile, 0};
 }
 
 // Disable both directions of the socket, unblocking recv or send in another thread.
@@ -147,18 +147,18 @@ void PipeWinsock::disable() {
 }
 
 // Blocking write of the whole buffer.
-IOStatus PipeWinsock::write(StringView buf) {
+IOResult PipeWinsock::write(StringView buf) {
     u32 totalBytesWritten = 0;
     while (buf.numBytes() > 0) {
         if (this->disabled.load(MemoryOrder::Acquire) || this->socket == INVALID_SOCKET)
-            return {IOStatus::Disabled, totalBytesWritten};
+            return {IOResult::Disabled, totalBytesWritten};
         int writtenBytes = send(this->socket, buf.bytes(), min<u32>(buf.numBytes(), INT_MAX), 0);
         if (writtenBytes == SOCKET_ERROR || writtenBytes == 0)
-            return {IOStatus::Error, totalBytesWritten};
+            return {IOResult::Error, totalBytesWritten};
         totalBytesWritten += writtenBytes;
         buf = buf.substr(numericCast<u32>(writtenBytes));
     }
-    return {IOStatus::OK, totalBytesWritten};
+    return {IOResult::OK, totalBytesWritten};
 }
 
 // Sockets are unbuffered, so there's nothing to flush.

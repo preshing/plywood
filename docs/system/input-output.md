@@ -58,15 +58,15 @@ Only one thread may call `read`, `tryRead`, `write`, `flush` or `seekTo` at a ti
 > | `Pipe::CanWrite` | The pipe supports `write` and `flush`. |
 > | `Pipe::CanSeek` | The pipe supports `seekTo` and `getFileSize`. |
 
-`IOStatus Pipe::read(MutStringView buf)`
+`IOResult Pipe::read(MutStringView buf)`
 > Reads up to `buf.numBytes` bytes into `buf`.
 > The calling thread will block until at least one byte is successfully read from the underlying data source.
 > `buf` must not be empty.
 
-`IOStatus Pipe::tryRead(MutStringView buf)`
+`IOResult Pipe::tryRead(MutStringView buf)`
 > Reads as much data as possible without blocking. `buf` must not be empty.
 
-`IOStatus Pipe::write(StringView buf)`
+`IOResult Pipe::write(StringView buf)`
 > Writes the bytes in `buf`. Returns `OK` if all bytes were written, `Disabled` if the pipe was disabled,
 > or `Error` if the write failed. On a partial failure, `numBytes` gives the number of bytes actually
 > written. This function may block until the pipe's destination is ready to receive.
@@ -86,16 +86,16 @@ Only one thread may call `read`, `tryRead`, `write`, `flush` or `seekTo` at a ti
 `String readAllRemainingData(Pipe* inPipe)`
 > Reads and returns all remaining data from `inPipe` through end-of-file. This function may block until the pipe's writer closes. It does not close the pipe.
 
-### `IOStatus`
+### `IOResult`
 
-`IOStatus` is returned by `Pipe::read`, `Pipe::tryRead` and `Pipe::write`. It has the following data members:
+`IOResult` is returned by `Pipe::read`, `Pipe::tryRead` and `Pipe::write`. It has the following data members:
 
 | Member | Description |
 | ---- | ------- |
-| `ResultCode resultCode` | Outcome of the operation. |
-| `u32 numBytes` | Number of bytes transferred. Only valid when `resultCode` is `OK`, or when a write partially completes before returning `Error` or `Disabled`. |
+| `Code code` | Outcome of the operation. |
+| `u32 numBytes` | Number of bytes transferred. Only valid when `code` is `OK`, or when a write partially completes before returning `Error` or `Disabled`. |
 
-`IOStatus::ResultCode` values:
+`IOResult::Code` values:
 
 | Value | Meaning |
 | ---- | ------- |
@@ -181,7 +181,7 @@ writing, call `makeWritable()` first.
 > call this function on a non-pipe stream, in which case it has no effect. Any internally-buffered data will remain available for read after `disable()` returns, but `getStatus()` will eventually report
 > `Disabled` after it runs out.
 
-`IOStatus::ResultCode Stream::getStatus() const`
+`IOResult::Code Stream::getStatus() const`
 > Returns the result code of the most recent call to `makeReadable`, `tryMakeReadable` or `makeWritable`.
 
 `bool Stream::hasRemainingBytes() bool`

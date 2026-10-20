@@ -2134,11 +2134,11 @@ TEST_CASE("Convert complete and fragmented UTF-8") {
 
     // Preserve all bytes when a multibyte point and following text cross writes.
     OutPipeConvertUnicode fragmented{MemStream{}, UnicodeType::UTF16LE};
-    IOStatus firstWrite = fragmented.write(StringView{"\xe3", 1});
-    check(firstWrite.resultCode == IOStatus::OK);
+    IOResult firstWrite = fragmented.write(StringView{"\xe3", 1});
+    check(firstWrite.code == IOResult::OK);
     check(firstWrite.numBytes == 1);
-    IOStatus secondWrite = fragmented.write(StringView{"\x80\x82xyz", 5});
-    check(secondWrite.resultCode == IOStatus::OK);
+    IOResult secondWrite = fragmented.write(StringView{"\x80\x82xyz", 5});
+    check(secondWrite.code == IOResult::OK);
     check(secondWrite.numBytes == 5);
     fragmented.flush(false);
     String fragmentedResult = static_cast<MemStream&>(fragmented.childOut).moveToString();
@@ -2165,20 +2165,20 @@ TEST_CASE("Nonblocking Unicode conversion preserves fragmented input") {
                               UnicodeType::UTF8};
     char dst[8];
 
-    IOStatus result = conv.tryRead({dst, sizeof(dst)});
-    check(result.resultCode == IOStatus::WouldBlock);
+    IOResult result = conv.tryRead({dst, sizeof(dst)});
+    check(result.code == IOResult::WouldBlock);
     check(::write(fds[1], "\xe3", 1) == 1);
     result = conv.tryRead({dst, sizeof(dst)});
-    check(result.resultCode == IOStatus::WouldBlock);
+    check(result.code == IOResult::WouldBlock);
     check(::write(fds[1], "\x80\x82", 2) == 2);
     result = conv.tryRead({dst, sizeof(dst)});
-    check(result.resultCode == IOStatus::OK);
+    check(result.code == IOResult::OK);
     check(result.numBytes == 3);
     check(StringView{dst, result.numBytes} == StringView{"\xe3\x80\x82", 3});
 
     check(::close(fds[1]) == 0);
     result = conv.tryRead({dst, sizeof(dst)});
-    check(result.resultCode == IOStatus::EndOfFile);
+    check(result.code == IOResult::EndOfFile);
 }
 
 #endif
@@ -2200,17 +2200,17 @@ TEST_CASE("tryRead reports data, would-block and EOF") {
     PipeFD reader{fds[0], Pipe::CanRead};
     char bytes[8];
 
-    IOStatus result = reader.tryRead({bytes, sizeof(bytes)});
-    check(result.resultCode == IOStatus::WouldBlock);
+    IOResult result = reader.tryRead({bytes, sizeof(bytes)});
+    check(result.code == IOResult::WouldBlock);
     check(::write(fds[1], "abc", 3) == 3);
     result = reader.tryRead({bytes, sizeof(bytes)});
-    check(result.resultCode == IOStatus::OK);
+    check(result.code == IOResult::OK);
     check(result.numBytes == 3);
     check(StringView{bytes, result.numBytes} == "abc");
-    check(reader.tryRead({bytes, sizeof(bytes)}).resultCode == IOStatus::WouldBlock);
+    check(reader.tryRead({bytes, sizeof(bytes)}).code == IOResult::WouldBlock);
 
     check(::close(fds[1]) == 0);
-    check(reader.tryRead({bytes, sizeof(bytes)}).resultCode == IOStatus::EndOfFile);
+    check(reader.tryRead({bytes, sizeof(bytes)}).code == IOResult::EndOfFile);
 }
 
 TEST_CASE("Stream::tryMakeReadable fills without blocking") {
@@ -2220,20 +2220,20 @@ TEST_CASE("Stream::tryMakeReadable fills without blocking") {
     Stream in{&reader, false};
 
     check(!in.tryMakeReadable());
-    check(in.getStatus() == IOStatus::WouldBlock);
+    check(in.getStatus() == IOResult::WouldBlock);
     check(!in.atEof());
     check(::write(fds[1], "abc", 3) == 3);
     check(in.tryMakeReadable());
     check(in.viewRemainingBytes() == "abc");
     in.curByte = in.endByte;
     check(!in.tryMakeReadable());
-    check(in.getStatus() == IOStatus::WouldBlock);
+    check(in.getStatus() == IOResult::WouldBlock);
     check(!in.atEof());
 
     check(::close(fds[1]) == 0);
     check(!in.tryMakeReadable());
     check(in.atEof());
-    check(in.getStatus() == IOStatus::EndOfFile);
+    check(in.getStatus() == IOResult::EndOfFile);
 }
 
 TEST_CASE("Stream::tryRead copies without blocking") {
@@ -2262,7 +2262,7 @@ TEST_CASE("Stream::tryRead copies without blocking") {
     check(::close(fds[1]) == 0);
     check(in.tryRead({bytes, sizeof(bytes)}) == 0);
     check(in.atEof());
-    check(in.getStatus() == IOStatus::EndOfFile);
+    check(in.getStatus() == IOResult::EndOfFile);
 }
 
 TEST_CASE("disable releases a blocking read and is terminal") {
@@ -2270,7 +2270,7 @@ TEST_CASE("disable releases a blocking read and is terminal") {
     check(pipe(fds) == 0);
     PipeFD reader{fds[0], Pipe::CanRead};
     Atomic<bool> started = false;
-    IOStatus readResult{IOStatus::OK, 1};
+    IOResult readResult{IOResult::OK, 1};
     Thread thread{[&]() {
         started.store(true, MemoryOrder::Release);
         char byte;
@@ -2284,12 +2284,12 @@ TEST_CASE("disable releases a blocking read and is terminal") {
     thread.join();
 
     char byte;
-    check(readResult.resultCode == IOStatus::Disabled);
-    check(reader.read({&byte, 1}).resultCode == IOStatus::Disabled);
-    check(reader.tryRead({&byte, 1}).resultCode == IOStatus::Disabled);
+    check(readResult.code == IOResult::Disabled);
+    check(reader.read({&byte, 1}).code == IOResult::Disabled);
+    check(reader.tryRead({&byte, 1}).code == IOResult::Disabled);
     Stream in{&reader, false};
     check(!in.makeReadable());
-    check(in.getStatus() == IOStatus::Disabled);
+    check(in.getStatus() == IOResult::Disabled);
     check(in.atEof());
     check(::close(fds[1]) == 0);
 }
@@ -2301,7 +2301,7 @@ TEST_CASE("disable releases a blocking write") {
     String payload = String::allocate(4 * 1024 * 1024);
     memset(payload.bytes(), 'x', payload.numBytes());
     Atomic<bool> started = false;
-    IOStatus writeStatus{IOStatus::OK, 0};
+    IOResult writeStatus{IOResult::OK, 0};
     Thread thread{[&]() {
         started.store(true, MemoryOrder::Release);
         writeStatus = writer.write(payload);
@@ -2312,8 +2312,8 @@ TEST_CASE("disable releases a blocking write") {
     writer.disable();
     thread.join();
 
-    check(writeStatus.resultCode == IOStatus::Disabled);
-    check(writer.write("x").resultCode == IOStatus::Disabled);
+    check(writeStatus.code == IOResult::Disabled);
+    check(writer.write("x").code == IOResult::Disabled);
     check(::close(fds[0]) == 0);
 }
 
@@ -2451,7 +2451,7 @@ TEST_CASE("Mem stream temp buffer") {
                 (random.generateU32() % (Stream::MaxConsecutiveBytes / 2)) + (Stream::MaxConsecutiveBytes / 2);
             bool readable = mem.makeReadable(numConsecutiveBytes);
             if (!readable)
-                check(mem.getStatus() == IOStatus::EndOfFile);
+                check(mem.getStatus() == IOResult::EndOfFile);
             if (!mem.hasRemainingBytes())
                 break;
             while (mem.curByte < mem.endByte) {
@@ -2745,7 +2745,7 @@ TEST_CASE("joinWithTimeout() supports timeouts and retries") {
         } else if (mode == 1) {
             process->closeStdIn();
             char byte;
-            check(process->getStdOutReader()->read({&byte, 1}).resultCode == IOStatus::EndOfFile);
+            check(process->getStdOutReader()->read({&byte, 1}).code == IOResult::EndOfFile);
             startTicks = getCpuTicks();
             Subprocess::JoinResult result;
             do {
@@ -2789,7 +2789,7 @@ TEST_CASE("terminate() stops an isolated process tree") {
     u64 startTicks = getCpuTicks();
     check(process->terminate());
     char byte;
-    check(process->getStdOutReader()->read({&byte, 1}).resultCode == IOStatus::EndOfFile);
+    check(process->getStdOutReader()->read({&byte, 1}).code == IOResult::EndOfFile);
     joinThread.join();
     check(joinReturned.load(MemoryOrder::Acquire));
     double elapsedMillis = (getCpuTicks() - startTicks) * 1000.0 / getCpuTicksPerSecond();

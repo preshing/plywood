@@ -2444,19 +2444,19 @@ u64 Pipe::getFileSize() {
     return 0;
 }
 
-IOStatus Pipe::read(MutStringView buf) {
+IOResult Pipe::read(MutStringView buf) {
     PLY_ASSERT(0);
-    return {IOStatus::Error, 0};
+    return {IOResult::Error, 0};
 }
 
-IOStatus Pipe::tryRead(MutStringView buf) {
+IOResult Pipe::tryRead(MutStringView buf) {
     PLY_ASSERT(0);
-    return {IOStatus::Error, 0};
+    return {IOResult::Error, 0};
 }
 
-IOStatus Pipe::write(StringView buf) {
+IOResult Pipe::write(StringView buf) {
     PLY_ASSERT(0);
-    return {IOStatus::Error, 0};
+    return {IOResult::Error, 0};
 }
 
 void Pipe::seekTo(s64 offset) {
@@ -2533,10 +2533,10 @@ void PipeHandle::endOperation() {
 }
 
 // Blocking read. The published thread handle lets disable() cancel a ReadFile blocked in the kernel.
-IOStatus PipeHandle::read(MutStringView buf) {
+IOResult PipeHandle::read(MutStringView buf) {
     PLY_ASSERT(buf.numBytes > 0);
     if (!this->beginOperation())
-        return {IOStatus::Disabled, 0};
+        return {IOResult::Disabled, 0};
 
     DWORD readBytes = 0;
     BOOL rc = FALSE;
@@ -2546,26 +2546,26 @@ IOStatus PipeHandle::read(MutStringView buf) {
         rc = ReadFile(this->handle, buf.bytes, buf.numBytes, &readBytes, nullptr);
     this->endOperation();
     if (!rc) {
-        return {this->disabled.load(MemoryOrder::Acquire) ? IOStatus::Disabled : IOStatus::Error, 0};
+        return {this->disabled.load(MemoryOrder::Acquire) ? IOResult::Disabled : IOResult::Error, 0};
     }
     // Data successfully fetched is delivered even if disable() raced with the read.
-    return readBytes ? IOStatus{IOStatus::OK, readBytes} : IOStatus{IOStatus::EndOfFile, 0};
+    return readBytes ? IOResult{IOResult::OK, readBytes} : IOResult{IOResult::EndOfFile, 0};
 }
 
 // Nonblocking read. Pipes report the number of immediately available bytes via PeekNamedPipe,
 // while disk files always complete reads without blocking. Console input is reported as
 // WouldBlock, since there's no reliable way to poll for a single character.
-IOStatus PipeHandle::tryRead(MutStringView buf) {
+IOResult PipeHandle::tryRead(MutStringView buf) {
     PLY_ASSERT(buf.numBytes > 0);
     if (!this->beginOperation())
-        return {IOStatus::Disabled, 0};
+        return {IOResult::Disabled, 0};
 
     auto errorToReadResult = [](DWORD error) {
         return error == ERROR_BROKEN_PIPE || error == ERROR_HANDLE_EOF || error == ERROR_NO_DATA
-                   ? IOStatus{IOStatus::EndOfFile, 0}
-                   : IOStatus{IOStatus::Error, 0};
+                   ? IOResult{IOResult::EndOfFile, 0}
+                   : IOResult{IOResult::Error, 0};
     };
-    IOStatus result{IOStatus::Error, 0};
+    IOResult result{IOResult::Error, 0};
     DWORD fileType = GetFileType(this->handle);
     // Pipes: peek at the number of immediately available bytes so the read can never block.
     if (fileType == FILE_TYPE_PIPE) {
@@ -2575,25 +2575,25 @@ IOStatus PipeHandle::tryRead(MutStringView buf) {
             result = errorToReadResult(GetLastError());
         } else if (available == 0) {
             // No bytes are available right now.
-            result = {IOStatus::WouldBlock, 0};
+            result = {IOResult::WouldBlock, 0};
         } else {
             // Read only the bytes that are already available.
             buf.numBytes = min<u32>(buf.numBytes, available);
             DWORD readBytes = 0;
             BOOL rc = ReadFile(this->handle, buf.bytes, buf.numBytes, &readBytes, nullptr);
-            result = rc ? (readBytes ? IOStatus{IOStatus::OK, readBytes}
-                                     : IOStatus{IOStatus::EndOfFile, 0})
+            result = rc ? (readBytes ? IOResult{IOResult::OK, readBytes}
+                                     : IOResult{IOResult::EndOfFile, 0})
                         : errorToReadResult(GetLastError());
         }
     } else if (fileType == FILE_TYPE_CHAR) {
         // In line-input mode, queued console events don't imply that a character read can finish.
-        result = {IOStatus::WouldBlock, 0};
+        result = {IOResult::WouldBlock, 0};
     } else if (fileType == FILE_TYPE_DISK) {
         // Disk files never block, so just read directly.
         DWORD readBytes = 0;
         BOOL rc = ReadFile(this->handle, buf.bytes, buf.numBytes, &readBytes, nullptr);
-        result = rc ? (readBytes ? IOStatus{IOStatus::OK, readBytes}
-                                 : IOStatus{IOStatus::EndOfFile, 0})
+        result = rc ? (readBytes ? IOResult{IOResult::OK, readBytes}
+                                 : IOResult{IOResult::EndOfFile, 0})
                     : errorToReadResult(GetLastError());
     }
 
@@ -2602,14 +2602,14 @@ IOStatus PipeHandle::tryRead(MutStringView buf) {
     return result;
 }
 
-// Blocking write of the whole buffer. If IOStatus is OK, it means all bytes were successfully written.
-IOStatus PipeHandle::write(StringView buf) {
+// Blocking write of the whole buffer. If IOResult is OK, it means all bytes were successfully written.
+IOResult PipeHandle::write(StringView buf) {
     u32 totalBytesWritten = 0;
     if (buf.isEmpty())
-        return {this->disabled.load(MemoryOrder::Acquire) ? IOStatus::Disabled : IOStatus::OK,
+        return {this->disabled.load(MemoryOrder::Acquire) ? IOResult::Disabled : IOResult::OK,
                 totalBytesWritten};
     if (!this->beginOperation())
-        return {IOStatus::Disabled, 0};
+        return {IOResult::Disabled, 0};
 
     while (buf.numBytes() > 0 && !this->disabled.load(MemoryOrder::Acquire)) {
         DWORD desiredBytes = min<DWORD>(buf.numBytes(), UINT32_MAX);
@@ -2622,8 +2622,8 @@ IOStatus PipeHandle::write(StringView buf) {
     }
     this->endOperation();
     if (this->disabled.load(MemoryOrder::Acquire))
-        return {IOStatus::Disabled, totalBytesWritten};
-    return {buf.isEmpty() ? IOStatus::OK : IOStatus::Error, totalBytesWritten};
+        return {IOResult::Disabled, totalBytesWritten};
+    return {buf.isEmpty() ? IOResult::OK : IOResult::Error, totalBytesWritten};
 }
 
 // Move the file pointer to the given offset.
@@ -2756,17 +2756,17 @@ public:
 // timeoutMillis == 0 returns WouldBlock when no data is immediately available. Used to implement
 // both PipeFD::read and PipeFD::tryRead. The wakeup pipe makes a blocked poll() return
 // immediately when disable() is called from another thread.
-static IOStatus readFromPipeFD(PipeFD* pipe, MutStringView buf, int timeoutMillis) {
+static IOResult readFromPipeFD(PipeFD* pipe, MutStringView buf, int timeoutMillis) {
     PLY_ASSERT(pipe->fd >= 0);
     PLY_ASSERT(buf.numBytes > 0);
     if (pipe->disabled.load(MemoryOrder::Acquire))
-        return {IOStatus::Disabled, 0};
+        return {IOResult::Disabled, 0};
 
     // Keeping the data descriptor nonblocking during the operation closes the race between observing
     // readiness and disable(): the data syscall itself can never strand the caller after the wakeup.
     ScopedNonBlockingFD nonBlocking{pipe->fd};
     if (!nonBlocking.isValid())
-        return {IOStatus::Error, 0};
+        return {IOResult::Error, 0};
 
     for (;;) {
         pollfd pollFDs[2] = {{pipe->fd, POLLIN, 0}, {pipe->disableReadFD, POLLIN, 0}};
@@ -2776,33 +2776,33 @@ static IOStatus readFromPipeFD(PipeFD* pipe, MutStringView buf, int timeoutMilli
         } while (pollRC < 0 && errno == EINTR);
         if (pollRC < 0)
             // The poll itself failed.
-            return {IOStatus::Error, 0};
+            return {IOResult::Error, 0};
         if (pipe->disabled.load(MemoryOrder::Acquire) || pollFDs[1].revents != 0)
             // disable() was called from another thread, or a previous call's wake byte is still
             // pending in the wakeup pipe.
-            return {IOStatus::Disabled, 0};
+            return {IOResult::Disabled, 0};
         if (pollRC == 0)
             // The timeout elapsed without the data descriptor becoming readable.
-            return {IOStatus::WouldBlock, 0};
+            return {IOResult::WouldBlock, 0};
         if (pollFDs[0].revents & POLLNVAL)
             // The data descriptor is invalid.
-            return {IOStatus::Error, 0};
+            return {IOResult::Error, 0};
 
         ssize_t rc = ::read(pipe->fd, buf.bytes, buf.numBytes);
         if (rc > 0)
             // Data arrived: hand it to the caller.
-            return {IOStatus::OK, numericCast<u32>(rc)};
+            return {IOResult::OK, numericCast<u32>(rc)};
         if (rc == 0)
             // The peer closed its end of the data descriptor.
-            return {IOStatus::EndOfFile, 0};
+            return {IOResult::EndOfFile, 0};
         if (errno != EINTR && errno != EAGAIN && errno != EWOULDBLOCK)
             // The read failed with an unexpected error.
-            return {IOStatus::Error, 0};
+            return {IOResult::Error, 0};
         // Another user of the same open file description may have consumed the readiness. A blocking
         // call polls again; a nonblocking call returns promptly.
         if (timeoutMillis == 0)
             // The readiness was consumed and no data arrived; don't block waiting for more.
-            return {IOStatus::WouldBlock, 0};
+            return {IOResult::WouldBlock, 0};
     }
 }
 
@@ -2817,27 +2817,27 @@ u64 PipeFD::getFileSize() {
 }
 
 // Blocking read; returns 0 at end-of-file or when disabled.
-IOStatus PipeFD::read(MutStringView buf) {
+IOResult PipeFD::read(MutStringView buf) {
     return readFromPipeFD(this, buf, -1);
 }
 
 // Nonblocking read; returns immediately.
-IOStatus PipeFD::tryRead(MutStringView buf) {
+IOResult PipeFD::tryRead(MutStringView buf) {
     return readFromPipeFD(this, buf, 0);
 }
 
-// Blocking write of the whole buffer. If IOStatus is OK, it means all bytes were successfully written.
-IOStatus PipeFD::write(StringView buf) {
+// Blocking write of the whole buffer. If IOResult is OK, it means all bytes were successfully written.
+IOResult PipeFD::write(StringView buf) {
     PLY_ASSERT(this->fd >= 0);
     u32 totalBytesWritten = 0;
     if (this->disabled.load(MemoryOrder::Acquire))
-        return {IOStatus::Disabled, 0};
+        return {IOResult::Disabled, 0};
 
     // Keeping the data descriptor nonblocking during the operation closes the race between observing
     // readiness and disable(): the data syscall itself can never strand the caller after the wakeup.
     ScopedNonBlockingFD nonBlocking{this->fd};
     if (!nonBlocking.isValid())
-        return {IOStatus::Error, 0};
+        return {IOResult::Error, 0};
 
     // Write the whole buffer in a loop, waiting for the descriptor to become writable between
     // chunks. The wakeup pipe makes each poll() return promptly when disable() is called.
@@ -2851,7 +2851,7 @@ IOStatus PipeFD::write(StringView buf) {
         // previous call's wake byte is still pending in the wakeup pipe).
         if (pollRC < 0 || this->disabled.load(MemoryOrder::Acquire) || pollFDs[1].revents != 0 ||
             (pollFDs[0].revents & POLLNVAL))
-            return {this->disabled.load(MemoryOrder::Acquire) ? IOStatus::Disabled : IOStatus::Error,
+            return {this->disabled.load(MemoryOrder::Acquire) ? IOResult::Disabled : IOResult::Error,
                     totalBytesWritten};
         ssize_t sent = ::write(this->fd, buf.bytes(), buf.numBytes());
         if (sent < 0) {
@@ -2859,18 +2859,18 @@ IOStatus PipeFD::write(StringView buf) {
             if (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK)
                 continue;
             // The write failed with an unexpected error.
-            return {IOStatus::Error, totalBytesWritten};
+            return {IOResult::Error, totalBytesWritten};
         }
         // A zero-byte write can't make progress.
         if (sent == 0)
-            return {IOStatus::Error, totalBytesWritten};
+            return {IOResult::Error, totalBytesWritten};
         PLY_ASSERT((u32) sent <= buf.numBytes());
         u32 numSent = numericCast<u32>(sent);
         totalBytesWritten += numSent;
         buf = buf.substr(numSent);
     }
     // Report failure if disable() raced with the final chunk.
-    return {this->disabled.load(MemoryOrder::Acquire) ? IOStatus::Disabled : IOStatus::OK,
+    return {this->disabled.load(MemoryOrder::Acquire) ? IOResult::Disabled : IOResult::OK,
             totalBytesWritten};
 }
 
@@ -2975,14 +2975,14 @@ public:
         PLY_ASSERT((this->in.getCapabilities() & Stream::CanRead) != 0);
         this->capabilities = Pipe::CanRead;
     }
-    virtual IOStatus read(MutStringView buf) override;
-    virtual IOStatus tryRead(MutStringView buf) override;
+    virtual IOResult read(MutStringView buf) override;
+    virtual IOResult tryRead(MutStringView buf) override;
     virtual void disable() override;
 };
 
 // Blocking read: filter newlines from the wrapped stream until at least one byte is produced.
 // Returns 0 at end-of-file.
-IOStatus InPipeNewLineFilter::read(MutStringView buf) {
+IOResult InPipeNewLineFilter::read(MutStringView buf) {
     PLY_ASSERT(buf.numBytes > 0);
 
     NewLineFilter::Params params;
@@ -2996,7 +2996,7 @@ IOStatus InPipeNewLineFilter::read(MutStringView buf) {
         this->in.curByte = const_cast<char*>(params.srcByte);
         u32 numBytesWritten = numericCast<u32>(params.dstByte - buf.bytes);
         if (numBytesWritten > 0)
-            return {IOStatus::OK, numBytesWritten};
+            return {IOResult::OK, numBytesWritten};
 
         PLY_ASSERT(!this->in.hasRemainingBytes());
         if (!this->in.makeReadable())
@@ -3006,7 +3006,7 @@ IOStatus InPipeNewLineFilter::read(MutStringView buf) {
 
 // Nonblocking read: like read(), but reports WouldBlock when the wrapped stream runs out of
 // immediately available data instead of waiting for more.
-IOStatus InPipeNewLineFilter::tryRead(MutStringView buf) {
+IOResult InPipeNewLineFilter::tryRead(MutStringView buf) {
     PLY_ASSERT(buf.numBytes > 0);
 
     NewLineFilter::Params params;
@@ -3020,7 +3020,7 @@ IOStatus InPipeNewLineFilter::tryRead(MutStringView buf) {
 
         u32 numBytesWritten = numericCast<u32>(params.dstByte - buf.bytes);
         if (numBytesWritten > 0)
-            return {IOStatus::OK, numBytesWritten};
+            return {IOResult::OK, numBytesWritten};
 
         PLY_ASSERT(!this->in.hasRemainingBytes());
         if (!this->in.tryMakeReadable())
@@ -3053,7 +3053,7 @@ public:
         if (this->out.isOpen())
             this->flush(false);
     }
-    virtual IOStatus write(StringView buf) override;
+    virtual IOResult write(StringView buf) override;
     virtual void flush(bool toDevice) override;
     virtual void disable() override {
         // Forwards disable() to the wrapped pipe. Buffered output is not guaranteed to be flushed;
@@ -3063,8 +3063,8 @@ public:
 };
 
 // Blocking write: convert newlines to the target convention while streaming into the wrapped
-// stream. If IOStatus is OK, it means all bytes were successfully written.
-IOStatus OutPipeNewLineFilter::write(StringView buf) {
+// stream. If IOResult is OK, it means all bytes were successfully written.
+IOResult OutPipeNewLineFilter::write(StringView buf) {
     u32 desiredTotalBytesRead = buf.numBytes();
     u32 totalBytesRead = 0;
     for (;;) {
@@ -3084,7 +3084,7 @@ IOStatus OutPipeNewLineFilter::write(StringView buf) {
         if (numBytesRead == 0) {
             PLY_ASSERT(totalBytesRead <= desiredTotalBytesRead);
             if (totalBytesRead >= desiredTotalBytesRead)
-                return {IOStatus::OK, totalBytesRead};
+                return {IOResult::OK, totalBytesRead};
             return {this->out.getStatus(), totalBytesRead};
         }
         totalBytesRead += numBytesRead;
@@ -3277,7 +3277,7 @@ bool Stream::tryMakeReadable() {
         // here because the underlying pipe may not currently be writable.
         if (this->mode == Mode::Writing) {
             if (this->curByte != this->pipe.buffer) {
-                this->status = IOStatus::WouldBlock;
+                this->status = IOResult::WouldBlock;
                 return false;
             }
             this->pipe.seekPosAtBuffer += (this->curByte - this->pipe.buffer);
@@ -3302,9 +3302,9 @@ bool Stream::tryMakeReadable() {
         // Keep reading until the buffer is full or the pipe reports that no more data can be
         // obtained immediately. This handles sources that return available data in short chunks.
         while (this->endByte < this->pipe.buffer + BufferSize) {
-            IOStatus result = this->pipe.pipe->tryRead(
+            IOResult result = this->pipe.pipe->tryRead(
                 {this->endByte, numericCast<u32>(this->pipe.buffer + BufferSize - this->endByte)});
-            if (result.resultCode == IOStatus::OK) {
+            if (result.code == IOResult::OK) {
                 PLY_ASSERT(result.numBytes > 0);
                 PLY_ASSERT(this->endByte + result.numBytes <= this->pipe.buffer + BufferSize);
                 this->endByte += result.numBytes;
@@ -3312,11 +3312,11 @@ bool Stream::tryMakeReadable() {
             }
 
             // Preserve terminal state even when buffered bytes remain readable.
-            this->status = result.resultCode;
+            this->status = result.code;
             break;
         }
         if (this->endByte == this->pipe.buffer + BufferSize)
-            this->status = IOStatus::OK;
+            this->status = IOResult::OK;
         return this->hasRemainingBytes();
     }
 
@@ -3334,10 +3334,10 @@ bool Stream::makeReadableInternal(u32 minBytes) {
     if (this->type == Type::Pipe) {
         if (this->mode == Mode::Writing) {
             // Write any buffered data to the pipe.
-            IOStatus status = this->pipe.pipe->write({this->pipe.buffer, this->curByte});
-            this->status = status.resultCode;
+            IOResult status = this->pipe.pipe->write({this->pipe.buffer, this->curByte});
+            this->status = status.code;
             this->pipe.seekPosAtBuffer += status.numBytes;
-            if (this->status != IOStatus::OK) {
+            if (this->status != IOResult::OK) {
                 // Write failed. Put Stream in an error state.
                 this->curByte = this->pipe.buffer;
                 this->endByte = this->pipe.buffer;
@@ -3362,10 +3362,10 @@ bool Stream::makeReadableInternal(u32 minBytes) {
 
         do {
             // Load data into the buffer.
-            IOStatus result = this->pipe.pipe->read(
+            IOResult result = this->pipe.pipe->read(
                 {this->endByte, BufferSize - this->numRemainingBytes()});
-            this->status = result.resultCode;
-            if (result.resultCode != IOStatus::OK)
+            this->status = result.code;
+            if (result.code != IOResult::OK)
                 return false;
             PLY_ASSERT(result.numBytes > 0);
             this->endByte += result.numBytes;
@@ -3418,12 +3418,12 @@ bool Stream::makeReadableInternal(u32 minBytes) {
             }
         }
         bool readable = this->numRemainingBytes() >= minBytes;
-        this->status = readable ? IOStatus::OK : IOStatus::EndOfFile;
+        this->status = readable ? IOResult::OK : IOResult::EndOfFile;
         return readable;
     } else if (this->type == Type::View) {
         this->mode = Mode::Reading;
         bool readable = this->numRemainingBytes() >= minBytes;
-        this->status = readable ? IOStatus::OK : IOStatus::EndOfFile;
+        this->status = readable ? IOResult::OK : IOResult::EndOfFile;
         return readable;
     }
 
@@ -3440,10 +3440,10 @@ bool Stream::makeWritableInternal(u32 minBytes) {
     if (this->type == Type::Pipe) {
         if (this->mode == Mode::Writing) {
             // Write buffered data to the pipe.
-            IOStatus status = this->pipe.pipe->write({this->pipe.buffer, this->curByte});
-            this->status = status.resultCode;
+            IOResult status = this->pipe.pipe->write({this->pipe.buffer, this->curByte});
+            this->status = status.code;
             this->pipe.seekPosAtBuffer += status.numBytes;
-            if (this->status != IOStatus::OK) {
+            if (this->status != IOResult::OK) {
                 // Write failed. Put Stream in an error state.
                 this->curByte = this->pipe.buffer;
                 this->endByte = this->pipe.buffer;
@@ -3454,7 +3454,7 @@ bool Stream::makeWritableInternal(u32 minBytes) {
         // Make entire buffer available for writing.
         this->curByte = this->pipe.buffer;
         this->endByte = this->curByte + BufferSize;
-        this->status = IOStatus::OK;
+        this->status = IOResult::OK;
     } else if (this->type == Type::Mem) {
         this->flushMemWrites();
 
@@ -3476,15 +3476,15 @@ bool Stream::makeWritableInternal(u32 minBytes) {
             this->curByte = this->mem->scratch.bytes;
             this->endByte = this->mem->scratch.bytes + minBytes;
         }
-        this->status = IOStatus::OK;
+        this->status = IOResult::OK;
     } else if (this->type == Type::View) {
-        this->status = IOStatus::EndOfFile;
+        this->status = IOResult::EndOfFile;
     } else {
         PLY_ASSERT(0); // Shouldn't get here.
     }
 
     this->mode = Mode::Writing;
-    return this->status == IOStatus::OK;
+    return this->status == IOResult::OK;
 }
 
 char Stream::peekByteInternal() {
@@ -3553,11 +3553,11 @@ void Stream::flush(bool toDevice) {
         PLY_ASSERT(this->pipe.buffer + BufferSize == this->endByte);
 
         // Write buffered data to the pipe.
-        this->status = this->pipe.pipe->write({this->pipe.buffer, this->curByte}).resultCode;
+        this->status = this->pipe.pipe->write({this->pipe.buffer, this->curByte}).code;
         this->curByte = this->pipe.buffer;
 
         // Forward flush command down the output chain.
-        if (this->status == IOStatus::OK)
+        if (this->status == IOResult::OK)
             this->pipe.pipe->flush(toDevice);
     } else if (this->type == Type::Mem) {
         this->flushMemWrites();
@@ -3616,7 +3616,7 @@ void Stream::seekTo(u64 seekPos) {
     } else {
         PLY_ASSERT(0); // Shouldn't get here.
     }
-    this->status = IOStatus::OK;
+    this->status = IOResult::OK;
 }
 
 //--------------------------------------------
@@ -5293,12 +5293,12 @@ bool copyFromShim(Stream& dstOut, StringView& shimUsed) {
 }
 
 // Fill dstBuf with UTF-8-encoded data.
-IOStatus InPipeConvertUnicode::read(MutStringView dstBuf) {
+IOResult InPipeConvertUnicode::read(MutStringView dstBuf) {
     ViewStream dstOut{dstBuf};
 
     // If the shim contains data, copy it first.
     if (copyFromShim(dstOut, this->shimUsed))
-        return {IOStatus::OK, dstBuf.numBytes}; // Destination buffer is full.
+        return {IOResult::OK, dstBuf.numBytes}; // Destination buffer is full.
 
     while (true) {
         // Decode a codepoint from input stream.
@@ -5322,24 +5322,24 @@ IOStatus InPipeConvertUnicode::read(MutStringView dstBuf) {
     }
 
     u32 numBytesWritten = numericCast<u32>(dstOut.curByte - dstBuf.bytes);
-    return numBytesWritten ? IOStatus{IOStatus::OK, numBytesWritten}
-                           : IOStatus{this->in.getStatus(), 0};
+    return numBytesWritten ? IOResult{IOResult::OK, numBytesWritten}
+                           : IOResult{this->in.getStatus(), 0};
 }
 
 // Nonblocking read: like read(), but reports WouldBlock when the wrapped stream runs out of
 // immediately available data instead of waiting for more.
-IOStatus InPipeConvertUnicode::tryRead(MutStringView dstBuf) {
+IOResult InPipeConvertUnicode::tryRead(MutStringView dstBuf) {
     PLY_ASSERT(dstBuf.numBytes > 0);
     ViewStream dstOut{dstBuf};
 
     if (copyFromShim(dstOut, this->shimUsed))
-        return {IOStatus::OK, dstBuf.numBytes};
+        return {IOResult::OK, dstBuf.numBytes};
 
     for (;;) {
         if (!this->in.tryMakeReadable()) {
             u32 numBytesWritten = numericCast<u32>(dstOut.curByte - dstBuf.bytes);
             if (numBytesWritten > 0)
-                return {IOStatus::OK, numBytesWritten};
+                return {IOResult::OK, numBytesWritten};
             return {this->in.getStatus(), 0};
         }
 
@@ -5347,13 +5347,13 @@ IOStatus InPipeConvertUnicode::tryRead(MutStringView dstBuf) {
         if (decoded.status == DecodeStatus::NotEnoughData && !this->in.atEof()) {
             u32 numBytesWritten = numericCast<u32>(dstOut.curByte - dstBuf.bytes);
             if (numBytesWritten > 0)
-                return {IOStatus::OK, numBytesWritten};
+                return {IOResult::OK, numBytesWritten};
             return {this->in.getStatus(), 0};
         }
         if (decoded.point < 0) {
             u32 numBytesWritten = numericCast<u32>(dstOut.curByte - dstBuf.bytes);
-            return numBytesWritten ? IOStatus{IOStatus::OK, numBytesWritten}
-                                   : IOStatus{IOStatus::EndOfFile, 0};
+            return numBytesWritten ? IOResult{IOResult::OK, numBytesWritten}
+                                   : IOResult{IOResult::EndOfFile, 0};
         }
         this->in.curByte += decoded.numBytes;
 
@@ -5366,11 +5366,11 @@ IOStatus InPipeConvertUnicode::tryRead(MutStringView dstBuf) {
             this->shimUsed = StringView{this->shimStorage.items(),
                                         numericCast<u32>(shimOut.curByte - this->shimStorage.items())};
             if (copyFromShim(dstOut, this->shimUsed))
-                return {IOStatus::OK, dstBuf.numBytes};
+                return {IOResult::OK, dstBuf.numBytes};
         }
 
         if (!dstOut.hasRemainingBytes())
-            return {IOStatus::OK, dstBuf.numBytes};
+            return {IOResult::OK, dstBuf.numBytes};
     }
 }
 
@@ -5389,7 +5389,7 @@ OutPipeConvertUnicode::~OutPipeConvertUnicode() {
 }
 
 // srcBuf expects UTF-8-encoded data.
-IOStatus OutPipeConvertUnicode::write(StringView srcBuf) {
+IOResult OutPipeConvertUnicode::write(StringView srcBuf) {
     const char* srcStart = srcBuf.bytes();
     auto consumed = [&]() { return numericCast<u32>(srcBuf.bytes() - srcStart); };
     // Complete a retained sequence and process any bytes exposed after an ill-formed prefix.
@@ -5397,7 +5397,7 @@ IOStatus OutPipeConvertUnicode::write(StringView srcBuf) {
         DecodeResult decoded = decodeUnicode(StringView{this->shimStorage, this->shimUsed}, UnicodeType::UTF8, nullptr);
         if (decoded.status == DecodeStatus::NotEnoughData) {
             if (!srcBuf)
-                return {IOStatus::OK, consumed()};
+                return {IOResult::OK, consumed()};
             PLY_ASSERT(this->shimUsed < sizeof(this->shimStorage));
             this->shimStorage[this->shimUsed++] = srcBuf[0];
             srcBuf = srcBuf.substr(1);
@@ -5419,13 +5419,13 @@ IOStatus OutPipeConvertUnicode::write(StringView srcBuf) {
             this->shimUsed = srcBuf.numBytes();
             memcpy(this->shimStorage, srcBuf.bytes(), this->shimUsed);
             srcBuf = srcBuf.substr(this->shimUsed);
-            return {IOStatus::OK, consumed()};
+            return {IOResult::OK, consumed()};
         }
         if (!encodeUnicode(this->childOut, this->dstType, decoded.point, this->extParams))
             return {this->childOut.getStatus(), consumed()};
         srcBuf = srcBuf.substr(decoded.numBytes);
     }
-    return {IOStatus::OK, consumed()};
+    return {IOResult::OK, consumed()};
 }
 
 // Forward flush command down the output chain.
@@ -5779,8 +5779,8 @@ String fromWstring(WStringView str) {
     MemStream out;
     while (out.makeWritable()) {
         MutStringView buf{out.curByte, out.endByte};
-        IOStatus result = decoder.read(buf);
-        if (result.resultCode != IOStatus::OK)
+        IOResult result = decoder.read(buf);
+        if (result.code != IOResult::OK)
             break;
         out.curByte += result.numBytes;
     }
@@ -6464,8 +6464,8 @@ FSResult FileSystem::copyFile(StringView srcPath, StringView dstPath) {
 
     for (;;) {
         out.makeWritable();
-        IOStatus result = in->read(out.viewRemainingBytesMut());
-        if (result.resultCode != IOStatus::OK)
+        IOResult result = in->read(out.viewRemainingBytesMut());
+        if (result.code != IOResult::OK)
             break;
         out.curByte += result.numBytes;
     }
@@ -6534,8 +6534,8 @@ String FileSystem::loadBinary(StringView path) {
         result.resize(numericCast<u32>(fileSize));
         MutStringView dst = result.mutStringView();
         while (dst.numBytes > 0) {
-            IOStatus readResult = inPipe->read(dst);
-            if (readResult.resultCode != IOStatus::OK)
+            IOResult readResult = inPipe->read(dst);
+            if (readResult.code != IOResult::OK)
                 return {};
             dst = dst.subview(readResult.numBytes);
         }
@@ -6547,8 +6547,8 @@ String readAllRemainingData(Pipe* inPipe) {
     MemStream mem;
     for (;;) {
         mem.makeWritable();
-        IOStatus result = inPipe->read(mem.viewRemainingBytesMut());
-        if (result.resultCode != IOStatus::OK)
+        IOResult result = inPipe->read(mem.viewRemainingBytesMut());
+        if (result.code != IOResult::OK)
             break;
         mem.curByte += result.numBytes;
     }
