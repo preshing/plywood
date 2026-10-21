@@ -4144,43 +4144,60 @@ public:
 //  ▀█▄▄█▀  ▀█▄▄ ██     ▀█▄▄▄  ▀█▄▄██ ██ ██ ██
 //
 
+class MemChunk; // Forward declaration.
+
+// Stream is a buffer-oriented wrapper around a Pipe or in-memory storage.
+// Not all Streams support CanRead, CanWrite or CanSeek.
 class Stream {
-protected:
-    enum class Type : u8 {
-        None,
-        Pipe,
-        Mem,
-        View,
-    };
+public:
     enum class Mode : u8 {
-        None,
+        Closed,
         Reading,
         Writing,
     };
 
+protected:
+    enum class Type : u8 {
+        None,
+        Pipe,      // Supports CanRead, CanWrite, CanSeek.
+        View,      // Supports CanRead, CanWrite, CanSeek.
+        MemStream, // String writer. Supports CanWrite.
+        MemFile,   // File-like memory storage. Supports CanRead, CanWrite, CanSeek.
+        MemReader, // Read from buffered MemPipe. Supports CanRead.
+    };
+    struct Shim;  // Internal class.
+
+    // Type-specific data structures.
     struct PipeData {
         Pipe* pipe = nullptr;
         char* buffer = nullptr;
         u64 seekPosAtBuffer = 0;
     };
-    struct MemData;
     struct ViewData {
         char* startByte = nullptr;
     };
-
-    // Protected data members.
-    union {
-        PipeData pipe;      // if type == Type::Pipe
-        Owned<MemData> mem; // if type == Type::Mem
-        ViewData view;      // if type == Type::View
+    struct MemStreamData {
+        // MemStream is writeable with makeWritable(1) only. No seek or read.
+        Reference<MemChunk> headChunk;
+        Reference<MemChunk> tailChunk;
     };
+    struct MemFileData;
+    struct MemWriterData;
+    struct MemReaderData;
 
-    u8 capabilities = 0;
+    union {
+        PipeData pipe;                      // if type == Type::Pipe
+        ViewData view;                      // if type == Type::View
+        MemStreamData memStream;            // if type == Type::MemStream
+        Owned<MemFileData> memFile;         // if type == Type::MemFile
+        Owned<MemReaderData> memReader;     // if type == Type::MemReader
+    };
+    u32 capabilities = 0; // CanRead, CanWrite, CanSeek
     Type type = Type::None;
-    Mode mode = Mode::None;
+    Mode mode = Mode::Closed;
     IOResult::Code status = IOResult::OK;
-    bool isPipeOwner = false;        // only used if type == Type::Pipe
-    bool usingScratchBuffer = false; // only used if type == Type::Mem
+    bool isPipeOwner = false; // only used if type == Type::Pipe
+    bool isUsingShim = false; // only used if type == Type::MemFile or Type::MemReader
 
 public:
     // Permission flags.
@@ -4189,13 +4206,18 @@ public:
     static constexpr u32 CanSeek = Pipe::CanSeek;
 
     // Constants.
-    static constexpr u32 BufferSize = 32000;
-    static constexpr u32 MaxConsecutiveBytes = 2048;
+    static constexpr u32 PipeBufferSize = 32640;
+    static constexpr u32 BufferSize = PipeBufferSize; // Backward-compatible name.
+    static constexpr u32 MemChunkSize = 4000;
+    static constexpr u32 MemFilePageSize = 32640;
+    static constexpr u32 MaxConsecutiveBytes = 2048; // Max argument to makeReadable/makeWritable.
+    PLY_STATIC_ASSERT(MaxConsecutiveBytes <= min(MemChunkSize, MemFilePageSize));
 
     // Public data members.
     char* curByte = nullptr;
     char* endByte = nullptr;
 
+    // Constructors and move assignment.
     Stream();
     Stream(Pipe* pipe, bool isPipeOwner);
     Stream(Pipe* pipe, bool isPipeOwner, u32 capabilities);
@@ -4208,23 +4230,34 @@ public:
         return *this;
     }
 
+    // Public member functions.
     bool isOpen() const {
-        return this->curByte != nullptr;
+        return this->mode != Mode::Closed;
     }
     explicit operator bool() const {
-        return this->curByte != nullptr;
+        return this->mode != Mode::Closed;
     }
     u32 getCapabilities() const {
         return this->capabilities;
     }
-    // Returns the status of the most recent call to makeReadable, tryMakeReadable or makeWritable.
+    Mode getMode() const {
+        return this->mode;
+    }
+    // Returns the current I/O status. Error persists until clearError() is called.
     IOResult::Code getStatus() const {
         return this->status;
     }
-    // EndOfFile, Error and Disabled are all considered end-of-file conditions at the Stream API level.
+    // Permit retries after an I/O error without changing other statuses.
+    void clearError() {
+        if (this->status == IOResult::Error) {
+            this->status = IOResult::OK;
+        }
+    }
+    // EndOfFile, Error and Disabled are end-of-file conditions once the buffer is empty.
     bool atEof() const {
-        return (this->status == IOResult::EndOfFile) || (this->status == IOResult::Error) ||
-               (this->status == IOResult::Disabled);
+        return (this->curByte >= this->endByte) &&
+               ((this->status == IOResult::EndOfFile) || (this->status == IOResult::Error) ||
+                (this->status == IOResult::Disabled));
     }
     Pipe* getPipe() const {
         return this->type == Type::Pipe ? this->pipe.pipe : nullptr;
@@ -4235,18 +4268,27 @@ public:
     void disable();
     void close() {
         this->~Stream();
-        new (this) Stream; // Illegal to use after this.
+        new (this) Stream;
     }
+    u64 getSeekPos();
+    void seekTo(u64 seekPos);
 
     //--------------------------------------------
     // Main read & write functions
+    //--------------------------------------------
     bool makeReadable(u32 minBytes = 1) {
+        PLY_ASSERT(minBytes > 0);
         if ((this->mode == Mode::Reading) && (this->curByte + minBytes <= this->endByte))
             return true;
         else
             return makeReadableInternal(minBytes);
     }
-    bool tryMakeReadable();
+    bool tryMakeReadable() {
+        if ((this->mode == Mode::Reading) && (this->curByte < this->endByte))
+            return true;
+        else
+            return makeReadableInternal(0);
+    }
     bool makeWritable(u32 minBytes = 1) {
         if ((this->mode == Mode::Writing) && (this->curByte + minBytes <= this->endByte))
             return true;
@@ -4269,20 +4311,21 @@ public:
 
     //--------------------------------------------
     // Read wrappers
+    //--------------------------------------------
     char peekByte() {
-        if (this->curByte < this->endByte)
+        if ((this->mode == Mode::Reading) && (this->curByte < this->endByte))
             return *this->curByte;
         else
             return this->peekByteInternal();
     }
     char readByte() {
-        if (this->curByte < this->endByte)
+        if ((this->mode == Mode::Reading) && (this->curByte < this->endByte))
             return *this->curByte++;
         else
             return this->readByteInternal();
     }
     u32 read(MutStringView dst) {
-        if (dst.numBytes <= this->numRemainingBytes()) {
+        if ((this->mode == Mode::Reading) && (dst.numBytes <= this->numRemainingBytes())) {
             memcpy(dst.bytes, this->curByte, dst.numBytes);
             this->curByte += dst.numBytes;
             return dst.numBytes;
@@ -4298,7 +4341,7 @@ public:
             return this->tryReadInternal(dst);
     }
     u32 skip(u32 numBytes) {
-        if (numBytes <= this->numRemainingBytes()) {
+        if ((this->mode == Mode::Reading) && (numBytes <= this->numRemainingBytes())) {
             this->curByte += numBytes;
             return numBytes;
         } else
@@ -4307,6 +4350,7 @@ public:
 
     //--------------------------------------------
     // Write wrappers
+    //--------------------------------------------
     bool write(char c) {
         if (!this->makeWritable())
             return false;
@@ -4317,23 +4361,21 @@ public:
     template <typename... Args>
     void format(StringView fmt, const Args&... args);
 
-    //--------------------------------------------
-    // Seeking
-    u64 getSeekPos();
-    void seekTo(u64 seekPos);
-
 protected:
-    bool makeReadableInternal(u32 numBytes);
-    bool makeWritableInternal(u32 numBytes);
+    // Internal functions.
+    void setMemFileBackingPos(u64 seekPos);
+    bool flushPendingWrites();
+    bool makeReadableInternal(u32 minBytes);
+    void makeShimReadable(Shim& shim, StringView left, StringView right, u32 minBytes);
+    bool makeWritableInternal(u32 minBytes);
     char peekByteInternal();
     char readByteInternal();
-    void setMemBackingPos(u64 seekPos);
-    void flushMemWrites();
     u32 readInternal(MutStringView dst);
     u32 tryReadInternal(MutStringView dst);
     u32 skipInternal(u32 numBytes);
 };
 
+// Read a data structure as binary data.
 template <typename T>
 T nativeRead(Stream& in) {
     T result;
@@ -4341,18 +4383,36 @@ T nativeRead(Stream& in) {
     return result;
 }
 
+// Write a data structure as binary data.
 template <typename T>
 void nativeWrite(Stream& out, const T& value) {
     out.write({(const char*) &value, sizeof(value)});
 }
 
 //--------------------------------------------
+// ViewStream
+//--------------------------------------------
+class ViewStream : public Stream {
+public:
+    ViewStream() = default;
+    explicit ViewStream(StringView view);
+    explicit ViewStream(MutStringView view);
+
+    void seekTo(char* byte) {
+        PLY_ASSERT((byte >= this->view.startByte) && (byte <= this->endByte));
+        this->curByte = byte;
+        this->status = IOResult::OK;
+    }
+    template <typename... Args>
+    bool match(StringView pattern, Args*... args);
+};
+
+//--------------------------------------------
+// MemStream
+//--------------------------------------------
 class MemStream : public Stream {
 public:
-    static constexpr u32 DefaultChunkSize = 4000;
-
-    // Creates a memory stream using backing chunks of the specified size.
-    MemStream(u32 chunkSize = DefaultChunkSize);
+    MemStream();
 
     // Copying creates an independent deep copy with the same contents, mode and seek position.
     MemStream(const MemStream& other);
@@ -4371,19 +4431,58 @@ private:
 };
 
 //--------------------------------------------
-class ViewStream : public Stream {
+// MemFile
+//--------------------------------------------
+class MemFile : public Stream {
 public:
-    ViewStream() = default;
-    explicit ViewStream(StringView view);
-    explicit ViewStream(MutStringView view);
+    MemFile();
 
-    void seekTo(char* byte) {
-        PLY_ASSERT((byte >= this->view.startByte) && (byte <= this->endByte));
-        this->curByte = byte;
-        this->status = IOResult::OK;
-    }
-    template <typename... Args>
-    bool match(StringView pattern, Args*... args);
+    // Copying creates an independent deep copy with the same contents, mode and seek position.
+    MemFile(const MemFile& other);
+    MemFile(MemFile&&) = default;
+    MemFile& operator=(const MemFile& other);
+    MemFile& operator=(MemFile&&) = default;
+
+private:
+    MemFile deepCopy() const;
+};
+
+//--------------------------------------------
+// MemPipe
+//--------------------------------------------
+class MemPipe : public Pipe {
+protected:
+    friend class Stream;
+    friend class MemReader;
+    struct State;
+    Reference<State> state;
+
+public:
+    MemPipe(bool threadSafe = true);
+    MemPipe(const MemPipe&) = delete;
+    MemPipe& operator=(const MemPipe&) = delete;
+    // Destruction closes the writer; existing readers keep the buffered data alive.
+    virtual ~MemPipe() override;
+    virtual IOResult write(StringView buf) override;
+    virtual void flush(bool toDevice = false) override;
+    virtual void disable() override;
+    // Stops accepting writes and wakes readers, which report EOF after consuming buffered data.
+    void close();
+};
+
+//--------------------------------------------
+// MemReader
+//--------------------------------------------
+class MemReader : public Stream {
+public:
+    // The reader retains buffered data even after the MemPipe is destroyed.
+    MemReader(MemPipe* memPipe);
+
+    // Copying creates a new reader with its own seek position.
+    MemReader(const MemReader& other);
+    MemReader(MemReader&&) = default;
+    MemReader& operator=(const MemReader& other);
+    MemReader& operator=(MemReader&&) = default;
 };
 
 //   ▄▄▄▄   ▄▄                     ▄▄                   ▄▄     ▄▄▄▄     ▄▄  ▄▄▄▄
@@ -4392,10 +4491,12 @@ public:
 //  ▀█▄▄█▀  ▀█▄▄ ▀█▄▄██ ██  ██ ▀█▄▄██ ▀█▄▄██ ██     ▀█▄▄██     ▄██▄ ██     ▀█▄▄█▀
 //
 
+// Standard handles as Pipes.
 Pipe* getStdInPipe();
 Pipe* getStdOutPipe();
 Pipe* getStdErrPipe();
 
+// Temporary Stream wrappers.
 enum class ConsoleMode {
     Text,
     Binary,
@@ -4607,6 +4708,12 @@ public:
     virtual IOResult read(MutStringView dstBuf) override;
     virtual IOResult tryRead(MutStringView dstBuf) override;
     virtual void disable() override;
+
+private:
+    // Retain incomplete source characters independently of the Stream's read buffer.
+    FixedArray<char, 4> inputStorage;
+    u32 inputSize = 0;
+    IOResult readInternal(MutStringView dstBuf, bool blocking);
 };
 
 class OutPipeConvertUnicode : public Pipe {

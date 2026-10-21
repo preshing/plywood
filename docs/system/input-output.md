@@ -1,53 +1,27 @@
 ﻿Input and Output (`ply-system.h`)
 =================================
 
-Plywood exposes a three-layer API for input/output (I/O) operations:
+Plywood's input/output (I/O) operations are organized into three layers, with each layer building on the layers underneath it.
 
 1. **Low-level OS support**: [`Pipe`](#pipe) encapsulates files, sockets or conversion routines.
-2. **Buffered access**: [`Stream`](#stream) is a wrapper around `Pipe` that exposes access to an internal memory buffer.
-3. **High-level data serialization**: `Stream` also provides convenience functions to read and write common data formats to the internal memory buffer.
-
-<svg viewBox="0 0 220 181" style="display:block;width:220px;max-width:100%;height:auto;margin-inline:auto">
- <g fill="none" stroke="var(--diagram-arrow-color)" stroke-width="1">
-  <path d="m117.3 114.8-4.8 6.4-4.8-6.4"/>
-  <path d="M112.5 121.9V101"/>
-  <path d="m117.3 60.8-4.8 6.4-4.8-6.4"/>
-  <path d="M112.5 67.9V51"/>
- </g>
- <g fill="none" stroke="var(--border-table)" stroke-width="2">
-  <rect x="4" y="3" width="214" height="98" ry="15"/>
-  <rect x="24" y="123" width="174" height="56" ry="8.6"/>
- </g>
- <g fill="var(--diagram-solid-fill)" stroke="var(--border-popup)" stroke-width="1">
-  <rect x="9.5" y="26.5" width="203" height="24" ry="5.9"/>
-  <rect x="53.5" y="68.5" width="115" height="24" ry="5.9"/>
-  <rect x="32.5" y="146.5" width="157" height="24" ry="5.9"/>
- </g>
- <g fill="var(--text-code)" font-family="jetbrains_mono,monospace" font-size="14px" text-anchor="middle">
-  <text x="111" y="18.4">Stream</text>
-  <text x="111" y="138.4">Pipe</text>
- </g>
- <g fill="var(--text-secondary)" font-family="source_sans_3,sans-serif" font-size="16px" text-anchor="middle">
-  <text x="110.4" y="42.6">High-level data serialization</text>
-  <text x="110.5" y="84.6">Buffered access</text>
-  <text x="110.4" y="162.6">Low-level OS support</text>
- </g>
-</svg>
-
-Most applications only really need to use `Stream`, but `Pipe` can also be extended to perform application-specific data conversion.
+2. **Buffered access**: [`Stream`](#stream) allows callers to perform I/O directly on an internal memory buffer, while optionally wrapping a `Pipe`.
+3. **High-level serialization**: `Stream` also provides convenience functions to read and write common data formats to the internal memory buffer.
 
 ## `Pipe`
 
-`Pipe` is a low-level abstract base class that encapsulates a file, a network socket or a conversion routine. Applications rarely use this class directly; [`Stream`](#stream) provides a more convenient interface for data serialization.
+`Pipe` is a virtual base class that encapsulates a file, a network socket or a conversion routine. Applications rarely use this class directly, as [`Stream`](#stream) provides a better general-purpose interface for data serialization.
 
-Reading or writing data through a `Pipe` usually involves a system call into the underlying OS, which is expensive. To transfer data at faster rates, it's better to pass large chunks of data (in the ~2-64 KB range) to each `read` or `write` call.
+`Pipe` instances are typically allocated as opaque objects on the heap and stored in `Owned` pointers. 
 
-`read` is a potentially blocking call. `tryRead` is designed not to block, so it can be called from within a main loop without causing any frame spikes. `write` may also block until the underlying data destination is ready to receive. Not all member functions are supported by every `Pipe` instance. The caller is responsible for only calling functions that are supported by each instance. Any underlying resources used by the `Pipe`, including file handles, are released when the `Pipe` is destroyed.
+```
+Owned<Pipe> in = FileSystem::openPipeForRead("foo.txt");
+```
 
-Only one thread may call `read`, `tryRead`, `write`, `flush` or `seekTo` at a time on a particular `Pipe` instance. `disable`, however, is safe to call from any thread at any time. Once a pipe has been disabled, it stops receiving data from the underlying connection, `read` and `write` become non-blocking, and any currently blocked threads are released.
+Only one thread may call `read`, `tryRead`, `write`, `flush` or `seekTo` at a time on each pipe. Not every member function is supported by every pipe. The caller is responsible for calling supported functions only.
 
-`u64 Pipe::getFileSize()`
-> Returns the total size of the underlying file.
+Each call to `Pipe` typically involves a system call into the underlying OS, which can be expensive. To reduce overhead, it's better to pass large chunks of data (in the ~2-64 KB range) to each `read` or `write` call at a time. `Stream` takes care of this automatically.
+
+Any underlying file handles held by the `Pipe` are closed when the `Pipe` is destroyed.
 
 `u32 Pipe::getCapabilities() const`
 > Returns the pipe's capability flags.
@@ -62,6 +36,23 @@ Only one thread may call `read`, `tryRead`, `write`, `flush` or `seekTo` at a ti
 > Reads up to `buf.numBytes` bytes into `buf`.
 > The calling thread will block until at least one byte is successfully read from the underlying data source.
 > `buf` must not be empty.
+>
+> `IOResult` has the following data members:
+>
+> | | |
+> | ---- | ------- |
+> | `Code code` | Outcome of the operation. |
+> | `u32 numBytes` | Number of bytes transferred. Only non-zero when `code` is `OK`, or when a write partially completes before returning `Error` or `Disabled`. |
+>
+> Possible `Code` values:
+> 
+> | Value | Meaning |
+> | ---- | ------- |
+> | `OK` | The operation completed successfully. `numBytes` bytes were transferred. |
+> | `EndOfFile` | The source is exhausted; no more data will arrive. |
+> | `WouldBlock` | No data is available right now, but more may arrive later. (Only returned by `tryRead`.) |
+> | `Error` | The operation failed due to an I/O error. |
+> | `Disabled` | The pipe was disabled. |
 
 `IOResult Pipe::tryRead(MutStringView buf)`
 > Reads as much data as possible without blocking. `buf` must not be empty.
@@ -69,80 +60,59 @@ Only one thread may call `read`, `tryRead`, `write`, `flush` or `seekTo` at a ti
 `IOResult Pipe::write(StringView buf)`
 > Writes the bytes in `buf`. Returns `OK` if all bytes were written, `Disabled` if the pipe was disabled,
 > or `Error` if the write failed. On a partial failure, `numBytes` gives the number of bytes actually
-> written. This function may block until the pipe's destination is ready to receive.
-
-`void Pipe::seekTo(s64 offset)`
-> Seeks to the specified byte offset. Only supported by seekable pipes.
+> written. This function may block if the pipe's destination isn't ready to receive.
 
 `void Pipe::flush(bool toDevice = false)`
 > Flushes any buffered writes. If `toDevice` is true, ensures data reaches the physical device.
 
+`void Pipe::seekTo(s64 offset)`
+> Seeks to the specified byte offset. Only supported by seekable pipes.
+
+`u64 Pipe::getFileSize()`
+> Returns the total size of the underlying file.
+
 `void Pipe::disable()`
 > Disables communication on this pipe. It's safe to call this from any thread at any time.
 > If another thread is blocked inside `read` or `write`, `disable` unblocks it.
-> After `disable` returns, a pipe makes no further calls into the underlying operating system,
-> but handles remain open until the Pipe is destroyed.
+> Once a pipe has been disabled, `read` and `write` become non-blocking functions
+> and the pipe makes no further calls into the underlying operating system,
+> but handles remain open until the `Pipe` is destroyed.
 
-`String readAllRemainingData(Pipe* inPipe)`
-> Reads and returns all remaining data from `inPipe` through end-of-file. This function may block until the pipe's writer closes. It does not close the pipe.
+### `MemPipe`
 
-### `IOResult`
+A `MemPipe` is a write-only `Pipe` that appends chunks of data to an arbitrary-length queue of memory. This queue can be consumed by creating one or more [`MemReader`](#memreader) instances.
 
-`IOResult` is returned by `Pipe::read`, `Pipe::tryRead` and `Pipe::write`. It has the following data members:
+`MemPipe::MemPipe(bool threadSafe = true)`
+> Constructs an empty memory pipe. If `threadSafe` is `true`, it's safe to use `MemReaders` for this `MemPipe` concurrently from different threads. If `threadSafe` is `false`, callers must ensure mutual exclusion between this `MemPipe` and its `MemReaders`.
 
-| Member | Description |
-| ---- | ------- |
-| `Code code` | Outcome of the operation. |
-| `u32 numBytes` | Number of bytes transferred. Only valid when `code` is `OK`, or when a write partially completes before returning `Error` or `Disabled`. |
+`void MemPipe::close()`
+> Stops accepting writes and wakes all waiting readers. Existing data remains available to every reader; each reader reports `EndOfFile` once it catches up.
 
-`IOResult::Code` values:
-
-| Value | Meaning |
-| ---- | ------- |
-| `OK` | The operation completed successfully. `numBytes` bytes were transferred. |
-| `EndOfFile` | The source is exhausted; no more data will arrive. |
-| `WouldBlock` | No data is available right now, but more may arrive later. |
-| `Error` | The operation failed due to an I/O error. |
-| `Disabled` | The pipe was disabled. |
-
-Every value other than `OK` means that no bytes were transferred, except when a write partially completes before returning `Error` or `Disabled`. `WouldBlock` is returned only by `tryRead`.
+It's safe to destroy the `MemPipe` while `MemReader`s are still reading, in which case the `MemPipe` is closed and the `MemReader`s continue to consume remaining buffered data.
 
 ## `Stream`
 
-A `Stream` wraps a `Pipe` and provides buffered I/O operations. Streams handle the details of buffering data for efficient reads and writes.
+`Stream` is a higher-level interface for data serialization. Each `Stream` instance exposes an internal memory buffer that applications can read and write directly, plus a set of convenience functions for serializing common formats into this buffer. A stream can either work as a wrapper around `Pipe` or it can store its contents entirely in memory.
 
-### Buffered Access
+`Stream` objects have a reasonably small fixed size, so they're often returned by value and stored directly in local variables.
 
-`Stream` exposes the following public buffer pointers.
+```
+Stream out = getStdOut();
+out.write("Hello world!\n");
+```
 
-| Member | Description |
+An underlying I/O failure sets the stream's status to `Error`. Buffered reads may remain available, but any data written to the internal buffer since the last successful write should be considered lost. While the status is `Error`, the stream is effectively disabled. Call `clearError()` to permit another attempt.
+
+### Buffer Access
+
+`Stream` exposes the following public data members.
+
+| | |
 | --- | --- |
-| `char* curByte` | Current position in the active buffer. After `makeReadable()` succeeds, read bytes beginning here and advance `curByte` by the number consumed. After `makeWritable()` succeeds, write bytes beginning here and advance `curByte` by the number produced. Never advance it past `endByte`. |
-| `char* endByte` | One past the end of the active readable or writable range. Callers may compare this with `curByte`, but should not change it. A call that refills, flushes, seeks, closes or otherwise changes the stream may invalidate the current buffer range. |
+| `char* curByte` | Current read/write position in the internal buffer. |
+| `char* endByte` | The end of the readable/writable portion of the internal buffer. |
 
-For direct reading, call `makeReadable()` or `tryMakeReadable()` before using the range. For direct
-writing, call `makeWritable()` first.
-
-`Stream::Stream()`
-> Constructs an empty stream that is not connected to any pipe.
-
-`Stream::Stream(Pipe* pipe, bool isPipeOwner)`
-> Constructs a stream from a pipe. If `isPipeOwner` is true, the stream will destroy the pipe when closed.
-
-`Stream::Stream(Pipe* pipe, bool isPipeOwner, u32 capabilities)`
-> Constructs a stream with a restricted subset of the pipe's capabilities.
-
-`Stream::Stream(Stream&& other)`
-> Move constructor.
-
-`Stream& Stream::operator=(Stream&& other)`
-> Move assignment.
-
-`bool Stream::isOpen()`
-> Returns `true` if the stream is connected to a valid pipe.
-
-`explicit Stream::operator bool()`
-> Same as `isOpen()`.
+Callers are allowed to read or write the data at `curByte` as long as it's less than `endByte`. Callers are also allowed to increment the `curByte` pointer, but not beyond `endByte`.
 
 `u32 Stream::getCapabilities() const`
 > Returns the stream's capability flags.
@@ -153,36 +123,52 @@ writing, call `makeWritable()` first.
 > | `Stream::CanWrite` | The stream supports writing. |
 > | `Stream::CanSeek` | The stream supports `seekTo`. |
 
-`bool Stream::atEof() const`
-> Returns `true` when `getStatus()` is one of `EndOfFile`, `Error` or `Disabled`. Buffered bytes may still remain when a request for a larger readable range encountered end-of-file.
+`bool Stream::isOpen()`
+`explicit Stream::operator bool()`
+> Returns `true` if the stream is open.
 
-`Pipe* Stream::getPipe() const`
-> Returns the underlying pipe for a pipe-backed stream, or `nullptr` for other stream types.
+`Stream::Mode Stream::getMode() const`
+> Returns `Reading`, `Writing` or `Closed`.
 
 `void Stream::close()`
 > Flushes and closes the stream. If the stream owns the pipe, the pipe is destroyed.
+> May block if the stream is in write mode and there is data to flush.
+
+`IOResult::Code Stream::getStatus() const`
+> Returns the current I/O status. Operations using only the current buffer leave it unchanged. `Error` persists until `clearError()` is called.
+
+`bool Stream::atEof() const`
+> Returns `true` when the internal buffer is empty and `getStatus()` is `EndOfFile`, `Error` or `Disabled`.
 
 `bool Stream::makeReadable(u32 minBytes = 1)`
-> This function blocks until `minBytes` are available, in which case it returns `true`.
-> If end-of-file is reached before `minBytes` is available, returns `false`. `minBytes` must be greater than 0.
+> This function blocks until `minBytes` are available to read or reading fails.
+> Returns `true` if `minBytes` are available; `false` otherwise.
+> Check `getStatus` to determine the cause.
 
 `bool Stream::tryMakeReadable()`
-> This function makes as much data as possible readable without blocking.
-> Returns `true` if one or more bytes of data are made readable.
-> A `false` result can mean that no data is immediately available, end-of-file was reached or an
-> I/O error occurred, or the pipe was disabled. Inspect `getStatus()` to distinguish those cases.
+> This function tries to make some data readable without blocking.
+> Returns `true` if one or more bytes of data are available; `false` otherwise.
+> Check `getStatus` to determine the cause.
+>
+> Non-blocking behavior is only guaranteed if the stream is in already in read mode.
+> If the stream is in write mode with buffered data, this function may block as the data gets flushed.
+> To ensure `tryMakeReadable` remains non-blocking, either avoid writing data or
+> flush the internal buffer first by calling `flush`.
 
 `bool Stream::makeWritable(u32 minBytes = 1)`
 > Ensures at least `minBytes` of space are available in the write buffer.
 > May block until the underlying destination is ready to receive.
+> If the stream is a `MemStream`, `minBytes` must be 1, which is sufficient to support `format` and `write`.
 
-`void Stream::disable()`
-> Disables the underlying pipe, which can release operations blocked on that pipe. It's also legal to
-> call this function on a non-pipe stream, in which case it has no effect. Any internally-buffered data will remain available for read after `disable()` returns, but `getStatus()` will eventually report
-> `Disabled` after it runs out.
+`void Stream::flush(bool toDevice = false)`
+> Does nothing in read mode.
+> In write mode, this function may block as buffered data gets written to to the underlying pipe. If `toDevice` is true, also flushes the pipe to the physical device.
 
-`IOResult::Code Stream::getStatus() const`
-> Returns the result code of the most recent call to `makeReadable`, `tryMakeReadable` or `makeWritable`.
+`void Stream::seekTo(u64 seekPos)`
+> Seeks to the specified position. Only works with seekable streams.
+
+`u64 Stream::getSeekPos()`
+> Returns the current seek position in the stream.
 
 `bool Stream::hasRemainingBytes() bool`
 > Returns `true` if there are any bytes remaining in the read buffer.
@@ -196,16 +182,18 @@ writing, call `makeWritable()` first.
 `MutStringView Stream::viewRemainingBytesMut()`
 > Returns a mutable view of the read buffer.
 
-`void Stream::flush(bool toDevice = false)`
-> Writes any buffered data to the underlying pipe. If `toDevice` is true, also flushes the pipe to the physical device.
+`void Stream::disable()`
+> Disables the underlying pipe, which can release operations blocked on that pipe. It's also legal to
+> call this function on a non-pipe stream, in which case it has no effect. Any internally-buffered data will remain available for read after `disable()` returns, but `getStatus()` will eventually report
+> `Disabled` after it runs out.
 
-`u64 Stream::getSeekPos()`
-> Returns the current seek position in the stream.
+`void Stream::clearError()`
+> Changes `Error` status to `OK`, allowing subsequent operations to retry. Other statuses are unchanged.
 
-`void Stream::seekTo(u64 seekPos)`
-> Seeks to the specified position. Only works with seekable pipes.
+`Pipe* Stream::getPipe() const`
+> Returns the underlying pipe for a pipe-backed stream, or `nullptr` for other stream types.
 
-### High-Level Data Serialization
+### High-Level Serialization
 
 `char Stream::peekByte()`
 > Returns the next byte in the input stream, or `0` if at end-of-file.
@@ -234,11 +222,18 @@ writing, call `makeWritable()` first.
 `void Stream::format(StringView fmt, const Args&... args)`
 > Writes formatted text using `{}` placeholders.
 
-## `MemStream`
+`Stream` has several subclasses, but these subclasses merely provide different ways of constructing `Stream` objects. None of these subclasses add any data members, so they can be safely assigned directly to variables of type `Stream`.
 
-A `MemStream` writes to an in-memory buffer that grows as needed. This is useful for building strings or serializing data.
+- `MemStream` is low-overhead, write-only memory stream whose contents can be converted to `String`.
+- `MemFile` is a readable, writable, seekable virtual file backed by memory.
+- `ViewStream` is a simple wrapper around a `StringView`.
+- `MemReader` reads data written to a `MemPipe`.
 
-Copy construction and copy assignment create independent deep copies with the same contents and seek position.
+### `MemStream`
+
+A `MemStream` writes to an in-memory buffer that grows as needed, with the goal of ultimately converting to a `String`.
+It's more efficient than `MemFile`, but doesn't support seeking or reads.
+Copy construction and copy assignment create independent deep copies.
 
 `String MemStream::copyToString() const`
 > Copies the complete contents to a string without changing the stream.
@@ -246,9 +241,35 @@ Copy construction and copy assignment create independent deep copies with the sa
 `String MemStream::moveToString()`
 > Returns the complete contents and closes the stream. Transfers its storage directly when possible.
 
-## `ViewStream`
+### `MemFile`
+
+A `MemFile` is a readable, writable, seekable file stored in memory that supports contiguous buffer requests up to `Stream::MaxConsecutiveBytes`.
+
+Copy construction and copy assignment create independent deep copies with the same contents, mode
+and seek position, including pending buffered writes. Moving transfers ownership and closes the
+source file.
+
+### `ViewStream`
 
 A `ViewStream` reads from a fixed memory buffer (a `StringView`). This is useful for parsing strings or data already in memory.
+
+### `MemReader`
+
+A `MemReader` is a read-only `Stream` that consumes data written to a `MemPipe`. It's safe to create multiple `MemReader`s for a single `MemPipe`.
+
+`MemReader::MemReader(MemPipe* memPipe)`
+> Constructs a reader positioned at the beginning of `memPipe`, including data written before the reader was created. `memPipe` must not be null.
+
+```
+Owned<MemPipe> pipe = Heap::create<MemPipe>();
+MemReader reader{pipe};
+pipe->write("hello");
+pipe.clear(); // Closes the writer; reader keeps the buffered data alive.
+
+char bytes[5];
+u32 numRead = reader.read({bytes, sizeof(bytes)}); // Reads all five bytes.
+bool more = reader.makeReadable(); // false; getStatus() is EndOfFile.
+```
 
 ## Standard I/O
 

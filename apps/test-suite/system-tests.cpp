@@ -2111,6 +2111,54 @@ TEST_CASE("binarySearch() with different numeric types") {
 #undef TEST_CASE_PREFIX
 #define TEST_CASE_PREFIX Unicode_
 
+// MockPipe is an in-memory implementation of Pipe used to test Stream behavior without OS pipes.
+struct MockPipe : Pipe {
+    String bytes;
+    u32 pos = 0;
+    u32 limit = 0xffffffff;
+    u32 writeLimit = 0;
+    IOResult::Code code = IOResult::OK;
+    u32 readCalls = 0;
+    u32 writeCalls = 0;
+    u32 seekCalls = 0;
+    u32 flushCalls = 0;
+    explicit MockPipe(StringView input = {}) : bytes{input} {
+        this->capabilities = CanRead | CanWrite | CanSeek;
+    }
+    IOResult read(MutStringView dst) override {
+        this->readCalls++;
+        if (this->code != IOResult::OK)
+            return {this->code, 0};
+        u32 count =
+            min(this->limit, min(dst.numBytes, this->bytes.numBytes() - min(this->pos, this->bytes.numBytes())));
+        if (count) {
+            memcpy(dst.bytes, this->bytes.bytes() + this->pos, count);
+        }
+        this->pos += count;
+        return {count ? IOResult::OK : IOResult::EndOfFile, count};
+    }
+    IOResult tryRead(MutStringView dst) override {
+        return this->read(dst);
+    }
+    IOResult write(StringView src) override {
+        this->writeCalls++;
+        u32 count = this->code == IOResult::OK ? src.numBytes() : min(this->writeLimit, src.numBytes());
+        this->bytes.resize(max(this->bytes.numBytes(), this->pos + count));
+        if (count) {
+            memcpy(this->bytes.bytes() + this->pos, src.bytes(), count);
+        }
+        this->pos += count;
+        return {this->code, count};
+    }
+    void seekTo(s64 offset) override {
+        this->seekCalls++;
+        this->pos = (u32) offset;
+    }
+    void flush(bool) override {
+        this->flushCalls++;
+    }
+};
+
 TEST_CASE("Encode Unicode codepoints") {
     // Verify the direct single-byte path and every variable-length UTF-8 form.
     FixedArray<char, 4> encoded;
@@ -2124,25 +2172,19 @@ TEST_CASE("Encode Unicode codepoints") {
     check(StringView{encoded.items(), 4} == StringView{"\xf0\x9f\x99\x82", 4});
 }
 
-TEST_CASE("Convert complete and fragmented UTF-8") {
-    // A complete ASCII write must not duplicate its final byte.
-    OutPipeConvertUnicode complete{MemStream{}, UnicodeType::UTF16LE};
-    complete.write("PATH");
-    complete.flush(false);
-    String completeResult = static_cast<MemStream&>(complete.childOut).moveToString();
-    check(completeResult == StringView{"P\0A\0T\0H\0", 8});
-
-    // Preserve all bytes when a multibyte point and following text cross writes.
-    OutPipeConvertUnicode fragmented{MemStream{}, UnicodeType::UTF16LE};
-    IOResult firstWrite = fragmented.write(StringView{"\xe3", 1});
-    check(firstWrite.code == IOResult::OK);
-    check(firstWrite.numBytes == 1);
-    IOResult secondWrite = fragmented.write(StringView{"\x80\x82xyz", 5});
-    check(secondWrite.code == IOResult::OK);
-    check(secondWrite.numBytes == 5);
-    fragmented.flush(false);
-    String fragmentedResult = static_cast<MemStream&>(fragmented.childOut).moveToString();
-    check(fragmentedResult == StringView{"\x02\x30x\0y\0z\0", 8});
+// Unicode adapters: fragmentation, output capacity and incomplete terminal input.
+TEST_CASE("Unicode output conversion preserves every UTF-8 split") {
+    StringView input = "PATH\xe3\x80\x82xyz\xf0\x9f\x99\x82";
+    StringView expected{"P\0A\0T\0H\0\x02\x30x\0y\0z\0\x3d\xd8\x42\xde", 20};
+    for (u32 split = 0; split <= input.numBytes(); split++) {
+        OutPipeConvertUnicode conv{MemStream{}, UnicodeType::UTF16LE};
+        IOResult first = conv.write(input.left(split));
+        IOResult second = conv.write(input.substr(split));
+        check(first.code == IOResult::OK && first.numBytes == split);
+        check(second.code == IOResult::OK && second.numBytes == input.numBytes() - split);
+        conv.flush(false);
+        check(static_cast<MemStream&>(conv.childOut).moveToString() == expected);
+    }
 }
 
 TEST_CASE("Decode truncated UTF-8") {
@@ -2156,13 +2198,70 @@ TEST_CASE("Decode truncated UTF-8") {
     check(result == StringView{"\xe3\x00\x80\x00", 4});
 }
 
-#if defined(PLY_POSIX)
+TEST_CASE("Unicode input conversion handles input and output boundaries") {
+    struct Example {
+        UnicodeType type;
+        StringView input;
+        StringView expected;
+    };
+    Example examples[] = {
+        {UnicodeType::UTF8, "", ""},
+        {UnicodeType::UTF8, "ASCII text", "ASCII text"},
+        {UnicodeType::UTF8, "\xe3\x80\x82X\xc2\xa2", "\xe3\x80\x82X\xc2\xa2"},
+        {UnicodeType::UTF8, "\xf0\x9f\x99\x82Z", "\xf0\x9f\x99\x82Z"},
+        {UnicodeType::UTF8, "\xe3XY", "\xc3\xa3XY"},
+        {UnicodeType::UTF8, "\xe3\x80", "\xc3\xa3\xc2\x80"},
+        {UnicodeType::UTF16LE, StringView{"A\0\x3d\xd8\x42\xdeZ\0", 8}, "A\xf0\x9f\x99\x82Z"},
+        {UnicodeType::UTF16BE, StringView{"\0A\xd8\x3d\xde\x42\0Z", 8}, "A\xf0\x9f\x99\x82Z"},
+        {UnicodeType::UTF16LE, StringView{"\x3d\xd8Z\0", 4}, "\xed\xa0\xbdZ"},
+        {UnicodeType::UTF16LE, StringView{"A\0Z", 3}, "A"},
+        {UnicodeType::None, "A\xffZ", "A\xc3\xbfZ"},
+    };
+    for (const Example& example : examples) {
+        for (bool blocking : {false, true}) {
+            for (u32 chunkSize : {1u, 2u, 3u, 4u, 16u}) {
+                for (u32 outputSize : {1u, 2u, 3u, 4u, 16u}) {
+                    MockPipe pipe{example.input};
+                    pipe.limit = chunkSize;
+                    InPipeConvertUnicode conv{Stream{&pipe, false}, example.type};
+                    MemStream output;
+                    char bytes[16];
+                    for (u32 attempt = 0; attempt < 32; attempt++) {
+                        IOResult result = blocking ? conv.read({bytes, outputSize}) : conv.tryRead({bytes, outputSize});
+                        if (result.code != IOResult::OK) {
+                            check(result.code == IOResult::EndOfFile && result.numBytes == 0);
+                            break;
+                        }
+                        check(result.numBytes > 0 && result.numBytes <= outputSize);
+                        output.write({bytes, result.numBytes});
+                        check(attempt < 31);
+                    }
+                    check(output.copyToString() == example.expected);
+                }
+            }
+        }
+    }
+}
 
+TEST_CASE("Nonblocking Unicode conversion handles buffered truncated input at EOF") {
+    MemFile input;
+    input.write("\xe3\x80");
+    input.seekTo(0);
+    check(!input.makeReadable(3));
+    check(!input.atEof());
+    InPipeConvertUnicode conv{std::move(input), UnicodeType::UTF8};
+    char dst[8];
+    IOResult result = conv.tryRead({dst, sizeof(dst)});
+    check(result.code == IOResult::OK);
+    check(StringView{dst, result.numBytes} == StringView{"\xc3\xa3\xc2\x80", 4});
+    check(conv.tryRead({dst, sizeof(dst)}).code == IOResult::EndOfFile);
+}
+
+#if defined(PLY_POSIX)
 TEST_CASE("Nonblocking Unicode conversion preserves fragmented input") {
     int fds[2];
     check(pipe(fds) == 0);
-    InPipeConvertUnicode conv{Stream{Heap::create<PipeFD>(fds[0], Pipe::CanRead), true},
-                              UnicodeType::UTF8};
+    InPipeConvertUnicode conv{Stream{Heap::create<PipeFD>(fds[0], Pipe::CanRead), true}, UnicodeType::UTF8};
     char dst[8];
 
     IOResult result = conv.tryRead({dst, sizeof(dst)});
@@ -2192,6 +2291,33 @@ TEST_CASE("Nonblocking Unicode conversion preserves fragmented input") {
 #undef TEST_CASE_PREFIX
 #define TEST_CASE_PREFIX Pipe_
 
+#if defined(PLY_WINDOWS)
+
+TEST_CASE("blocking read drains data before reporting EOF") {
+    // Closing the writer must preserve queued bytes and then report EOF on every subsequent read.
+    HANDLE readHandle;
+    HANDLE writeHandle;
+    BOOL created = CreatePipe(&readHandle, &writeHandle, nullptr, 0);
+    check(created != 0);
+    if (!created)
+        return;
+    PipeHandle reader{readHandle, Pipe::CanRead};
+    {
+        PipeHandle writer{writeHandle, Pipe::CanWrite};
+        IOResult result = writer.write("abc");
+        check(result.code == IOResult::OK && result.numBytes == 3);
+    }
+    char bytes[8];
+    IOResult result = reader.read({bytes, sizeof(bytes)});
+    check(result.code == IOResult::OK && result.numBytes == 3);
+    check(StringView{bytes, result.numBytes} == "abc");
+    result = reader.read({bytes, sizeof(bytes)});
+    check(result.code == IOResult::EndOfFile && result.numBytes == 0);
+    check(reader.read({bytes, sizeof(bytes)}).code == IOResult::EndOfFile);
+}
+
+#endif
+
 #if defined(PLY_POSIX)
 
 TEST_CASE("tryRead reports data, would-block and EOF") {
@@ -2211,58 +2337,6 @@ TEST_CASE("tryRead reports data, would-block and EOF") {
 
     check(::close(fds[1]) == 0);
     check(reader.tryRead({bytes, sizeof(bytes)}).code == IOResult::EndOfFile);
-}
-
-TEST_CASE("Stream::tryMakeReadable fills without blocking") {
-    int fds[2];
-    check(pipe(fds) == 0);
-    PipeFD reader{fds[0], Pipe::CanRead};
-    Stream in{&reader, false};
-
-    check(!in.tryMakeReadable());
-    check(in.getStatus() == IOResult::WouldBlock);
-    check(!in.atEof());
-    check(::write(fds[1], "abc", 3) == 3);
-    check(in.tryMakeReadable());
-    check(in.viewRemainingBytes() == "abc");
-    in.curByte = in.endByte;
-    check(!in.tryMakeReadable());
-    check(in.getStatus() == IOResult::WouldBlock);
-    check(!in.atEof());
-
-    check(::close(fds[1]) == 0);
-    check(!in.tryMakeReadable());
-    check(in.atEof());
-    check(in.getStatus() == IOResult::EndOfFile);
-}
-
-TEST_CASE("Stream::tryRead copies without blocking") {
-    int fds[2];
-    check(pipe(fds) == 0);
-    PipeFD reader{fds[0], Pipe::CanRead};
-    Stream in{&reader, false};
-    char bytes[8];
-    memset(bytes, '-', sizeof(bytes));
-
-    check(in.tryRead({bytes, sizeof(bytes)}) == 0);
-    check(StringView{bytes, sizeof(bytes)} == "--------");
-    check(!in.atEof());
-
-    check(::write(fds[1], "abc", 3) == 3);
-    check(in.tryRead({bytes, sizeof(bytes)}) == 3);
-    check(StringView{bytes, sizeof(bytes)} == "abc-----");
-    check(!in.atEof());
-
-    check(::write(fds[1], "defghijkl", 9) == 9);
-    check(in.tryRead({bytes, sizeof(bytes)}) == sizeof(bytes));
-    check(StringView{bytes, sizeof(bytes)} == "defghijk");
-    check(in.tryRead({bytes, sizeof(bytes)}) == 1);
-    check(bytes[0] == 'l');
-
-    check(::close(fds[1]) == 0);
-    check(in.tryRead({bytes, sizeof(bytes)}) == 0);
-    check(in.atEof());
-    check(in.getStatus() == IOResult::EndOfFile);
 }
 
 TEST_CASE("disable releases a blocking read and is terminal") {
@@ -2426,145 +2500,664 @@ TestResult runUnicodeLoadingTests() {
 //  ▀█▄▄█▀  ▀█▄▄ ██     ▀█▄▄▄  ▀█▄▄██ ██ ██ ██
 //
 
-TEST_CASE("Mem stream temp buffer") {
-    Random random{0};
-    for (u32 i = 0; i < 100; i++) {
-        MemStream mem;
-        u32 fileSize = Stream::BufferSize * 10;
-        u32 offset = 0;
-        while (offset < fileSize) {
-            check(offset == mem.getSeekPos());
-            u32 numConsecutiveBytes =
-                (random.generateU32() % (Stream::MaxConsecutiveBytes / 2)) + (Stream::MaxConsecutiveBytes / 2);
-            check(mem.makeWritable(min(numConsecutiveBytes, fileSize - offset)));
-            while (mem.curByte < mem.endByte) {
-                *mem.curByte++ = (u8) shuffleBits(offset++);
-                if (--numConsecutiveBytes == 0)
-                    break;
-            }
+#undef TEST_CASE_PREFIX
+#define TEST_CASE_PREFIX Stream_
+
+String streamPayload(u32 size) {
+    String result = String::allocate(size);
+    for (u32 i = 0; i < size; i++) {
+        result[i] = (char) shuffleBits(i);
+    }
+    return result;
+}
+
+// Common contracts: the same read sequence runs against every readable backend.
+static void checkStreamReads(Stream& in, StringView expected, u32 method) {
+    check(in.isOpen() && (in.getCapabilities() & Stream::CanRead));
+    u32 pos = 0;
+    while (pos < expected.numBytes()) {
+        check(in.peekByte() == expected[pos]);
+        check(in.getSeekPos() == pos); // Peeking never consumes data.
+        u32 count = min(37u, expected.numBytes() - pos);
+        char dst[37];
+        if (method == 0) {
+            check(in.readByte() == expected[pos]);
+            count = 1;
+        } else if (method == 1) {
+            check(in.read({dst, count}) == count);
+            check(StringView{dst, count} == expected.substr(pos, count));
+        } else if (method == 2) {
+            count = in.tryRead({dst, count});
+            if (!check(count > 0))
+                return;
+            check(StringView{dst, count} == expected.substr(pos, count));
+        } else {
+            if (!check(in.makeReadable(count)))
+                return;
+            check(in.viewRemainingBytes().left(count) == expected.substr(pos, count));
+            check(in.skip(count) == count);
         }
-        mem.seekTo(0);
-        offset = 0;
-        while (offset < fileSize) {
-            check(offset == mem.getSeekPos());
-            u32 numConsecutiveBytes =
-                (random.generateU32() % (Stream::MaxConsecutiveBytes / 2)) + (Stream::MaxConsecutiveBytes / 2);
-            bool readable = mem.makeReadable(numConsecutiveBytes);
-            if (!readable)
-                check(mem.getStatus() == IOResult::EndOfFile);
-            if (!mem.hasRemainingBytes())
-                break;
-            while (mem.curByte < mem.endByte) {
-                check((u8) *mem.curByte++ == (u8) shuffleBits(offset++));
-                if (--numConsecutiveBytes == 0)
-                    break;
-            }
+        pos += count;
+        check(in.getMode() == Stream::Mode::Reading && in.getSeekPos() == pos);
+    }
+    check(in.peekByte() == 0 && in.atEof());
+    check(in.readByte() == 0 && in.skip(1) == 0);
+    char tail[2] = {'-', '-'};
+    check(in.tryRead({tail, 2}) == 0 && StringView{tail, 2} == "--");
+    check(in.read({tail, 2}) == 0 && StringView{tail, 2} == StringView{"\0\0", 2});
+    check(!in.tryMakeReadable() && in.getStatus() == IOResult::EndOfFile);
+    in.close();
+    check(!in.isOpen() && in.getMode() == Stream::Mode::Closed);
+}
+
+TEST_CASE("Stream read contracts across backends and boundaries") {
+    for (u32 size : {0u, 1u, Stream::MemChunkSize - 1, Stream::MemChunkSize, Stream::MemChunkSize + 1,
+                     Stream::MemFilePageSize - 1, Stream::MemFilePageSize, Stream::MemFilePageSize * 2 + 17}) {
+        String expected = streamPayload(size);
+        for (u32 method = 0; method < 4; method++) {
+            ViewStream view{StringView{expected}};
+            checkStreamReads(view, expected, method);
+            ViewStream mutableView{MutStringView{expected.bytes(), size}};
+            checkStreamReads(mutableView, expected, method);
+            MemFile file;
+            file.write(expected);
+            file.seekTo(0);
+            checkStreamReads(file, expected, method);
+            MemPipe pipe{false};
+            pipe.write(expected);
+            pipe.close();
+            MemReader reader{&pipe};
+            checkStreamReads(reader, expected, method);
+            MockPipe source{expected};
+            source.limit = 19;
+            Stream input{&source, false};
+            checkStreamReads(input, expected, method);
         }
-        check(offset == fileSize);
     }
 }
 
-// Verifies that copying a memory stream handles all storage layouts without changing stream state.
-TEST_CASE("MemStream::copyToString") {
-    // Copy an unflushed single-buffer stream.
-    MemStream small;
-    small.write("hello");
-    u64 smallSeekPos = small.getSeekPos();
-    check(small.copyToString() == "hello");
-    check(small.copyToString() == "hello"); // Previous copyToString should not modify
-    check(small.getSeekPos() == smallSeekPos);
+// Content checks read the object itself, never a copy; restore its public cursor afterwards.
+static bool hasMemFileContents(MemFile& file, StringView expected) {
+    u64 pos = file.getSeekPos();
+    file.seekTo(0);
+    String actual = String::allocate(expected.numBytes() + 1);
+    u32 count = file.read({actual.bytes(), actual.numBytes()});
+    bool result = count == expected.numBytes() && actual.left(count) == expected && file.atEof();
+    file.seekTo(pos);
+    return result;
+}
 
-    // Copy a stream spanning multiple backing buffers.
-    String largeText = String::allocate(Stream::BufferSize * 2 + 17);
-    for (u32 i = 0; i < largeText.numBytes(); i++) {
-        largeText.bytes()[i] = (char) shuffleBits(i);
+// Exercise partially produced buffers, short EOF views and read/write transitions around page boundaries.
+TEST_CASE("Stream seekable storage transitions and partial boundary writes") {
+    for (u32 base : {0u, Stream::MemFilePageSize - 4, Stream::MemFilePageSize, Stream::MemFilePageSize + 1}) {
+        for (u32 requested : {16u, Stream::MaxConsecutiveBytes}) {
+            for (u32 produced : {0u, 1u, 4u, 8u}) {
+                String expected = streamPayload(base);
+                MemFile file;
+                check(file.getCapabilities() == (Stream::CanRead | Stream::CanWrite | Stream::CanSeek));
+                check(file.peekByte() == 0 && file.atEof());
+                file.write(expected);
+                check(file.makeWritable(requested));
+                StringView payload = StringView{"12345678"}.left(produced);
+                memcpy(file.curByte, payload.bytes(), produced);
+                file.curByte += produced;
+                expected += payload;
+                // Seeking must commit only bytes produced, including an untouched writable shim.
+                check(hasMemFileContents(file, expected));
+                check(file.getSeekPos() == expected.numBytes());
+                file.write('!');
+                expected += "!";
+                file.flush();
+                check(file.readByte() == 0); // Spare write capacity is never readable data.
+                file.seekTo(base);
+                check(!file.makeReadable(requested) && !file.atEof());
+                check(file.viewRemainingBytes() == expected.substr(base));
+                check(!file.makeReadable(requested)); // Retrying preserves a short EOF view.
+                check(file.skip(min(2u, produced)) == min(2u, produced));
+                u32 pos = base + min(2u, produced);
+                file.write("XY");
+                expected.resize(max(expected.numBytes(), pos + 2));
+                memcpy(expected.bytes() + pos, "XY", 2);
+                check(hasMemFileContents(file, expected));
+                file.close();
+                check(!file.isOpen());
+            }
+        }
     }
-    MemStream large;
-    large.write(largeText);
-    u64 largeSeekPos = large.getSeekPos();
-    check(large.copyToString() == largeText);
-    check(large.copyToString() == largeText); // Previous copyToString should not modify
-    check(large.getSeekPos() == largeSeekPos);
-
-    // Copy and duplicate a stream using a non-power-of-two custom chunk size.
-    String customText = largeText.left(6500);
-    MemStream custom{3000};
-    custom.write(customText);
-    check(custom.copyToString() == customText);
-    MemStream customDuplicate = custom;
-    check(customDuplicate.copyToString() == customText);
-
-    // Read a consecutive view that spans several small custom chunks.
-    String alphabet = "abcdefghijklmnopqrstuvwxyz";
-    MemStream tiny{7};
-    tiny.write(alphabet);
-    tiny.seekTo(0);
-    check(tiny.makeReadable(20));
-    String firstLetters = String::allocate(20);
-    check(tiny.read({firstLetters.bytes(), firstLetters.numBytes()}) == 20);
-    check(firstLetters == alphabet.left(20));
-    check(tiny.getSeekPos() == 20);
-    check(tiny.readByte() == 'u');
-
-    // Flush a temporary write that spans several small custom chunks.
-    MemStream tinyWrite{7};
-    tinyWrite.write("abcde");
-    check(tinyWrite.makeWritable(20));
-    tinyWrite.write("12345678901234567890");
-    tinyWrite.flush();
-    check(tinyWrite.copyToString() == "abcde12345678901234567890");
-
-    // Copy pending writes held in the temporary cross-buffer view.
-    String prefix = String::allocate(Stream::BufferSize - 4);
-    memset(prefix.bytes(), 'a', prefix.numBytes());
-    MemStream crossing;
-    crossing.write(prefix);
-    check(crossing.makeWritable(8));
-    crossing.write("12345678");
-    u64 crossingSeekPos = crossing.getSeekPos();
-    check(crossing.copyToString() == prefix + "12345678");
-    check(crossing.copyToString() == prefix + "12345678"); // Previous copyToString should not modify
-    check(crossing.getSeekPos() == crossingSeekPos);
+    char bytes[] = "abcdef";
+    ViewStream view{MutStringView{bytes, 6}};
+    view.seekTo(bytes + 2);
+    check(view.write("XY") == 2);
+    view.seekTo(bytes);
+    check(view.makeReadable(6) && view.viewRemainingBytes() == "abXYef");
+    view.seekTo(bytes + 6);
+    check(!view.makeWritable());
 }
 
-// Verifies that copied memory streams own independent backing storage and retain their position.
-TEST_CASE("MemStream copy operations") {
-    MemStream source{7};
-    source.write("original");
-
-    // Copy construction preserves the writing position and allows independent appends.
-    MemStream constructed = source;
-    source.write(" source");
-    constructed.write(" copy");
-    check(source.copyToString() == "original source");
-    check(constructed.copyToString() == "original copy");
-
-    // Copy assignment replaces existing storage and also remains independent.
-    MemStream assigned{3};
-    assigned.write("discarded");
-    assigned = source;
-    assigned.write(" assigned");
-    check(source.copyToString() == "original source");
-    check(assigned.copyToString() == "original source assigned");
-
-    // A copy made while reading retains the same seek position.
-    source.seekTo(4);
-    MemStream readingCopy = source;
-    check(readingCopy.getSeekPos() == source.getSeekPos());
-    check(readingCopy.readByte() == source.readByte());
+// Deterministic model checks arbitrary operation sequences against a byte array and cursor.
+TEST_CASE("MemFile mixed operations") {
+    for (u32 seed : {1u, 7u, 3000u, 32640u}) {
+        Random random{seed};
+        MemFile file;
+        String expected = String::allocate(Stream::MemFilePageSize + 32);
+        for (u32 i = 0; i < expected.numBytes(); i++) {
+            expected[i] = (char) shuffleBits(i);
+        }
+        file.write(expected);
+        u32 pos = expected.numBytes();
+        for (u32 i = 0; i < 256; i++) {
+            switch (random.generateU32() % 6) {
+                case 0: {
+                    const u32 boundaries[] = {0, Stream::MemFilePageSize - 1, Stream::MemFilePageSize,
+                                              Stream::MemFilePageSize + 1, expected.numBytes()};
+                    pos = (i & 1) ? boundaries[random.generateU32() % 5]
+                                  : random.generateU32() % (expected.numBytes() + 1);
+                    file.seekTo(pos);
+                    break;
+                }
+                case 1: {
+                    // Write part or all of a requested contiguous buffer.
+                    u32 requested = random.generateU32() % Stream::MaxConsecutiveBytes + 1;
+                    u32 produced = random.generateU32() % (requested + 1);
+                    check(file.makeWritable(requested));
+                    expected.resize(max(expected.numBytes(), pos + produced));
+                    for (u32 j = 0; j < produced; j++) {
+                        char byte = (char) random.generateU32();
+                        expected[pos++] = byte;
+                        *file.curByte++ = byte;
+                    }
+                    break;
+                }
+                case 2: {
+                    // Partially consume a contiguous read, including short EOF views.
+                    u32 requested = random.generateU32() % Stream::MaxConsecutiveBytes + 1;
+                    u32 available = expected.numBytes() - pos;
+                    bool readable = file.makeReadable(requested);
+                    check(readable == (available >= requested));
+                    if (!readable) {
+                        check(file.getStatus() == IOResult::EndOfFile);
+                        check(file.atEof() == !file.hasRemainingBytes());
+                    }
+                    u32 exposed = file.numRemainingBytes();
+                    if (!check(exposed <= available))
+                        return;
+                    check(file.viewRemainingBytes() == expected.substr(pos, exposed));
+                    u32 consumed = random.generateU32() % (exposed + 1);
+                    file.curByte += consumed;
+                    pos += consumed;
+                    break;
+                }
+                case 3: {
+                    // Verify wrapper reads, including their different short-read padding behavior.
+                    char bytes[64];
+                    u32 requested = random.generateU32() % sizeof(bytes) + 1;
+                    u32 available = min(requested, expected.numBytes() - pos);
+                    u32 count = (i & 1) ? file.read({bytes, requested}) : file.tryRead({bytes, requested});
+                    check(count == available);
+                    check(StringView{bytes, available} == expected.substr(pos, available));
+                    if (i & 1) {
+                        for (u32 j = available; j < requested; j++) {
+                            check(bytes[j] == 0);
+                        }
+                    }
+                    pos += available;
+                    break;
+                }
+                case 4:
+                    file.flush();
+                    break;
+                case 5: {
+                    MemFile copy = file;
+                    check(copy.getSeekPos() == pos);
+                    check(copy.getMode() == file.getMode());
+                    check(hasMemFileContents(copy, expected));
+                    break;
+                }
+            }
+            check(file.getSeekPos() == pos);
+            if (i % 32 == 31) {
+                check(hasMemFileContents(file, expected));
+            }
+        }
+        check(hasMemFileContents(file, expected));
+    }
 }
 
-// Verifies that moving a memory stream includes pending writes held in a cross-buffer temporary view.
-TEST_CASE("MemStream::moveToString with pending writes") {
-    String prefix = String::allocate(Stream::BufferSize - 4);
-    memset(prefix.bytes(), 'a', prefix.numBytes());
-    MemStream crossing;
-    crossing.write(prefix);
-    check(crossing.makeWritable(8));
-    crossing.write("12345678");
+// Copies retain independent storage; moves preserve active views and replace existing destinations.
+TEST_CASE("Stream memory ownership in ordinary and cross-page states") {
+    for (u32 base : {0u, Stream::MemFilePageSize - 4, Stream::MemFilePageSize + 1}) {
+        for (bool reading : {false, true}) {
+            String expected = streamPayload(base) + (reading ? "abcdefghijklmnop" : "ab");
+            MemFile source;
+            source.write(expected);
+            source.seekTo(base);
+            if (reading) {
+                check(source.makeReadable(8));
+                source.skip(2);
+            } else {
+                check(source.makeWritable(8));
+                source.write("12345678");
+                expected.resize(base + 8);
+                memcpy(expected.bytes() + base, "12345678", 8);
+            }
+            u32 pos = base + (reading ? 2 : 8);
+            char* cur = source.curByte;
+            char* end = source.endByte;
+            MemFile copy = source;
+            MemFile assigned;
+            assigned.write("discarded");
+            assigned = source;
+            check(source.curByte == cur && source.endByte == end);
+            for (MemFile* file : {&copy, &assigned}) {
+                check(file->getSeekPos() == pos && file->getMode() == source.getMode());
+                check(file->curByte != source.curByte);
+            }
+            source.write("S"); // Mutating the source cannot affect either copy.
+            source.close();
+            MemFile moved = std::move(copy);
+            check(!copy.isOpen());
+            MemFile destination;
+            destination.write("discarded");
+            destination = std::move(moved);
+            check(!moved.isOpen());
+            check(destination.getSeekPos() == pos);
+            check(destination.getMode() == (reading ? Stream::Mode::Reading : Stream::Mode::Writing));
+            check(hasMemFileContents(destination, expected));
+            assigned.write("Z");
+            expected.resize(max(expected.numBytes(), pos + 1));
+            expected[pos] = 'Z';
+            check(hasMemFileContents(assigned, expected));
+        }
+    }
+    MemFile empty;
+    MemFile emptyCopy = empty;
+    MemFile emptyAssigned;
+    emptyAssigned.write("discarded");
+    emptyAssigned = empty;
+    check(hasMemFileContents(emptyCopy, "") && hasMemFileContents(emptyAssigned, ""));
+    MemFile emptyMoved = std::move(emptyCopy);
+    emptyAssigned = std::move(emptyMoved);
+    check(!emptyCopy.isOpen() && !emptyMoved.isOpen() && hasMemFileContents(emptyAssigned, ""));
+    for (u32 size : {0u, 1u, Stream::MemChunkSize - 1, Stream::MemChunkSize, Stream::MemChunkSize + 1,
+                     Stream::MemChunkSize * 2 + 17}) {
+        String expected = streamPayload(size);
+        MemStream source;
+        check(source.getCapabilities() == Stream::CanWrite);
+        source.write(expected);
+        MemStream copy = source;
+        MemStream assigned;
+        assigned.write("discarded");
+        assigned = source;
+        check(source.copyToString() == expected && source.getSeekPos() == size);
+        source.write('S');
+        copy.write('C');
+        assigned.write('A');
+        MemStream moved = std::move(copy);
+        check(!copy.isOpen());
+        copy = MemStream{};
+        copy.write("discarded");
+        copy = std::move(assigned);
+        check(!assigned.isOpen());
+        check(moved.moveToString() == expected + "C" && !moved.isOpen());
+        check(copy.moveToString() == expected + "A" && !copy.isOpen());
+        check(source.moveToString() == expected + "S" && !source.isOpen());
+        MemStream emptyOrBoundary;
+        emptyOrBoundary.write(expected);
+        check(emptyOrBoundary.moveToString() == expected && !emptyOrBoundary.isOpen());
+    }
+}
 
-    check(crossing.moveToString() == prefix + "12345678");
-    check(!crossing.isOpen());
+// Readers retain independent cursors and cross-chunk views after their writer and source reader disappear.
+TEST_CASE("Stream MemPipe readers retain independent positions and final views") {
+    for (bool threadSafe : {false, true}) {
+        for (u32 size : {0u, 1u, Stream::MemChunkSize - 1, Stream::MemChunkSize, Stream::MemChunkSize + 17,
+                         Stream::MemChunkSize * 2 + 17}) {
+            String expected = streamPayload(size);
+            Owned<MemPipe> pipe = Heap::create<MemPipe>(threadSafe);
+            MemReader early{pipe};
+            check(!early.tryMakeReadable() && early.getStatus() == IOResult::WouldBlock && !early.atEof());
+            // Buffered writer flush and destructor both deliver their pending bytes.
+            {
+                Stream writer{pipe, false};
+                writer.write(expected.left(size / 2));
+                writer.flush(true);
+                writer.write(expected.substr(size / 2));
+            }
+            u32 offset = size > Stream::MemChunkSize ? Stream::MemChunkSize - 3 : size / 2;
+            check(early.skip(offset) == offset);
+            if (size > Stream::MemChunkSize) {
+                check(early.makeReadable(8));
+                check(early.readByte() == expected[offset++]);
+            }
+            MemReader late{pipe};
+            MemReader copy = early;
+            MemReader assigned{pipe};
+            assigned = early;
+            MemReader moved = std::move(copy);
+            check(!copy.isOpen());
+            copy = early;
+            assigned = std::move(copy);
+            check(!copy.isOpen());
+            pipe.clear();
+            early.close();
+            for (MemReader* reader : {&moved, &assigned}) {
+                check(reader->getSeekPos() == offset);
+                // Repeated oversized requests preserve the cross-chunk final view.
+                if (size > Stream::MemChunkSize && size < Stream::MemChunkSize * 2) {
+                    for (u32 retry = 0; retry < 2; retry++) {
+                        check(!reader->makeReadable(Stream::MaxConsecutiveBytes));
+                        check(reader->viewRemainingBytes() == expected.substr(offset));
+                        check(!reader->atEof());
+                    }
+                    check(reader->skip(5) == 5);
+                    check(!reader->makeReadable(Stream::MaxConsecutiveBytes));
+                    check(reader->viewRemainingBytes() == expected.substr(offset + 5));
+                }
+                u32 pos = (u32) reader->getSeekPos();
+                String bytes = String::allocate(size + 2);
+                check(reader->read({bytes.bytes(), bytes.numBytes()}) == size - pos);
+                check(bytes.left(size - pos) == expected.substr(pos));
+                for (u32 i = size - pos; i < bytes.numBytes(); i++) {
+                    check(bytes[i] == 0);
+                }
+                check(!reader->makeReadable() && !reader->tryMakeReadable() && reader->atEof());
+            }
+            String bytes = String::allocate(size + 2);
+            memset(bytes.bytes(), '-', bytes.numBytes());
+            check(late.tryRead({bytes.bytes(), bytes.numBytes()}) == size);
+            check(bytes.left(size) == expected && bytes[size] == '-' && bytes[size + 1] == '-');
+        }
+    }
+}
+
+// Every terminal action wakes all readers while leaving their final buffered bytes available.
+TEST_CASE("Stream MemPipe termination wakes all readers and preserves tails") {
+    for (u32 terminal = 0; terminal < 3; terminal++) {
+        for (u32 size : {0u, Stream::MemChunkSize + 7}) {
+            Owned<MemPipe> pipe = Heap::create<MemPipe>();
+            String expected = streamPayload(size);
+            pipe->write(expected);
+            MemReader readers[] = {MemReader{pipe}, MemReader{pipe}, MemReader{pipe}};
+            u32 offset = size ? Stream::MemChunkSize - 2 : 0;
+            Semaphore started;
+            Thread threads[3];
+            bool results[3] = {};
+            for (u32 i = 0; i < 3; i++) {
+                check(readers[i].skip(offset) == offset);
+                threads[i].run([&, i]() {
+                    started.signal();
+                    results[i] = readers[i].makeReadable(64);
+                });
+            }
+            for (u32 i = 0; i < 3; i++) {
+                started.wait();
+            }
+            sleepMillis(20);
+            if (terminal == 0) {
+                pipe->close();
+            } else if (terminal == 1) {
+                pipe->disable();
+            } else {
+                pipe.clear();
+            }
+            IOResult::Code status = terminal == 1 ? IOResult::Disabled : IOResult::EndOfFile;
+            for (u32 i = 0; i < 3; i++) {
+                threads[i].join();
+                check(!results[i] && readers[i].getStatus() == status);
+                check(readers[i].atEof() == (size == offset));
+                check(readers[i].viewRemainingBytes() == expected.substr(offset));
+                check(readers[i].skip(size - offset) == size - offset);
+                check(!readers[i].tryMakeReadable() && readers[i].atEof());
+            }
+            if (pipe) {
+                IOResult rejected = pipe->write("ignored");
+                check(rejected.code == (terminal == 1 ? IOResult::Disabled : IOResult::Error));
+                check(rejected.numBytes == 0);
+                if (terminal == 1) {
+                    pipe->disable();
+                }
+                pipe->close();
+                pipe->close();
+                check(!readers[0].tryMakeReadable() && readers[0].getStatus() == status);
+            }
+        }
+    }
+}
+
+// Concurrency: delivery and close/write serialization exercise distinct races.
+TEST_CASE("Stream MemPipe concurrent writes and destruction") {
+    String expected = streamPayload(Stream::MemChunkSize * 3 + 17);
+    for (u32 iteration = 0; iteration < 8; iteration++) {
+        Owned<MemPipe> pipe = Heap::create<MemPipe>();
+        MemReader reader{pipe};
+        bool writesSucceeded = true;
+        Thread producer{[&]() {
+            for (u32 offset = 0; offset < expected.numBytes();) {
+                StringView part = expected.substr(offset, min(701u, expected.numBytes() - offset));
+                IOResult written = pipe->write(part);
+                writesSucceeded &= written.code == IOResult::OK && written.numBytes == part.numBytes();
+                offset += part.numBytes();
+            }
+            pipe.clear();
+        }};
+        String bytes = String::allocate(expected.numBytes() + 4);
+        u32 count = reader.read({bytes.bytes(), bytes.numBytes()});
+        producer.join();
+        check(writesSucceeded);
+        check(count == expected.numBytes());
+        check(bytes.left(count) == expected);
+        check(reader.getStatus() == IOResult::EndOfFile);
+        check(!reader.makeReadable());
+    }
+}
+
+// Explicit close is permanent and can race a write without accepting a partial append.
+TEST_CASE("Stream MemPipe close is idempotent and serialized with writes") {
+    String payload = String::allocate(Stream::MemChunkSize + 17);
+    memset(payload.bytes(), 'x', payload.numBytes());
+    for (u32 iteration = 0; iteration < 16; iteration++) {
+        MemPipe pipe;
+        MemReader early{&pipe};
+        Semaphore started;
+        IOResult written;
+        Thread producer{[&]() {
+            started.signal();
+            written = pipe.write(payload);
+        }};
+        started.wait();
+        pipe.close();
+        pipe.close();
+        producer.join();
+        check((written.code == IOResult::OK && written.numBytes == payload.numBytes()) ||
+              (written.code == IOResult::Error && written.numBytes == 0));
+        IOResult rejected = pipe.write("ignored");
+        check(rejected.code == IOResult::Error && rejected.numBytes == 0);
+        MemReader late{&pipe};
+        for (MemReader* reader : {&early, &late}) {
+            String bytes = String::allocate(payload.numBytes() + 1);
+            check(reader->read({bytes.bytes(), bytes.numBytes()}) == written.numBytes);
+            check(bytes.left(written.numBytes) == payload.left(written.numBytes));
+            check(reader->getStatus() == IOResult::EndOfFile);
+        }
+    }
+}
+
+// WouldBlock permits retry; partial failed writes advance only by the number of bytes accepted.
+TEST_CASE("Stream Pipe nonblocking recovery and partial write status") {
+    MockPipe pipe{"abc"};
+    Stream in{&pipe, false};
+    char bytes[8];
+    memset(bytes, '-', sizeof(bytes));
+    pipe.code = IOResult::WouldBlock;
+    check(!in.tryMakeReadable() && !in.atEof());
+    check(in.tryRead({bytes, 8}) == 0 && StringView{bytes, 8} == "--------");
+    pipe.code = IOResult::OK;
+    check(in.tryMakeReadable() && in.viewRemainingBytes() == "abc");
+    check(in.tryRead({bytes, 8}) == 3 && StringView{bytes, 8} == "abc-----");
+    check(in.atEof());
+    pipe.bytes += "defghijkl";
+    check(in.tryRead({bytes, 8}) == 8 && StringView{bytes, 8} == "defghijk");
+    check(in.tryRead({bytes, 8}) == 1 && bytes[0] == 'l');
+    check(in.getSeekPos() == 12);
+    // Switching from exhausted input to output delivers the pending write on the next read.
+    check(in.write("MN") == 2 && in.getMode() == Stream::Mode::Writing);
+    check(in.readByte() == 0 && pipe.bytes == "abcdefghijklMN");
+    MockPipe sink;
+    Stream out{&sink, false};
+    out.write("abcdef");
+    sink.code = IOResult::Error;
+    sink.writeLimit = 2;
+    out.flush();
+    check(out.getStatus() == IOResult::Error && out.getSeekPos() == 2 && sink.bytes == "ab");
+    out.clearError();
+    sink.code = IOResult::OK;
+    out.write("XY");
+    out.flush();
+    check(sink.bytes == "abXY" && out.getSeekPos() == 4);
+}
+
+// Pipe seeking, sticky errors and recovery.
+TEST_CASE("Stream tracks pipe positions after seeking outside the buffer") {
+    MockPipe pipe{streamPayload(256)};
+    pipe.limit = 1;
+    pipe.code = IOResult::Error;
+    pipe.code = IOResult::OK;
+    Stream stream{&pipe, false};
+
+    stream.seekTo(100);
+    check(pipe.seekCalls == 1);
+    check(stream.getSeekPos() == 100);
+    check(stream.readByte() == (char) shuffleBits(100u));
+    check(stream.getSeekPos() == 101);
+
+    // Rewinding within the refilled buffer must not seek the underlying pipe.
+    stream.seekTo(100);
+    check(pipe.seekCalls == 1);
+    check(stream.getSeekPos() == 100);
+    check(stream.readByte() == (char) shuffleBits(100u));
+
+    // A backward seek outside the buffer establishes a new buffer origin too.
+    stream.seekTo(10);
+    check(pipe.seekCalls == 2);
+    check(stream.getSeekPos() == 10);
+    check(stream.readByte() == (char) shuffleBits(10u));
+    check(stream.getSeekPos() == 11);
+}
+
+TEST_CASE("Stream remembers pipe read errors until reset") {
+    MockPipe pipe{streamPayload(256)};
+    pipe.limit = 1;
+    pipe.code = IOResult::Error;
+    Stream stream{&pipe, false};
+    check(stream.getStatus() != IOResult::Error);
+    check(!stream.makeReadable());
+    check(stream.getStatus() == IOResult::Error);
+    check(stream.atEof());
+    pipe.code = IOResult::OK;
+    check(!stream.makeReadable());
+    check(!stream.tryMakeReadable());
+    check(!stream.makeWritable());
+    stream.seekTo(100);
+    stream.flush();
+    check(pipe.readCalls == 1 && pipe.writeCalls == 0);
+    check(pipe.seekCalls == 0 && pipe.flushCalls == 0);
+    check(stream.getStatus() == IOResult::Error);
+    stream.clearError();
+    check(stream.getStatus() == IOResult::OK);
+    check(stream.tryMakeReadable());
+    check(stream.getStatus() == IOResult::OK);
+    stream.curByte++;
+    stream.clearError();
+    pipe.code = IOResult::WouldBlock;
+    check(!stream.tryMakeReadable());
+    check(stream.getStatus() != IOResult::Error);
+    pipe.code = IOResult::Error;
+    check(!stream.tryMakeReadable());
+    check(stream.getStatus() == IOResult::Error);
+    Stream moved{std::move(stream)};
+    check(moved.getStatus() == IOResult::Error);
+    check(stream.getStatus() != IOResult::Error);
+    moved.close();
+    check(moved.getStatus() != IOResult::Error);
+}
+
+TEST_CASE("Stream remembers buffered pipe write errors until reset") {
+    MockPipe pipe{streamPayload(256)};
+    pipe.limit = 1;
+    pipe.code = IOResult::Error;
+    Stream stream{&pipe, false};
+    stream.write("x");
+    check(stream.getStatus() != IOResult::Error);
+    stream.flush();
+    check(stream.getStatus() == IOResult::Error);
+    check(stream.atEof());
+    pipe.code = IOResult::OK;
+    check(stream.write("x") == 0);
+    stream.flush();
+    check(pipe.writeCalls == 1 && pipe.flushCalls == 0);
+    check(stream.getStatus() == IOResult::Error);
+    stream.clearError();
+    check(stream.write("x") == 1);
+    stream.flush();
+    check(stream.getStatus() == IOResult::OK);
+    check(pipe.flushCalls == 1);
+    pipe.code = IOResult::Disabled;
+    stream.write("x");
+    stream.flush();
+    check(stream.getStatus() != IOResult::Error);
+    pipe.code = IOResult::Error;
+    for (u32 i = 0; i <= Stream::PipeBufferSize; i++) {
+        stream.write("x");
+    }
+    check(stream.getStatus() == IOResult::Error);
+    stream.clearError();
+    // Switching to read mode also flushes pending writes.
+    stream.makeReadable();
+    check(stream.getStatus() == IOResult::Error);
+}
+
+TEST_CASE("Stream error latch permits buffered access but blocks buffer transitions") {
+    MockPipe pipe{streamPayload(256)};
+    pipe.limit = 1;
+    pipe.code = IOResult::Error;
+    Stream stream{&pipe, false};
+    pipe.code = IOResult::OK;
+    check(stream.makeReadable());
+    pipe.code = IOResult::Error;
+    check(!stream.makeReadable(2));
+    check(stream.getStatus() == IOResult::Error);
+    check(!stream.atEof()); // One buffered byte remains after the failed larger request.
+    u32 readCalls = pipe.readCalls;
+    check(stream.makeReadable());
+    check(stream.tryMakeReadable());
+    check(stream.getStatus() == IOResult::Error);
+    check(stream.readByte() == (char) shuffleBits(0u));
+    check(stream.atEof());
+    check(!stream.makeReadable());
+    check(!stream.tryMakeReadable());
+    check(pipe.readCalls == readCalls);
+    stream.clearError();
+
+    check(!stream.atEof());
+    pipe.code = IOResult::OK;
+    check(stream.makeReadable());
+    check(stream.getStatus() == IOResult::OK);
+}
+
+// Clearing an error must leave unrelated I/O statuses unchanged.
+TEST_CASE("Stream clearError preserves non-error statuses") {
+    MockPipe pipe{streamPayload(256)};
+    pipe.limit = 1;
+    pipe.code = IOResult::Error;
+    Stream stream{&pipe, false};
+    for (IOResult::Code code : {IOResult::OK, IOResult::WouldBlock, IOResult::EndOfFile, IOResult::Disabled}) {
+        pipe.code = code;
+        check(stream.tryMakeReadable() == (code == IOResult::OK));
+        check(stream.getStatus() == code);
+        stream.clearError();
+        check(stream.getStatus() == code);
+        stream.curByte = stream.endByte;
+    }
 }
 
 //  ▄▄   ▄▄ ▄▄         ▄▄                 ▄▄▄  ▄▄   ▄▄

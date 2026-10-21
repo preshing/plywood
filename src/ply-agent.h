@@ -30,10 +30,8 @@ namespace ply {
 struct Transcript : RefCounted<Transcript> {
     // Internal type used to store a growing text buffer as a sequence of lines.
     struct Buffer {
-        static constexpr u32 TailChunkSize = 256;
-
         Array<String> lines;           // Completed lines. Each one ends with \n except possibly the last.
-        MemStream tail{TailChunkSize}; // Accumulates the last line until a \n is received.
+        MemStream tail; // Accumulates the last line until a \n is received.
         PLY_DECLARE_TYPE_INFO(Buffer)
 
         void append(StringView text); // Appends streamed text while preserving completed lines.

@@ -32,7 +32,7 @@ void Transcript::Buffer::append(StringView text) {
         // Complete the current line, retaining the newline in its own line string.
         this->tail.write(text.left(newLinePos + 1));
         this->lines.append(this->tail.moveToString());
-        this->tail = MemStream{TailChunkSize};
+        this->tail = MemStream{};
         text = text.substr(newLinePos + 1);
     }
 }
@@ -41,7 +41,7 @@ void Transcript::Buffer::append(StringView text) {
 void Transcript::Buffer::flush() {
     if (this->tail.getSeekPos() > 0) {
         this->lines.append(this->tail.moveToString());
-        this->tail = MemStream{TailChunkSize};
+        this->tail = MemStream{};
     }
 }
 
